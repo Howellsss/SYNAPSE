@@ -422,15 +422,6 @@ export function AuthPage() {
                             {p.muted ? <MicOff className="h-3 w-3 text-[#e0655b]" /> : <Mic className={`h-3 w-3 ${isSpeaking ? 'text-[#E4A93C]' : 'text-[#c9d5e8]'}`} />}
                             <span className="text-[10px] font-medium text-white">{p.name}</span>
                           </div>
-                          {/* Audio bars when speaking */}
-                          {isSpeaking && (
-                            <div className="absolute bottom-1.5 right-1.5 flex h-7 items-end gap-0.5 rounded-md bg-black/50 px-1.5 py-1 backdrop-blur-sm">
-                              <span className="audio-bar w-0.5 rounded-full bg-[#E4A93C]" style={{ animationDelay: '0ms', animationDuration: '0.4s' }} />
-                              <span className="audio-bar w-0.5 rounded-full bg-[#E4A93C]" style={{ animationDelay: '120ms', animationDuration: '0.55s' }} />
-                              <span className="audio-bar w-0.5 rounded-full bg-[#E4A93C]" style={{ animationDelay: '60ms', animationDuration: '0.35s' }} />
-                              <span className="audio-bar w-0.5 rounded-full bg-[#E4A93C]" style={{ animationDelay: '180ms', animationDuration: '0.5s' }} />
-                            </div>
-                          )}
                           {/* Hand raise indicator */}
                           {p.hand && (
                             <div className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-[#E4A93C]">
