@@ -1,0 +1,1 @@
+ALTER TABLE forms ADD COLUMN IF NOT EXISTS calendar_id uuid REFERENCES calendars(id) ON DELETE SET NULL;

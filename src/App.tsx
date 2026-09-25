@@ -1,0 +1,110 @@
+import { useEffect, useState } from 'react';
+import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { ToastProvider } from '@/context/ToastContext';
+import { useRouter } from '@/lib/router';
+import { Sidebar } from '@/components/layout/Sidebar';
+import { TopBar } from '@/components/layout/TopBar';
+import { AuthPage } from '@/pages/AuthPage';
+import { AcceptInvitePage } from '@/pages/AcceptInvitePage';
+import { Dashboard } from '@/pages/Dashboard';
+import { ContactsPage } from '@/pages/ContactsPage';
+import { CalendarsPage } from '@/pages/CalendarsPage';
+import { FormsPage } from '@/pages/FormsPage';
+import { FormBuilder } from '@/pages/FormBuilder';
+import { WorkflowsPage } from '@/pages/WorkflowsPage';
+import { RecordingsPage } from '@/pages/RecordingsPage';
+import { AIAgentPage } from '@/pages/AIAgentPage';
+import { SettingsPage } from '@/pages/SettingsPage';
+import { BookingPage } from '@/pages/BookingPage';
+import { GroupCalendarSettingsPage } from '@/pages/GroupCalendarSettingsPage';
+import { ComingSoonPage } from '@/pages/ComingSoonPage';
+import { Video, CalendarHeart, MonitorPlay, MessagesSquare, FolderOpen, Building2 } from 'lucide-react';
+import { LoadingSpinner } from '@/components/ui/States';
+
+function AppContent() {
+  const { user, loading } = useAuth();
+  const [path, navigate] = useRouter();
+  const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    if (!loading && !user && !path.startsWith('/book/') && !path.startsWith('/group/') && !path.startsWith('/reset-password') && !path.startsWith('/invite/')) {
+      navigate('/dashboard');
+    }
+  }, [user, loading, path, navigate]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <LoadingSpinner className="w-10 h-10" />
+      </div>
+    );
+  }
+
+  // Public booking page (no auth required)
+  if (path.startsWith('/book/') || path.startsWith('/group/')) {
+    const slug = path.split('/')[2]?.split('?')[0];
+    return <BookingPage slug={slug} isGroup={path.startsWith('/group/')} />;
+  }
+
+  // Invitation acceptance page (no auth required to view, auth to accept)
+  if (path.startsWith('/invite/')) {
+    const token = path.split('/')[2]?.split('?')[0];
+    return <AcceptInvitePage token={token} />;
+  }
+
+  // Auth page (includes sign in, sign up, forgot password, reset password)
+  if (!user) {
+    return <AuthPage />;
+  }
+
+  // Authenticated app
+  const renderPage = () => {
+    if (path === '/dashboard' || path === '/') return <Dashboard />;
+    if (path.startsWith('/contacts')) return <ContactsPage />;
+    if (path.startsWith('/calendars/groups/') && user) {
+      const groupId = path.split('/')[3]?.split('?')[0];
+      return <GroupCalendarSettingsPage groupId={groupId} onBack={() => navigate('/calendars')} />;
+    }
+    if (path.startsWith('/calendars')) return <CalendarsPage />;
+    if (path.match(/^\/forms\/[^/]+\/edit$/)) {
+      const formId = path.split('/')[2]?.split('?')[0];
+      return <FormBuilder formId={formId} onBack={() => navigate('/forms')} />;
+    }
+    if (path.startsWith('/forms')) return <FormsPage />;
+    if (path.startsWith('/workflows')) return <WorkflowsPage />;
+    if (path.startsWith('/recordings')) return <RecordingsPage />;
+    if (path.startsWith('/ai-hub')) return <AIAgentPage />;
+    if (path.startsWith('/settings')) return <SettingsPage />;
+    if (path.startsWith('/meetings')) return <ComingSoonPage title="Meetings" description="Host and manage video meetings" icon={Video} />;
+    if (path.startsWith('/events')) return <ComingSoonPage title="Events" description="Create and manage group events" icon={CalendarHeart} />;
+    if (path.startsWith('/webinars')) return <ComingSoonPage title="Webinars" description="Host live and on-demand webinars" icon={MonitorPlay} />;
+    if (path.startsWith('/conversations')) return <ComingSoonPage title="Conversations" description="Manage messages across channels" icon={MessagesSquare} />;
+    if (path.startsWith('/media-library')) return <ComingSoonPage title="Media Library" description="Store and organize your media assets" icon={FolderOpen} />;
+    if (path.startsWith('/workspace')) return <ComingSoonPage title="Workspace" description="Manage your workspace settings and members" icon={Building2} />;
+    return <Dashboard />;
+  };
+
+  return (
+    <div className="min-h-screen bg-white">
+      <Sidebar currentPath={path} onNavigate={navigate} />
+      <div className="lg:ml-[168px] flex flex-col min-h-screen">
+        <TopBar
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onQuickCreate={() => navigate('/calendars')}
+        />
+        <main className="flex-1 px-4 lg:px-8 py-6 animate-fade-in">{renderPage()}</main>
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
+    </AuthProvider>
+  );
+}

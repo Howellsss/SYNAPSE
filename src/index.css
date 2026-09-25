@@ -1,0 +1,172 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    border-color: theme('colors.navy.100');
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: #ffffff;
+    color: #0D1C3B;
+    margin: 0;
+    padding: 0;
+  }
+
+  ::selection {
+    background: rgba(228, 169, 60, 0.25);
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(57, 69, 96, 0.25);
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(57, 69, 96, 0.4);
+  }
+
+  /* Dark sidebar scrollbar */
+  .sidebar-scroll::-webkit-scrollbar-thumb {
+    background: rgba(180, 189, 204, 0.15);
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-gold-400 text-navy-800 text-sm font-semibold rounded-xl transition-all hover:bg-gold-300 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white text-navy-700 text-sm font-semibold rounded-xl border border-navy-100 transition-all hover:bg-ivory-50 hover:border-navy-200 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-burgundy-600 text-white text-sm font-semibold rounded-xl transition-all hover:bg-burgundy-500 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 text-navy-500 text-sm font-medium rounded-xl transition-all hover:bg-ivory-100 hover:text-navy-700 active:scale-[0.98];
+  }
+
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs;
+  }
+
+  .input-field {
+    @apply w-full px-3.5 py-2.5 bg-white text-navy-700 text-sm rounded-xl border border-navy-100 transition-all outline-none placeholder:text-ivory-600 focus:border-gold-400 focus:ring-2 focus:ring-gold-400/20;
+  }
+
+  .card {
+    @apply bg-white rounded-2xl border border-navy-100 shadow-card;
+  }
+
+  .card-hover {
+    @apply transition-all hover:shadow-card-hover hover:border-navy-200;
+  }
+
+  .status-pill {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full whitespace-nowrap;
+  }
+
+  .nav-item {
+    @apply flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-[13px] font-medium text-ivory-500 transition-all relative;
+  }
+
+  .nav-item-active {
+    @apply text-gold-400 bg-gold-400/10;
+  }
+
+  .nav-item:not(.nav-item-active):hover {
+    @apply text-ivory-100 bg-white/5;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .animate-drawer-in {
+    animation: drawerIn 0.25s ease-out;
+  }
+
+  @keyframes drawerIn {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+  }
+
+  .animate-backdrop-in {
+    animation: backdropIn 0.2s ease-out;
+  }
+
+  @keyframes backdropIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .landing-grid {
+    background-image: linear-gradient(rgba(76, 145, 221, 0.14) 1px, transparent 1px), linear-gradient(90deg, rgba(76, 145, 221, 0.14) 1px, transparent 1px);
+    background-size: 54px 54px;
+    mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.82), rgba(0, 0, 0, 0.2) 88%, transparent);
+    animation: gridDrift 24s linear infinite;
+  }
+
+  .landing-glow {
+    background: radial-gradient(circle at 50% 14%, rgba(228, 169, 60, 0.1), transparent 32%), radial-gradient(circle at 50% 68%, rgba(228, 169, 60, 0.06), transparent 34%);
+  }
+
+  @keyframes gridDrift {
+    from { background-position: 0 0, 0 0; }
+    to { background-position: 54px 54px, 54px 54px; }
+  }
+
+  /* Live meeting tile — subtle Ken Burns camera drift */
+  @keyframes tileZoom {
+    0%, 100% { transform: scale(1) translate(0, 0); }
+    25% { transform: scale(1.06) translate(-1.5%, 1%); }
+    50% { transform: scale(1.04) translate(1%, -1.5%); }
+    75% { transform: scale(1.07) translate(-1%, -1%); }
+  }
+
+  .live-tile-img {
+    animation: tileZoom 18s ease-in-out infinite;
+  }
+
+  /* Speaking ring glow */
+  @keyframes speakingGlow {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(228,169,60,0.55), 0 0 22px 4px rgba(228,169,60,0.18); }
+    50% { box-shadow: 0 0 0 2px rgba(228,169,60,0.9), 0 0 32px 8px rgba(228,169,60,0.32); }
+  }
+
+  .speaking-ring {
+    animation: speakingGlow 1.6s ease-in-out infinite;
+  }
+
+  /* Audio level bars */
+  @keyframes audioBar {
+    0%, 100% { height: 20%; }
+    50% { height: 100%; }
+  }
+
+  .audio-bar {
+    animation: audioBar 0.5s ease-in-out infinite;
+  }
+
+  /* Blinking rec dot — already using animate-pulse, keeping for clarity */
+}
