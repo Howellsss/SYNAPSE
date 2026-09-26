@@ -47,9 +47,14 @@ export function AuthPage() {
     setLoading(true);
 
     if (mode === 'signup') {
-      const { error } = await signUp(email, password, firstName, lastName);
+      const { error, needsConfirmation } = await signUp(email, password, firstName, lastName);
       if (error) {
         setError(error);
+        setLoading(false);
+      } else if (needsConfirmation) {
+        setMode('signin');
+        setPassword('');
+        setInfo(`Almost done! We sent a confirmation link to ${email}. Click it, then sign in here.`);
         setLoading(false);
       }
     } else if (mode === 'signin') {

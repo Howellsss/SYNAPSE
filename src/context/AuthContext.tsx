@@ -11,7 +11,7 @@ interface AuthContextValue {
   membership: WorkspaceMember | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signUp: (email: string, password: string, firstName: string, lastName: string) => Promise<{ error: string | null }>;
+  signUp: (email: string, password: string, firstName: string, lastName: string) => Promise<{ error: string | null; needsConfirmation?: boolean }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: string | null }>;
@@ -21,6 +21,10 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+// One setup run per user per page load, so the sign-in call and the auth
+// listener can't both create a workspace for the same new account.
+const accountSetupInFlight = new Map<string, Promise<boolean>>();
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -48,7 +52,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function loadUserData(userId: string) {
+  // Creates the profile and first workspace for a brand-new account. Runs on the
+  // first signed-in load, because with email confirmation on there is no session
+  // at sign-up time and row-level security rejects these writes.
+  function setUpNewAccount(authUser: User): Promise<boolean> {
+    const existing = accountSetupInFlight.get(authUser.id);
+    if (existing) return existing;
+
+    const run = (async () => {
+      const meta = authUser.user_metadata ?? {};
+      const firstName = (meta.first_name as string | undefined)?.trim() || authUser.email?.split('@')[0] || 'My';
+      const lastName = (meta.last_name as string | undefined)?.trim() || '';
+
+      await supabase.from('profiles').upsert(
+        {
+          user_id: authUser.id,
+          first_name: firstName,
+          last_name: lastName,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        },
+        { onConflict: 'user_id' },
+      );
+
+      if (authUser.email) await acceptPendingInvitations(authUser.id, authUser.email);
+
+      const workspaceSlug = slugifyWorkspace(`${firstName}-${lastName}-workspace`);
+      const { data: ws } = await supabase
+        .from('workspaces')
+        .insert({
+          name: `${firstName}'s Workspace`,
+          slug: workspaceSlug,
+          owner_id: authUser.id,
+        })
+        .select()
+        .single();
+
+      if (!ws) return false;
+
+      await supabase.from('workspace_members').insert({
+        workspace_id: ws.id,
+        user_id: authUser.id,
+        role: 'owner',
+      });
+
+      await supabase.rpc('seed_workspace_demo_data', {
+        p_workspace_id: ws.id,
+        p_owner_id: authUser.id,
+      });
+      return true;
+    })();
+
+    accountSetupInFlight.set(authUser.id, run);
+    return run;
+  }
+
+  async function loadUserData(authUser: User, allowSetup = true) {
+    const userId = authUser.id;
     const { data: prof } = await supabase
       .from('profiles')
       .select('*')
@@ -116,6 +175,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           status: 'active',
           created_at: ownedWorkspace.created_at,
         });
+      } else if (allowSetup && (await setUpNewAccount(authUser))) {
+        await loadUserData(authUser, false);
       } else {
         setMembership(null);
         setWorkspace(null);
@@ -128,7 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        loadUserData(session.user.id).finally(() => setLoading(false));
+        loadUserData(session.user).finally(() => setLoading(false));
       } else {
         setLoading(false);
       }
@@ -141,7 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (session?.user) {
         if (!isInitialSession) {
           (async () => {
-            await loadUserData(session.user.id);
+            await loadUserData(session.user);
             setLoading(false);
           })();
         }
@@ -161,10 +222,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return { error: error.message };
+    if (error) {
+      if (error.code === 'email_not_confirmed') {
+        return { error: 'Please confirm your email first. Check your inbox for the link we sent you.' };
+      }
+      return { error: error.message };
+    }
     if (data.user) {
       await acceptPendingInvitations(data.user.id, email);
-      await loadUserData(data.user.id);
+      await loadUserData(data.user);
     }
     return { error: null };
   };
@@ -175,48 +241,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password,
       options: {
         data: { first_name: firstName, last_name: lastName },
+        emailRedirectTo: window.location.origin,
       },
     });
     if (error) return { error: error.message };
 
-    if (data.user) {
-      await supabase.from('profiles').upsert({
-        user_id: data.user.id,
-        first_name: firstName,
-        last_name: lastName,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-      });
+    // Email confirmation is on: there is no session until the user clicks the
+    // link, so their workspace is created on first sign-in instead.
+    if (!data.session) return { error: null, needsConfirmation: true };
 
-      // Accept any pending invitations for this email
-      await acceptPendingInvitations(data.user.id, email);
-
-      const workspaceSlug = slugifyWorkspace(`${firstName}-${lastName}-workspace`);
-      const { data: ws } = await supabase
-        .from('workspaces')
-        .insert({
-          name: `${firstName}'s Workspace`,
-          slug: workspaceSlug,
-          owner_id: data.user.id,
-        })
-        .select()
-        .single();
-
-      if (ws) {
-        await supabase.from('workspace_members').insert({
-          workspace_id: ws.id,
-          user_id: data.user.id,
-          role: 'owner',
-        });
-
-        await supabase.rpc('seed_workspace_demo_data', {
-          p_workspace_id: ws.id,
-          p_owner_id: data.user.id,
-        });
-      }
-
-      await loadUserData(data.user.id);
-    }
-
+    if (data.user) await loadUserData(data.user);
     return { error: null };
   };
 
@@ -240,7 +274,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshProfile = async () => {
-    if (user) await loadUserData(user.id);
+    if (user) await loadUserData(user);
   };
 
   return (
