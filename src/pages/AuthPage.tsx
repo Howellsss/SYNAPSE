@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { HowellsLogo } from '@/components/layout/Sidebar';
-import { Sparkles, Shield, Calendar, Users, ArrowLeft, CheckCircle2, ArrowRight, Play, Zap, Video, Globe2, Radio, ShieldCheck, UsersRound, MessageSquare, Activity, Search, Mic, MicOff, VideoOff, Phone, Hand, ScreenShare, MoreHorizontal, Lock } from 'lucide-react';
+import { Sparkles, Shield, Calendar, Users, ArrowLeft, CheckCircle2, ArrowRight, Play, Zap, Video, Globe2, Radio, ShieldCheck, UsersRound, MessageSquare, Activity, Search, Mic, MicOff, VideoOff, Phone, Hand, ScreenShare, MoreHorizontal, Lock, Eye, EyeOff } from 'lucide-react';
 
 type Mode = 'signin' | 'signup' | 'forgot' | 'reset';
 
@@ -13,6 +13,7 @@ export function AuthPage() {
   });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -225,15 +226,26 @@ export function AuthPage() {
                   <label className="block text-sm font-medium text-navy-700 mb-1.5">
                     {mode === 'reset' ? 'New Password' : 'Password'}
                   </label>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required={showFormFields}
-                    minLength={6}
-                    className="input-field"
-                    placeholder="••••••••"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required={showFormFields}
+                      minLength={6}
+                      className="input-field pr-11"
+                      placeholder="••••••••"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      aria-pressed={showPassword}
+                      className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-xl text-ivory-600 transition-colors hover:text-navy-700"
+                    >
+                      {showPassword ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
+                    </button>
+                  </div>
                 </div>
               )}
 
