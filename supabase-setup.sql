@@ -1,3 +1,6 @@
+-- SYNAPSE: full database setup for a fresh Supabase project.
+-- Generated from supabase/migrations by scripts/build-supabase-setup.sh; do not edit by hand.
+-- Paste into the Supabase SQL Editor and run once.
 
 -- ============ 20260902175650_solem_core_schema.sql ============
 /*
@@ -3655,96 +3658,9 @@ BEGIN
   END IF;
 END $$;
 
--- ============ 20260905042433_add_invite_pastor_tolu_form.sql ============
-/*
-# Create "Invite Pastor Tolu" form
+-- ============ 20260905042433_add_invite_pastor_tolu_form.sql (skipped: data from the original database) ============
 
-1. New Tables
-   - None
-2. Changes
-   - Creates a new form record "Invite Pastor Tolu" for the Pastor Tolu workspace
-   - Adds 7 form fields matching the spec: Organisation/Church Name, Contact Person Email,
-     Event Title, Proposed Event Date, Expected Attendance (dropdown), Venue Physical Address,
-     Brief Event Overview
-3. Security
-   - No new tables, no RLS changes needed
-4. Notes
-   - This form is used by the "Invite Pastor Tolu" tab on the Pastor Tolu group booking page
-   - Form submissions are saved to the existing form_submissions table
-*/
-
-INSERT INTO forms (id, name, description, workspace_id)
-VALUES (
-  'd1a00000-0000-4000-8000-000000000001',
-  'Invite Pastor Tolu',
-  'Form for inviting Pastor Tolu to speak at an event',
-  'c505e65d-b276-499f-ba27-4cd4dcc4a184'
-)
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO form_fields (form_id, label, field_type, sort_order, required, placeholder, options, help_text, mapped_field)
-VALUES
-  ('d1a00000-0000-4000-8000-000000000001', 'Organisation/Church Name', 'text', 0, true, 'Enter organisation or church name', NULL, NULL, NULL),
-  ('d1a00000-0000-4000-8000-000000000001', 'Contact Person Email', 'email', 1, true, 'you@example.com', NULL, NULL, NULL),
-  ('d1a00000-0000-4000-8000-000000000001', 'Event Title', 'text', 2, true, 'Name of the event', NULL, NULL, NULL),
-  ('d1a00000-0000-4000-8000-000000000001', 'Proposed Event Date', 'date', 3, true, NULL, NULL, NULL, NULL),
-  ('d1a00000-0000-4000-8000-000000000001', 'Expected Attendance', 'dropdown', 4, true, NULL, '["Under 50", "50-100", "100-500", "500-1000", "1000+"]', NULL, NULL),
-  ('d1a00000-0000-4000-8000-000000000001', 'Venue Physical Address', 'long_text', 5, true, 'Full address of the venue', NULL, NULL, NULL),
-  ('d1a00000-0000-4000-8000-000000000001', 'Brief Event Overview', 'long_text', 6, true, 'Tell us about your event...', NULL, NULL, NULL)
-ON CONFLICT DO NOTHING;
-
-
--- ============ 20260905042505_update_pastor_tolu_form_fields.sql ============
-/*
-# Update form fields for Pastor Tolu group booking tabs
-
-1. Changes
-   - Updates Counseling Intake Form fields to match spec: Full Name, Primary Contact Email,
-     Relationship Status (Single/Courting/Married), What Would You Like Guidance On?
-   - Updates Corporate Consulting Inquiry fields to match spec: Company or Brand Name, Industry,
-     Consultation Core Target (dropdown), Message Details
-   - Updates General Contact Form fields to match spec: Your Name, Your Email, Subject, Message
-2. Security
-   - No RLS changes needed
-3. Notes
-   - Form submissions (form_submissions table) store answers as JSON, so existing submissions
-     are not affected by changing form field definitions
-   - The counseling form uses field_type 'first_name' for Full Name so contact extraction still works
-*/
-
--- Delete existing form fields for the three forms
-DELETE FROM form_fields 
-WHERE form_id IN (
-  'bb221ac5-b255-424f-a119-b9871bb8ed19',  -- Counseling Intake Form
-  'c7515303-0587-4923-b649-bf008abcc60e',  -- Corporate Consulting Inquiry
-  '11150458-7ab1-4fd5-9ecf-7be5cf0a76ce'   -- General Contact Form
-);
-
--- Counseling Intake Form (matches spec: Full Name, Primary Contact Email, Relationship Status, What Would You Like Guidance On?)
-INSERT INTO form_fields (form_id, label, field_type, sort_order, required, placeholder, options, help_text, mapped_field)
-VALUES
-  ('bb221ac5-b255-424f-a119-b9871bb8ed19', 'Full Name', 'first_name', 0, true, 'Enter your full name', NULL, NULL, 'first_name'),
-  ('bb221ac5-b255-424f-a119-b9871bb8ed19', 'Primary Contact Email', 'email', 1, true, 'you@example.com', NULL, NULL, 'email'),
-  ('bb221ac5-b255-424f-a119-b9871bb8ed19', 'Relationship Status', 'radio', 2, true, NULL, '["Single","Courting","Married"]', NULL, NULL),
-  ('bb221ac5-b255-424f-a119-b9871bb8ed19', 'What Would You Like Guidance On?', 'long_text', 3, true, 'Share what you would like guidance on...', NULL, NULL, NULL);
-
--- Corporate Consulting Inquiry (matches spec: Company or Brand Name, Industry, Consultation Core Target, Message Details)
-INSERT INTO form_fields (form_id, label, field_type, sort_order, required, placeholder, options, help_text, mapped_field)
-VALUES
-  ('c7515303-0587-4923-b649-bf008abcc60e', 'Company or Brand Name', 'text', 0, true, 'Enter company or brand name', NULL, NULL, NULL),
-  ('c7515303-0587-4923-b649-bf008abcc60e', 'Industry', 'text', 1, true, 'e.g. Technology, Finance, Healthcare', NULL, NULL, NULL),
-  ('c7515303-0587-4923-b649-bf008abcc60e', 'Consultation Core Target', 'dropdown', 2, true, NULL, '["Leadership Development","Strategic Planning","Team Building","Organizational Culture","Brand Strategy","Other"]', NULL, NULL),
-  ('c7515303-0587-4923-b649-bf008abcc60e', 'Message Details', 'long_text', 3, true, 'Tell us about your consulting needs...', NULL, NULL, NULL),
-  ('c7515303-0587-4923-b649-bf008abcc60e', 'Contact Email', 'email', 4, true, 'you@company.com', NULL, NULL, 'email');
-
--- General Contact Form (matches spec: Your Name, Your Email, Subject, Message)
-INSERT INTO form_fields (form_id, label, field_type, sort_order, required, placeholder, options, help_text, mapped_field)
-VALUES
-  ('11150458-7ab1-4fd5-9ecf-7be5cf0a76ce', 'Your Name', 'first_name', 0, true, 'Enter your name', NULL, NULL, 'first_name'),
-  ('11150458-7ab1-4fd5-9ecf-7be5cf0a76ce', 'Your Email', 'email', 1, true, 'you@example.com', NULL, NULL, 'email'),
-  ('11150458-7ab1-4fd5-9ecf-7be5cf0a76ce', 'Subject', 'text', 2, true, 'What is this about?', NULL, NULL, NULL),
-  ('11150458-7ab1-4fd5-9ecf-7be5cf0a76ce', 'Message', 'long_text', 3, true, 'How can we help you?', NULL, NULL, NULL);
-
+-- ============ 20260905042505_update_pastor_tolu_form_fields.sql (skipped: data from the original database) ============
 
 -- ============ 20260906223635_add_forms_module_inactive_status_and_usage_tracking.sql ============
 -- Add 'inactive' to forms status constraint
@@ -4224,4 +4140,17 @@ WITH CHECK (
     )
   )
 );
+
+
+-- ============ 20260926140000_fix_calendars_location_type_default.sql ============
+/*
+  # Fix calendars.location_type default
+
+  20260905022204 restricted location_type to
+  ('synapse_meeting', 'phone', 'in_person', 'custom', 'none') but left the
+  column default as 'google_meet', so any insert that omits location_type
+  (including seed_workspace_demo_data) violates the check constraint.
+*/
+
+ALTER TABLE calendars ALTER COLUMN location_type SET DEFAULT 'synapse_meeting';
 
