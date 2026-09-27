@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
-  ChevronDown, ChevronRight, Plus, X, GripVertical, Eye, EyeOff,
-  Calendar, Clock, Video, Phone, MapPin, User, Globe, ArrowUp, ArrowDown, Loader2,
+  ChevronDown, ChevronRight, Plus, X, GripVertical, Eye, EyeOff, Upload,
+  ArrowUp, ArrowDown, Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
@@ -49,7 +49,7 @@ const NAV_ICON_OPTIONS = [
 ];
 
 export function GroupPageDesigner({ config, groupName, groupDescription, calendars, onChange }: Props) {
-  const [openSection, setOpenSection] = useState<string | null>('branding');
+  const [openSection, setOpenSection] = useState<string | null>('childPresentations');
   const [showPreview, setShowPreview] = useState(true);
   const [previewCalendarId, setPreviewCalendarId] = useState<string | null>(
     (calendars.length > 0 ? calendars : sampleCalendars)[0]?.id ?? null
@@ -101,6 +101,18 @@ export function GroupPageDesigner({ config, groupName, groupDescription, calenda
           </div>
         </div>
       )}
+
+      <CollapsibleSection id="childPresentations" title="Calendar panels (left side)" isOpen={openSection === 'childPresentations'} onToggle={toggle}>
+        <p className="text-xs text-ivory-500 mb-3">Each calendar has its own left panel. Pick a calendar, then change its colour, image and text. The preview above switches to it.</p>
+        <ChildPresentationEditor
+          presentations={config.childPresentations}
+          calendars={previewCalendars}
+          onChange={items => onChange({ ...config, childPresentations: items })}
+          activeId={previewCalendar?.id ?? null}
+          onActiveChange={setPreviewCalendarId}
+          defaultPanelColor={config.branding.leftPanelColor}
+        />
+      </CollapsibleSection>
 
       <CollapsibleSection id="branding" title="Branding" isOpen={openSection === 'branding'} onToggle={toggle}>
         <div className="grid grid-cols-2 gap-3">
@@ -163,14 +175,6 @@ export function GroupPageDesigner({ config, groupName, groupDescription, calenda
         )}
       </CollapsibleSection>
 
-      <CollapsibleSection id="childPresentations" title="Child Calendar Content" isOpen={openSection === 'childPresentations'} onToggle={toggle}>
-        <p className="text-xs text-ivory-500 mb-3">Configure the left-panel content shown for each child calendar.</p>
-        <ChildPresentationEditor
-          presentations={config.childPresentations}
-          calendars={calendars.length > 0 ? calendars : sampleCalendars}
-          onChange={items => onChange({ ...config, childPresentations: items })}
-        />
-      </CollapsibleSection>
 
       <CollapsibleSection id="navigation" title="Extra Navigation Links" isOpen={openSection === 'navigation'} onToggle={toggle}>
         <p className="text-xs text-ivory-500 mb-3">Child calendars appear in the navigation automatically. Add extra links here for external pages or sections.</p>
@@ -413,15 +417,75 @@ function NavigationEditor({
 }
 
 // ============================================================
-// CHILD CALENDAR PRESENTATION EDITOR
+// CALENDAR PANELS EDITOR (left panel content per calendar)
 // ============================================================
 
+const PANEL_IMAGE_BUCKET = 'workspace-logos';
+const MAX_PANEL_IMAGE_BYTES = 5 * 1024 * 1024;
+
+function ImageField({ label, hint, value, onChange, folder }: {
+  label: string;
+  hint: string;
+  value: string | null;
+  onChange: (url: string | null) => void;
+  folder: string;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const upload = async (file: File | undefined) => {
+    if (!file) return;
+    setError(null);
+    if (!file.type.startsWith('image/')) { setError('Please choose an image file.'); return; }
+    if (file.size > MAX_PANEL_IMAGE_BYTES) { setError('Images must be 5 MB or smaller.'); return; }
+    setUploading(true);
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+    const path = `group-pages/${folder}/${crypto.randomUUID()}.${ext}`;
+    const { error: uploadError } = await supabase.storage.from(PANEL_IMAGE_BUCKET).upload(path, file, { contentType: file.type });
+    setUploading(false);
+    if (uploadError) { setError(`Upload failed: ${uploadError.message}`); return; }
+    onChange(supabase.storage.from(PANEL_IMAGE_BUCKET).getPublicUrl(path).data.publicUrl);
+  };
+
+  return (
+    <div>
+      <span className="text-xs font-medium text-navy-700">{label}</span>
+      <p className="text-[11px] text-ivory-500">{hint}</p>
+      <div className="mt-1.5 flex items-center gap-3">
+        <div className="flex h-14 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-navy-100 bg-ivory-50">
+          {value ? <img src={value} alt="" className="h-full w-full object-cover" /> : <span className="text-[10px] text-ivory-400">No image</span>}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className={cn('inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-navy-200 px-3 py-1.5 text-xs font-semibold text-navy-700 hover:bg-ivory-50', uploading && 'pointer-events-none opacity-60')}>
+            {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+            {uploading ? 'Uploading…' : value ? 'Replace' : 'Upload'}
+            <input type="file" accept="image/*" className="hidden" onChange={e => { upload(e.target.files?.[0]); e.target.value = ''; }} />
+          </label>
+          {value && (
+            <button type="button" onClick={() => onChange(null)} className="text-xs font-medium text-red-500 hover:text-red-700">Remove</button>
+          )}
+        </div>
+      </div>
+      <input
+        value={value ?? ''}
+        onChange={e => onChange(e.target.value.trim() || null)}
+        placeholder="…or paste an image URL"
+        className="mt-2 w-full rounded-lg border border-navy-200 px-2.5 py-1.5 text-xs outline-none focus:border-blue-500"
+      />
+      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+    </div>
+  );
+}
+
 function ChildPresentationEditor({
-  presentations, calendars, onChange,
+  presentations, calendars, onChange, activeId, onActiveChange, defaultPanelColor,
 }: {
   presentations: ChildCalendarPresentation[];
   calendars: CalendarType[];
   onChange: (items: ChildCalendarPresentation[]) => void;
+  activeId: string | null;
+  onActiveChange: (id: string) => void;
+  defaultPanelColor: string;
 }) {
   const ensurePresentation = (calId: string): ChildCalendarPresentation => {
     const existing = presentations.find(p => p.calendarId === calId);
@@ -436,6 +500,8 @@ function ChildPresentationEditor({
       image: null,
       backgroundImage: null,
       leftPanelColor: null,
+      backgroundOverlay: null,
+      textColor: 'auto',
     };
   };
 
@@ -448,92 +514,152 @@ function ChildPresentationEditor({
     }
   };
 
+  if (calendars.length === 0) {
+    return <p className="text-xs text-ivory-500 text-center py-4">Add calendars to the group first.</p>;
+  }
+
+  const index = Math.max(0, calendars.findIndex(c => c.id === activeId));
+  const cal = calendars[index];
+  const pres = ensurePresentation(cal.id);
+  const set = (updates: Partial<ChildCalendarPresentation>) => updatePresentation(cal.id, updates);
+  const inputClass = 'mt-1 w-full rounded-lg border border-navy-200 px-3 py-2 text-sm outline-none focus:border-blue-500';
+
   return (
-    <div className="space-y-3">
-      {calendars.map(cal => {
-        const pres = ensurePresentation(cal.id);
-        return (
-          <div key={cal.id} className="rounded-lg border border-navy-100 p-3 space-y-2.5">
-            <div className="flex items-center gap-2">
-              <span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ backgroundColor: `${cal.color}18` }}>
-                <Calendar className="h-3.5 w-3.5" style={{ color: cal.color }} />
-              </span>
-              <span className="text-sm font-semibold text-navy-800">{cal.name}</span>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                value={pres.navLabel ?? ''}
-                onChange={e => updatePresentation(cal.id, { navLabel: e.target.value || null })}
-                placeholder={`Nav label (default: ${cal.name})`}
-                className="rounded-md border border-navy-200 px-2.5 py-1.5 text-sm outline-none focus:border-blue-500"
-              />
-              <input
-                value={pres.label ?? ''}
-                onChange={e => updatePresentation(cal.id, { label: e.target.value || null })}
-                placeholder="Label/number (e.g. 01)"
-                className="rounded-md border border-navy-200 px-2.5 py-1.5 text-sm outline-none focus:border-blue-500"
-              />
-            </div>
-            <input
-              value={pres.heading ?? ''}
-              onChange={e => updatePresentation(cal.id, { heading: e.target.value || null })}
-              placeholder={`Heading (default: ${cal.name})`}
-              className="w-full rounded-md border border-navy-200 px-2.5 py-1.5 text-sm outline-none focus:border-blue-500"
-            />
-            <textarea
-              value={pres.description ?? ''}
-              onChange={e => updatePresentation(cal.id, { description: e.target.value || null })}
-              placeholder="Left panel description"
-              rows={2}
-              className="w-full resize-none rounded-md border border-navy-200 px-2.5 py-1.5 text-sm outline-none focus:border-blue-500"
-            />
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                value={pres.image ?? ''}
-                onChange={e => updatePresentation(cal.id, { image: e.target.value || null })}
-                placeholder="Image URL (optional)"
-                className="rounded-md border border-navy-200 px-2.5 py-1.5 text-sm outline-none focus:border-blue-500"
-              />
-              <input
-                value={pres.backgroundImage ?? ''}
-                onChange={e => updatePresentation(cal.id, { backgroundImage: e.target.value || null })}
-                placeholder="BG image URL (optional)"
-                className="rounded-md border border-navy-200 px-2.5 py-1.5 text-sm outline-none focus:border-blue-500"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <span className="text-xs font-medium text-navy-700">Left panel color override</span>
-                <div className="mt-1 flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={pres.leftPanelColor ?? '#5C1A2B'}
-                    onChange={e => updatePresentation(cal.id, { leftPanelColor: e.target.value || null })}
-                    className="h-8 w-10 cursor-pointer rounded border border-navy-200"
-                  />
-                  <button
-                    onClick={() => updatePresentation(cal.id, { leftPanelColor: null })}
-                    className="text-xs text-ivory-500 hover:text-navy-700"
-                  >
-                    Reset
-                  </button>
-                </div>
-              </div>
-              <select
-                value={pres.navIcon ?? ''}
-                onChange={e => updatePresentation(cal.id, { navIcon: e.target.value || null })}
-                className="rounded-md border border-navy-200 px-2.5 py-1.5 text-sm outline-none focus:border-blue-500 self-end"
+    <div className="space-y-4">
+      {/* Which calendar's panel is being edited */}
+      <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Calendar to edit">
+        {calendars.map((c, i) => (
+          <button
+            key={c.id}
+            type="button"
+            role="tab"
+            aria-selected={c.id === cal.id}
+            onClick={() => onActiveChange(c.id)}
+            className={cn(
+              'rounded-lg border px-3 py-1.5 text-xs font-semibold transition',
+              c.id === cal.id ? 'border-navy-800 bg-navy-800 text-white' : 'border-navy-200 text-navy-700 hover:bg-ivory-50',
+            )}
+          >
+            {String(i + 1).padStart(2, '0')} · {c.name}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab */}
+      <fieldset className="space-y-3 rounded-lg border border-navy-100 p-3">
+        <legend className="px-1 text-[11px] font-semibold uppercase tracking-wider text-ivory-500">Tab</legend>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className="text-xs font-medium text-navy-700">Tab name</span>
+            <input value={pres.navLabel ?? ''} onChange={e => set({ navLabel: e.target.value || null })} placeholder={cal.name} className={inputClass} />
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-navy-700">Tab icon</span>
+            <select value={pres.navIcon ?? ''} onChange={e => set({ navIcon: e.target.value || null })} className={inputClass}>
+              <option value="">Automatic</option>
+              {NAV_ICON_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            </select>
+          </label>
+        </div>
+      </fieldset>
+
+      {/* Text */}
+      <fieldset className="space-y-3 rounded-lg border border-navy-100 p-3">
+        <legend className="px-1 text-[11px] font-semibold uppercase tracking-wider text-ivory-500">Text on the panel</legend>
+        <div className="grid grid-cols-[96px_1fr] gap-3">
+          <label className="block">
+            <span className="text-xs font-medium text-navy-700">Number</span>
+            <input value={pres.label ?? ''} onChange={e => set({ label: e.target.value || null })} placeholder={String(index + 1).padStart(2, '0')} className={inputClass} />
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-navy-700">Heading</span>
+            <input value={pres.heading ?? ''} onChange={e => set({ heading: e.target.value || null })} placeholder={cal.name} className={inputClass} />
+          </label>
+        </div>
+        <label className="block">
+          <span className="text-xs font-medium text-navy-700">Text</span>
+          <textarea
+            value={pres.description ?? ''}
+            onChange={e => set({ description: e.target.value || null })}
+            placeholder={cal.description ?? 'A short line about this option'}
+            rows={3}
+            className={cn(inputClass, 'resize-y')}
+          />
+        </label>
+        <div>
+          <span className="text-xs font-medium text-navy-700">Text colour</span>
+          <div className="mt-1 inline-flex rounded-lg border border-navy-200 p-0.5" role="radiogroup" aria-label="Text colour">
+            {([['auto', 'Automatic'], ['light', 'Light'], ['dark', 'Dark']] as const).map(([v, text]) => (
+              <button
+                key={v}
+                type="button"
+                role="radio"
+                aria-checked={(pres.textColor ?? 'auto') === v}
+                onClick={() => set({ textColor: v })}
+                className={cn('rounded-md px-3 py-1 text-xs font-medium', (pres.textColor ?? 'auto') === v ? 'bg-navy-800 text-white' : 'text-navy-700 hover:bg-ivory-50')}
               >
-                <option value="">No nav icon</option>
-                {NAV_ICON_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-              </select>
-            </div>
+                {text}
+              </button>
+            ))}
           </div>
-        );
-      })}
-      {calendars.length === 0 && (
-        <p className="text-xs text-ivory-500 text-center py-4">Add child calendars to the group first.</p>
-      )}
+        </div>
+      </fieldset>
+
+      {/* Background */}
+      <fieldset className="space-y-3 rounded-lg border border-navy-100 p-3">
+        <legend className="px-1 text-[11px] font-semibold uppercase tracking-wider text-ivory-500">Background</legend>
+        <div>
+          <span className="text-xs font-medium text-navy-700">Background colour</span>
+          <div className="mt-1 flex items-center gap-2">
+            <input
+              type="color"
+              aria-label="Background colour"
+              value={pres.leftPanelColor ?? defaultPanelColor}
+              onChange={e => set({ leftPanelColor: e.target.value })}
+              className="h-9 w-12 cursor-pointer rounded-lg border border-navy-200"
+            />
+            <input
+              value={pres.leftPanelColor ?? ''}
+              onChange={e => set({ leftPanelColor: e.target.value || null })}
+              placeholder={`${defaultPanelColor} (page default)`}
+              className="flex-1 rounded-lg border border-navy-200 px-2.5 py-1.5 text-sm outline-none focus:border-blue-500"
+            />
+            {pres.leftPanelColor && (
+              <button type="button" onClick={() => set({ leftPanelColor: null })} className="text-xs text-ivory-500 hover:text-navy-700">Use default</button>
+            )}
+          </div>
+        </div>
+        <ImageField
+          label="Background image"
+          hint="Fills the whole panel behind the text."
+          value={pres.backgroundImage}
+          onChange={url => set({ backgroundImage: url })}
+          folder={cal.id}
+        />
+        {pres.backgroundImage && (
+          <label className="block">
+            <span className="flex items-center justify-between text-xs font-medium text-navy-700">
+              Darken image so text is readable <span className="text-ivory-500">{pres.backgroundOverlay ?? 35}%</span>
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={90}
+              step={5}
+              value={pres.backgroundOverlay ?? 35}
+              onChange={e => set({ backgroundOverlay: Number(e.target.value) })}
+              className="mt-1 w-full accent-navy-800"
+            />
+          </label>
+        )}
+        <ImageField
+          label="Picture below the text (optional)"
+          hint="A smaller image shown under the heading and text."
+          value={pres.image}
+          onChange={url => set({ image: url })}
+          folder={cal.id}
+        />
+      </fieldset>
     </div>
   );
 }
