@@ -25,14 +25,27 @@ interface Props {
   onChange: (config: GroupPageConfig) => void;
 }
 
+// Names must match ICON_MAP in PublicGroupCalendarPage.
 const NAV_ICON_OPTIONS = [
   { label: 'Calendar', value: 'Calendar' },
   { label: 'Clock', value: 'Clock' },
   { label: 'Video', value: 'Video' },
   { label: 'Phone', value: 'Phone' },
-  { label: 'MapPin', value: 'MapPin' },
-  { label: 'User', value: 'User' },
+  { label: 'Location pin', value: 'MapPin' },
+  { label: 'Person', value: 'User' },
+  { label: 'People', value: 'Users' },
   { label: 'Globe', value: 'Globe' },
+  { label: 'Quill / invite', value: 'Feather' },
+  { label: 'Chat / counselling', value: 'MessageCircle' },
+  { label: 'Briefcase / consulting', value: 'Briefcase' },
+  { label: 'Mail / contact', value: 'Mail' },
+  { label: 'Heart', value: 'Heart' },
+  { label: 'Helping hand', value: 'HandHeart' },
+  { label: 'Book', value: 'BookOpen' },
+  { label: 'Microphone', value: 'Mic' },
+  { label: 'Star', value: 'Star' },
+  { label: 'Graduation cap', value: 'GraduationCap' },
+  { label: 'Stethoscope', value: 'Stethoscope' },
 ];
 
 export function GroupPageDesigner({ config, groupName, groupDescription, calendars, onChange }: Props) {
