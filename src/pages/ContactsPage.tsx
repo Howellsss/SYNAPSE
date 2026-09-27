@@ -1,20 +1,21 @@
 import { useEffect, useState, useCallback, type ComponentType } from 'react';
 import {
-  Users, Plus, Search, Download, Upload, Tag, Mail, MessageSquare,
-  Trash2, Filter, X, ChevronLeft, ChevronRight, MoreVertical, Phone, Building2, Calendar, FileText, Workflow, MessageCircle, StickyNote, Clock, CheckCircle2, UserRound, Globe2, Star, SlidersHorizontal, ListFilter, ClipboardList,
+  Users, Plus, Search, Download, Upload, Tag, Mail,
+  Trash2, Filter, ChevronLeft, ChevronRight, Calendar, MessageCircle, CheckCircle2, UserRound, Globe2, Star, SlidersHorizontal, ListFilter, ClipboardList,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/context/ToastContext';
 import { Avatar } from '@/components/ui/Avatar';
 import { TagPill } from '@/components/ui/StatusPills';
-import { Drawer } from '@/components/ui/Drawer';
 import { Modal } from '@/components/ui/Modal';
 import { AddContactModal } from '@/components/contacts/AddContactModal';
+import { useRouter } from '@/lib/router';
+import { saveContactNav } from '@/lib/contact-nav';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState, Skeleton, ErrorState } from '@/components/ui/States';
-import { getFullName, getInitials, formatDate, formatTime, timeAgo, downloadCSV, parseCSV, cn } from '@/lib/utils';
-import type { Contact, Tag as TagType, SmartList, Note, Appointment, FormSubmission, Message } from '@/types';
+import { getFullName, formatDate, timeAgo, downloadCSV, parseCSV, cn } from '@/lib/utils';
+import type { Contact, Tag as TagType, SmartList } from '@/types';
 
 const PAGE_SIZE = 10;
 
@@ -28,7 +29,6 @@ export function ContactsPage() {
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showBulkEmail, setShowBulkEmail] = useState(false);
@@ -41,6 +41,13 @@ export function ContactsPage() {
   const [activeView, setActiveView] = useState<'all' | 'smart' | 'tags'>('all');
   const [newThisMonth, setNewThisMonth] = useState(0);
   const [withAppointments, setWithAppointments] = useState(0);
+
+  const [, navigate] = useRouter();
+
+  const openContact = (id: string) => {
+    saveContactNav({ ids: contacts.map((c) => c.id), offset: page * PAGE_SIZE, total });
+    navigate(`/contacts/${id}`);
+  };
 
   const loadContacts = useCallback(async () => {
     if (!workspace) { setLoading(false); return; }
@@ -313,7 +320,7 @@ export function ContactsPage() {
                     <tr
                       key={contact.id}
                       className="border-b border-navy-50 last:border-0 hover:bg-ivory-50 transition-colors cursor-pointer"
-                      onClick={() => setSelectedContact(contact)}
+                      onClick={() => openContact(contact.id)}
                     >
                       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <input
@@ -357,7 +364,7 @@ export function ContactsPage() {
                 <div
                   key={contact.id}
                   className="p-4 hover:bg-ivory-50 transition-colors cursor-pointer"
-                  onClick={() => setSelectedContact(contact)}
+                  onClick={() => openContact(contact.id)}
                 >
                   <div className="flex items-center gap-3">
                     <input
@@ -407,16 +414,6 @@ export function ContactsPage() {
           </div>
         </div>
       </section>
-
-      {/* Contact Profile Drawer */}
-      {selectedContact && (
-        <ContactProfileDrawer
-          contact={selectedContact}
-          tags={tags}
-          onClose={() => setSelectedContact(null)}
-          onUpdated={loadContacts}
-        />
-      )}
 
       {/* Add Contact Modal */}
       {showAddModal && (
@@ -525,283 +522,6 @@ function ContactListButton({ icon: Icon, label, count, active, onClick }: { icon
 // ============================================================
 // Contact Profile Drawer
 // ============================================================
-function ContactProfileDrawer({
-  contact,
-  tags,
-  onClose,
-  onUpdated,
-}: {
-  contact: Contact & { tags?: TagType[] };
-  tags: TagType[];
-  onClose: () => void;
-  onUpdated: () => void;
-}) {
-  const { workspace } = useAuth();
-  const { toast } = useToast();
-  const [tab, setTab] = useState<'info' | 'activity' | 'appointments' | 'messages' | 'notes'>('info');
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [submissions, setSubmissions] = useState<FormSubmission[]>([]);
-  const [newNote, setNewNote] = useState('');
-  const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState({
-    first_name: contact.first_name || '',
-    last_name: contact.last_name || '',
-    email: contact.email || '',
-    phone: contact.phone || '',
-    company: contact.company || '',
-    job_title: contact.job_title || '',
-  });
-
-  const handleSaveEdit = async () => {
-    const { error } = await supabase.from('contacts').update(editForm).eq('id', contact.id);
-    if (error) {
-      toast(error.message, 'error');
-      return;
-    }
-    toast('Contact updated');
-    setEditing(false);
-    onUpdated();
-  };
-
-  useEffect(() => {
-    if (!contact.id) return;
-    supabase.from('appointments').select('*').eq('contact_id', contact.id).order('start_time', { ascending: false }).limit(10)
-      .then(({ data }) => setAppointments((data ?? []) as Appointment[]));
-    supabase.from('messages').select('*').eq('contact_id', contact.id).order('created_at', { ascending: false }).limit(10)
-      .then(({ data }) => setMessages((data ?? []) as Message[]));
-    supabase.from('notes').select('*').eq('contact_id', contact.id).order('created_at', { ascending: false }).limit(10)
-      .then(({ data }) => setNotes((data ?? []) as Note[]));
-    supabase.from('form_submissions').select('*').eq('contact_id', contact.id).order('created_at', { ascending: false }).limit(5)
-      .then(({ data }) => setSubmissions((data ?? []) as FormSubmission[]));
-  }, [contact.id]);
-
-  const addNote = async () => {
-    if (!workspace || !newNote.trim()) return;
-    await supabase.from('notes').insert({
-      workspace_id: workspace.id,
-      contact_id: contact.id,
-      content: newNote.trim(),
-    });
-    setNewNote('');
-    toast('Note added');
-    const { data } = await supabase.from('notes').select('*').eq('contact_id', contact.id).order('created_at', { ascending: false }).limit(10);
-    setNotes((data ?? []) as Note[]);
-  };
-
-  return (
-    <Drawer open onClose={onClose} width="xl">
-      <div className="p-6 border-b border-navy-100">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Avatar firstName={contact.first_name} lastName={contact.last_name} src={contact.avatar_url} size="xl" />
-            <div>
-              <h2 className="text-xl font-bold text-navy-800">{getFullName(contact)}</h2>
-              <p className="text-sm text-ivory-600">{contact.email || 'No email'}</p>
-              <div className="flex flex-wrap gap-1 mt-2">
-                {contact.tags && contact.tags.length > 0 ? (
-                  contact.tags.map((t) => <TagPill key={t.id} name={t.name} color={t.color} />)
-                ) : (
-                  <span className="text-xs text-ivory-500">No tags</span>
-                )}
-              </div>
-            </div>
-          </div>
-          <button onClick={() => setEditing(!editing)} className="btn-secondary btn-sm">
-            {editing ? 'Cancel' : 'Edit'}
-          </button>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-1 px-6 pt-4 border-b border-navy-100">
-        {(['info', 'activity', 'appointments', 'messages', 'notes'] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={cn(
-              'px-3 py-2 text-sm font-medium capitalize transition-all border-b-2 -mb-px',
-              tab === t ? 'text-gold-700 border-gold-400' : 'text-ivory-600 border-transparent hover:text-navy-700'
-            )}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
-
-      <div className="p-6">
-        {tab === 'info' && (
-          editing ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-navy-700 mb-1.5">First Name</label>
-                  <input className="input-field" value={editForm.first_name} onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-navy-700 mb-1.5">Last Name</label>
-                  <input className="input-field" value={editForm.last_name} onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })} />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-navy-700 mb-1.5">Email</label>
-                <input type="email" className="input-field" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-navy-700 mb-1.5">Phone</label>
-                <input className="input-field" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-navy-700 mb-1.5">Company</label>
-                <input className="input-field" value={editForm.company} onChange={(e) => setEditForm({ ...editForm, company: e.target.value })} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-navy-700 mb-1.5">Job Title</label>
-                <input className="input-field" value={editForm.job_title} onChange={(e) => setEditForm({ ...editForm, job_title: e.target.value })} />
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <button onClick={() => setEditing(false)} className="btn-secondary">Cancel</button>
-                <button onClick={handleSaveEdit} className="btn-primary">Save Changes</button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <InfoRow icon={Mail} label="Email" value={contact.email} />
-              <InfoRow icon={Phone} label="Phone" value={contact.phone} />
-              <InfoRow icon={Building2} label="Company" value={contact.company} />
-              <InfoRow icon={Clock} label="Source" value={contact.source} />
-              <InfoRow icon={Clock} label="Created" value={formatDate(contact.created_at)} />
-              <InfoRow icon={Clock} label="Last Activity" value={timeAgo(contact.last_activity_at)} />
-              <div>
-                <p className="text-xs font-semibold text-ivory-600 uppercase tracking-wider mb-2">Form Submissions</p>
-                {submissions.length === 0 ? (
-                  <p className="text-sm text-ivory-500">No form submissions yet.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {submissions.map((s) => (
-                      <div key={s.id} className="p-3 rounded-xl bg-ivory-50 border border-navy-50">
-                        <p className="text-sm font-medium text-navy-700">{formatDate(s.created_at)}</p>
-                        <p className="text-xs text-ivory-600 mt-1">{Object.keys(s.answers).length} answers</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )
-        )}
-
-        {tab === 'activity' && (
-          <div className="space-y-3">
-            <ActivityItem icon={Users} text="Contact created" time={contact.created_at} />
-            {appointments.map((a) => (
-              <ActivityItem key={a.id} icon={Calendar} text={`Appointment ${a.status}: ${a.title}`} time={a.created_at} />
-            ))}
-            {messages.map((m) => (
-              <ActivityItem key={m.id} icon={m.channel === 'email' ? Mail : MessageSquare} text={`${m.channel === 'email' ? 'Email' : 'SMS'} ${m.status}`} time={m.created_at} />
-            ))}
-            {submissions.map((s) => (
-              <ActivityItem key={s.id} icon={FileText} text="Form submitted" time={s.created_at} />
-            ))}
-          </div>
-        )}
-
-        {tab === 'appointments' && (
-          <div className="space-y-2">
-            {appointments.length === 0 ? (
-              <p className="text-sm text-ivory-500">No appointments yet.</p>
-            ) : (
-              appointments.map((a) => (
-                <div key={a.id} className="p-3 rounded-xl border border-navy-50 hover:bg-ivory-50 transition-colors">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-navy-700">{a.title}</p>
-                    <span className="text-xs text-ivory-600">{a.status}</span>
-                  </div>
-                  <p className="text-xs text-ivory-600 mt-1">
-                    {formatDate(a.start_time)} · {formatTime(a.start_time)}
-                  </p>
-                </div>
-              ))
-            )}
-          </div>
-        )}
-
-        {tab === 'messages' && (
-          <div className="space-y-2">
-            {messages.length === 0 ? (
-              <p className="text-sm text-ivory-500">No messages yet.</p>
-            ) : (
-              messages.map((m) => (
-                <div key={m.id} className="p-3 rounded-xl border border-navy-50">
-                  <div className="flex items-center gap-2 mb-1">
-                    {m.channel === 'email' ? <Mail className="w-4 h-4 text-ivory-600" /> : <MessageSquare className="w-4 h-4 text-ivory-600" />}
-                    <span className="text-xs font-medium text-ivory-600 uppercase">{m.channel}</span>
-                    <span className="text-xs text-ivory-500">{m.status}</span>
-                  </div>
-                  {m.subject && <p className="text-sm font-medium text-navy-700">{m.subject}</p>}
-                  <p className="text-sm text-ivory-600 mt-1">{m.body}</p>
-                  <p className="text-xs text-ivory-500 mt-1">{timeAgo(m.created_at)}</p>
-                </div>
-              ))
-            )}
-          </div>
-        )}
-
-        {tab === 'notes' && (
-          <div className="space-y-4">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={newNote}
-                onChange={(e) => setNewNote(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && addNote()}
-                placeholder="Add a note..."
-                className="input-field"
-              />
-              <button onClick={addNote} className="btn-primary shrink-0">Add</button>
-            </div>
-            {notes.length === 0 ? (
-              <p className="text-sm text-ivory-500">No notes yet.</p>
-            ) : (
-              notes.map((n) => (
-                <div key={n.id} className="p-3 rounded-xl bg-ivory-50 border border-navy-50">
-                  <p className="text-sm text-navy-700">{n.content}</p>
-                  <p className="text-xs text-ivory-500 mt-1">{timeAgo(n.created_at)}</p>
-                </div>
-              ))
-            )}
-          </div>
-        )}
-      </div>
-    </Drawer>
-  );
-}
-
-function InfoRow({ icon: Icon, label, value }: { icon: typeof Mail; label: string; value: string | null }) {
-  return (
-    <div className="flex items-center gap-3">
-      <Icon className="w-4 h-4 text-ivory-600 shrink-0" />
-      <span className="text-sm text-ivory-600 w-24">{label}</span>
-      <span className="text-sm font-medium text-navy-700 flex-1">{value || '—'}</span>
-    </div>
-  );
-}
-
-function ActivityItem({ icon: Icon, text, time }: { icon: typeof Mail; text: string; time: string }) {
-  return (
-    <div className="flex items-start gap-3">
-      <div className="w-8 h-8 rounded-lg bg-ivory-100 flex items-center justify-center shrink-0">
-        <Icon className="w-4 h-4 text-ivory-600" />
-      </div>
-      <div className="flex-1">
-        <p className="text-sm text-navy-700 capitalize">{text}</p>
-        <p className="text-xs text-ivory-500">{timeAgo(time)}</p>
-      </div>
-    </div>
-  );
-}
-
 // ============================================================
 // Import Modal
 // ============================================================
