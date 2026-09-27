@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { supabase } from '@/lib/supabase';
 import { cn, getFullName } from '@/lib/utils';
+import { useEmailAccounts, connectGmail, functionErrorMessage } from '@/lib/email-accounts';
 import type { Contact } from '@/types';
 
 type Mode = 'email' | 'sms' | 'note';
@@ -122,6 +123,12 @@ export function MessageComposer({ contact, onSent }: { contact: Contact; onSent:
   const [fromName, setFromName] = useState(defaultFromName);
   const [editingFrom, setEditingFrom] = useState(false);
   const [editingFromName, setEditingFromName] = useState(false);
+  // Which mailbox sends: a connected Gmail account id, or 'save' (recorded only, not delivered).
+  const { accounts: mailboxes, loading: mailboxesLoading } = useEmailAccounts();
+  const activeMailboxes = mailboxes.filter((m) => m.status === 'active');
+  const [senderId, setSenderId] = useState('');
+  const mailbox = activeMailboxes.find((m) => m.id === senderId) ?? null;
+  const [connecting, setConnecting] = useState(false);
   const toOptions = [contact.email, ...(contact.additional_emails ?? [])].filter((e): e is string => Boolean(e));
   const [toEmail, setToEmail] = useState(toOptions[0] ?? '');
   const [cc, setCc] = useState<string[]>([]);
@@ -139,6 +146,19 @@ export function MessageComposer({ contact, onSent }: { contact: Contact; onSent:
   const textRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => { if (!fromName && defaultFromName) setFromName(defaultFromName); }, [defaultFromName, fromName]);
+  useEffect(() => {
+    if (mailboxesLoading) return;
+    if (!senderId || (senderId !== 'save' && !activeMailboxes.some((m) => m.id === senderId))) {
+      setSenderId(activeMailboxes[0]?.id ?? 'save');
+    }
+  }, [mailboxesLoading, activeMailboxes, senderId]);
+
+  const startGmailConnect = async () => {
+    if (!workspace) return;
+    setConnecting(true);
+    const err = await connectGmail(workspace.id, `/contacts/${contact.id}`);
+    if (err) { toast(err, 'error'); setConnecting(false); }
+  };
 
   const dnd = (ch: 'email' | 'sms') => !!contact.dnd_all || (contact.dnd_channels ?? []).includes(ch);
   const blocker =
@@ -178,10 +198,39 @@ export function MessageComposer({ contact, onSent }: { contact: Contact; onSent:
 
   const pickChannel = (ch: 'email' | 'sms') => { setMode(ch); setLastChannel(ch); setChannelMenu(false); setPopover(null); };
 
-  const canSend = !blocker && !sending && (mode === 'email' ? !emailEmpty && EMAIL_RE.test(fromEmail) && EMAIL_RE.test(toEmail) : text.trim().length > 0);
+  const emailReady = mailbox ? subject.trim().length > 0 : EMAIL_RE.test(fromEmail);
+  const canSend = !blocker && !sending && (mode === 'email' ? !emailEmpty && emailReady && EMAIL_RE.test(toEmail) : text.trim().length > 0);
+
+  const sendViaGmail = async () => {
+    if (!mailbox) return;
+    setSending(true);
+    const { data, error } = await supabase.functions.invoke('send-email', {
+      body: {
+        account_id: mailbox.id,
+        contact_id: contact.id,
+        to: toEmail,
+        cc,
+        bcc,
+        from_name: fromName.trim() || null,
+        subject: fillMergeFields(subject.trim(), contact),
+        text: fillMergeFields(editorRef.current?.innerText.trim() ?? '', contact),
+        html: fillMergeFields(editorRef.current?.innerHTML ?? '', contact),
+      },
+    });
+    setSending(false);
+    if (error || !data?.message) {
+      toast(await functionErrorMessage(error, 'The email could not be sent.'), 'error');
+      await onSent(); // a failed attempt is still recorded on the contact
+      return;
+    }
+    toast(`Email sent from ${mailbox.email}`);
+    clear();
+    await onSent();
+  };
 
   const send = async () => {
     if (!canSend || !workspace) return;
+    if (mode === 'email' && mailbox) { await sendViaGmail(); return; }
     setSending(true);
     let error: { message: string; code?: string } | null = null;
 
@@ -200,13 +249,13 @@ export function MessageComposer({ contact, onSent }: { contact: Contact; onSent:
       if (error && isMissingColumnError(error)) {
         // Database without the email-details update: keep the message rather than losing it.
         ({ error } = await supabase.from('messages').insert(base));
-        if (!error && mode === 'email' && (cc.length || bcc.length)) toast('Queued. CC/BCC need the latest database update to be saved.', 'info');
+        if (!error && mode === 'email' && (cc.length || bcc.length)) toast('Saved. CC/BCC need the latest database update to be saved.', 'info');
       }
     }
 
     setSending(false);
     if (error) { toast(error.message, 'error'); return; }
-    toast(mode === 'note' ? 'Note added' : `${mode === 'email' ? 'Email' : 'Text'} queued`);
+    toast(mode === 'note' ? 'Note added' : `${mode === 'email' ? 'Email' : 'Text'} saved on this contact (not delivered)`);
     clear();
     await onSent();
   };
@@ -265,13 +314,24 @@ export function MessageComposer({ contact, onSent }: { contact: Contact; onSent:
           {mode === 'email' && (
             <div className={cn(blocker && 'pointer-events-none opacity-50')}>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-navy-50 px-3 py-1.5">
-                <div className="flex min-w-0 items-center gap-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <span className="w-12 shrink-0 text-sm text-ivory-600">From</span>
-                  {editingFrom ? (
+                  {activeMailboxes.length > 0 && (
+                    <select value={senderId} onChange={(e) => setSenderId(e.target.value)} aria-label="Send from" className="max-w-[16rem] rounded-lg border border-navy-100 bg-ivory-50 px-2 py-1 text-sm text-navy-800 outline-none">
+                      {activeMailboxes.map((m) => <option key={m.id} value={m.id}>{m.email} (Gmail)</option>)}
+                      <option value="save">Save only, don’t deliver</option>
+                    </select>
+                  )}
+                  {mailbox ? null : editingFrom ? (
                     <input autoFocus value={fromEmail} onChange={(e) => setFromEmail(e.target.value)} onBlur={() => setEditingFrom(false)} onKeyDown={(e) => e.key === 'Enter' && setEditingFrom(false)} aria-label="From email" className={cn('w-56 rounded-md border px-2 py-1 text-sm outline-none', EMAIL_RE.test(fromEmail) ? 'border-navy-200 focus:border-gold-400' : 'border-burgundy-500')} />
                   ) : (
                     <button type="button" onClick={() => setEditingFrom(true)} className="min-w-0 text-left" title="Change sender email">
                       <Chip avatar={(fromName[0] ?? 'S').toUpperCase()}>{fromEmail || 'Add sender email'}</Chip>
+                    </button>
+                  )}
+                  {!mailboxesLoading && activeMailboxes.length === 0 && (
+                    <button type="button" onClick={startGmailConnect} disabled={connecting} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-gold-700 hover:bg-gold-50 disabled:opacity-50">
+                      <Plus className="h-3.5 w-3.5" /> {connecting ? 'Opening Google…' : 'Connect Gmail to send'}
                     </button>
                   )}
                 </div>
@@ -397,13 +457,17 @@ export function MessageComposer({ contact, onSent }: { contact: Contact; onSent:
               className="ml-1 inline-flex h-9 items-center gap-2 rounded-lg bg-navy-800 px-4 text-sm font-semibold text-white transition hover:bg-navy-900 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : mode === 'note' ? <Plus className="h-4 w-4" /> : <Send className="h-4 w-4 text-gold-400" />}
-              {mode === 'note' ? 'Add note' : 'Send'}
+              {mode === 'note' ? 'Add note' : mode === 'email' && !mailbox ? 'Save' : mode === 'sms' ? 'Save' : 'Send'}
             </button>
           </div>
           <p className="px-4 pb-2 text-[11px] text-ivory-500">
             {mode === 'note'
               ? 'Only your team can see notes.'
-              : 'Messages are queued. Delivery needs an email/SMS provider connected. ⌘/Ctrl + Enter to send.'}
+              : mode === 'email' && mailbox
+                ? `Sends from your Gmail (${mailbox.email}). It will also appear in your Gmail “Sent” folder. ⌘/Ctrl + Enter to send.`
+                : mode === 'email'
+                  ? 'Saved on this contact only, not delivered. Connect Gmail to send real emails. ⌘/Ctrl + Enter to save.'
+                  : 'Text messages are saved but not delivered until an SMS provider is connected. ⌘/Ctrl + Enter to save.'}
           </p>
         </>
       )}

@@ -19,7 +19,9 @@ import type { Contact, Tag, DndChannel } from '@/types';
 
 type ContactRow = Contact & { owner_id?: string | null; contact_tags?: { tag_id: string; tags: Tag | null }[] };
 interface ApptRow { id: string; title: string; status: string; start_time: string; end_time: string; created_at: string; calendars?: { name: string } | null }
-interface MessageRow { id: string; channel: 'email' | 'sms'; direction: string | null; subject: string | null; body: string | null; status: string; created_at: string }
+const MESSAGE_STATUS: Record<string, string> = { queued: 'Saved, not delivered', sent: 'Sent', delivered: 'Delivered', failed: 'Not sent' };
+
+interface MessageRow { id: string; channel: 'email' | 'sms'; direction: string | null; subject: string | null; body: string | null; status: string; error?: string | null; created_at: string }
 interface NoteRow { id: string; content: string; created_at: string; author_id: string | null }
 interface SubmissionRow { id: string; created_at: string; source: string | null; forms?: { name: string } | null }
 interface Member { user_id: string; name: string }
@@ -62,7 +64,7 @@ export function ContactDetailPage({ contactId }: { contactId: string }) {
   const loadActivity = useCallback(async () => {
     const [appts, msgs, nts, subs] = await Promise.all([
       supabase.from('appointments').select('id, title, status, start_time, end_time, created_at, calendars(name)').eq('contact_id', contactId).order('start_time', { ascending: false }).limit(50),
-      supabase.from('messages').select('id, channel, direction, subject, body, status, created_at').eq('contact_id', contactId).order('created_at', { ascending: true }).limit(200),
+      supabase.from('messages').select('id, channel, direction, subject, body, status, error, created_at').eq('contact_id', contactId).order('created_at', { ascending: true }).limit(200),
       supabase.from('notes').select('id, content, created_at, author_id').eq('contact_id', contactId).order('created_at', { ascending: true }).limit(200),
       supabase.from('form_submissions').select('id, created_at, source, forms(name)').eq('contact_id', contactId).order('created_at', { ascending: false }).limit(50),
     ]);
@@ -597,7 +599,8 @@ function ThreadPanel({ contact, messages, notes, onSent }: { contact: ContactRow
               </p>
               {it.m.subject && <p className="mt-1 text-sm font-semibold">{it.m.subject}</p>}
               <p className="mt-0.5 whitespace-pre-wrap text-sm">{it.m.body}</p>
-              <p className="mt-1 text-[11px] opacity-60">{formatTime(it.at)} · <span className="capitalize">{it.m.status}</span></p>
+              <p className="mt-1 text-[11px] opacity-60">{formatTime(it.at)} · {MESSAGE_STATUS[it.m.status] ?? <span className="capitalize">{it.m.status}</span>}</p>
+              {it.m.status === 'failed' && it.m.error && <p className="mt-1 rounded-md bg-red-500/15 px-2 py-1 text-[11px]">{it.m.error}</p>}
             </div>
           </div>
         ))}
