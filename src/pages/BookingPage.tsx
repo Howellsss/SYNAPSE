@@ -256,9 +256,16 @@ export function BookingPage({ slug, isGroup }: { slug: string; isGroup: boolean 
       });
       setGroupPageConfig(mergeGroupPageConfig(groupData.page_config));
 
+      // The group's own settings apply to its calendars: "Form first" on the group makes every
+      // calendar form-first, and the group's form is used by any calendar without its own.
       const cals = (groupData.calendar_group_members ?? [])
         .map(m => m.calendars)
-        .filter((cal): cal is CalendarType => Boolean(cal) && cal.status === 'active');
+        .filter((cal): cal is CalendarType => Boolean(cal) && cal.status === 'active')
+        .map(cal => ({
+          ...cal,
+          connected_form_id: cal.connected_form_id ?? groupData.connected_form_id,
+          booking_flow: groupData.booking_flow === 'form_first' ? 'form_first' : cal.booking_flow,
+        }));
       setCalendars(cals);
 
       if (cals.length > 0) {
@@ -1026,7 +1033,7 @@ export function BookingPage({ slug, isGroup }: { slug: string; isGroup: boolean 
           <div>
             <h2 className="text-xl font-bold text-gray-900 mb-1">Select a date</h2>
             <p className="text-sm text-gray-500 mb-6">Click on an available date to see time slots.</p>
-            <CalendarGrid month={viewMonth} calendar={calendar} onSelect={(date) => { loadSlots(date); setStep('time'); }} onMonthChange={setViewMonth} />
+            <CalendarGrid compact month={viewMonth} calendar={calendar} onSelect={(date) => { loadSlots(date); setStep('time'); }} onMonthChange={setViewMonth} />
           </div>
         )}
         {step === 'time' && calendar && (
@@ -1831,11 +1838,14 @@ function CalendarGrid({
   calendar,
   onSelect,
   onMonthChange,
+  compact = false,
 }: {
   month: Date;
   calendar: CalendarType;
   onSelect: (date: Date) => void;
   onMonthChange: (date: Date) => void;
+  /** Fixed-height day cells instead of squares, for wide panels (group booking page). */
+  compact?: boolean;
 }) {
   const [availableDays, setAvailableDays] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -1937,7 +1947,7 @@ function CalendarGrid({
               disabled={!isAvailable || loading}
               onClick={() => onSelect(date)}
               className={cn(
-                'aspect-square rounded-xl text-sm font-medium transition-all relative',
+                compact ? 'h-12 rounded-none text-sm font-medium transition-all relative' : 'aspect-square rounded-xl text-sm font-medium transition-all relative',
                 isAvailable && !loading
                   ? 'bg-ivory-50 text-navy-700 border-2 border-navy-100 hover:border-navy-800 hover:bg-navy-800 hover:text-white hover:scale-105 cursor-pointer'
                   : 'text-ivory-300 cursor-not-allowed',

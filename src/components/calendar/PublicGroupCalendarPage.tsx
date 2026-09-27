@@ -164,7 +164,9 @@ export function PublicGroupCalendarPage({
   // coloured left panel (number, heading, description) sits flush against a white right panel
   // holding the selected calendar's form or date/time picker.
   if (l.layout === 'split') {
-    const leftWidth = l.leftPanelWidth === 'narrow' ? '30%' : l.leftPanelWidth === 'wide' ? '40%' : '34%';
+    const leftWidth = l.leftPanelWidth === 'narrow' ? '28%' : l.leftPanelWidth === 'wide' ? '38%' : '32%';
+    // One notch wider than the other layouts so the right panel (form / calendar) has room.
+    const cardWidth = l.maxContentWidth === 'wide' ? 'max-w-7xl' : maxContentWidthCss(l.maxContentWidth);
     const selectedIndex = calendarNavItems.findIndex(c => c.id === selectedCalendarId);
     const panelNumber = leftLabel ?? (selectedIndex >= 0 ? String(selectedIndex + 1).padStart(2, '0') : null);
     const tabCount = Math.max(allNavItems.length, 1);
@@ -174,7 +176,7 @@ export function PublicGroupCalendarPage({
         {overlayStyle && <div style={overlayStyle} />}
 
         <div className={cn('flex-1 relative z-[1] flex flex-col justify-center', pageSpacingPx(l.pageSpacing === 'normal' ? 'spacious' : l.pageSpacing))}>
-          <div className={cn('mx-auto w-full px-4 sm:px-6', maxContentWidthCss(l.maxContentWidth))}>
+          <div className={cn('mx-auto w-full px-4 sm:px-6', cardWidth)}>
             {(b.organizationName || (b.logoUrl && h.showLogo)) && (
               <div className="mb-6 flex items-center gap-3">
                 {b.logoUrl && h.showLogo && <img src={b.logoUrl} alt="" className="h-9 w-9 rounded-lg object-cover" />}
@@ -216,7 +218,7 @@ export function PublicGroupCalendarPage({
               <div className="grid grid-cols-1 lg:grid-cols-[var(--gcal-left)_minmax(0,1fr)]" style={{ ['--gcal-left' as string]: leftWidth }}>
                 {/* LEFT PANEL */}
                 <div
-                  className="relative flex min-h-[260px] flex-col overflow-hidden p-8 sm:p-12 lg:min-h-[560px]"
+                  className="relative flex min-h-[260px] flex-col overflow-hidden p-8 sm:p-12 lg:min-h-[480px]"
                   style={{
                     backgroundColor: leftBgColor,
                     ...(leftBgImage ? { backgroundImage: `url(${leftBgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}),
