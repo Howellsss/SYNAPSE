@@ -14,6 +14,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState, LoadingSpinner } from '@/components/ui/States';
 import { cn } from '@/lib/utils';
 import type { UserRole } from '@/types';
+import { useEmailAccounts, connectGmail, disconnectEmailAccount, type EmailAccount } from '@/lib/email-accounts';
 
 const SETTINGS_SECTIONS = [
   { id: 'profile', label: 'Profile', icon: User },
@@ -101,11 +102,16 @@ function useWorkspaceSettings(category: string) {
 // ============================================================
 // Main page
 // ============================================================
+function initialSection() {
+  const tab = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('tab');
+  return SETTINGS_SECTIONS.some((s) => s.id === tab) ? (tab as string) : 'profile';
+}
+
 export function SettingsPage() {
-  const [section, setSection] = useState('profile');
+  const [section, setSection] = useState(initialSection);
 
   return (
-    <div className="flex gap-6 max-w-5xl">
+    <div className="flex flex-col md:flex-row gap-0 md:gap-6 max-w-5xl">
       <div className="w-56 shrink-0 hidden md:block">
         <h2 className="text-lg font-semibold text-navy-800 mb-3">Settings</h2>
         <nav className="space-y-0.5">
@@ -940,6 +946,8 @@ function EmailSettings() {
   const handleSave = () => save(form);
 
   return (
+    <div className="space-y-6">
+    <ConnectedEmailAccounts />
     <div className="card p-6">
       <h3 className="text-lg font-semibold text-navy-800 mb-4">Email Settings</h3>
       <p className="text-sm text-ivory-600 mb-4">Configure how outgoing emails appear to your contacts. These settings apply to booking confirmations, reminders, and workflow emails.</p>
@@ -970,6 +978,107 @@ function EmailSettings() {
         <button onClick={handleSave} className="btn-primary">Save Changes</button>
         <button onClick={() => toast('Test email sent')} className="btn-secondary">Send Test Email</button>
       </div>
+    </div>
+    </div>
+  );
+}
+
+function GoogleMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 48 48" className={className} aria-hidden="true">
+      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z" />
+      <path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
+      <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z" />
+      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z" />
+    </svg>
+  );
+}
+
+function ConnectedEmailAccounts() {
+  const { workspace } = useAuth();
+  const { toast } = useToast();
+  const { accounts, loading, ready, reload } = useEmailAccounts();
+  const [connecting, setConnecting] = useState(false);
+  const [removing, setRemoving] = useState<EmailAccount | null>(null);
+
+  const connect = async () => {
+    if (!workspace) return;
+    setConnecting(true);
+    const err = await connectGmail(workspace.id, '/settings?tab=email');
+    if (err) { toast(err, 'error'); setConnecting(false); }
+  };
+
+  const disconnect = async () => {
+    if (!removing) return;
+    const err = await disconnectEmailAccount(removing.id);
+    setRemoving(null);
+    if (err) { toast(err, 'error'); return; }
+    toast('Gmail disconnected');
+    reload();
+  };
+
+  return (
+    <div className="card p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-lg font-semibold text-navy-800">Connected email accounts</h3>
+          <p className="mt-1 text-sm text-ivory-600">Send emails to contacts from your own Gmail. Replies go straight to your inbox, and sent emails appear in your Gmail “Sent” folder.</p>
+        </div>
+        <button onClick={connect} disabled={connecting || !ready} className="btn-secondary inline-flex items-center gap-2">
+          <GoogleMark className="h-4 w-4" />
+          {connecting ? 'Opening Google…' : accounts.length ? 'Connect another Gmail' : 'Connect Gmail'}
+        </button>
+      </div>
+
+      {!ready && (
+        <p className="mt-4 rounded-lg bg-gold-50 px-3 py-2 text-sm text-gold-800">Run the latest database update (connected email accounts) to turn this on.</p>
+      )}
+
+      {ready && (
+        <div className="mt-4">
+          {loading ? (
+            <LoadingSpinner className="h-5 w-5" />
+          ) : accounts.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-navy-200 px-4 py-6 text-center text-sm text-ivory-600">
+              No email connected yet. Emails you send are only saved in SYNAPSE until you connect one.
+            </div>
+          ) : (
+            <ul className="divide-y divide-navy-50 rounded-xl border border-navy-100">
+              {accounts.map((a) => (
+                <li key={a.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ivory-50 ring-1 ring-navy-100"><GoogleMark className="h-4 w-4" /></span>
+                  <div className="min-w-[11rem] flex-1">
+                    <p className="truncate text-sm font-semibold text-navy-800">{a.email}</p>
+                    <p className="truncate text-xs text-ivory-600">
+                      {a.status === 'active' ? `Gmail · connected ${new Date(a.created_at).toLocaleDateString()}` : a.last_error || 'Needs reconnecting'}
+                    </p>
+                  </div>
+                  <span className={cn(
+                    'rounded-full px-2 py-0.5 text-xs font-semibold',
+                    a.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-burgundy-600',
+                  )}>
+                    {a.status === 'active' ? 'Active' : 'Reconnect'}
+                  </span>
+                  {a.status !== 'active' && (
+                    <button onClick={connect} className="text-sm font-medium text-gold-700 hover:underline">Reconnect</button>
+                  )}
+                  <button onClick={() => setRemoving(a)} className="text-sm font-medium text-ivory-600 hover:text-burgundy-600">Disconnect</button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={!!removing}
+        onClose={() => setRemoving(null)}
+        onConfirm={disconnect}
+        title="Disconnect Gmail?"
+        message={`SYNAPSE will stop sending from ${removing?.email ?? 'this account'} and Google access will be removed. Past emails stay on your contacts.`}
+        confirmLabel="Disconnect"
+        danger
+      />
     </div>
   );
 }

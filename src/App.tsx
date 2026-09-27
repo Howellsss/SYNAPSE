@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ToastProvider } from '@/context/ToastContext';
 import { useRouter } from '@/lib/router';
+import { useGmailReturnNotice } from '@/lib/email-accounts';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
 import { AuthPage } from '@/pages/AuthPage';
@@ -26,6 +27,7 @@ function AppContent() {
   const { user, loading } = useAuth();
   const [path, navigate] = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
+  useGmailReturnNotice(path);
 
   useEffect(() => {
     if (!loading && !user && !path.startsWith('/book/') && !path.startsWith('/group/') && !path.startsWith('/reset-password') && !path.startsWith('/invite/')) {
