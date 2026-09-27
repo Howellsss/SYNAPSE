@@ -231,3 +231,11 @@
 .gcal-editorial .gcal-form button:not([type='button']):not([style*='transparent']):hover {
   filter: brightness(1.05);
 }
+
+/* Contact page email composer: placeholder for the rich-text editor */
+.composer-editor.is-empty::before {
+  content: attr(data-placeholder);
+  color: #a3a8b3;
+  pointer-events: none;
+  position: absolute;
+}
