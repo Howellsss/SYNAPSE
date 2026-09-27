@@ -35,10 +35,12 @@ export function TimezoneSelect({
   value,
   onChange,
   className,
+  placeholder = 'Select time zone',
 }: {
   value: string;
   onChange: (tz: string) => void;
   className?: string;
+  placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -79,7 +81,7 @@ export function TimezoneSelect({
         className="input-field flex items-center gap-2 text-left w-full"
       >
         <Globe className="w-4 h-4 text-ivory-400 shrink-0" />
-        <span className="flex-1 truncate text-sm">{currentLabel}</span>
+        <span className={cn('flex-1 truncate text-sm', !value && 'text-ivory-600')}>{value ? currentLabel : placeholder}</span>
       </button>
       {open && (
         <div className="absolute z-50 mt-1 w-full rounded-xl border border-navy-100 bg-white shadow-lg max-h-64 overflow-hidden flex flex-col">

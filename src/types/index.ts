@@ -198,6 +198,9 @@ export interface Profile {
   updated_at: string;
 }
 
+export type PhoneType = 'mobile' | 'home' | 'work' | 'other';
+export type DndChannel = 'email' | 'sms' | 'calls' | 'inbound';
+
 export interface Contact {
   id: string;
   workspace_id: string;
@@ -211,6 +214,13 @@ export interface Contact {
   source: string;
   email_opt_in: boolean;
   sms_opt_in: boolean;
+  additional_emails?: string[];
+  phone_type?: PhoneType | null;
+  additional_phones?: { type: PhoneType; number: string }[];
+  contact_type?: 'lead' | 'customer' | null;
+  timezone?: string | null;
+  dnd_all?: boolean;
+  dnd_channels?: DndChannel[];
   last_activity_at: string;
   created_at: string;
   updated_at: string;

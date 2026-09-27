@@ -10,6 +10,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { TagPill } from '@/components/ui/StatusPills';
 import { Drawer } from '@/components/ui/Drawer';
 import { Modal } from '@/components/ui/Modal';
+import { AddContactModal } from '@/components/contacts/AddContactModal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState, Skeleton, ErrorState } from '@/components/ui/States';
 import { getFullName, getInitials, formatDate, formatTime, timeAgo, downloadCSV, parseCSV, cn } from '@/lib/utils';
@@ -421,7 +422,7 @@ export function ContactsPage() {
       {showAddModal && (
         <AddContactModal
           onClose={() => setShowAddModal(false)}
-          onAdded={() => { setShowAddModal(false); loadContacts(); }}
+          onAdded={(keepOpen) => { if (!keepOpen) setShowAddModal(false); loadContacts(); }}
         />
       )}
 
@@ -798,68 +799,6 @@ function ActivityItem({ icon: Icon, text, time }: { icon: typeof Mail; text: str
         <p className="text-xs text-ivory-500">{timeAgo(time)}</p>
       </div>
     </div>
-  );
-}
-
-// ============================================================
-// Add Contact Modal
-// ============================================================
-function AddContactModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
-  const { workspace, user } = useAuth();
-  const { toast } = useToast();
-  const [form, setForm] = useState({ first_name: '', last_name: '', email: '', phone: '', company: '', job_title: '' });
-
-  const handleAdd = async () => {
-    if (!workspace) return;
-    const { error } = await supabase.from('contacts').insert({
-      ...form,
-      workspace_id: workspace.id,
-      owner_id: user?.id ?? null,
-      source: 'manual',
-    });
-    if (error) {
-      toast(error.message, 'error');
-      return;
-    }
-    toast('Contact added');
-    onAdded();
-  };
-
-  return (
-    <Modal open onClose={onClose} title="Add Contact" description="Create a new contact manually.">
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-navy-700 mb-1.5">First Name</label>
-            <input className="input-field" value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-navy-700 mb-1.5">Last Name</label>
-            <input className="input-field" value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })} />
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-navy-700 mb-1.5">Email</label>
-          <input type="email" className="input-field" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-navy-700 mb-1.5">Phone</label>
-          <input className="input-field" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-navy-700 mb-1.5">Company</label>
-          <input className="input-field" value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-navy-700 mb-1.5">Job Title</label>
-          <input className="input-field" value={form.job_title} onChange={(e) => setForm({ ...form, job_title: e.target.value })} />
-        </div>
-      </div>
-      <div className="flex justify-end gap-3 mt-6">
-        <button onClick={onClose} className="btn-secondary">Cancel</button>
-        <button onClick={handleAdd} className="btn-primary">Add Contact</button>
-      </div>
-    </Modal>
   );
 }
 
