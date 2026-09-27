@@ -131,8 +131,11 @@ export function PublicGroupCalendarPage({
   const leftImage = selectedPres?.image ?? null;
   const leftBgImage = selectedPres?.backgroundImage ?? null;
   const leftBgColor = selectedPres?.leftPanelColor ?? b.leftPanelColor;
-  const leftIsLight = isLightColor(leftBgColor);
+  const leftTextMode = selectedPres?.textColor ?? 'auto';
+  // A background image is shown under a dark overlay, so text defaults to light on it.
+  const leftIsLight = leftTextMode === 'dark' || (leftTextMode === 'auto' && !leftBgImage && isLightColor(leftBgColor));
   const leftTextColor = leftIsLight ? '#1a1a1a' : '#fff';
+  const leftOverlay = (selectedPres?.backgroundOverlay ?? 35) / 100;
 
   // Page background style
   const bgStyle: React.CSSProperties = {
@@ -152,10 +155,10 @@ export function PublicGroupCalendarPage({
     : undefined;
 
   function handleNavClick(item: { type: string; calendar?: CalendarType; target?: string | null }) {
-    if (preview) return;
+    // Calendar tabs switch in the designer preview too, so each calendar's panel can be checked.
     if (item.type === 'calendar' && item.calendar) {
       onSelectCalendar(item.calendar);
-    } else if (item.type === 'external' && item.target) {
+    } else if (!preview && item.type === 'external' && item.target) {
       window.open(item.target, '_blank', 'noopener');
     }
   }
@@ -172,10 +175,11 @@ export function PublicGroupCalendarPage({
     const tabCount = Math.max(allNavItems.length, 1);
 
     return (
-      <div className="min-h-screen flex flex-col relative" style={bgStyle}>
+      // In the designer's preview box the page must not fill/centre the whole screen, or the card is pushed out of view.
+      <div className={cn('flex flex-col relative', !preview && 'min-h-screen')} style={bgStyle}>
         {overlayStyle && <div style={overlayStyle} />}
 
-        <div className={cn('flex-1 relative z-[1] flex flex-col justify-center', pageSpacingPx(l.pageSpacing === 'normal' ? 'spacious' : l.pageSpacing))}>
+        <div className={cn('flex-1 relative z-[1] flex flex-col', preview ? 'py-6' : cn('justify-center', pageSpacingPx(l.pageSpacing === 'normal' ? 'spacious' : l.pageSpacing)))}>
           <div className={cn('mx-auto w-full px-4 sm:px-6', cardWidth)}>
             {(b.organizationName || (b.logoUrl && h.showLogo)) && (
               <div className="mb-6 flex items-center gap-3">
@@ -224,7 +228,7 @@ export function PublicGroupCalendarPage({
                     ...(leftBgImage ? { backgroundImage: `url(${leftBgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}),
                   }}
                 >
-                  {leftBgImage && <div className="absolute inset-0 bg-black/35" />}
+                  {leftBgImage && leftOverlay > 0 && <div className="absolute inset-0 bg-black" style={{ opacity: leftOverlay }} />}
                   <div className="relative z-[1] flex flex-1 flex-col">
                     {panelNumber && (
                       <span className="font-mono text-sm font-medium" style={{ color: b.primaryAccent }}>{panelNumber}</span>

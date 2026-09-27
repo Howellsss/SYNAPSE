@@ -47,6 +47,8 @@ export interface ChildCalendarPresentation {
   image: string | null;         // optional image in left panel
   backgroundImage: string | null; // optional bg image for left panel
   leftPanelColor: string | null;  // optional override of left panel bg color
+  backgroundOverlay?: number | null; // 0-100 darkening over backgroundImage (default 35)
+  textColor?: 'auto' | 'light' | 'dark'; // left panel text; 'auto' picks by background colour
 }
 
 export interface GroupPageHeader {
