@@ -75,7 +75,7 @@ export function Sidebar({ currentPath, onNavigate }: SidebarProps) {
 
       <aside
         className={cn(
-          'fixed left-0 top-0 bottom-0 w-[168px] bg-navy-800 z-40 flex flex-col sidebar-scroll overflow-y-auto transition-transform duration-300 lg:translate-x-0',
+          'fixed left-0 top-0 bottom-0 w-[224px] bg-navy-800 z-40 flex flex-col sidebar-scroll overflow-y-auto transition-transform duration-300 lg:translate-x-0',
           mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
       >
