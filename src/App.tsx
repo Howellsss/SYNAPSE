@@ -87,7 +87,7 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-white">
       <Sidebar currentPath={path} onNavigate={navigate} />
-      <div className="lg:ml-[168px] flex flex-col min-h-screen">
+      <div className="lg:ml-[224px] flex flex-col min-h-screen">
         <TopBar
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
