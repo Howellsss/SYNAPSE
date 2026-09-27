@@ -8,6 +8,7 @@ import { AuthPage } from '@/pages/AuthPage';
 import { AcceptInvitePage } from '@/pages/AcceptInvitePage';
 import { Dashboard } from '@/pages/Dashboard';
 import { ContactsPage } from '@/pages/ContactsPage';
+import { ContactDetailPage } from '@/pages/ContactDetailPage';
 import { CalendarsPage } from '@/pages/CalendarsPage';
 import { FormsPage } from '@/pages/FormsPage';
 import { FormBuilder } from '@/pages/FormBuilder';
@@ -60,6 +61,8 @@ function AppContent() {
   // Authenticated app
   const renderPage = () => {
     if (path === '/dashboard' || path === '/') return <Dashboard />;
+    const contactMatch = path.match(/^\/contacts\/([^/?]+)/);
+    if (contactMatch) return <ContactDetailPage key={contactMatch[1]} contactId={contactMatch[1]} />;
     if (path.startsWith('/contacts')) return <ContactsPage />;
     if (path.startsWith('/calendars/groups/') && user) {
       const groupId = path.split('/')[3]?.split('?')[0];
