@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, ChevronDown, Trash2, Phone, Mail, Copy, Search, Plus, X,
-  Calendar, CalendarCheck, CalendarX, Clock, FileText, MessageSquare, StickyNote, UserPlus, Send, Loader2,
+  Calendar, CalendarCheck, CalendarX, Clock, FileText, MessageSquare, StickyNote, UserPlus, Loader2,
   PhoneIncoming, Smartphone, Building2, Globe2, Sparkles,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -12,6 +12,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { TagPill } from '@/components/ui/StatusPills';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { TimezoneSelect } from '@/components/ui/TimezoneSelect';
+import { MessageComposer } from '@/components/contacts/MessageComposer';
 import { cn, formatDate, formatTime, getFullName, timeAgo } from '@/lib/utils';
 import { readContactNav, type ContactNav } from '@/lib/contact-nav';
 import type { Contact, Tag, DndChannel } from '@/types';
@@ -555,12 +556,6 @@ type ThreadItem =
   | { kind: 'note'; at: string; n: NoteRow };
 
 function ThreadPanel({ contact, messages, notes, onSent }: { contact: ContactRow; messages: MessageRow[]; notes: NoteRow[]; onSent: () => Promise<void> }) {
-  const { workspace, user } = useAuth();
-  const { toast } = useToast();
-  const [mode, setMode] = useState<'email' | 'sms' | 'note'>(contact.email ? 'email' : contact.phone ? 'sms' : 'note');
-  const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
-  const [sending, setSending] = useState(false);
   const threadRef = useRef<HTMLDivElement>(null);
 
   const items: ThreadItem[] = useMemo(() => [
@@ -570,28 +565,6 @@ function ThreadPanel({ contact, messages, notes, onSent }: { contact: ContactRow
 
   // Keep the newest message in view by scrolling the thread box itself, not the page.
   useEffect(() => { const el = threadRef.current; if (el) el.scrollTop = el.scrollHeight; }, [items.length]);
-
-  const dnd = (ch: 'email' | 'sms') => !!contact.dnd_all || (contact.dnd_channels ?? []).includes(ch);
-  const blocker =
-    mode === 'email' ? (!contact.email ? 'This contact has no email address.' : dnd('email') ? 'Email is turned off for this contact (Do not disturb).' : null)
-    : mode === 'sms' ? (!contact.phone ? 'This contact has no phone number.' : dnd('sms') ? 'Text messages are turned off for this contact (Do not disturb).' : null)
-    : null;
-
-  const send = async () => {
-    if (!body.trim() || blocker || !workspace) return;
-    setSending(true);
-    const { error } = mode === 'note'
-      ? await supabase.from('notes').insert({ workspace_id: workspace.id, contact_id: contact.id, author_id: user?.id ?? null, content: body.trim() })
-      : await supabase.from('messages').insert({
-          workspace_id: workspace.id, contact_id: contact.id, channel: mode, direction: 'outbound',
-          subject: mode === 'email' ? subject.trim() || null : null, body: body.trim(), status: 'queued',
-        });
-    setSending(false);
-    if (error) { toast(error.message, 'error'); return; }
-    toast(mode === 'note' ? 'Note added' : `${mode === 'email' ? 'Email' : 'Text'} queued`);
-    setBody(''); setSubject('');
-    await onSent();
-  };
 
   return (
     <Card className="flex min-h-[520px] flex-col">
@@ -630,35 +603,8 @@ function ThreadPanel({ contact, messages, notes, onSent }: { contact: ContactRow
         ))}
       </div>
 
-      <div className="border-t border-navy-100 p-3">
-        <div className="mb-2 inline-flex rounded-lg bg-ivory-100 p-0.5" role="radiogroup" aria-label="Send as">
-          {([['email', 'Email', Mail], ['sms', 'SMS', MessageSquare], ['note', 'Internal note', StickyNote]] as const).map(([k, label, Icon]) => (
-            <button key={k} role="radio" aria-checked={mode === k} onClick={() => setMode(k)} className={cn('inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition', mode === k ? (k === 'note' ? 'bg-gold-400 text-navy-900 shadow-sm' : 'bg-white text-navy-800 shadow-sm') : 'text-ivory-600 hover:text-navy-700')}>
-              <Icon className="h-3.5 w-3.5" /> {label}
-            </button>
-          ))}
-        </div>
-        {mode === 'email' && (
-          <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject" aria-label="Subject" disabled={!!blocker} className="mb-2 w-full rounded-lg border border-navy-100 px-3 py-2 text-sm outline-none focus:border-gold-400 disabled:bg-ivory-50" />
-        )}
-        <div className={cn('flex items-end gap-2 rounded-xl border px-3 py-2 focus-within:border-gold-400', mode === 'note' ? 'border-gold-200 bg-gold-50/60' : 'border-navy-100')}>
-          <textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send(); }}
-            placeholder={mode === 'note' ? 'Write a note only your team can see…' : mode === 'email' ? `Write an email to ${contact.email ?? 'this contact'}…` : `Write a text to ${contact.phone ?? 'this contact'}…`}
-            aria-label="Message"
-            rows={2}
-            disabled={!!blocker}
-            className="max-h-40 min-h-[44px] flex-1 resize-y bg-transparent text-sm outline-none placeholder:text-ivory-500"
-          />
-          <button onClick={send} disabled={sending || !body.trim() || !!blocker} aria-label={mode === 'note' ? 'Add note' : 'Send'} className="btn-primary h-10 shrink-0 px-3">
-            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : mode === 'note' ? <Plus className="h-4 w-4" /> : <Send className="h-4 w-4" />}
-          </button>
-        </div>
-        <p className="mt-1.5 text-[11px] text-ivory-500">
-          {blocker ?? (mode === 'note' ? 'Notes are only visible to your team.' : 'Messages are queued for sending. Delivery needs an email/SMS provider connected. ⌘/Ctrl + Enter to send.')}
-        </p>
+      <div className="border-t border-navy-100">
+        <MessageComposer contact={contact} onSent={onSent} />
       </div>
     </Card>
   );
