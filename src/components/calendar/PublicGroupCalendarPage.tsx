@@ -1,25 +1,16 @@
 import {
-  Calendar as CalendarIcon, Clock, Search,
+  Calendar as CalendarIcon, Clock,
   Video, Phone, MapPin, User, Globe,
+  MessageCircle, Briefcase, Mail, Feather, Heart, Users, BookOpen, Mic, Star, GraduationCap, Stethoscope, HandHeart,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { HowellsLogo } from '@/components/layout/Sidebar';
 import type { Calendar as CalendarType } from '@/types';
 import {
-  type GroupPageConfig, type NavItem, type ChildCalendarPresentation,
+  type GroupPageConfig,
   headingSizePx, bodySizePx, letterSpacingCss, lineHeightCss,
-  maxContentWidthCss, pageSpacingPx, coverHeightPx, fontStack, isLightColor,
-  leftPanelWidthCss, getChildPresentation,
+  maxContentWidthCss, pageSpacingPx, fontStack, isLightColor,
+  getChildPresentation,
 } from '@/lib/group-page-config';
-
-const CALENDAR_TYPE_LABELS: Record<string, string> = {
-  one_on_one: 'Personal',
-  group: 'Group',
-  round_robin: 'Round Robin',
-  collective: 'Collective',
-  event: 'Event',
-  service: 'Service',
-};
 
 const COMMON_TIMEZONES = [
   'UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
@@ -47,8 +38,28 @@ const ICON_MAP: Record<string, typeof CalendarIcon> = {
   Phone: Phone,
   MapPin: MapPin,
   User: User,
+  Users: Users,
   Globe: Globe,
+  Feather: Feather,
+  MessageCircle: MessageCircle,
+  Briefcase: Briefcase,
+  Mail: Mail,
+  Heart: Heart,
+  HandHeart: HandHeart,
+  BookOpen: BookOpen,
+  Mic: Mic,
+  Star: Star,
+  GraduationCap: GraduationCap,
+  Stethoscope: Stethoscope,
 };
+
+/** Icon shown on a calendar tab when the page designer hasn't set one. */
+function defaultIconFor(cal: CalendarType): typeof CalendarIcon {
+  if (cal.location_type === 'phone') return Phone;
+  if (cal.location_type === 'in_person') return MapPin;
+  if (cal.location_type === 'synapse_meeting') return Video;
+  return CalendarIcon;
+}
 
 interface Props {
   config: GroupPageConfig;
@@ -97,7 +108,18 @@ export function PublicGroupCalendarPage({
   // Add non-calendar nav items (external, section)
   const extraNav = config.navigation.filter(n => n.type !== 'calendar' && n.visible);
 
-  const allNavItems = [...calendarNavItems.map(c => ({ ...c, type: 'calendar' as const })), ...extraNav.map(n => ({ ...n, type: n.type as const }))];
+  type TabItem = {
+    id: string;
+    label: string;
+    icon: string | null;
+    type: GroupPageConfig['navigation'][number]['type'];
+    calendar?: CalendarType;
+    target?: string | null;
+  };
+  const allNavItems: TabItem[] = [
+    ...calendarNavItems.map(c => ({ ...c, type: 'calendar' as const })),
+    ...extraNav.map(n => ({ id: n.id, label: n.label, icon: n.icon, type: n.type, target: n.target })),
+  ];
 
   const selectedCal = calendars.find(c => c.id === selectedCalendarId) ?? null;
   const selectedPres = selectedCal ? getChildPresentation(config, selectedCal.id) : null;
@@ -111,7 +133,6 @@ export function PublicGroupCalendarPage({
   const leftBgColor = selectedPres?.leftPanelColor ?? b.leftPanelColor;
   const leftIsLight = isLightColor(leftBgColor);
   const leftTextColor = leftIsLight ? '#1a1a1a' : '#fff';
-  const leftMutedColor = leftIsLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.6)';
 
   // Page background style
   const bgStyle: React.CSSProperties = {
@@ -139,180 +160,145 @@ export function PublicGroupCalendarPage({
     }
   }
 
-  // Split layout (default) — two-panel composition
+  // Split layout (default): one editorial card. Calendar tabs run across the top; below them a
+  // coloured left panel (number, heading, description) sits flush against a white right panel
+  // holding the selected calendar's form or date/time picker.
   if (l.layout === 'split') {
+    const leftWidth = l.leftPanelWidth === 'narrow' ? '30%' : l.leftPanelWidth === 'wide' ? '40%' : '34%';
+    const selectedIndex = calendarNavItems.findIndex(c => c.id === selectedCalendarId);
+    const panelNumber = leftLabel ?? (selectedIndex >= 0 ? String(selectedIndex + 1).padStart(2, '0') : null);
+    const tabCount = Math.max(allNavItems.length, 1);
+
     return (
       <div className="min-h-screen flex flex-col relative" style={bgStyle}>
         {overlayStyle && <div style={overlayStyle} />}
 
-        {/* Accent bar */}
-        {h.showAccentBar && (
-          <div className="h-1.5 relative z-[1]" style={{ backgroundColor: b.primaryAccent }} />
-        )}
-
-        {/* Navigation bar */}
-        <nav
-          className="border-b sticky top-0 z-20 backdrop-blur-sm relative z-[1]"
-          style={{ borderColor: navBorder, backgroundColor: isLight ? 'rgba(255,255,255,0.9)' : 'rgba(9,19,43,0.9)' }}
-        >
-          <div className={cn('mx-auto flex items-center px-4 sm:px-6 py-3', maxContentWidthCss(l.maxContentWidth))}>
-            {b.logoUrl && h.showLogo && (
-              <img src={b.logoUrl} alt="" className="w-8 h-8 rounded-lg object-cover mr-3 shrink-0" />
+        <div className={cn('flex-1 relative z-[1] flex flex-col justify-center', pageSpacingPx(l.pageSpacing === 'normal' ? 'spacious' : l.pageSpacing))}>
+          <div className={cn('mx-auto w-full px-4 sm:px-6', maxContentWidthCss(l.maxContentWidth))}>
+            {(b.organizationName || (b.logoUrl && h.showLogo)) && (
+              <div className="mb-6 flex items-center gap-3">
+                {b.logoUrl && h.showLogo && <img src={b.logoUrl} alt="" className="h-9 w-9 rounded-lg object-cover" />}
+                {b.organizationName && (
+                  <span className="text-sm font-semibold tracking-wide" style={{ color: textColor, fontFamily: headingFont }}>{b.organizationName}</span>
+                )}
+              </div>
             )}
-            {b.organizationName && (
-              <span className="text-sm font-semibold mr-4 shrink-0 hidden sm:inline" style={{ color: textColor, fontFamily: headingFont }}>
-                {b.organizationName}
-              </span>
-            )}
-            <div className="flex items-center gap-0.5 overflow-x-auto flex-1">
-              {allNavItems.map(item => {
-                const Icon = item.icon ? ICON_MAP[item.icon] : null;
-                const isActive = item.type === 'calendar' && item.calendar?.id === selectedCalendarId;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => handleNavClick(item)}
-                    className={cn('flex items-center gap-1.5 px-3 sm:px-4 py-2 text-sm font-medium transition whitespace-nowrap rounded-lg')}
-                    style={
-                      isActive
-                        ? { backgroundColor: b.primaryAccent, color: isLightColor(b.primaryAccent) ? '#1a1a1a' : '#fff' }
-                        : { color: mutedColor }
-                    }
-                  >
-                    {Icon && <Icon className="w-3.5 h-3.5" />}
-                    {item.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </nav>
 
-        {/* Main two-panel content */}
-        <div className={cn('flex-1 relative z-[1]', pageSpacingPx(l.pageSpacing))}>
-          <div className={cn('mx-auto px-4 sm:px-6', maxContentWidthCss(l.maxContentWidth))}>
-            <div className={cn('grid grid-cols-1 lg:grid-cols-[400px_1fr] gap-0 lg:gap-8 items-start', leftPanelWidthCss(l.leftPanelWidth))}>
-              {/* LEFT PANEL */}
-              <div
-                className="relative overflow-hidden rounded-none lg:rounded-2xl p-8 sm:p-10 min-h-[300px] lg:min-h-[500px] flex flex-col"
-                style={{
-                  backgroundColor: leftBgColor,
-                  ...(leftBgImage ? { backgroundImage: `url(${leftBgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}),
-                }}
-              >
-                {leftBgImage && <div className="absolute inset-0 bg-black/30" />}
-                <div className="relative z-[1] flex flex-col flex-1">
-                  {/* Label/number */}
-                  {leftLabel && (
-                    <span
-                      className="text-xs font-semibold uppercase tracking-widest mb-4"
-                      style={{ color: b.primaryAccent, fontFamily: bodyFont }}
-                    >
-                      {leftLabel}
-                    </span>
-                  )}
-                  {/* Logo */}
-                  {h.showLogo && b.logoUrl && (
-                    <img src={b.logoUrl} alt="" className="w-12 h-12 rounded-xl object-cover mb-6" />
-                  )}
-                  {/* Heading */}
-                  <h2
-                    className={cn(headingSizePx(t.headingSize), 'font-bold tracking-tight mb-4')}
-                    style={{
-                      color: leftTextColor,
-                      fontFamily: headingFont,
-                      fontWeight: t.headingWeight,
-                      letterSpacing: letterSpacingCss(t.letterSpacing),
-                      lineHeight: lineHeightCss(t.lineHeight),
-                    }}
-                  >
-                    {leftHeading}
-                  </h2>
-                  {/* Description */}
-                  {leftDesc && (
-                    <p
-                      className={cn(bodySizePx(t.bodySize), 'leading-relaxed max-w-md')}
-                      style={{ color: leftMutedColor, fontFamily: bodyFont, lineHeight: lineHeightCss(t.lineHeight) }}
-                    >
-                      {leftDesc}
-                    </p>
-                  )}
-                  {/* Image */}
-                  {leftImage && (
-                    <div className="mt-6 rounded-xl overflow-hidden">
-                      <img src={leftImage} alt="" className="w-full h-40 object-cover" />
-                    </div>
-                  )}
-                  {/* Duration/location metadata */}
-                  {selectedCal && (
-                    <div className="mt-auto pt-8 space-y-3">
-                      <div className="flex items-center gap-2 text-sm" style={{ color: leftMutedColor, fontFamily: bodyFont }}>
-                        <Clock className="w-4 h-4" style={{ color: b.primaryAccent }} />
-                        {selectedCal.duration_minutes} minutes
-                      </div>
-                      <div className="flex items-center gap-2 text-sm" style={{ color: leftMutedColor, fontFamily: bodyFont }}>
-                        {selectedCal.location_type === 'synapse_meeting' ? <Video className="w-4 h-4" /> : selectedCal.location_type === 'phone' ? <Phone className="w-4 h-4" /> : selectedCal.location_type === 'in_person' ? <MapPin className="w-4 h-4" /> : <Video className="w-4 h-4" />}
-                        {selectedCal.location_type === 'synapse_meeting' ? 'SYNAPSE Meeting' : selectedCal.location_type === 'phone' ? 'Phone Call' : selectedCal.location_type === 'in_person' ? 'In Person' : selectedCal.location_type.replace('_', ' ')}
-                      </div>
-                      <div className="flex items-center gap-2 text-sm" style={{ color: leftMutedColor, fontFamily: bodyFont }}>
-                        <User className="w-4 h-4" style={{ color: b.primaryAccent }} />
-                        {CALENDAR_TYPE_LABELS[selectedCal.calendar_type] ?? selectedCal.calendar_type.replace('_', ' ')}
-                      </div>
-                      {selectedCal.price != null && selectedCal.price > 0 && (
-                        <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: b.primaryAccent, fontFamily: bodyFont }}>
-                          ${selectedCal.price} {selectedCal.currency}
+            <div className="overflow-hidden bg-white shadow-2xl">
+              {/* Calendar tabs */}
+              <nav aria-label="Booking options" className="overflow-x-auto border-b border-gray-200 bg-white">
+                <div className="flex min-w-full lg:grid" style={{ gridTemplateColumns: `repeat(${tabCount}, minmax(0, 1fr))` }}>
+                  {allNavItems.map(item => {
+                    const Icon = (item.icon && ICON_MAP[item.icon]) || (item.type === 'calendar' && item.calendar ? defaultIconFor(item.calendar) : CalendarIcon);
+                    const isActive = item.type === 'calendar' && item.calendar?.id === selectedCalendarId;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => handleNavClick(item)}
+                        aria-current={isActive ? 'page' : undefined}
+                        className="group relative flex shrink-0 items-center gap-3 whitespace-nowrap px-6 py-6 text-left text-[13px] font-semibold uppercase tracking-[0.06em] transition-colors sm:px-8"
+                        style={{ color: isActive ? '#071A3D' : '#6B7280', fontFamily: bodyFont }}
+                      >
+                        <Icon className="h-[18px] w-[18px] shrink-0" style={{ color: b.primaryAccent }} />
+                        <span className="group-hover:text-[#071A3D]">{item.label}</span>
+                        <span
+                          aria-hidden
+                          className="absolute bottom-0 left-6 right-6 h-[3px] transition-opacity sm:left-8 sm:right-8"
+                          style={{ backgroundColor: b.primaryAccent, opacity: isActive ? 1 : 0 }}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+              </nav>
+
+              {/* Panels */}
+              <div className="grid grid-cols-1 lg:grid-cols-[var(--gcal-left)_minmax(0,1fr)]" style={{ ['--gcal-left' as string]: leftWidth }}>
+                {/* LEFT PANEL */}
+                <div
+                  className="relative flex min-h-[260px] flex-col overflow-hidden p-8 sm:p-12 lg:min-h-[560px]"
+                  style={{
+                    backgroundColor: leftBgColor,
+                    ...(leftBgImage ? { backgroundImage: `url(${leftBgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}),
+                  }}
+                >
+                  {leftBgImage && <div className="absolute inset-0 bg-black/35" />}
+                  <div className="relative z-[1] flex flex-1 flex-col">
+                    {panelNumber && (
+                      <span className="font-mono text-sm font-medium" style={{ color: b.primaryAccent }}>{panelNumber}</span>
+                    )}
+                    <div className="mt-10 lg:mt-16">
+                      <h2
+                        className={cn(headingSizePx(t.headingSize), 'tracking-tight')}
+                        style={{
+                          color: leftTextColor,
+                          fontFamily: headingFont,
+                          fontWeight: t.headingWeight,
+                          letterSpacing: letterSpacingCss(t.letterSpacing),
+                          lineHeight: 1.08,
+                        }}
+                      >
+                        {leftHeading}
+                      </h2>
+                      {leftDesc && (
+                        <p
+                          className={cn(bodySizePx(t.bodySize), 'mt-6 max-w-sm')}
+                          style={{ color: leftIsLight ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.9)', fontFamily: bodyFont, lineHeight: 1.65 }}
+                        >
+                          {leftDesc}
+                        </p>
+                      )}
+                      {leftImage && (
+                        <div className="mt-8 overflow-hidden">
+                          <img src={leftImage} alt="" className="h-44 w-full object-cover" />
                         </div>
                       )}
                     </div>
-                  )}
-                </div>
-              </div>
-
-              {/* RIGHT PANEL */}
-              <div className="bg-white rounded-none lg:rounded-2xl shadow-sm lg:shadow-xl overflow-hidden min-h-[400px] flex flex-col">
-                {rightPanelLabel && (
-                  <div className="px-6 sm:px-8 pt-6 pb-2 border-b border-gray-100">
-                    <span className="text-xs font-semibold uppercase tracking-widest text-gray-400">{rightPanelLabel}</span>
                   </div>
-                )}
-                <div className="flex-1 p-6 sm:p-8">
+                </div>
+
+                {/* RIGHT PANEL */}
+                <div
+                  className="gcal-editorial min-w-0 bg-white p-8 sm:p-12"
+                  style={{ ['--gcal-accent' as string]: b.primaryAccent, ['--gcal-button' as string]: b.buttonColor, ['--gcal-button-text' as string]: isLightColor(b.buttonColor) ? '#1A160C' : '#ffffff' }}
+                >
                   {children ?? (
-                    <div className="flex items-center justify-center h-full text-gray-400 text-sm">
-                      Select an appointment type above.
+                    <div className="flex h-full items-center justify-center text-sm text-gray-400">
+                      Select an option above.
                     </div>
                   )}
                 </div>
               </div>
             </div>
+
+            {/* Timezone selector */}
+            {visitorTz && onVisitorTzChange && (
+              <div className="mt-5 flex items-center gap-2 text-sm" style={{ color: mutedColor }}>
+                <Globe className="h-4 w-4" style={{ color: b.primaryAccent }} />
+                <label htmlFor="gcal-tz" className="sr-only">Your time zone</label>
+                <select
+                  id="gcal-tz"
+                  value={visitorTz}
+                  onChange={e => onVisitorTzChange(e.target.value)}
+                  className="cursor-pointer border-none bg-transparent text-sm focus:outline-none"
+                  style={{ color: textColor }}
+                >
+                  {getTimezoneOptions(visitorTz).map((tz: string) => (
+                    <option key={tz} value={tz} className="bg-white text-gray-800">{tz}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Timezone selector */}
-        {visitorTz && onVisitorTzChange && (
-          <div className={cn('relative z-[1] mx-auto px-4 sm:px-6 pb-6', maxContentWidthCss(l.maxContentWidth))}>
-            <div className="flex items-center gap-2 pt-4 border-t" style={{ borderColor: navBorder, color: mutedColor }}>
-              <Globe className="w-4 h-4" style={{ color: b.primaryAccent }} />
-              <select
-                value={visitorTz}
-                onChange={e => onVisitorTzChange(e.target.value)}
-                className="bg-transparent text-sm border-none cursor-pointer focus:outline-none"
-                style={{ color: textColor }}
-              >
-                {getTimezoneOptions(visitorTz).map((tz: string) => (
-                  <option key={tz} value={tz} className="bg-white text-gray-800">{tz}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-        )}
-
         {/* Footer */}
-        {f.visible && (
-          <footer className="border-t mt-auto relative z-[1]" style={{ borderColor: navBorder }}>
-            <div className={cn('mx-auto px-4 sm:px-6 py-6', maxContentWidthCss(l.maxContentWidth))}>
-              {f.text && <p className="text-xs text-center" style={{ color: mutedColor, fontFamily: bodyFont }}>{f.text}</p>}
+        {f.visible && (f.text || f.showPoweredBy) && (
+          <footer className="relative z-[1] mt-auto border-t" style={{ borderColor: navBorder }}>
+            <div className={cn('mx-auto px-4 py-6 sm:px-6', maxContentWidthCss(l.maxContentWidth))}>
+              {f.text && <p className="text-center text-xs" style={{ color: mutedColor, fontFamily: bodyFont }}>{f.text}</p>}
               {f.showPoweredBy && (
-                <p className="text-xs text-center mt-2" style={{ color: mutedColor, fontFamily: bodyFont }}>
+                <p className="mt-2 text-center text-xs" style={{ color: mutedColor, fontFamily: bodyFont }}>
                   Powered by <span style={{ color: b.primaryAccent, fontWeight: 600 }}>SYNAPSE</span>
                 </p>
               )}

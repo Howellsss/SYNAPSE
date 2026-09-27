@@ -160,3 +160,74 @@
 
   /* Blinking rec dot — already using animate-pulse, keeping for clarity */
 }
+
+/* ============================================================
+   Group calendar booking page: editorial form style (right panel only).
+   Underlined fields, small uppercase mono labels and square uppercase
+   buttons. Scoped so forms elsewhere keep their own theme.
+   ============================================================ */
+.gcal-editorial input:not([type='radio']):not([type='checkbox']):not([type='range']),
+.gcal-editorial select,
+.gcal-editorial textarea {
+  border-width: 0 0 1px 0 !important;
+  border-style: solid !important;
+  border-color: #dcd8d0 !important;
+  border-radius: 0 !important;
+  background-color: transparent !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  box-shadow: none !important;
+  color: #071a3d;
+  font-size: 15px;
+}
+.gcal-editorial input:not([type='radio']):not([type='checkbox']):focus,
+.gcal-editorial select:focus,
+.gcal-editorial textarea:focus {
+  border-color: var(--gcal-accent, #e4a93c) !important;
+  outline: none;
+}
+.gcal-editorial input::placeholder,
+.gcal-editorial textarea::placeholder {
+  color: #9a9a9a !important;
+}
+.gcal-editorial textarea {
+  min-height: 88px;
+}
+/* Field labels (not the labels wrapping a radio/checkbox option) */
+.gcal-editorial label:not(:has(input)) {
+  display: block;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6b6b6b !important;
+}
+.gcal-editorial input[type='radio'],
+.gcal-editorial input[type='checkbox'] {
+  accent-color: var(--gcal-accent, #e4a93c);
+}
+/* Primary actions: the form's own submit/next buttons and the page's action buttons */
+.gcal-editorial .gcal-btn,
+.gcal-editorial .gcal-form button:not([type='button']):not([style*='transparent']) {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  width: auto !important;
+  min-height: 52px;
+  padding: 0 1.5rem !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background-color: var(--gcal-button, #e4a93c) !important;
+  color: var(--gcal-button-text, #1a160c) !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  box-shadow: none !important;
+}
+.gcal-editorial .gcal-btn:hover,
+.gcal-editorial .gcal-form button:not([type='button']):not([style*='transparent']):hover {
+  filter: brightness(1.05);
+}

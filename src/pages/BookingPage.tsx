@@ -928,7 +928,19 @@ export function BookingPage({ slug, isGroup }: { slug: string; isGroup: boolean 
 
   // ---------- GROUP RENDER (all steps wrapped in PublicGroupCalendarPage) ----------
   if (isGroup && groupMeta && step !== 'loading' && step !== 'notfound' && step !== 'inactive') {
-    const groupBtnColor = groupPageConfig.branding.buttonColor;
+    // Inside the group page the form sits in the editorial right panel: drop its own title (the
+    // left panel already shows it), outer card, background and padding.
+    const editorialFormDefinition = formDefinition ? {
+      ...formDefinition,
+      header: { ...formDefinition.header, enabled: false },
+      theme: {
+        ...formDefinition.theme,
+        layoutPreset: 'full_width' as const,
+        background: { ...formDefinition.theme.background, type: 'solid' as const, color: 'transparent' },
+        colors: { ...formDefinition.theme.colors, surfaceBackground: 'transparent' },
+        layout: { ...formDefinition.theme.layout, pagePadding: 0 },
+      },
+    } : null;
 
     const groupRightPanel = (
       <>
@@ -937,9 +949,10 @@ export function BookingPage({ slug, isGroup }: { slug: string; isGroup: boolean 
             <p className="text-sm text-gray-500">This booking page doesn't have any calendars available yet.</p>
           </div>
         )}
-        {step === 'form' && calendar && formDefinition && (
+        {step === 'form' && calendar && formDefinition && editorialFormDefinition && (
+          <div className="gcal-form">
           <FormRenderer
-            definition={formDefinition}
+            definition={editorialFormDefinition}
             formName={formMeta?.name ?? calendar.name}
             formDescription={formMeta?.description ?? null}
             currentPageIndex={formCurrentPage}
@@ -951,10 +964,12 @@ export function BookingPage({ slug, isGroup }: { slug: string; isGroup: boolean 
             onPrevious={() => setFormCurrentPage(p => Math.max(p - 1, 0))}
             onSubmit={handleFormFirstSubmit}
           />
+          </div>
         )}
         {step === 'form' && calendar && !formDefinition && (
           <div>
-            <div className="flex items-center gap-3 mb-6">
+            {/* Form-first shows just the fields (the left panel carries the heading); after a slot is picked, show what's being booked. */}
+            <div className={cn('flex items-center gap-3 mb-6', !selectedSlot && 'hidden')}>
               {calendar.booking_flow === 'calendar_first' && selectedSlot && (
                 <button onClick={() => setStep('time')} className="w-9 h-9 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-700 transition-colors">
                   <ChevronLeft className="w-5 h-5" />
@@ -975,11 +990,7 @@ export function BookingPage({ slug, isGroup }: { slug: string; isGroup: boolean 
               )}
             </div>
             <FormFields fields={getVisibleFields()} formData={formData} formErrors={formErrors} onChange={handleFormChange} />
-            <button
-              onClick={() => handleBooking()}
-              className="w-full mt-6 text-white py-3.5 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2 shadow-lg hover:opacity-90"
-              style={{ backgroundColor: groupBtnColor }}
-            >
+            <button onClick={() => handleBooking()} className="gcal-btn mt-8">
               {calendar.booking_flow === 'form_first' ? (<>Check Availability <ArrowRight className="w-4 h-4" /></>) : (<>Confirm Booking <CheckCircle2 className="w-4 h-4" /></>)}
             </button>
           </div>
