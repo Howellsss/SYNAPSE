@@ -45,14 +45,18 @@ function b64urlDecode(s: string): Uint8Array {
   const pad = s.length % 4 === 0 ? "" : "=".repeat(4 - (s.length % 4));
   return b64decode(s.replace(/-/g, "+").replace(/_/g, "/") + pad);
 }
-function rawKey(): Uint8Array {
-  const k = Deno.env.get("TOKEN_ENCRYPTION_KEY") ?? "";
-  const bytes = b64decode(k.trim());
-  if (bytes.length !== 32) throw new Error("TOKEN_ENCRYPTION_KEY must be 32 bytes, base64 encoded");
-  return bytes;
+// Any reasonably long secret works: a 32-byte base64 key is used as-is, anything else is hashed into one.
+async function rawKey(): Promise<Uint8Array> {
+  const k = (Deno.env.get("TOKEN_ENCRYPTION_KEY") ?? "").trim().replace(/^["']|["']$/g, "");
+  if (k.length < 16) throw new Error("TOKEN_ENCRYPTION_KEY is missing or too short (use 16+ characters)");
+  try {
+    const bytes = b64decode(k);
+    if (bytes.length === 32) return bytes;
+  } catch { /* not base64: hash it below */ }
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(k)));
 }
 async function aesKey(): Promise<CryptoKey> {
-  return crypto.subtle.importKey("raw", rawKey(), "AES-GCM", false, ["encrypt", "decrypt"]);
+  return crypto.subtle.importKey("raw", await rawKey(), "AES-GCM", false, ["encrypt", "decrypt"]);
 }
 async function encrypt(plain: string): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -76,7 +80,7 @@ async function decrypt(enc: string): Promise<string> {
 }
 // The state key is derived from the encryption key so there is one less secret to manage.
 async function hmacKey(): Promise<CryptoKey> {
-  const material = new Uint8Array([...new TextEncoder().encode("synapse-oauth-state:"), ...rawKey()]);
+  const material = new Uint8Array([...new TextEncoder().encode("synapse-oauth-state:"), ...(await rawKey())]);
   const digest = await crypto.subtle.digest("SHA-256", material);
   return crypto.subtle.importKey("raw", digest, { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
 }
