@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import {
-  Calendar as CalendarIcon, Clock, Video, Phone, MapPin, ChevronLeft, ChevronRight,
+  Clock, Video, Phone, MapPin, ChevronLeft, ChevronRight,
   CheckCircle2, Globe, AlertCircle, Loader2, CalendarPlus, RotateCcw, XCircle, User,
-  ArrowRight, Search,
+  ArrowRight,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { SchedulingEngine, type TimeSlot } from '@/lib/scheduling';
@@ -20,7 +20,6 @@ import {
   validateForm,
   evaluateConditions,
   extractContactInfo,
-  DEFAULT_BOOKING_FIELDS,
   type ResolvedForm,
 } from '@/lib/booking-form';
 import type {
@@ -85,7 +84,7 @@ function convertDefinitionToFormFields(def: FormDefinition): FormField[] {
       sort_order: el.sortOrder,
       mapped_field: f.mappedContactField,
       conditions: [],
-    } as FormField);
+    } as unknown as FormField);
   }
   return fields.sort((a, b) => a.sort_order - b.sort_order);
 }
@@ -129,7 +128,10 @@ export function BookingPage({ slug, isGroup }: { slug: string; isGroup: boolean 
   if (isGroup && slug === 'pastor-tolu') {
     return <PastorToluBookingPage />;
   }
+  return <StandardBookingPage slug={slug} isGroup={isGroup} />;
+}
 
+function StandardBookingPage({ slug, isGroup }: { slug: string; isGroup: boolean }) {
   const [step, setStep] = useState<BookingStep>('loading');
   const [calendar, setCalendar] = useState<CalendarType | null>(null);
   const [calendars, setCalendars] = useState<CalendarType[]>([]);
@@ -178,8 +180,6 @@ export function BookingPage({ slug, isGroup }: { slug: string; isGroup: boolean 
     layout: 'grid' | 'list';
   } | null>(null);
   const [groupPageConfig, setGroupPageConfig] = useState<GroupPageConfig>(mergeGroupPageConfig(null));
-  const [groupSearch, setGroupSearch] = useState('');
-  const [groupCategory, setGroupCategory] = useState('all');
   const [isEmbed, setIsEmbed] = useState(false);
   const [tokenError, setTokenError] = useState<string | null>(null);
   const [formDefinition, setFormDefinition] = useState<FormDefinition | null>(null);
@@ -1084,7 +1084,7 @@ export function BookingPage({ slug, isGroup }: { slug: string; isGroup: boolean 
             <div className="w-20 h-20 rounded-2xl bg-red-50 flex items-center justify-center mx-auto mb-5"><AlertCircle className="w-10 h-10 text-red-600" /></div>
             <h1 className="text-2xl font-bold text-gray-900 mb-3">Booking failed</h1>
             <p className="text-sm text-gray-600 mb-8">{error ?? 'Please try again.'}</p>
-            <button onClick={() => { hosts.length > 0 ? setStep('host') : setStep('date'); setError(null); }} className="btn-primary">View available times</button>
+            <button onClick={() => { setStep(hosts.length > 0 ? 'host' : 'date'); setError(null); }} className="btn-primary">View available times</button>
           </div>
         )}
       </>
@@ -1482,7 +1482,7 @@ export function BookingPage({ slug, isGroup }: { slug: string; isGroup: boolean 
                   </div>
                   <h1 className="text-2xl font-bold text-navy-800 mb-3">Booking failed</h1>
                   <p className="text-sm text-ivory-600 mb-8">{error ?? 'Please try again.'}</p>
-                  <button onClick={() => { hosts.length > 0 ? setStep('host') : setStep('date'); setError(null); }} className="btn-primary">View available times</button>
+                  <button onClick={() => { setStep(hosts.length > 0 ? 'host' : 'date'); setError(null); }} className="btn-primary">View available times</button>
                 </div>
               )}
             </div>

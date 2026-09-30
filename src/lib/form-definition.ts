@@ -1,7 +1,7 @@
 import type {
-  FormDefinition, FormElement, FormSection, FormPage, ElementType,
+  FormDefinition, FormElement, FormSection, ElementType,
   ElementCategory, FieldDefinition, ElementStyle, ElementContent,
-  ColumnCount, FormTheme, FormSettings, FormHeader, FormFooter,
+  FormTheme, FormSettings, FormHeader, FormFooter,
   FormNotifications,
 } from './form-builder-types';
 import {

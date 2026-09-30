@@ -1,19 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Check, Copy, FileText, Link, Plus, Settings, UsersRound, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { CalendarDays, Check, Copy, FileText, Link, Plus, Settings, UsersRound } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { slugify } from '@/lib/utils';
 import { useToast } from '@/context/ToastContext';
 import { Modal } from '@/components/ui/Modal';
 import type { Calendar as CalendarType, CalendarGroup } from '@/types';
-
-const CALENDAR_TYPE_LABELS: Record<string, string> = {
-  one_on_one: 'Personal',
-  group: 'Group',
-  round_robin: 'Round Robin',
-  collective: 'Collective',
-  event: 'Event',
-  service: 'Service',
-};
 
 interface FormInfo {
   id: string;
@@ -59,7 +50,7 @@ export function GroupCalendarManager({ workspaceId, ownerFallbackId, calendars, 
       else if (ownerFallbackId) q = q.eq('owner_id', ownerFallbackId);
       const { data } = await q;
       if (!active) return;
-      setGroups(((data ?? []) as unknown as { calendar_group_members: { calendar_id: string; calendars: CalendarType | null }[] }[]).map(g => ({ ...g, members: g.calendar_group_members ?? [] })));
+      setGroups(((data ?? []) as unknown as (CalendarGroup & { calendar_group_members: { calendar_id: string; calendars: CalendarType | null }[] })[]).map(g => ({ ...g, members: g.calendar_group_members ?? [] })));
       setLoading(false);
     }
     loadGroups();
@@ -73,10 +64,6 @@ export function GroupCalendarManager({ workspaceId, ownerFallbackId, calendars, 
     return () => { active = false; };
   }, [workspaceId, ownerFallbackId]);
 
-  const selectedCalendars = useMemo(
-    () => calendars.filter(calendar => selectedCalendarIds.has(calendar.id)),
-    [calendars, selectedCalendarIds],
-  );
 
   function startCreate() {
     setSelectedGroup(null);

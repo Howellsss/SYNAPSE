@@ -12,13 +12,13 @@ const mockDelete = vi.fn();
 
 vi.mock('@/lib/supabase', () => ({
   supabase: {
-    from: vi.fn((table: string) => ({
+    from: vi.fn(() => ({
       select: mockSelect,
       insert: mockInsert,
       update: mockUpdate,
       delete: mockDelete,
       eq: vi.fn(() => ({ select: mockSelect, insert: mockInsert, update: mockUpdate, delete: mockDelete, maybeSingle: vi.fn(() => ({ data: null, error: null })), single: vi.fn() })),
-      in: vi.fn(() => ({ select: mockSelect, gte: vi.fn(() => ({ lte: vi.fn(() => ({ data: [], error: null })) })), gte: vi.fn(() => ({ lte: vi.fn(() => ({ data: [], error: null })) })) })),
+      in: vi.fn(() => ({ select: mockSelect, gte: vi.fn(() => ({ lte: vi.fn(() => ({ data: [], error: null })) })) })),
       neq: vi.fn(() => ({ select: mockSelect, order: vi.fn(() => ({ data: [], error: null })) })),
       gte: vi.fn(() => ({ lte: vi.fn(() => ({ data: [], error: null })) })),
       lte: vi.fn(() => ({ data: [], error: null })),
@@ -33,17 +33,23 @@ vi.mock('@/lib/supabase', () => ({
   },
 }));
 
-import { SchedulingEngine, TimeSlot } from '@/lib/scheduling';
-import type { Calendar } from '@/types';
+import { SchedulingEngine, type TimeSlot } from '@/lib/scheduling';
+import type { AvailabilityRule, Calendar } from '@/types';
 
 // ============================================================
 // HELPERS
 // ============================================================
 
+// generateBaseSlots is private; the tests reach it through this typed view.
+const privateEngine = SchedulingEngine as unknown as {
+  generateBaseSlots: (calendar: Calendar, date: Date, rules: AvailabilityRule[], timezone: string) => TimeSlot[];
+};
+
 function makeCalendar(overrides: Partial<Calendar> = {}): Calendar {
   return {
     id: 'cal-1',
     workspace_id: 'ws-1',
+    owner_id: null,
     name: 'Test Calendar',
     description: null,
     slug: 'test',
@@ -69,6 +75,15 @@ function makeCalendar(overrides: Partial<Calendar> = {}): Calendar {
     round_robin_strategy: 'balanced',
     price: null,
     currency: 'USD',
+    form_mode: 'default',
+    custom_confirmation_message: null,
+    custom_redirect_url: null,
+    embed_config: { type: 'inline' },
+    logo_url: null,
+    cover_url: null,
+    background_color: null,
+    button_color: null,
+    font_family: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     ...overrides,
@@ -95,8 +110,7 @@ describe('SchedulingEngine - Slot Generation', () => {
       { id: 'r1', calendar_id: 'cal-1', day_of_week: 5, start_time: '09:00', end_time: '11:00', sort_order: 0 },
     ];
 
-    // Access private method via any
-    const slots = (SchedulingEngine as any).generateBaseSlots(calendar, date, rules, 'UTC');
+    const slots = privateEngine.generateBaseSlots(calendar, date, rules, 'UTC');
 
     // 09:00-09:30, 09:30-10:00, 10:00-10:30, 10:30-11:00
     expect(slots).toHaveLength(4);
@@ -113,7 +127,7 @@ describe('SchedulingEngine - Slot Generation', () => {
       { id: 'r1', calendar_id: 'cal-1', day_of_week: 5, start_time: '09:00', end_time: '11:00', sort_order: 0 },
     ];
 
-    const slots = (SchedulingEngine as any).generateBaseSlots(calendar, date, rules, 'UTC');
+    const slots = privateEngine.generateBaseSlots(calendar, date, rules, 'UTC');
 
     // 60min duration, 30min interval, 9-11 = 09:00, 09:30, 10:00 (10:30+60 > 11:00)
     expect(slots).toHaveLength(3);
@@ -131,7 +145,7 @@ describe('SchedulingEngine - Slot Generation', () => {
       { id: 'r2', calendar_id: 'cal-1', day_of_week: 5, start_time: '14:00', end_time: '15:00', sort_order: 1 },
     ];
 
-    const slots = (SchedulingEngine as any).generateBaseSlots(calendar, date, rules, 'UTC');
+    const slots = privateEngine.generateBaseSlots(calendar, date, rules, 'UTC');
 
     // Morning: 09:00, 09:30. Afternoon: 14:00, 14:30
     expect(slots).toHaveLength(4);
@@ -183,7 +197,6 @@ describe('SchedulingEngine - Minimum Notice', () => {
 
 describe('SchedulingEngine - Maximum Booking Horizon', () => {
   it('slots beyond horizon are filtered out', () => {
-    const calendar = makeCalendar({ max_booking_horizon_days: 30 });
     const now = new Date();
     const maxHorizon = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
@@ -231,15 +244,12 @@ describe('SchedulingEngine - Overlap Detection', () => {
 describe('SchedulingEngine - Timezone Conversion', () => {
   it('parses time in a non-UTC timezone correctly', () => {
     // 09:00 in America/New_York (EDT = UTC-4) should be 13:00 UTC
-    const date = dateAt(2026, 9, 4); // Sep 4, 2026
     const dtf = new Intl.DateTimeFormat('en-US', {
       timeZone: 'America/New_York',
       year: 'numeric', month: '2-digit', day: '2-digit',
       hour: '2-digit', minute: '2-digit', second: '2-digit',
       hour12: false,
     });
-    const parts = dtf.formatToParts(date);
-    const get = (t: string) => parts.find(p => p.type === t)?.value ?? '0';
 
     // Midnight UTC is Sep 3 in NY (UTC-4), so use noon UTC instead
     const noonUtc = dateAt(2026, 9, 4, 12);

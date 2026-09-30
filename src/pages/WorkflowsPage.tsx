@@ -1,22 +1,20 @@
 import { useEffect, useState, useCallback, type ComponentType } from 'react';
 import {
   Workflow as WorkflowIcon, Plus, Search, Play, Pause, Copy, Trash2, Edit,
-  Zap, Mail, MessageSquare, Tag, Clock, Webhook, FileText, ChevronDown,
-  X, ArrowDown, PlusCircle, Settings2, GitBranch, RefreshCw, LayoutGrid, List as ListIcon, Sparkles, Folder, ArrowUpDown, MoreVertical, Upload as UploadIcon, Download, ArrowLeft, Users, Calendar,
+  Zap, Tag, Clock, FileText, ChevronDown,
+  PlusCircle, RefreshCw, LayoutGrid, List as ListIcon, Sparkles, Folder, ArrowUpDown, Upload as UploadIcon, Download, ArrowLeft,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/context/ToastContext';
 import { WorkflowStatusPill } from '@/components/ui/StatusPills';
-import { Modal } from '@/components/ui/Modal';
 import { Drawer } from '@/components/ui/Drawer';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState, Skeleton } from '@/components/ui/States';
-import { formatDate, timeAgo, cn } from '@/lib/utils';
-import { WorkflowEngine } from '@/lib/workflow-engine';
+import { timeAgo, cn } from '@/lib/utils';
 import { WorkflowBuilder } from '@/components/workflow/WorkflowBuilder';
 import { getTriggerOption, getActionOption } from '@/lib/workflow-constants';
-import type { Workflow, WorkflowNode, WorkflowExecution, TriggerType, ActionType, WorkflowTemplate } from '@/types';
+import type { Workflow, WorkflowNode, WorkflowExecution, WorkflowExecutionLog, TriggerType, WorkflowTemplate } from '@/types';
 
 const TRIGGERS: { value: TriggerType; label: string; icon: typeof Zap }[] = [
   { value: 'appointment_booked', label: 'Appointment Booked', icon: Zap },
@@ -29,41 +27,6 @@ const TRIGGERS: { value: TriggerType; label: string; icon: typeof Zap }[] = [
   { value: 'contact_created', label: 'Contact Created', icon: Zap },
   { value: 'tag_added', label: 'Tag Added', icon: Tag },
   { value: 'tag_removed', label: 'Tag Removed', icon: Tag },
-];
-
-const ACTIONS: { value: ActionType; label: string; icon: typeof Mail }[] = [
-  { value: 'send_email', label: 'Send Email', icon: Mail },
-  { value: 'send_sms', label: 'Send SMS', icon: MessageSquare },
-  { value: 'add_tag', label: 'Add Tag', icon: Tag },
-  { value: 'remove_tag', label: 'Remove Tag', icon: Tag },
-  { value: 'add_note', label: 'Add Note', icon: FileText },
-  { value: 'update_contact', label: 'Update Contact', icon: Settings2 },
-  { value: 'wait', label: 'Wait / Delay', icon: Clock },
-  { value: 'send_webhook', label: 'Send Webhook', icon: Webhook },
-];
-
-// Condition nodes are a distinct node type (not an action). They branch the
-// flow based on a field/operator/value comparison and are stored in
-// workflow_nodes with node_type = 'condition'.
-const CONDITIONS: { value: string; label: string; icon: typeof GitBranch }[] = [
-  { value: 'condition', label: 'Condition', icon: GitBranch },
-];
-
-const CONDITION_OPERATORS: { value: string; label: string }[] = [
-  { value: 'equals', label: 'equals' },
-  { value: 'not_equals', label: 'not equals' },
-  { value: 'contains', label: 'contains' },
-  { value: 'exists', label: 'exists' },
-];
-
-const CONTACT_FIELDS: { value: string; label: string }[] = [
-  { value: 'first_name', label: 'First Name' },
-  { value: 'last_name', label: 'Last Name' },
-  { value: 'email', label: 'Email' },
-  { value: 'phone', label: 'Phone' },
-  { value: 'company', label: 'Company' },
-  { value: 'job_title', label: 'Job Title' },
-  { value: 'status', label: 'Status' },
 ];
 
 export function WorkflowsPage() {
@@ -390,7 +353,7 @@ function WorkflowTemplatesScreen({ onClose, onSelect }: { onClose: () => void; o
     AI: 'bg-purple-50 text-purple-700',
   };
 
-  return <div className="fixed inset-y-0 left-0 right-0 z-[80] overflow-y-auto bg-white lg:left-[270px]"><header className="sticky top-0 z-10 flex h-[70px] items-center gap-4 border-b border-navy-100 bg-white px-5"><button onClick={onClose} className="btn-ghost btn-sm"><ArrowLeft className="h-4 w-4" /> Workflows</button><div className="h-6 w-px bg-navy-100" /><span className="text-sm font-semibold text-navy-800">Workflow templates</span></header><div className="mx-auto max-w-5xl px-5 py-10"><div className="max-w-xl"><p className="text-xs font-bold uppercase tracking-[0.16em] text-gold-700">Start faster</p><h1 className="mt-3 text-3xl font-bold tracking-[-0.03em] text-navy-800">Choose a workflow template</h1><p className="mt-3 text-sm leading-6 text-ivory-700">Pick a starting point and customize every step before you activate it.</p></div><div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center"><div className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ivory-500" /><input className="input-field h-9 pl-9 text-sm" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search templates..." /></div><div className="flex gap-1 overflow-x-auto">{categories.map((cat) => <button key={cat} onClick={() => setCategory(cat)} className={cn('shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold capitalize transition-colors', category === cat ? 'bg-gold-50 text-gold-700' : 'text-ivory-600 hover:bg-ivory-50')}>{cat === 'all' ? 'All' : cat}</button>)}</div></div>{loading ? <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2">{[...Array(6)].map((_, i) => <Skeleton key={i} className="h-32" />)}</div> : <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">{filtered.map((template) => { const colorClass = templateColors[template.category] ?? 'bg-ivory-100 text-navy-700'; const triggerOpt = getTriggerOption(template.trigger_type); return <button key={template.id} onClick={() => onSelect({ name: template.name, description: template.description ?? '', trigger: template.trigger_type, nodes: (template.nodes as WorkflowNode[]) ?? [] })} className="card card-hover flex items-start gap-4 p-5 text-left"><span className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl', colorClass)}><WorkflowIcon className="h-5 w-5" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-bold text-navy-800">{template.name}</span><span className="mt-1 block text-[11px] font-semibold uppercase tracking-wider text-ivory-500">{template.category}</span><span className="mt-3 block text-sm leading-5 text-ivory-700">{template.description}</span><span className="mt-2 flex items-center gap-1.5 text-[11px] text-ivory-500"><Zap className="h-3 w-3" /> {triggerOpt?.label ?? template.trigger_type}</span><span className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-gold-700">Use template <ArrowLeft className="h-3.5 w-3.5 rotate-180" /></span></span></button>; })}</div>}</div></div>;
+  return <div className="fixed inset-y-0 left-0 right-0 z-[80] overflow-y-auto bg-white lg:left-[270px]"><header className="sticky top-0 z-10 flex h-[70px] items-center gap-4 border-b border-navy-100 bg-white px-5"><button onClick={onClose} className="btn-ghost btn-sm"><ArrowLeft className="h-4 w-4" /> Workflows</button><div className="h-6 w-px bg-navy-100" /><span className="text-sm font-semibold text-navy-800">Workflow templates</span></header><div className="mx-auto max-w-5xl px-5 py-10"><div className="max-w-xl"><p className="text-xs font-bold uppercase tracking-[0.16em] text-gold-700">Start faster</p><h1 className="mt-3 text-3xl font-bold tracking-[-0.03em] text-navy-800">Choose a workflow template</h1><p className="mt-3 text-sm leading-6 text-ivory-700">Pick a starting point and customize every step before you activate it.</p></div><div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center"><div className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ivory-500" /><input className="input-field h-9 pl-9 text-sm" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search templates..." /></div><div className="flex gap-1 overflow-x-auto">{categories.map((cat) => <button key={cat} onClick={() => setCategory(cat)} className={cn('shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold capitalize transition-colors', category === cat ? 'bg-gold-50 text-gold-700' : 'text-ivory-600 hover:bg-ivory-50')}>{cat === 'all' ? 'All' : cat}</button>)}</div></div>{loading ? <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2">{[...Array(6)].map((_, i) => <Skeleton key={i} className="h-32" />)}</div> : <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">{filtered.map((template) => { const colorClass = templateColors[template.category] ?? 'bg-ivory-100 text-navy-700'; const triggerOpt = getTriggerOption(template.trigger_type); return <button key={template.id} onClick={() => onSelect({ name: template.name, description: template.description ?? '', trigger: template.trigger_type, nodes: (template.nodes as unknown as WorkflowNode[]) ?? [] })} className="card card-hover flex items-start gap-4 p-5 text-left"><span className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl', colorClass)}><WorkflowIcon className="h-5 w-5" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-bold text-navy-800">{template.name}</span><span className="mt-1 block text-[11px] font-semibold uppercase tracking-wider text-ivory-500">{template.category}</span><span className="mt-3 block text-sm leading-5 text-ivory-700">{template.description}</span><span className="mt-2 flex items-center gap-1.5 text-[11px] text-ivory-500"><Zap className="h-3 w-3" /> {triggerOpt?.label ?? template.trigger_type}</span><span className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-gold-700">Use template <ArrowLeft className="h-3.5 w-3.5 rotate-180" /></span></span></button>; })}</div>}</div></div>;
 }
 
 function ImportWorkflowScreen({ onClose, onImported }: { onClose: () => void; onImported: (preset: EditorPreset) => void }) {
@@ -442,7 +405,7 @@ function WorkflowCard({ workflow, onToggle, onEdit, onHistory, onDuplicate, onDe
 // ============================================================
 function WorkflowHistoryDrawer({ workflow, onClose }: { workflow: Workflow; onClose: () => void }) {
   const [executions, setExecutions] = useState<WorkflowExecution[]>([]);
-  const [logs, setLogs] = useState<Record<string, WorkflowExecution['status']>>({});
+  const [logs, setLogs] = useState<Record<string, WorkflowExecutionLog['status']>>({});
   const [loading, setLoading] = useState(true);
   const [selectedExecution, setSelectedExecution] = useState<WorkflowExecution | null>(null);
 
@@ -467,8 +430,8 @@ function WorkflowHistoryDrawer({ workflow, onClose }: { workflow: Workflow; onCl
       .eq('execution_id', selectedExecution.id)
       .order('executed_at', { ascending: true })
       .then(({ data }) => {
-        const logMap: Record<string, WorkflowExecution['status']> = {};
-        (data ?? []).forEach((log) => { logMap[log.id] = log.status as WorkflowExecution['status']; });
+        const logMap: Record<string, WorkflowExecutionLog['status']> = {};
+        (data ?? []).forEach((log) => { logMap[log.id] = log.status as WorkflowExecutionLog['status']; });
         setLogs(logMap);
       });
   }, [selectedExecution]);

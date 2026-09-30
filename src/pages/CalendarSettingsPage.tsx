@@ -1,18 +1,47 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
-  Calendar, Plus, Search, Clock, Users, Video, Phone, MapPin, Copy, Share2,
-  ChevronRight, ChevronLeft, User, UserCheck, UsersRound, CalendarClock, Briefcase,
-  Edit, Eye, Copy as Duplicate, Trash2, Power, ExternalLink, Link2, Code, X,
-  CheckCircle2, Clock3, AlertTriangle, Filter, ArrowUpDown, Globe, Bell, Mail,
-  CreditCard, Zap, Settings as SettingsIcon, CalendarDays, Lock, Sparkles,
-  Palette, Save,
+  Calendar,
+  Plus,
+  Search,
+  Clock,
+  Users,
+  Copy,
+  Share2,
+  ChevronLeft,
+  User,
+  UserCheck,
+  UsersRound,
+  CalendarClock,
+  Briefcase,
+  Edit,
+  Eye,
+  Copy as Duplicate,
+  Trash2,
+  Power,
+  ExternalLink,
+  Link2,
+  Code,
+  X,
+  CheckCircle2,
+  Filter,
+  ArrowUpDown,
+  Globe,
+  Bell,
+  Mail,
+  CreditCard,
+  Zap,
+  Settings as SettingsIcon,
+  CalendarDays,
+  Lock,
+  Sparkles,
+  Palette,
+  Save,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/context/ToastContext';
 import { Avatar } from '@/components/ui/Avatar';
 import { Modal } from '@/components/ui/Modal';
-import { Drawer } from '@/components/ui/Drawer';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState, Skeleton, ErrorState } from '@/components/ui/States';
 import { formatDate, getFullName, cn, slugify } from '@/lib/utils';
@@ -126,7 +155,7 @@ export function CalendarSettingsPage() {
     let apptQuery = supabase.from('appointments').select('calendar_id');
     if (calIds.length > 0) apptQuery = apptQuery.in('calendar_id', calIds);
     else apptQuery = apptQuery.eq('calendar_id', '00000000-0000-0000-0000-000000000000');
-    let membersRes = { data: [], error: null } as any;
+    let membersRes: { data: { user_id: string }[] | null } = { data: [] };
     if (workspace) {
       membersRes = await supabase.from('workspace_members').select('user_id').eq('workspace_id', workspace.id).eq('status', 'active');
     }
@@ -710,16 +739,9 @@ function GroupCalendarCard({
 // ============================================================
 // CALENDAR DETAIL VIEW (Tabbed)
 // ============================================================
-function CalendarDetailView({
-  calendar, onBack, onShare,
-}: {
-  calendar: CalendarWithHosts;
-  onBack: () => void;
-  onShare: () => void;
-}) {
-  const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<DetailTab>('general');
-  const [form, setForm] = useState({
+// The editable settings of one calendar, shared by the detail page's tabs.
+function initialSettingsForm(calendar: CalendarType) {
+  return {
     name: calendar.name,
     description: calendar.description || '',
     slug: calendar.slug,
@@ -747,7 +769,21 @@ function CalendarDetailView({
     background_color: calendar.background_color ?? '#FAF6F0',
     button_color: calendar.button_color ?? calendar.color ?? '#8B2635',
     font_family: calendar.font_family ?? 'Inter',
-  });
+  };
+}
+
+type SettingsForm = ReturnType<typeof initialSettingsForm>;
+
+function CalendarDetailView({
+  calendar, onBack, onShare,
+}: {
+  calendar: CalendarWithHosts;
+  onBack: () => void;
+  onShare: () => void;
+}) {
+  const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState<DetailTab>('general');
+  const [form, setForm] = useState(() => initialSettingsForm(calendar));
   const [saving, setSaving] = useState(false);
   const typeInfo = CALENDAR_TYPES.find(t => t.value === calendar.calendar_type);
   const TypeIcon = typeInfo?.icon ?? Calendar;
@@ -883,7 +919,7 @@ function CalendarDetailView({
 // GENERAL TAB
 // ============================================================
 function GeneralTab({ form, setForm, saving, onSave, calendarType }: {
-  form: any; setForm: (f: any) => void; saving: boolean; onSave: () => void; calendarType: CalType;
+  form: SettingsForm; setForm: (f: SettingsForm) => void; saving: boolean; onSave: () => void; calendarType: CalType;
 }) {
   return (
     <div className="space-y-5">
@@ -939,7 +975,7 @@ function GeneralTab({ form, setForm, saving, onSave, calendarType }: {
 
       <SettingsSection title="Booking Flow">
         <Field label="Booking Flow Order">
-          <select className="input-field" value={form.booking_flow} onChange={e => setForm({ ...form, booking_flow: e.target.value })}>
+          <select className="input-field" value={form.booking_flow} onChange={e => setForm({ ...form, booking_flow: e.target.value as SettingsForm['booking_flow'] })}>
             <option value="calendar_first">Calendar first (pick time, then fill form)</option>
             <option value="form_first">Form first (fill form, then pick time)</option>
           </select>
@@ -974,14 +1010,14 @@ function AvailabilityTab({ calendarId }: { calendarId: string }) {
 
   useEffect(() => {
     supabase.from('availability_rules').select('*').eq('calendar_id', calendarId).then(({ data }) => {
-      const rules: Record<number, { start: string; end_time: string }[]> = {};
-      (data ?? []).forEach((r: any) => {
+      const rules: Record<number, { start: string; end: string }[]> = {};
+      ((data ?? []) as AvailabilityRule[]).forEach((r) => {
         if (!rules[r.day_of_week]) rules[r.day_of_week] = [];
-        rules[r.day_of_week].push({ start: r.start_time, end: r.end_time } as any);
+        rules[r.day_of_week].push({ start: r.start_time, end: r.end_time });
       });
       const formatted: Record<number, { start: string; end: string }[]> = {};
       for (const [k, v] of Object.entries(rules)) {
-        formatted[parseInt(k)] = (v as any[]).map((item: any) => ({ start: item.start, end: item.end }));
+        formatted[parseInt(k)] = v.map((item) => ({ start: item.start, end: item.end }));
       }
       setAvailability(formatted);
       setLoading(false);
@@ -1063,7 +1099,7 @@ function AvailabilityTab({ calendarId }: { calendarId: string }) {
 // ============================================================
 // BOOKING PAGE TAB
 // ============================================================
-function BookingPageTab({ calendar, form, setForm, saving, onSave }: { calendar: CalendarType; form: any; setForm: (f: any) => void; saving: boolean; onSave: () => void }) {
+function BookingPageTab({ calendar, form, setForm, saving, onSave }: { calendar: CalendarType; form: SettingsForm; setForm: (f: SettingsForm) => void; saving: boolean; onSave: () => void }) {
   const bookingUrl = `${window.location.origin}/book/${calendar.slug}`;
   const { toast } = useToast();
   const [embedType, setEmbedType] = useState<'inline' | 'popup' | 'button'>('inline');
@@ -1123,7 +1159,7 @@ function BookingPageTab({ calendar, form, setForm, saving, onSave }: { calendar:
 // ============================================================
 // FORMS TAB
 // ============================================================
-function FormsTab({ calendarId, form, setForm, saving, onSave }: { calendarId: string; form: any; setForm: (f: any) => void; saving: boolean; onSave: () => void }) {
+function FormsTab({ calendarId, form, setForm, saving, onSave }: { calendarId: string; form: SettingsForm; setForm: (f: SettingsForm) => void; saving: boolean; onSave: () => void }) {
   const { toast } = useToast();
   const [attachedForms, setAttachedForms] = useState<Form[]>([]);
   const [availableForms, setAvailableForms] = useState<Form[]>([]);
@@ -1228,7 +1264,7 @@ function FormsTab({ calendarId, form, setForm, saving, onSave }: { calendarId: s
 // ============================================================
 // NOTIFICATIONS TAB
 // ============================================================
-function NotificationsTab({ calendarId }: { calendarId: string }) {
+function NotificationsTab(_props: { calendarId: string }) {
   return (
     <SettingsSection title="Notification Rules" description="Configure who gets notified and how when bookings happen.">
       <div className="space-y-3">
@@ -1253,7 +1289,7 @@ function NotificationsTab({ calendarId }: { calendarId: string }) {
 // ============================================================
 // REMINDERS TAB
 // ============================================================
-function RemindersTab({ calendarId }: { calendarId: string }) {
+function RemindersTab(_props: { calendarId: string }) {
   return (
     <SettingsSection title="Booking Reminders" description="Send automated reminders before appointments.">
       <div className="space-y-3">
@@ -1275,7 +1311,7 @@ function RemindersTab({ calendarId }: { calendarId: string }) {
 // ============================================================
 // LIMITS TAB
 // ============================================================
-function LimitsTab({ form, setForm, saving, onSave }: { form: any; setForm: (f: any) => void; saving: boolean; onSave: () => void; }) {
+function LimitsTab({ form, setForm, saving, onSave }: { form: SettingsForm; setForm: (f: SettingsForm) => void; saving: boolean; onSave: () => void; }) {
   return (
     <div className="space-y-5">
       <SettingsSection title="Booking Limits" description="Control how far in advance and how often people can book.">
@@ -1328,7 +1364,7 @@ function HostsTab({ calendarId }: { calendarId: string }) {
   const loadHosts = useCallback(async () => {
     const { data: hostRows } = await supabase.from('calendar_hosts').select('*').eq('calendar_id', calendarId);
     const userIds = [...new Set((hostRows ?? []).map((h: CalendarHost) => h.user_id))];
-    let profileMap = new Map<string, Profile>();
+    const profileMap = new Map<string, Profile>();
     if (userIds.length > 0) {
       const { data: profRows } = await supabase.from('profiles').select('*').in('user_id', userIds);
       (profRows ?? []).forEach((p: Profile) => profileMap.set(p.user_id, p));
@@ -1381,7 +1417,7 @@ function HostsTab({ calendarId }: { calendarId: string }) {
               <Avatar firstName={h.profiles?.first_name} lastName={h.profiles?.last_name} size="sm" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-navy-700">{getFullName(h.profiles ?? { first_name: null, last_name: null })}</p>
-                <p className="text-xs text-ivory-600">{(h.profiles as any)?.email ?? ''}</p>
+                <p className="text-xs text-ivory-600">{(h.profiles as { email?: string | null } | null)?.email ?? ''}</p>
               </div>
               {h.is_primary && <span className="text-xs font-medium text-gold-700 bg-gold-50 px-2 py-0.5 rounded-full">Primary</span>}
               <button onClick={() => removeHost(h.user_id)} className="text-ivory-400 hover:text-burgundy-600"><X className="w-4 h-4" /></button>
@@ -1411,7 +1447,7 @@ function HostsTab({ calendarId }: { calendarId: string }) {
 // ============================================================
 // INTEGRATIONS TAB
 // ============================================================
-function IntegrationsTab({ calendarId }: { calendarId: string }) {
+function IntegrationsTab(_props: { calendarId: string }) {
   const integrations = [
     { provider: 'Google Calendar', icon: Calendar, connected: true, desc: 'Sync bookings with Google Calendar' },
     { provider: 'Outlook', icon: Mail, connected: false, desc: 'Sync bookings with Outlook' },
@@ -1464,7 +1500,7 @@ function PaymentsTab() {
 // APPEARANCE TAB
 // ============================================================
 function AppearanceTab({ form, setForm, saving, onSave }: {
-  form: any; setForm: (f: any) => void; saving: boolean; onSave: () => void;
+  form: SettingsForm; setForm: (f: SettingsForm) => void; saving: boolean; onSave: () => void;
 }) {
   const fontOptions = ['Inter', 'Georgia', 'system-ui', 'Arial', 'Helvetica', 'Times New Roman'];
 
@@ -1606,10 +1642,12 @@ function AdvancedTab({ calendar }: { calendar: CalendarWithHosts }) {
 // ============================================================
 // SHARE MODAL
 // ============================================================
+interface OneTimeLink { id: string; token: string; created_at: string; used_at: string | null; expires_at: string | null }
+
 function ShareCalendarModal({ calendar, onClose }: { calendar: CalendarType; onClose: () => void }) {
   const { toast } = useToast();
   const { workspace, user } = useAuth();
-  const [oneTimeLinks, setOneTimeLinks] = useState<{ id: string; token: string; created_at: string; used_at: string | null; expires_at: string | null }[]>([]);
+  const [oneTimeLinks, setOneTimeLinks] = useState<OneTimeLink[]>([]);
   const [generating, setGenerating] = useState(false);
   const [expiryHours, setExpiryHours] = useState('24');
   const [linkToDelete, setLinkToDelete] = useState<string | null>(null);
@@ -1617,7 +1655,7 @@ function ShareCalendarModal({ calendar, onClose }: { calendar: CalendarType; onC
 
   useEffect(() => {
     supabase.from('booking_links').select('id, token, created_at, used_at, expires_at').eq('calendar_id', calendar.id).eq('link_type', 'one_time').order('created_at', { ascending: false }).then(({ data }) => {
-      setOneTimeLinks((data ?? []) as any);
+      setOneTimeLinks((data ?? []) as OneTimeLink[]);
     });
   }, [calendar.id]);
 
@@ -1637,7 +1675,7 @@ function ShareCalendarModal({ calendar, onClose }: { calendar: CalendarType; onC
     const { data, error } = await supabase.from('booking_links').insert(linkData).select('id, token, created_at, used_at, expires_at').single();
     setGenerating(false);
     if (error) { toast('Something went wrong. Please try again.', 'error'); return; }
-    setOneTimeLinks([data as any, ...oneTimeLinks]);
+    setOneTimeLinks([data as OneTimeLink, ...oneTimeLinks]);
     toast('One-time link generated');
     // Audit log
     try {
@@ -1645,7 +1683,7 @@ function ShareCalendarModal({ calendar, onClose }: { calendar: CalendarType; onC
         action: 'one_time_link_generated',
         entity_type: 'calendar',
         entity_id: calendar.id,
-        details: { link_id: (data as any)?.id },
+        details: { link_id: (data as OneTimeLink | null)?.id },
       };
       if (calendar.workspace_id) auditInsert.workspace_id = calendar.workspace_id;
       if (calendar.owner_id) auditInsert.user_id = calendar.owner_id;
@@ -1788,7 +1826,7 @@ function ShareCalendarModal({ calendar, onClose }: { calendar: CalendarType; onC
           message="This will permanently delete the link. Anyone who tries to use it will see an error."
           confirmLabel="Revoke"
           onConfirm={() => deleteLink(linkToDelete)}
-          onCancel={() => setLinkToDelete(null)}
+          onClose={() => setLinkToDelete(null)}
         />
       )}
     </Modal>

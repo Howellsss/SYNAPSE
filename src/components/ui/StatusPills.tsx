@@ -16,7 +16,7 @@ const appointmentStatusConfig: Record<AppointmentStatus, { label: string; bg: st
   no_show: { label: 'No-show', bg: 'bg-burgundy-400/10', text: 'text-burgundy-600', dot: 'bg-burgundy-500' },
 };
 
-const workflowStatusConfig: Record<WorkflowStatus, { label: string; bg: string; text: string; dot: string }> = {
+const workflowStatusConfig: Partial<Record<WorkflowStatus, { label: string; bg: string; text: string; dot: string }>> = {
   active: { label: 'Active', bg: 'bg-green-50', text: 'text-green-700', dot: 'bg-green-500' },
   draft: { label: 'Draft', bg: 'bg-ivory-100', text: 'text-ivory-700', dot: 'bg-ivory-600' },
   paused: { label: 'Paused', bg: 'bg-amber-50', text: 'text-amber-700', dot: 'bg-amber-500' },

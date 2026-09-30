@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   FileText, Plus, Search, Copy, Trash2, Edit, Link2, Eye,
   Archive, MoreVertical, LayoutGrid, List as ListIcon, Clock,
-  ChevronDown, CheckSquare, BarChart3, X,
+  ChevronDown, CheckSquare, BarChart3,
   Inbox, ExternalLink,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -633,7 +633,7 @@ interface FormListProps {
   onMenuToggle: (id: string, e: React.MouseEvent) => void;
 }
 
-function FormList({ forms, isSurvey, onEdit, onPreview, onShare, onDuplicate, onSubmissions, onRename, onArchive, onUnarchive, onToggleStatus, onDelete, openMenuId, onMenuToggle }: FormListProps) {
+function FormList({ forms, isSurvey, onEdit, onShare, onDuplicate, onSubmissions, onRename, onArchive, onUnarchive, onToggleStatus, onDelete, openMenuId, onMenuToggle }: FormListProps) {
   return (
     <div className="card p-0 overflow-hidden">
       <table className="w-full">

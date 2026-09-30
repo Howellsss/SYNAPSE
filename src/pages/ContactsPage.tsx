@@ -525,7 +525,7 @@ function ContactListButton({ icon: Icon, label, count, active, onClick }: { icon
 // ============================================================
 // Import Modal
 // ============================================================
-function ImportModal({ tags, onClose, onImported }: { tags: TagType[]; onClose: () => void; onImported: () => void }) {
+function ImportModal({ onClose, onImported }: { tags: TagType[]; onClose: () => void; onImported: () => void }) {
   const { workspace, user } = useAuth();
   const { toast } = useToast();
   const [step, setStep] = useState<'upload' | 'map' | 'preview' | 'result'>('upload');

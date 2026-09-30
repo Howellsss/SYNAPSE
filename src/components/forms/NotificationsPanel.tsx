@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import {
   Bell, Mail, MessageSquare, Send, ChevronDown, ChevronRight,
-  Plus, X, User, AlertCircle, Check, Eye, EyeOff,
+  Plus, X, AlertCircle, Eye, EyeOff,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/context/ToastContext';
-import { supabase } from '@/lib/supabase';
 import type {
   FormDefinition, FormNotifications,
   InternalNotification, RespondentNotification, PostSubmissionConfig,
@@ -59,6 +58,7 @@ export function NotificationsPanel({ definition, formName, onUpdateNotifications
           <RespondentNotificationEditor
             config={definition.notifications.respondent}
             definition={definition}
+            formName={formName}
             onChange={(updates) => onUpdateNotifications({ respondent: { ...definition.notifications.respondent, ...updates } })}
           />
         </CollapsibleSection>
@@ -277,10 +277,11 @@ function InternalNotificationEditor({
 // ============================================================
 
 function RespondentNotificationEditor({
-  config, definition, onChange,
+  config, definition, formName, onChange,
 }: {
   config: RespondentNotification;
   definition: FormDefinition;
+  formName: string;
   onChange: (updates: Partial<RespondentNotification>) => void;
 }) {
   const { toast } = useToast();
@@ -630,7 +631,7 @@ function DynamicVariablesHint() {
 // ============================================================
 
 function TestEmailButton({
-  config, formName, definition, toast,
+  config, formName, toast,
 }: {
   config: RespondentNotification;
   formName: string;

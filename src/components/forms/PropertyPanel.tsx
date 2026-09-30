@@ -19,7 +19,7 @@ interface PropertyPanelProps {
 
 export function PropertyPanel({
   definition, selectedElementId, selectedSectionId,
-  onUpdateElement, onUpdateElementField, onUpdateElementContent, onUpdateElementStyle,
+  onUpdateElementField, onUpdateElementContent, onUpdateElementStyle,
   onUpdateSection, onDuplicateElement, onRemoveElement, onDeselect,
 }: PropertyPanelProps) {
   const [tab, setTab] = useState<'general' | 'style'>('general');

@@ -464,6 +464,7 @@ export interface AppointmentParticipant {
 export interface Form {
   id: string;
   workspace_id: string;
+  owner_id?: string | null;
   name: string;
   description: string | null;
   type: 'form' | 'survey';

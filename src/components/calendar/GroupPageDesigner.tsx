@@ -14,7 +14,7 @@ import {
   type GroupPageConfig, type NavItem, type PageLayout, type CardStyle,
   type HeadingFont, type BodyFont, type HeadingWeight, type Alignment,
   type ChildCalendarPresentation,
-  DEFAULT_GROUP_PAGE_CONFIG, mergeGroupPageConfig,
+  DEFAULT_GROUP_PAGE_CONFIG,
 } from '@/lib/group-page-config';
 
 interface Props {
