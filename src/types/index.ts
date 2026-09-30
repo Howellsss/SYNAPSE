@@ -194,8 +194,54 @@ export interface Profile {
   timezone: string;
   language: string;
   avatar_url: string | null;
+  avatar_config: AvatarConfig | null;
+  media_prefs: MediaPrefs | null;
   created_at: string;
   updated_at: string;
+}
+
+// ============================================================
+// SPACES (the virtual offices shown as "Workspaces" in the UI;
+// `Workspace` above is the account/tenant that owns them)
+// ============================================================
+
+/** Placeholder until the avatar builder defines its shape. */
+export type AvatarConfig = Record<string, unknown>;
+
+export interface MediaPrefs {
+  join_muted: boolean;
+  join_camera_off: boolean;
+  data_saver: boolean;
+}
+
+export type SpaceType = 'office' | 'classroom' | 'event_hall' | 'coaching_studio' | 'community_hub';
+
+/** solo = 1, small = 2–10, medium = 11–25, large = 26–50, xl = 50+ people. */
+export type SizeBand = 'solo' | 'small' | 'medium' | 'large' | 'xl';
+
+export interface Space {
+  id: string;
+  workspace_id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  space_type: SpaceType;
+  size_band: SizeBand;
+  template_key: string;
+  map: Record<string, unknown>;
+  capacity: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SpaceMember {
+  space_id: string;
+  user_id: string;
+  avatar_override: AvatarConfig | null;
+  desk_id: string | null;
+  last_position: Record<string, unknown> | null;
+  first_entered_at: string | null;
 }
 
 export type PhoneType = 'mobile' | 'home' | 'work' | 'other';
