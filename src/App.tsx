@@ -20,7 +20,10 @@ import { SettingsPage } from '@/pages/SettingsPage';
 import { BookingPage } from '@/pages/BookingPage';
 import { GroupCalendarSettingsPage } from '@/pages/GroupCalendarSettingsPage';
 import { ComingSoonPage } from '@/pages/ComingSoonPage';
-import { Video, CalendarHeart, MonitorPlay, MessagesSquare, FolderOpen, Building2 } from 'lucide-react';
+import { WorkspacesPage } from '@/pages/WorkspacesPage';
+import { CreateSpaceWizard } from '@/pages/CreateSpaceWizard';
+import { SpacePage } from '@/pages/SpacePage';
+import { Video, CalendarHeart, MonitorPlay, MessagesSquare, FolderOpen } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/States';
 
 function AppContent() {
@@ -60,6 +63,11 @@ function AppContent() {
     return <AuthPage />;
   }
 
+  // Create-a-workspace wizard is full screen, without the sidebar and top bar
+  if (path === '/workspace/new' || path.startsWith('/workspace/new?')) {
+    return <CreateSpaceWizard />;
+  }
+
   // Authenticated app
   const renderPage = () => {
     if (path === '/dashboard' || path === '/') return <Dashboard />;
@@ -85,7 +93,9 @@ function AppContent() {
     if (path.startsWith('/webinars')) return <ComingSoonPage title="Webinars" description="Host live and on-demand webinars" icon={MonitorPlay} />;
     if (path.startsWith('/conversations')) return <ComingSoonPage title="Conversations" description="Manage messages across channels" icon={MessagesSquare} />;
     if (path.startsWith('/media-library')) return <ComingSoonPage title="Media Library" description="Store and organize your media assets" icon={FolderOpen} />;
-    if (path.startsWith('/workspace')) return <ComingSoonPage title="Workspace" description="Manage your workspace settings and members" icon={Building2} />;
+    const spaceMatch = path.match(/^\/workspace\/([a-z0-9-]+)(?:[/?]|$)/);
+    if (spaceMatch) return <SpacePage key={spaceMatch[1]} slug={spaceMatch[1]} />;
+    if (/^\/workspaces?(?:[/?]|$)/.test(path)) return <WorkspacesPage />;
     return <Dashboard />;
   };
 
