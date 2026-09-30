@@ -55,14 +55,15 @@ With the Supabase CLI:
 npx supabase login
 npx supabase link --project-ref parmtumfpsdtdtgwvscq
 npx supabase functions deploy gmail-oauth --no-verify-jwt
-npx supabase functions deploy send-email
+npx supabase functions deploy send-email --no-verify-jwt
 ```
 
 Or in the dashboard: **Edge Functions → Deploy a new function → Via editor**, name it
 `gmail-oauth`, paste `supabase/functions/gmail-oauth/index.ts`, deploy, then open its
 settings and turn **off** "Enforce JWT verification" (Google's redirect has no Supabase login).
-Repeat for `send-email`, pasting `supabase/functions/send-email/index.ts` and leaving JWT
-verification **on**.
+Repeat for `send-email`, pasting `supabase/functions/send-email/index.ts`, and turn JWT
+verification **off** for it too: the function checks the user's login itself, and the legacy
+gateway check rejects logins signed with Supabase's newer JWT keys.
 
 ## 5. Test
 
