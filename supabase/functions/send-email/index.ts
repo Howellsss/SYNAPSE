@@ -303,21 +303,32 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const { data: message, error: insertError } = await db
+    const outcome = {
+      status,
+      provider_message_id: providerId,
+      error: errorText,
+      sent_at: status === "sent" ? new Date().toISOString() : null,
+    };
+    let { data: message, error: insertError } = await db
       .from("messages")
-      .insert({
-        ...record,
-        status,
-        provider_message_id: providerId,
-        error: errorText,
-        sent_at: status === "sent" ? new Date().toISOString() : null,
-      })
+      .insert({ ...record, ...outcome })
       .select()
       .single();
-    if (insertError) console.error("message insert failed", insertError.message);
+    if (insertError) {
+      // Database without the newer email columns: still record the core message on the contact.
+      console.error("message insert failed, retrying with core columns", insertError.message);
+      const { workspace_id, contact_id, channel, direction, subject, body: text_body } = record;
+      ({ data: message, error: insertError } = await db
+        .from("messages")
+        .insert({ workspace_id, contact_id, channel, direction, subject, body: text_body, ...outcome })
+        .select()
+        .single());
+      if (insertError) console.error("core message insert failed", insertError.message);
+    }
 
-    if (status === "failed") return json({ error: errorText, message }, 502);
-    return json({ message });
+    // The email itself has already gone out at this point; a failed record never turns it into an error.
+    if (status === "failed") return json({ sent: false, error: errorText, message }, 502);
+    return json({ sent: true, message: message ?? null, recorded: !insertError });
   } catch (e) {
     console.error(e);
     return json({ error: (e as Error).message }, 500);

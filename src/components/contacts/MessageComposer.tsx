@@ -218,12 +218,13 @@ export function MessageComposer({ contact, onSent }: { contact: Contact; onSent:
       },
     });
     setSending(false);
-    if (error || !data?.message) {
+    if (error || data?.sent === false) {
       toast(await functionErrorMessage(error, 'The email could not be sent.'), 'error');
       await onSent(); // a failed attempt is still recorded on the contact
       return;
     }
     toast(`Email sent from ${mailbox.email}`);
+    if (data?.recorded === false) toast('Sent, but it could not be saved on this contact. Run the latest database update.', 'info');
     clear();
     await onSent();
   };
