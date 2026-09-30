@@ -19,10 +19,16 @@ export interface EmailAccount {
 export async function functionErrorMessage(error: unknown, fallback: string): Promise<string> {
   const ctx = (error as { context?: Response })?.context;
   if (ctx && typeof ctx.json === 'function') {
-    try {
-      const body = await ctx.clone().json();
-      if (body?.error) return String(body.error);
-    } catch { /* not JSON */ }
+    let text = '';
+    try { text = await ctx.clone().text(); } catch { /* body unreadable */ }
+    let body: { error?: unknown; message?: unknown; msg?: unknown } | null = null;
+    try { body = JSON.parse(text); } catch { /* not JSON */ }
+    const detail = String(body?.error ?? body?.message ?? body?.msg ?? text ?? '').trim();
+    if (/invalid jwt|jwt/i.test(detail) && ctx.status === 401) {
+      return 'The email function rejected your login (JWT). In Supabase, turn off “Verify JWT” for send-email.';
+    }
+    if (detail) return `${detail}${ctx.status ? ` (${ctx.status})` : ''}`;
+    if (ctx.status) return `${fallback} (${ctx.status})`;
   }
   const msg = (error as Error)?.message ?? '';
   if (/Failed to send a request|Function not found|404/i.test(msg)) {
