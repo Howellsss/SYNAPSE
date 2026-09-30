@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { X, Sparkles } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { VariablePicker } from './ConditionBuilder';
 import { ConditionBuilder } from './ConditionBuilder';
 import {
@@ -9,7 +8,7 @@ import {
 import type { WorkflowNode, WorkflowCondition } from '@/types';
 
 interface NodeConfigPanelProps {
-  node: WorkflowNode;
+  node: Omit<WorkflowNode, 'workflow_id'>;
   onUpdate: (config: Record<string, unknown>) => void;
   onClose: () => void;
 }

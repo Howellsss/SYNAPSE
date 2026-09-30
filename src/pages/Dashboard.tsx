@@ -4,8 +4,6 @@ import {
   ArrowRight,
   Bell,
   CalendarDays,
-  CheckCircle2,
-  Clock3,
   FileText,
   FolderUp,
   MessageCircle,
@@ -16,11 +14,9 @@ import {
   UserPlus,
   Users,
   Video,
-  Workflow,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { Avatar } from '@/components/ui/Avatar';
 import { Skeleton } from '@/components/ui/States';
 import { formatDate, formatTime, getFullName } from '@/lib/utils';
 import { useRouter } from '@/lib/router';

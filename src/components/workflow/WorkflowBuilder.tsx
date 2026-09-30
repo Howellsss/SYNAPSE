@@ -3,19 +3,18 @@ import {
   ArrowLeft, X, Plus, Zap, Clock, GitBranch, Target, Split, Square,
   CheckCircle2, Settings2, Play, Sparkles, AlertTriangle, MousePointer2,
   Hand, ZoomIn, ZoomOut, Maximize2, Undo2, Redo2, Trash2, Copy,
-  ChevronDown, Workflow as WorkflowIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/context/ToastContext';
 import {
-  TRIGGER_CATEGORIES, ACTION_CATEGORIES, getTriggerOption, getActionOption,
+  getTriggerOption, getActionOption,
 } from '@/lib/workflow-constants';
 import { TriggerSelector, ActionSelector } from './Selectors';
 import { NodeConfigPanel } from './NodeConfigPanel';
 import type {
-  Workflow, WorkflowNode, WorkflowStatus, TriggerType,
+  WorkflowNode, WorkflowStatus, TriggerType,
   WorkflowValidationIssue, WorkflowSettings,
 } from '@/types';
 
@@ -152,7 +151,6 @@ export function WorkflowBuilder({ workflowId, preset, onClose, onSaved }: Workfl
   };
 
   const addNode = (actionType: string, afterId?: string) => {
-    const actionMeta = getActionOption(actionType);
     const nodeType = actionType === 'wait' ? 'wait' : actionType === 'if_else' ? 'condition' : actionType === 'goal' ? 'goal' : actionType === 'split_test' ? 'split_test' : actionType === 'end_workflow' ? 'end' : 'action';
     const newNode: BuilderNode = {
       id: crypto.randomUUID(),
@@ -203,7 +201,7 @@ export function WorkflowBuilder({ workflowId, preset, onClose, onSaved }: Workfl
     if (!trigger) { toast('Add a trigger first', 'error'); return; }
     setSaving(true);
     const newStatus: WorkflowStatus = activate ? 'active' : status;
-    const allNodes = [
+    const allNodes: Pick<WorkflowNode, 'node_type' | 'action_type' | 'config' | 'sort_order' | 'parent_node_id' | 'branch_label'>[] = [
       { node_type: 'trigger', action_type: trigger, config: {}, sort_order: 0 },
       ...nodes.map((n, i) => ({ node_type: n.node_type, action_type: n.action_type, config: n.config, sort_order: i + 1, parent_node_id: n.parent_node_id, branch_label: n.branch_label })),
     ];
@@ -384,7 +382,7 @@ export function WorkflowBuilder({ workflowId, preset, onClose, onSaved }: Workfl
             </div>
 
             {/* Nodes */}
-            {trigger && nodes.map((node, idx) => (
+            {trigger && nodes.map((node) => (
               <div key={node.id}>
                 {/* Plus button between nodes */}
                 <div className="relative flex h-10 items-center justify-center">
@@ -526,7 +524,6 @@ function NodeCard({ node, selected, onSelect, onRemove, onDuplicate }: {
   onDuplicate: () => void;
 }) {
   const Icon = NODE_ICONS[node.node_type] ?? Settings2;
-  const actionMeta = getActionOption(node.action_type ?? '');
   const label = nodeLabel(node);
   const summary = nodeSummary(node);
   const isControl = node.node_type === 'condition' || node.node_type === 'goal' || node.node_type === 'split_test' || node.node_type === 'end';
@@ -805,7 +802,7 @@ function TestPanel({ trigger, nodes, onClose }: {
 // ============================================================
 // AI Assistant Panel
 // ============================================================
-function AIAssistantPanel({ workflowName, trigger, nodes, onClose, onAddNode, onSetTrigger }: {
+function AIAssistantPanel({ workflowName, trigger, nodes, onClose, onAddNode }: {
   workflowName: string;
   trigger: TriggerType | null;
   nodes: BuilderNode[];

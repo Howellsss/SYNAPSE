@@ -219,7 +219,7 @@ function CanvasSection({
   );
 }
 
-function CanvasElement({ element, definition, viewport }: { element: FormElement; definition: FormDefinition; viewport: Viewport }) {
+function CanvasElement({ element, definition }: { element: FormElement; definition: FormDefinition; viewport: Viewport }) {
   const theme = definition.theme;
   const c = element.content;
   const f = element.field;

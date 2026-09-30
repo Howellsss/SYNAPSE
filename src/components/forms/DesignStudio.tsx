@@ -368,7 +368,7 @@ function LayoutPanel({ layout, onUpdate }: { layout: ThemeLayout; onUpdate: (u: 
 // FIELDS PANEL
 // ============================================================
 
-function FieldsPanel({ fieldStyle, typography, onUpdate }: { fieldStyle: ThemeFieldStyle; typography: ThemeTypography; onUpdate: (u: Partial<ThemeFieldStyle>) => void }) {
+function FieldsPanel({ fieldStyle, onUpdate }: { fieldStyle: ThemeFieldStyle; typography: ThemeTypography; onUpdate: (u: Partial<ThemeFieldStyle>) => void }) {
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-2">
@@ -399,7 +399,7 @@ function FieldsPanel({ fieldStyle, typography, onUpdate }: { fieldStyle: ThemeFi
 // BUTTONS PANEL
 // ============================================================
 
-function ButtonsPanel({ buttonStyle, typography, onUpdate }: { buttonStyle: ThemeButtonStyle; typography: ThemeTypography; onUpdate: (u: Partial<ThemeButtonStyle>) => void }) {
+function ButtonsPanel({ buttonStyle, onUpdate }: { buttonStyle: ThemeButtonStyle; typography: ThemeTypography; onUpdate: (u: Partial<ThemeButtonStyle>) => void }) {
   return (
     <div className="space-y-3">
       <div>

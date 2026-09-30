@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  ArrowLeft, Eye, Share2, Upload, Save, Undo2, Redo2,
+  ArrowLeft, Eye, Share2, Upload, Undo2, Redo2,
   Layers, Palette, GitBranch, Settings, Bell, Inbox,
-  Plus, ChevronDown, Loader2, Check, AlertCircle, Send,
+  Plus, Loader2, Check, AlertCircle, Send,
   Monitor, Tablet, Smartphone, X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -22,7 +22,7 @@ import {
   removeElement, updateElement, updateElementField, updateElementContent,
   updateElementStyle, moveElement, duplicateElement,
   addSection, updateSection, removeSection,
-  addPage, removePage, renamePage,
+  addPage,
   updateTheme, updateSettings, updateHeader, updateFooter, updateNotifications,
   serializeDefinition, deserializeDefinition, migrateLegacyFields,
   HistoryManager,
@@ -219,22 +219,22 @@ export function FormBuilder({ formId, onBack }: FormBuilderProps) {
     withHistory(updateElement(definition, id, updates));
   }, [definition, withHistory]);
 
-  const handleUpdateElementField = useCallback((id: string, updates: Parameters<typeof updateElementField>[1]) => {
+  const handleUpdateElementField = useCallback((id: string, updates: Parameters<typeof updateElementField>[2]) => {
     if (!definition) return;
     withHistory(updateElementField(definition, id, updates));
   }, [definition, withHistory]);
 
-  const handleUpdateElementContent = useCallback((id: string, updates: Parameters<typeof updateElementContent>[1]) => {
+  const handleUpdateElementContent = useCallback((id: string, updates: Parameters<typeof updateElementContent>[2]) => {
     if (!definition) return;
     withHistory(updateElementContent(definition, id, updates));
   }, [definition, withHistory]);
 
-  const handleUpdateElementStyle = useCallback((id: string, updates: Parameters<typeof updateElementStyle>[1]) => {
+  const handleUpdateElementStyle = useCallback((id: string, updates: Parameters<typeof updateElementStyle>[2]) => {
     if (!definition) return;
     withHistory(updateElementStyle(definition, id, updates));
   }, [definition, withHistory]);
 
-  const handleUpdateSection = useCallback((id: string, updates: Parameters<typeof updateSection>[1]) => {
+  const handleUpdateSection = useCallback((id: string, updates: Parameters<typeof updateSection>[2]) => {
     if (!definition) return;
     withHistory(updateSection(definition, id, updates));
   }, [definition, withHistory]);

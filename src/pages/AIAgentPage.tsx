@@ -1,9 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
-import { Sparkles, Send, Calendar, Users, FileText, Workflow, Mic, Clock } from 'lucide-react';
+import { Sparkles, Send, Users } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
-import { useRouter } from '@/lib/router';
 import type { Contact, Appointment, Calendar as CalendarType, Form, Workflow as WorkflowType, Recording } from '@/types';
 
 interface ChatMessage {
@@ -23,7 +22,6 @@ const SUGGESTED_PROMPTS = [
 
 export function AIAgentPage() {
   const { workspace, profile } = useAuth();
-  const [, navigate] = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);

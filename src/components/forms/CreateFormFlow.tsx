@@ -16,7 +16,6 @@ import { FIELD_TYPE_METADATA } from '@/lib/booking-form';
 import type { FormFieldType } from '@/types';
 
 type CreationPath = 'choose' | 'scratch' | 'templates' | 'ai' | 'template-preview';
-type FormType = 'form' | 'survey';
 
 const AI_SUGGESTIONS_FORM = [
   'Create a client onboarding form for a digital marketing agency',
@@ -64,7 +63,6 @@ export function CreateFormFlow({ open, onClose, isSurvey, onCreated }: CreateFor
   };
 
   const title = isSurvey ? 'Create Survey' : 'Create Form';
-  const typeLabel = isSurvey ? 'survey' : 'form';
 
   return (
     <Modal open={open} onClose={onClose} title={title} size={path === 'choose' ? 'md' : 'xl'}>

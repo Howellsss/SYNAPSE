@@ -318,10 +318,9 @@ function RenderSection({ section, definition, builderMode, selectedElementId, on
 // ELEMENT RENDERER
 // ============================================================
 
-function RenderElement({ element, definition, builderMode, selected, onSelect, answers, onAnswerChange, viewport }: {
+function RenderElement({ element, definition, builderMode, selected, onSelect, answers, onAnswerChange }: {
   element: FormElement; definition: FormDefinition; builderMode: boolean; selected: boolean; onSelect?: (id: string) => void; answers: Record<string, string>; onAnswerChange?: (fieldId: string, value: string) => void; viewport: Viewport;
 }) {
-  const theme = definition.theme;
   const style = element.style;
   const elementStyle: React.CSSProperties = {
     color: style?.textColor, fontSize: style?.fontSize, fontWeight: style?.fontWeight,

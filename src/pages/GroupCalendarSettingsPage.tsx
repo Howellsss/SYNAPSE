@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft, CalendarDays, Check, ChevronUp, ChevronDown, Copy, ExternalLink,
-  Eye, EyeOff, GripVertical, Link2, Loader2, Palette, Plus, Save, Trash2,
-  UsersRound, X, BarChart3,
+  ArrowLeft, CalendarDays, ChevronUp, ChevronDown, Copy, ExternalLink,
+  Eye, EyeOff, Link2, Loader2, Palette, Plus, Save, Trash2,
+  UsersRound, BarChart3,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { slugify } from '@/lib/utils';

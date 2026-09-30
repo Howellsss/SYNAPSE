@@ -22,7 +22,6 @@ import {
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { Avatar } from '@/components/ui/Avatar';
-import { useRouter } from '@/lib/router';
 
 interface SidebarProps {
   currentPath: string;

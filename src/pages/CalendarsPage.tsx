@@ -1,19 +1,18 @@
 import { useEffect, useState, useCallback, useMemo, type ComponentType } from 'react';
 import {
-  Calendar, Plus, Search, Clock, Users, Video, Phone, MapPin, Copy, List, X,
+  Calendar, Plus, Search, Clock, Users, Video, MapPin, Copy, List, X,
   ChevronLeft, ChevronRight, CalendarDays, Calendar as CalendarIcon,
   User, UserCheck, UsersRound, CalendarClock, Briefcase, Send, Edit, CheckCircle2,
-  XCircle, Clock3, AlertTriangle, Bell, Filter, Eye, EyeOff, Globe,
+  XCircle, Clock3, AlertTriangle, Filter, Eye, EyeOff, Globe,
   Settings as SettingsIcon, SlidersHorizontal, Calendar as CalendarLucide,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/context/ToastContext';
 import { Avatar } from '@/components/ui/Avatar';
-import { Modal } from '@/components/ui/Modal';
 import { Drawer } from '@/components/ui/Drawer';
 import { EmptyState, Skeleton, ErrorState } from '@/components/ui/States';
-import { formatDate, formatTimeInZone, formatDateInZone, getFullName, cn, slugify } from '@/lib/utils';
+import { formatDate, formatTimeInZone, formatDateInZone, getFullName, cn } from '@/lib/utils';
 import { useRouter } from '@/lib/router';
 import { CalendarSettingsPage } from '@/pages/CalendarSettingsPage';
 import { CreateCalendarWizard } from '@/components/calendar/CreateCalendarWizard';
@@ -62,14 +61,15 @@ type TabType = 'calendar' | 'list' | 'settings';
 interface AppointmentWithRelations extends Appointment {
   contacts: Contact | null;
   calendars: CalendarType | null;
+  // Not an appointments column today, so the list shows a blank line under the title.
+  description?: string | null;
 }
 
 // ============================================================
 // MAIN PAGE
 // ============================================================
 export function CalendarsPage() {
-  const { workspace, profile, user } = useAuth();
-  const { toast } = useToast();
+  const { workspace, user } = useAuth();
   const [, navigate] = useRouter();
   const [tab, setTab] = useState<TabType>('calendar');
   const [calendars, setCalendars] = useState<CalendarType[]>([]);
@@ -537,7 +537,7 @@ function useIsMobile(): boolean {
 // MOBILE AGENDA VIEW
 // ============================================================
 function MobileAgendaView({
-  currentDate, appointments, calendars, visibleCalendars, displayTimezone, onAppointmentClick,
+  currentDate, appointments, visibleCalendars, displayTimezone, onAppointmentClick,
 }: {
   currentDate: Date;
   appointments: AppointmentWithRelations[];
@@ -1111,16 +1111,6 @@ function ManageViewDrawer({
   );
 }
 
-const COMMON_TIMEZONES = [
-  'UTC',
-  'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
-  'America/Anchorage', 'America/Toronto', 'America/Sao_Paulo',
-  'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Europe/Madrid',
-  'Europe/Moscow', 'Africa/Cairo', 'Africa/Johannesburg',
-  'Asia/Dubai', 'Asia/Kolkata', 'Asia/Shanghai', 'Asia/Tokyo',
-  'Asia/Singapore', 'Australia/Sydney', 'Pacific/Auckland',
-];
-
 // ============================================================
 // DATE UTILITIES
 // ============================================================
@@ -1171,7 +1161,7 @@ function getAppointmentsForDay(appointments: AppointmentWithRelations[], day: Da
 // WEEK VIEW
 // ============================================================
 function WeekView({
-  currentDate, appointments, calendars, visibleCalendars, displayTimezone, onAppointmentClick,
+  currentDate, appointments, visibleCalendars, displayTimezone, onAppointmentClick,
 }: {
   currentDate: Date;
   appointments: AppointmentWithRelations[];
@@ -1277,7 +1267,7 @@ function WeekView({
 // DAY VIEW
 // ============================================================
 function DayView({
-  currentDate, appointments, calendars, visibleCalendars, displayTimezone, onAppointmentClick,
+  currentDate, appointments, visibleCalendars, displayTimezone, onAppointmentClick,
 }: {
   currentDate: Date;
   appointments: AppointmentWithRelations[];
@@ -1368,7 +1358,7 @@ function DayView({
 // MONTH VIEW
 // ============================================================
 function MonthView({
-  currentDate, appointments, calendars, visibleCalendars, displayTimezone, onAppointmentClick, onDayClick,
+  currentDate, appointments, visibleCalendars, displayTimezone, onAppointmentClick, onDayClick,
 }: {
   currentDate: Date;
   appointments: AppointmentWithRelations[];
@@ -1678,7 +1668,7 @@ function AppointmentDetailDrawer({
   const { toast } = useToast();
   const { profile } = useAuth();
   const [formSubmissions, setFormSubmissions] = useState<FormSubmission[]>([]);
-  const [loadingSubs, setLoadingSubs] = useState(true);
+  const [, setLoadingSubs] = useState(true);
 
   useEffect(() => {
     supabase
@@ -1870,73 +1860,6 @@ function formatHourLabel(hour: number): string {
 }
 
 // ============================================================
-// CALENDAR CARD (Settings tab)
-// ============================================================
-function CalendarCard({ calendar, onUpdated, onEdit }: { calendar: CalendarType; onUpdated: () => void; onEdit: () => void }) {
-  const { toast } = useToast();
-  const typeInfo = CALENDAR_TYPES.find(t => t.value === calendar.calendar_type);
-  const bookingUrl = `${window.location.origin}/book/${calendar.slug}`;
-
-  const copyLink = () => {
-    navigator.clipboard.writeText(bookingUrl);
-    toast('Booking link copied');
-  };
-
-  const toggleStatus = async () => {
-    await supabase.from('calendars').update({ status: calendar.status === 'active' ? 'inactive' : 'active' }).eq('id', calendar.id);
-    toast(calendar.status === 'active' ? 'Calendar deactivated' : 'Calendar activated');
-    onUpdated();
-  };
-
-  return (
-    <div className="card card-hover p-5">
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${calendar.color}15` }}>
-            {typeInfo && <typeInfo.icon className="w-5 h-5" style={{ color: calendar.color }} />}
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold text-navy-800">{calendar.name}</h3>
-            <p className="text-xs text-ivory-600">{typeInfo?.label} · {calendar.duration_minutes}min</p>
-          </div>
-        </div>
-        <span className={cn('status-pill', calendar.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-ivory-100 text-ivory-700')}>
-          <span className={cn('w-1.5 h-1.5 rounded-full', calendar.status === 'active' ? 'bg-green-500' : 'bg-ivory-600')} />
-          <span className="capitalize">{calendar.status}</span>
-        </span>
-      </div>
-      {calendar.description && <p className="text-xs text-ivory-600 mb-3 line-clamp-2">{calendar.description}</p>}
-      <div className="flex items-center gap-2 text-xs text-ivory-600 mb-4">
-        <Clock className="w-3.5 h-3.5" />
-        <span>{calendar.duration_minutes} min</span>
-        <span>·</span>
-        <span className="capitalize">{calendar.location_type.replace('_', ' ')}</span>
-        {calendar.capacity > 1 && (
-          <>
-            <span>·</span>
-            <Users className="w-3.5 h-3.5" />
-            <span>Capacity {calendar.capacity}</span>
-          </>
-        )}
-      </div>
-      <div className="flex items-center gap-2">
-        <button onClick={copyLink} className="btn-secondary btn-sm flex-1">
-          <Copy className="w-3.5 h-3.5" />
-          Copy Link
-        </button>
-        <button onClick={onEdit} className="btn-secondary btn-sm">
-          <Edit className="w-3.5 h-3.5" />
-          Edit
-        </button>
-        <button onClick={toggleStatus} className="btn-ghost btn-sm">
-          {calendar.status === 'active' ? 'Deactivate' : 'Activate'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
 // CREATE CALENDAR WIZARD
 // ============================================================
 // Old CreateCalendarWizard moved to @/components/calendar/CreateCalendarWizard
@@ -2051,14 +1974,14 @@ function EditCalendarDrawer({ calendar, onClose, onUpdated }: { calendar: Calend
             </div>
             <div>
               <label className="block text-sm font-medium text-navy-700 mb-1.5">Booking Flow</label>
-              <select className="input-field" value={form.booking_flow} onChange={e => setForm({ ...form, booking_flow: e.target.value })}>
+              <select className="input-field" value={form.booking_flow} onChange={e => setForm({ ...form, booking_flow: e.target.value as typeof form.booking_flow })}>
                 <option value="calendar_first">Calendar first (pick time, then form)</option>
                 <option value="form_first">Form first (fill form, then pick time)</option>
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-navy-700 mb-1.5">Form Mode</label>
-              <select className="input-field" value={form.form_mode} onChange={e => setForm({ ...form, form_mode: e.target.value, connected_form_id: e.target.value === 'default' ? '' : form.connected_form_id })}>
+              <select className="input-field" value={form.form_mode} onChange={e => setForm({ ...form, form_mode: e.target.value as typeof form.form_mode, connected_form_id: e.target.value === 'default' ? '' : form.connected_form_id })}>
                 <option value="default">Default Form</option>
                 <option value="custom">Custom Form</option>
               </select>

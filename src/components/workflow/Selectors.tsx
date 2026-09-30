@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { Search, X, ChevronDown } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getTriggerCategories, TRIGGER_CATEGORIES } from '@/lib/workflow-constants';
+import { getTriggerCategories, TRIGGER_CATEGORIES, getActionCategories, ACTION_CATEGORIES } from '@/lib/workflow-constants';
 import type { TriggerType } from '@/types';
 
 interface TriggerSelectorProps {
@@ -99,7 +99,7 @@ export function ActionSelector({ open, onClose, onSelect, title = 'Add Step' }: 
   if (!open) return null;
 
   const categories = ['all', ...getActionCategories()];
-  const allActions = ACTION_CATEGORIES_FOR_SELECTOR;
+  const allActions = ACTION_CATEGORIES;
   const filtered = allActions.filter((a) => {
     const matchesSearch = a.label.toLowerCase().includes(search.toLowerCase()) || a.description.toLowerCase().includes(search.toLowerCase());
     const matchesCategory = activeCategory === 'all' || a.category === activeCategory;
@@ -170,6 +170,3 @@ export function ActionSelector({ open, onClose, onSelect, title = 'Add Step' }: 
   );
 }
 
-// Re-export from constants for the selector
-import { ACTION_CATEGORIES } from '@/lib/workflow-constants';
-const ACTION_CATEGORIES_FOR_SELECTOR = ACTION_CATEGORIES;

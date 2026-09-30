@@ -22,6 +22,32 @@ interface SubmissionBody {
   formName?: string;
 }
 
+// Shapes read from a form's saved definition (see src/lib/form-builder-types.ts).
+interface DefinitionElement {
+  type?: string;
+  displayLabel?: string;
+  field?: { fieldId: string; label?: string; visible?: boolean; mappedContactField?: string };
+}
+
+interface InternalNotificationConfig {
+  enabled?: boolean;
+  recipients?: string[];
+  subject?: string;
+  message?: string;
+  channel?: string;
+  includeAllFields?: boolean;
+  includeFields?: string[];
+}
+
+interface RespondentNotificationConfig {
+  enabled?: boolean;
+  emailFieldId?: string;
+  subject?: string;
+  message?: string;
+  includeAnswers?: string;
+  includedFields?: string[];
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -84,7 +110,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const notifications = (definition as Record<string, unknown>)?.notifications as
-      | { internal?: any; respondent?: any; postSubmission?: any }
+      | { internal?: InternalNotificationConfig; respondent?: RespondentNotificationConfig; postSubmission?: Record<string, unknown> }
       | undefined;
 
     const settings = (definition as Record<string, unknown>)?.settings as
@@ -92,7 +118,7 @@ Deno.serve(async (req: Request) => {
       | undefined;
 
     const elements = (definition as Record<string, unknown>)?.elements as
-      | Record<string, any>
+      | Record<string, DefinitionElement>
       | undefined;
 
     // 3. Save the submission transactionally
@@ -139,7 +165,7 @@ Deno.serve(async (req: Request) => {
 
       if (Object.keys(contactData).length > 0) {
         // Try to find existing contact by email or phone
-        let existingContact: any = null;
+        let existingContact: { id: string } | null = null;
 
         if (emailVal) {
           const { data } = await supabase
@@ -239,11 +265,12 @@ Deno.serve(async (req: Request) => {
 
     // 5. Trigger internal notifications
     const internalConfig = notifications?.internal;
-    if (internalConfig?.enabled && internalConfig.recipients?.length > 0) {
+    const internalRecipients = internalConfig?.recipients ?? [];
+    if (internalConfig?.enabled && internalRecipients.length > 0) {
       const subject = replaceVariables(internalConfig.subject || "New Form Submission", body.answers!, form.name, submissionId);
       const messageBody = buildInternalMessage(internalConfig, body.answers!, elements || {});
 
-      for (const recipient of internalConfig.recipients) {
+      for (const recipient of internalRecipients) {
         const { error: logErr } = await supabase
           .from("form_notification_logs")
           .insert({
@@ -376,9 +403,9 @@ function replaceVariables(
 }
 
 function buildInternalMessage(
-  config: any,
+  config: InternalNotificationConfig,
   answers: Record<string, string>,
-  elements: Record<string, any>,
+  elements: Record<string, DefinitionElement>,
 ): string {
   let msg = config.message || "A new form submission has been received.\n\n";
 
@@ -391,11 +418,11 @@ function buildInternalMessage(
         msg += `${el.field.label || el.displayLabel}: ${val}\n`;
       }
     }
-  } else if (config.includeFields?.length > 0) {
+  } else if ((config.includeFields ?? []).length > 0) {
     msg += "\n\nSubmission Data:\n";
     for (const el of Object.values(elements)) {
       if (!el.field) continue;
-      if (!config.includeFields.includes(el.field.fieldId)) continue;
+      if (!(config.includeFields ?? []).includes(el.field.fieldId)) continue;
       const val = answers[el.field.fieldId];
       if (val !== undefined) {
         msg += `${el.field.label || el.displayLabel}: ${val}\n`;
@@ -407,9 +434,9 @@ function buildInternalMessage(
 }
 
 function buildRespondentMessage(
-  config: any,
+  config: RespondentNotificationConfig,
   answers: Record<string, string>,
-  elements: Record<string, any>,
+  elements: Record<string, DefinitionElement>,
 ): string {
   let msg = config.message || "We have received your information.\n\n";
 
@@ -422,11 +449,11 @@ function buildRespondentMessage(
         msg += `${el.field.label || el.displayLabel}: ${val}\n`;
       }
     }
-  } else if (config.includeAnswers === "selected" && config.includedFields?.length > 0) {
+  } else if (config.includeAnswers === "selected" && (config.includedFields ?? []).length > 0) {
     msg += "\n\nYour Responses:\n";
     for (const el of Object.values(elements)) {
       if (!el.field) continue;
-      if (!config.includedFields.includes(el.field.fieldId)) continue;
+      if (!(config.includedFields ?? []).includes(el.field.fieldId)) continue;
       const val = answers[el.field.fieldId];
       if (val !== undefined) {
         msg += `${el.field.label || el.displayLabel}: ${val}\n`;

@@ -1,4 +1,4 @@
-import { Plus, Trash2, GitBranch } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CONDITION_OPERATORS, CONDITION_FIELDS, DYNAMIC_VARIABLES } from '@/lib/workflow-constants';
 import type { WorkflowCondition } from '@/types';
@@ -51,7 +51,6 @@ export function ConditionBuilder({ conditions, logic, onLogicChange, onCondition
       </div>
 
       {conditions.map((cond, idx) => {
-        const operator = CONDITION_OPERATORS.find((o) => o.value === cond.operator);
         const showValue = cond.operator !== 'is_empty' && cond.operator !== 'is_not_empty' && cond.operator !== 'exists';
         return (
           <div key={idx} className="flex flex-wrap items-center gap-2 rounded-xl border border-navy-100 bg-ivory-50/50 p-3">

@@ -1,9 +1,9 @@
 import {
-  Zap, Mail, MessageSquare, Tag, Clock, Webhook, FileText, Settings2, GitBranch,
+  Mail, MessageSquare, Tag, Clock, Webhook, FileText, Settings2, GitBranch,
   Users, Calendar, Mic, Sparkles, Phone, Send, Target, Split, Workflow as WorkflowIcon,
   ArrowRightLeft, Bell, Globe, Database, Trash2, Search, UserPlus, UserMinus,
   Edit3, StickyNote, CheckSquare, CalendarPlus, CalendarX, CalendarClock, Link2,
-  Download, Upload, AlertTriangle, Flag, Square, Infinity as InfinityIcon,
+  AlertTriangle, Square,
   type LucideIcon,
 } from 'lucide-react';
 import type { TriggerType, ActionType, WorkflowVariable } from '@/types';

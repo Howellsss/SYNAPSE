@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  User, Users, UserCheck, UsersRound, CalendarClock, Briefcase, Calendar as CalendarIcon,
+  User, UserCheck, UsersRound, CalendarClock, Briefcase, Calendar as CalendarIcon,
   ChevronRight, ChevronLeft, Check, Plus, X, Clock, Video, Phone, MapPin,
-  Bell, Mail, MessageSquare, CreditCard, Palette, FileText, Eye, Copy, ArrowRight,
+  Bell, Mail, MessageSquare, CreditCard, FileText, Eye, Copy, ArrowRight,
   Settings as SettingsIcon, Layers,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -179,10 +179,6 @@ export function CreateCalendarWizard({ onClose, onCreated }: { onClose: () => vo
 
   useEffect(() => {
     if (!user) return;
-    const ownerFilter = workspace
-      ? { workspace_id: workspace.id }
-      : { owner_id: user.id };
-
     if (workspace) {
       supabase
         .from('workspace_members')
@@ -775,7 +771,7 @@ export function CreateCalendarWizard({ onClose, onCreated }: { onClose: () => vo
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-navy-700">Event Date</label>
-                <input type="date" className="input-field" onChange={e => updateForm({} as Partial<WizardForm>)} />
+                <input type="date" className="input-field" onChange={() => updateForm({} as Partial<WizardForm>)} />
               </div>
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-navy-700">Timezone</label>
@@ -1095,7 +1091,7 @@ export function CreateCalendarWizard({ onClose, onCreated }: { onClose: () => vo
                     {form.calendar_type === 'round_robin' && (
                       <ReviewRow label="Strategy" value={STRATEGIES.find(s => s.value === form.round_robin_strategy)?.label ?? form.round_robin_strategy} />
                     )}
-                    {(form.calendar_type === 'event' || form.calendar_type === 'group') && (
+                    {form.calendar_type === 'event' && (
                       <ReviewRow label="Capacity" value={`${form.capacity}`} />
                     )}
                     {form.calendar_type === 'service' && form.price && (

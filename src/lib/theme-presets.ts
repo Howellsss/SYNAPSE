@@ -1,5 +1,4 @@
 import type { FormTheme, FormLayoutPreset } from './form-builder-types';
-import { DEFAULT_THEME } from './form-builder-types';
 
 // ============================================================
 // THEME PRESETS — starting points only, don't destroy form content
@@ -122,14 +121,14 @@ function mergeTheme(current: FormTheme, overrides: Partial<FormTheme>): FormThem
   return {
     ...current,
     ...overrides,
-    colors: { ...current.colors, ...(overrides as any).colors },
-    typography: { ...current.typography, ...(overrides as any).typography },
-    layout: { ...current.layout, ...(overrides as any).layout },
-    fieldStyle: { ...current.fieldStyle, ...(overrides as any).fieldStyle },
-    buttonStyle: { ...current.buttonStyle, ...(overrides as any).buttonStyle },
-    background: { ...current.background, ...(overrides as any).background },
-    split: { ...current.split, ...(overrides as any).split },
-    branding: { ...current.branding, ...(overrides as any).branding },
-    progress: { ...current.progress, ...(overrides as any).progress },
+    colors: { ...current.colors, ...overrides.colors },
+    typography: { ...current.typography, ...overrides.typography },
+    layout: { ...current.layout, ...overrides.layout },
+    fieldStyle: { ...current.fieldStyle, ...overrides.fieldStyle },
+    buttonStyle: { ...current.buttonStyle, ...overrides.buttonStyle },
+    background: { ...current.background, ...overrides.background },
+    split: { ...current.split, ...overrides.split },
+    branding: { ...current.branding, ...overrides.branding },
+    progress: { ...current.progress, ...overrides.progress },
   };
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Mic, Plus, Search, Play, Pause, FileText, Clock, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Mic, Search, Play, Pause, Sparkles, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { supabase } from '@/lib/supabase';
