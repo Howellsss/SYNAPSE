@@ -32,14 +32,18 @@ function b64decode(s: string): Uint8Array {
 function b64url(bytes: Uint8Array): string {
   return b64encode(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
-function rawKey(): Uint8Array {
-  const k = Deno.env.get("TOKEN_ENCRYPTION_KEY") ?? "";
-  const bytes = b64decode(k.trim());
-  if (bytes.length !== 32) throw new Error("TOKEN_ENCRYPTION_KEY must be 32 bytes, base64 encoded");
-  return bytes;
+// Any reasonably long secret works: a 32-byte base64 key is used as-is, anything else is hashed into one.
+async function rawKey(): Promise<Uint8Array> {
+  const k = (Deno.env.get("TOKEN_ENCRYPTION_KEY") ?? "").trim().replace(/^["']|["']$/g, "");
+  if (k.length < 16) throw new Error("TOKEN_ENCRYPTION_KEY is missing or too short (use 16+ characters)");
+  try {
+    const bytes = b64decode(k);
+    if (bytes.length === 32) return bytes;
+  } catch { /* not base64: hash it below */ }
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(k)));
 }
 async function aesKey(): Promise<CryptoKey> {
-  return crypto.subtle.importKey("raw", rawKey(), "AES-GCM", false, ["encrypt", "decrypt"]);
+  return crypto.subtle.importKey("raw", await rawKey(), "AES-GCM", false, ["encrypt", "decrypt"]);
 }
 async function encrypt(plain: string): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
