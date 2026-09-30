@@ -15,6 +15,7 @@ import { EmptyState, LoadingSpinner } from '@/components/ui/States';
 import { cn } from '@/lib/utils';
 import type { UserRole } from '@/types';
 import { useEmailAccounts, connectGmail, disconnectEmailAccount, type EmailAccount } from '@/lib/email-accounts';
+import { sendInvitations } from '@/lib/invitations';
 
 const SETTINGS_SECTIONS = [
   { id: 'profile', label: 'Profile', icon: User },
@@ -718,7 +719,7 @@ function InviteModal({
   onInvited: () => void;
   calendars: { id: string; name: string }[];
 }) {
-  const { workspace } = useAuth();
+  const { workspace, user } = useAuth();
   const { toast } = useToast();
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<UserRole>('member');
@@ -728,15 +729,15 @@ function InviteModal({
   const handleInvite = async () => {
     if (!workspace || !email.trim()) return;
     setLoading(true);
-    const { error } = await supabase.from('team_invitations').insert({
-      workspace_id: workspace.id,
-      email: email.trim().toLowerCase(),
+    const { error } = await sendInvitations({
+      workspaceId: workspace.id,
+      emails: [email],
       role,
-      assigned_calendar_ids: assignedCalendars,
-      invited_by: (await supabase.auth.getUser()).data.user?.id,
+      assignedCalendarIds: assignedCalendars,
+      invitedBy: user?.id ?? null,
     });
     if (error) {
-      toast(error.message, 'error');
+      toast(error, 'error');
       setLoading(false);
       return;
     }
