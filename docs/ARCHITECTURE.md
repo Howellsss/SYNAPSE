@@ -38,7 +38,8 @@ src/
                          steps and state (branching by type); config/ holds the Rooms, Access,
                          Availability and Branding editors shared by the wizard and the drawer
   types/index.ts         Shared TypeScript types mirroring the database tables
-  spatial/               Spatial workspace data: presence (who's in a space, live), quality (graphics
+  spatial/               Spatial workspace data: net/ (realtime multiplayer: channel, presence, moves,
+                         emotes, interpolation), quality (graphics
                          setting), scene/pathfinding (A* on the nav grid), media/ (camera & mic check: devices, useMediaCheck,
                          useMediaPrefs), slug rules, links, schedule (open hours), access
                          (permissions, guest tokens), layoutFile (.synapse-space.json import/export),
@@ -48,7 +49,8 @@ supabase/
   functions/             Edge Functions: form-submit, gmail-oauth, send-email
   config.toml            Per-function JWT settings
 scripts/build-supabase-setup.sh   Regenerates supabase-setup.sql from the migrations
-docs/                    This file, GMAIL_SETUP.md, ART-BRIEF.md (3D art commission brief)
+docs/                    This file, GMAIL_SETUP.md, ART-BRIEF.md (3D art commission brief),
+                         TESTING-MULTIPLAYER.md
 ```
 
 ## Routing
@@ -142,6 +144,79 @@ Child tables (`form_fields`, `workflow_nodes`, `calendar_hosts`, `availability_r
 | Media Library | `/media-library` | **Placeholder** (`ComingSoonPage`) |
 | AI Hub | `/ai-hub` | Partial: keyword-matched database queries, no AI model behind it |
 | Settings | `/settings` | Real: profile, workspace, team, email (Gmail); some tabs only save preferences |
+
+## Realtime multiplayer (`src/spatial/net/`)
+
+Each space has one Supabase Realtime channel, `space:<spaceId>`, opened by `useSpaceChannel` while
+you're inside the space.
+
+| What | How | Volume |
+| --- | --- | --- |
+| Who's here | **Presence**, keyed by user id: `{ userId, name, avatarUrl, avatarHash, status, away, zoneId, deskId, conversation, joinedAt }`. Tracked once connected, re-tracked after every reconnect, untracked on leave. `away` turns on after 5 minutes hidden or idle. | Only on join, leave or change |
+| Keyboard movement | Broadcast `move` `{ userId, x, z, rot, anim, seq, t }`, at most 10 a second, plus a final message when you stop | 10/s per person moving |
+| Click-to-walk | Broadcast `path` once (the waypoints, speed, and whether to sit at the end); receivers walk it themselves. A `move` correction is sent once a second while walking. | 1 + 1/s per walker |
+| Standing still | `move` heartbeat every 5 s (`HEARTBEAT_MS`). When someone new joins, everyone sends their position once, so newcomers don't wait for a heartbeat. | 0.2/s per person |
+| Emotes | Broadcast `emote` `{ userId, kind, to, t }`: wave, cheer, heart, raise_hand, lower_hand. `to` aims a wave at one person. | Occasional |
+
+Receivers keep each remote person in a `RemoteMover` (outside React state): snapshots are placed
+on the local clock and drawn 120 ms in the past (`INTERPOLATION_DELAY_MS`) so there's almost always
+a next snapshot to blend to; nothing is extrapolated, so avatars never overshoot through walls.
+Late or duplicate messages are dropped by `seq`.
+
+The Workspaces grid's "N online" counts come from `usePresenceCounts`, which listens to each space's
+presence without tracking (so viewing the grid doesn't count you as inside).
+
+### Spoofing limits
+
+Realtime broadcast and presence are relayed by Supabase **without checking what's inside them**.
+Today the channels are public: anyone with the project's anon key who knows a space's id could join.
+
+- **What we do:** every message is validated (`protocol.ts`: types, ranges, lengths, https-only avatar
+  URLs). Movement and emotes are ignored unless the sender's `userId` is present in the channel, and
+  presence entries filed under a key that isn't their own `userId` are dropped. You can't move your
+  own copy from outside.
+- **What a malicious member could still do:** send `move`/`emote` messages with another present
+  person's `userId` (their avatar would jump or wave for everyone else), or put a false name or
+  status in their own presence. Nothing is stored and nothing reaches the database, so the damage
+  is cosmetic and lasts until the real person's next message.
+- **To close it:**
+  1. Make channels private (Realtime Authorization) with an RLS policy on `realtime.messages` that
+     allows only members of the space's workspace. This stops outsiders, not insiders.
+  2. Make names come from the database, not presence (look the user id up in `profiles`).
+  3. For full protection, route moves through an Edge Function or a small authoritative server that
+     stamps the sender's verified user id.
+
+### Message volume and plan limits
+
+Supabase counts a broadcast once **per receiving client**, so one message in a 25-person space
+counts as 24. Estimates for one 25-person space (`estimateVolume` in `volume.ts`; 8-hour days,
+22 days a month):
+
+| Scenario | Sent/s | Delivered/s | Per 8 h day | Per month |
+| --- | --- | --- | --- | --- |
+| Quiet: 1 person walking at a time, 5 s heartbeat (current) | 6.0 | 145 | 4.2 M | 92 M |
+| Busy peak: 3 on keyboard + 3 walking at once | 37 | 897 | 26 M | — (peak, not all day) |
+| Quiet with a 30 s heartbeat | 2.0 | 49 | 1.4 M | 31 M |
+| Quiet, no heartbeat while standing | 1.2 | 30 | 0.85 M | 19 M |
+
+Plan limits (from the Supabase Realtime limits page, Oct 2026 — check before relying on them):
+
+| | Free | Pro | Pro, no spend cap / Team |
+| --- | --- | --- | --- |
+| Concurrent connections | 200 | 500 | 10,000 |
+| Messages per second | 100 | 500 | 2,500 |
+| Presence messages per second | 20 | 50 | 1,000 |
+| Messages included per month | 2 M | 5 M | 5 M, then about $2.50 per million |
+
+What that means for one busy 25-person office:
+- **Free** is too small: a quiet office already delivers ~145 messages a second (over 100), and a
+  day uses most of the month's 2 M.
+- **Pro** handles the rate of a quiet office, but busy peaks (~900/s) exceed 500/s; Supabase then
+  disconnects clients until traffic drops (supabase-js reconnects). Monthly volume (~92 M) would be
+  ~87 M over the included 5 M ≈ **$220/month** in overage.
+- **Pro without spend cap or Team** covers the peaks (2,500/s).
+- **Cheapest fix:** raise `HEARTBEAT_MS` to 30 s (≈ 31 M/month ≈ $65 overage) — newcomers already
+  get everyone's position when they join, so a slow heartbeat only affects drift correction.
 
 ## Checks
 

@@ -3,7 +3,8 @@ import {
   LocateFixed, ZoomIn, ZoomOut, Map as MapIcon, Gauge, PencilRuler, Mic, MicOff, Video, VideoOff, MonitorUp,
   SmilePlus, Hand, MessageSquare, Megaphone, MoreHorizontal, PhoneOff, Settings2, Check, Wifi, WifiOff, Loader2,
 } from 'lucide-react';
-import type { ConnectionState } from '@/spatial/presence';
+import type { ConnectionState } from '@/spatial/net/status';
+import { REACTIONS, type ReactionKind } from '@/spatial/net/emotes';
 import type { GraphicsQuality } from '@/spatial/quality';
 import { cn } from '@/lib/utils';
 import { Popover } from './Popover';
@@ -101,7 +102,6 @@ export function ConnectionPill({ state }: { state: ConnectionState }) {
 
 // ---------------------------------------------------------------- control bar
 
-const REACTIONS = ['👍', '👏', '😂', '❤️', '🎉', '🤔'];
 
 function BarButton({ label, onClick, on = true, danger, children, className, pressed }: {
   label: string;
@@ -133,11 +133,18 @@ function BarButton({ label, onClick, on = true, danger, children, className, pre
 }
 
 /** Bottom-center controls. Visual only until calls, chat and reactions are wired up. */
-export function ControlBar({ initialMicOn, initialCameraOn, onLeave, onSettings }: { initialMicOn: boolean; initialCameraOn: boolean; onLeave: () => void; onSettings: () => void }) {
+export function ControlBar({ initialMicOn, initialCameraOn, onLeave, onSettings, onReact, handRaised, onHand }: {
+  initialMicOn: boolean;
+  initialCameraOn: boolean;
+  onLeave: () => void;
+  onSettings: () => void;
+  onReact: (kind: ReactionKind) => void;
+  handRaised: boolean;
+  onHand: (raised: boolean) => void;
+}) {
   const [mic, setMic] = useState(initialMicOn);
   const [cam, setCam] = useState(initialCameraOn);
   const [sharing, setSharing] = useState(false);
-  const [hand, setHand] = useState(false);
   const [chat, setChat] = useState(false);
   const divider = <span className="mx-1 h-6 w-px shrink-0 bg-white/15" aria-hidden="true" />;
 
@@ -159,10 +166,10 @@ export function ControlBar({ initialMicOn, initialCameraOn, onLeave, onSettings 
         trigger={({ open, toggle }) => <BarButton label="Reactions" pressed={open} onClick={toggle}><SmilePlus className="h-5 w-5" /></BarButton>}
       >
         {(close) => REACTIONS.map((r) => (
-          <button key={r} role="menuitem" aria-label={`React ${r}`} onClick={close} className="flex h-9 w-9 items-center justify-center rounded-full text-xl transition hover:scale-110 hover:bg-ivory-50">{r}</button>
+          <button key={r.kind} role="menuitem" aria-label={r.label} title={r.label} onClick={() => { onReact(r.kind); close(); }} className="flex h-9 w-9 items-center justify-center rounded-full text-xl transition hover:scale-110 hover:bg-ivory-50">{r.emoji}</button>
         ))}
       </Popover>
-      <BarButton label={hand ? 'Lower hand' : 'Raise hand'} pressed={hand} onClick={() => setHand(!hand)}><Hand className="h-5 w-5" /></BarButton>
+      <BarButton label={handRaised ? 'Lower hand' : 'Raise hand'} pressed={handRaised} onClick={() => onHand(!handRaised)}><Hand className="h-5 w-5" /></BarButton>
       <BarButton label="Chat" pressed={chat} onClick={() => setChat(!chat)} className="hidden sm:flex"><MessageSquare className="h-5 w-5" /></BarButton>
       <BarButton label="Bring your team over" className="hidden sm:flex"><Megaphone className="h-5 w-5" /></BarButton>
       <Popover

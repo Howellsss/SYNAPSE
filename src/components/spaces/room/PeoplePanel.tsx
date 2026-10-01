@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { Search, ChevronDown, Check, Lock, UserPlus, LayoutGrid, Users2, MessageCircle } from 'lucide-react';
+import { Search, ChevronDown, Check, Lock, UserPlus, LayoutGrid, Users2, MessageCircle, Footprints, Hand, Route } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { TypeArt } from '@/components/spaces/TypeArt';
 import { spaceTypeInfo } from '@/spatial/data/spaceTypes';
-import { STATUS_OPTIONS, statusInfo, type PresencePerson, type PresenceStatus } from '@/spatial/presence';
+import { STATUS_OPTIONS, shownStatus, statusInfo, type PresenceStatus } from '@/spatial/net/status';
+import type { PresenceMeta } from '@/spatial/net/protocol';
 import { cn } from '@/lib/utils';
 import { Popover } from './Popover';
 import { menuItem } from './styles';
@@ -12,7 +13,7 @@ import type { Space, SpaceRoom } from '@/types';
 interface PeoplePanelProps {
   space: Space;
   otherSpaces: Pick<Space, 'id' | 'name' | 'slug' | 'space_type'>[];
-  people: PresencePerson[];
+  people: PresenceMeta[];
   meId: string;
   status: PresenceStatus;
   onStatus: (s: PresenceStatus) => void;
@@ -20,6 +21,9 @@ interface PeoplePanelProps {
   onAllSpaces: () => void;
   canInvite: boolean;
   onInvite: () => void;
+  /** People with a raised hand. */
+  raisedHands: Set<string>;
+  onWave: (userId: string) => void;
   className?: string;
 }
 
@@ -30,11 +34,11 @@ const splitName = (name: string) => {
 
 /** Left panel inside a space: switcher, search, your status, and who's where. */
 export function PeoplePanel({
-  space, otherSpaces, people, meId, status, onStatus, onOpenSpace, onAllSpaces, canInvite, onInvite, className,
+  space, otherSpaces, people, meId, status, onStatus, onOpenSpace, onAllSpaces, canInvite, onInvite, raisedHands, onWave, className,
 }: PeoplePanelProps) {
   const [query, setQuery] = useState('');
   const rooms = useMemo(() => new Map((space.config?.rooms ?? []).map((r) => [r.id, r])), [space.config]);
-  const me = people.find((p) => p.user_id === meId);
+  const me = people.find((p) => p.userId === meId);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -42,12 +46,12 @@ export function PeoplePanel({
   }, [people, query]);
 
   const conversationIds = new Set(me?.conversation ?? []);
-  const inConversation = visible.filter((p) => p.user_id === meId ? conversationIds.size > 0 : conversationIds.has(p.user_id));
+  const inConversation = visible.filter((p) => p.userId === meId ? conversationIds.size > 0 : conversationIds.has(p.userId));
   const rest = visible.filter((p) => !inConversation.includes(p));
-  const zoneGroups = new Map<string, PresencePerson[]>();
-  const around: PresencePerson[] = [];
+  const zoneGroups = new Map<string, PresenceMeta[]>();
+  const around: PresenceMeta[] = [];
   for (const p of rest) {
-    if (p.zone && rooms.has(p.zone)) zoneGroups.set(p.zone, [...(zoneGroups.get(p.zone) ?? []), p]);
+    if (p.zoneId && rooms.has(p.zoneId)) zoneGroups.set(p.zoneId, [...(zoneGroups.get(p.zoneId) ?? []), p]);
     else around.push(p);
   }
 
@@ -72,14 +76,14 @@ export function PeoplePanel({
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
         {inConversation.length > 0 && (
           <Section title="In your conversation" count={inConversation.length} icon={<MessageCircle className="h-3.5 w-3.5 text-gold-600" />}>
-            {inConversation.map((p) => <PersonRow key={p.user_id} person={p} me={p.user_id === meId} />)}
+            {inConversation.map((p) => <PersonRow key={p.userId} person={p} me={p.userId === meId} hand={raisedHands.has(p.userId)} onWave={onWave} />)}
           </Section>
         )}
         {[...zoneGroups.entries()].map(([zoneId, list]) => {
           const room = rooms.get(zoneId) as SpaceRoom;
           return (
             <Section key={zoneId} title={room.name} count={list.length} icon={room.lockable ? <Lock className="h-3.5 w-3.5 text-ivory-700" aria-label="Lockable room" /> : null}>
-              {list.map((p) => <PersonRow key={p.user_id} person={p} me={p.user_id === meId} />)}
+              {list.map((p) => <PersonRow key={p.userId} person={p} me={p.userId === meId} hand={raisedHands.has(p.userId)} onWave={onWave} />)}
             </Section>
           );
         })}
@@ -87,7 +91,7 @@ export function PeoplePanel({
           {around.length === 0 ? (
             <p className="px-2 py-1 text-xs text-ivory-700">{query ? 'No one matches that name.' : 'No one else is here right now.'}</p>
           ) : (
-            around.map((p) => <PersonRow key={p.user_id} person={p} me={p.user_id === meId} where={p.zone ? 'Elsewhere' : 'Main floor'} />)
+            around.map((p) => <PersonRow key={p.userId} person={p} me={p.userId === meId} hand={raisedHands.has(p.userId)} onWave={onWave} where={p.zoneId ? 'Elsewhere' : 'Main floor'} />)
           )}
         </Section>
         {/* AI agents appear here once they can join a space. */}
@@ -199,19 +203,48 @@ function Section({ title, count, icon, children }: { title: string; count: numbe
   );
 }
 
-function PersonRow({ person, me, where }: { person: PresencePerson; me: boolean; where?: string }) {
+function PersonRow({ person, me, where, hand, onWave }: { person: PresenceMeta; me: boolean; where?: string; hand: boolean; onWave: (userId: string) => void }) {
   const { first, last } = splitName(person.name);
-  const st = statusInfo(person.status);
-  return (
-    <li className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 hover:bg-ivory-50">
+  const st = shownStatus(person);
+  const row = (
+    <>
       <span className="relative shrink-0">
-        <Avatar firstName={first} lastName={last} src={person.avatar_url} size="md" />
+        <Avatar firstName={first} lastName={last} src={person.avatarUrl} size="md" />
         <span className={cn('absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full ring-2 ring-white', st.dot)} title={st.label} />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-semibold text-navy-800">{person.name}{me && <span className="font-normal text-ivory-700"> (you)</span>}</span>
         <span className="block truncate text-xs text-ivory-700">{where ? `${st.label} · ${where}` : st.label}</span>
       </span>
+      {hand && <Hand className="h-4 w-4 shrink-0 text-gold-600" aria-label="Hand raised" />}
+    </>
+  );
+  if (me) return <li className="flex items-center gap-2.5 rounded-xl px-2 py-1.5">{row}</li>;
+  return (
+    <li>
+      <Popover
+        label={`Actions for ${person.name}`}
+        panelClassName="left-2 right-2 top-full mt-1"
+        trigger={({ open, toggle }) => (
+          <button
+            type="button"
+            onClick={toggle}
+            aria-haspopup="menu"
+            aria-expanded={open}
+            className="flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left hover:bg-ivory-50 focus:bg-ivory-50 focus:outline-none"
+          >
+            {row}
+          </button>
+        )}
+      >
+        {(close) => (
+          <>
+            <button role="menuitem" className={menuItem} disabled title="Available with the 3D office"><Footprints className="h-4 w-4 text-ivory-600" /> <span className="flex-1 text-ivory-600">Walk to</span><span className="text-[11px] text-ivory-600">Soon</span></button>
+            <button role="menuitem" className={menuItem} onClick={() => { onWave(person.userId); close(); }}><span aria-hidden="true">👋</span> Wave</button>
+            <button role="menuitem" className={menuItem} disabled title="Available with the 3D office"><Route className="h-4 w-4 text-ivory-600" /> <span className="flex-1 text-ivory-600">Follow</span><span className="text-[11px] text-ivory-600">Soon</span></button>
+          </>
+        )}
+      </Popover>
     </li>
   );
 }
