@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 import type { ConnectionState } from '@/spatial/net/status';
 import { REACTIONS, type ReactionKind } from '@/spatial/net/emotes';
+import type { CallState, LiveKitRoom, Quality } from '@/spatial/media/useLiveKitRoom';
+import { SHORTCUTS } from '@/spatial/media/shortcuts';
 import type { GraphicsQuality } from '@/spatial/quality';
 import { cn } from '@/lib/utils';
 import { Popover } from './Popover';
@@ -88,14 +90,39 @@ const CONNECTION = {
   offline: { text: 'Offline', dot: 'bg-burgundy-500', icon: WifiOff },
 } as const;
 
-export function ConnectionPill({ state }: { state: ConnectionState }) {
+const QUALITY: Record<Quality, { label: string; bars: number; color: string }> = {
+  excellent: { label: 'Excellent', bars: 3, color: 'bg-green-400' },
+  good: { label: 'Good', bars: 2, color: 'bg-green-400' },
+  poor: { label: 'Poor', bars: 1, color: 'bg-gold-400' },
+  lost: { label: 'Lost', bars: 0, color: 'bg-burgundy-500' },
+  unknown: { label: 'Checking', bars: 0, color: 'bg-white/40' },
+};
+
+/** Bottom-left: the space connection, plus audio/video quality once calls are connected. */
+export function ConnectionPill({ state, call, quality }: { state: ConnectionState; call: CallState; quality: Quality }) {
   const c = CONNECTION[state];
   const Icon = c.icon;
+  const q = QUALITY[quality];
+  const showQuality = state === 'connected' && call === 'connected';
   return (
     <div role="status" aria-live="polite" className="flex items-center gap-2 rounded-full bg-navy-900/80 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur">
       <span className={cn('h-2 w-2 rounded-full', c.dot)} />
       <Icon className={cn('h-3.5 w-3.5', (state === 'connecting' || state === 'reconnecting') && 'animate-spin')} />
       {c.text}
+      {showQuality && (
+        <span className="ml-1 flex items-center gap-1.5 border-l border-white/15 pl-2" title={`Audio & video connection: ${q.label}`} aria-label={`Audio and video connection ${q.label}`}>
+          <span className="flex items-end gap-[2px]" aria-hidden="true">
+            {[1, 2, 3].map((n) => <span key={n} className={cn('w-[3px] rounded-sm', n === 1 ? 'h-1.5' : n === 2 ? 'h-2.5' : 'h-3.5', n <= q.bars ? q.color : 'bg-white/20')} />)}
+          </span>
+          {q.label}
+        </span>
+      )}
+      {state === 'connected' && (call === 'connecting' || call === 'reconnecting') && (
+        <span className="ml-1 border-l border-white/15 pl-2 text-ivory-300">{call === 'connecting' ? 'Joining audio…' : 'Reconnecting audio…'}</span>
+      )}
+      {state === 'connected' && (call === 'unavailable' || call === 'disconnected') && (
+        <span className="ml-1 border-l border-white/15 pl-2 text-ivory-300">Audio & video off</span>
+      )}
     </div>
   );
 }
@@ -103,8 +130,10 @@ export function ConnectionPill({ state }: { state: ConnectionState }) {
 // ---------------------------------------------------------------- control bar
 
 
-function BarButton({ label, onClick, on = true, danger, children, className, pressed }: {
+function BarButton({ label, onClick, on = true, danger, children, className, pressed, busy, shortcut }: {
   label: string;
+  busy?: boolean;
+  shortcut?: string;
   onClick?: () => void;
   on?: boolean;
   danger?: boolean;
@@ -117,13 +146,16 @@ function BarButton({ label, onClick, on = true, danger, children, className, pre
       type="button"
       onClick={onClick}
       aria-label={label}
-      title={label}
+      title={shortcut ? `${label} (${shortcut})` : label}
+      aria-keyshortcuts={shortcut?.replace('⌘', 'Meta').replace(/\+/g, '+')}
       aria-pressed={pressed}
+      aria-busy={busy}
       className={cn(
         'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400',
         danger ? 'bg-burgundy-500 text-white hover:bg-burgundy-600'
           : pressed ? 'bg-gold-400 text-navy-900 hover:bg-gold-300'
-          : on ? 'text-white hover:bg-white/10' : 'bg-white/10 text-red-300 hover:bg-white/20',
+          : on ? 'text-white hover:bg-white/10' : 'bg-burgundy-500 text-white hover:bg-burgundy-600',
+        busy && 'cursor-wait opacity-70',
         className,
       )}
     >
@@ -132,31 +164,29 @@ function BarButton({ label, onClick, on = true, danger, children, className, pre
   );
 }
 
-/** Bottom-center controls. Visual only until calls, chat and reactions are wired up. */
-export function ControlBar({ initialMicOn, initialCameraOn, onLeave, onSettings, onReact, handRaised, onHand }: {
-  initialMicOn: boolean;
-  initialCameraOn: boolean;
+/** Bottom-center controls. Mic, camera and screen share are real; chat and "bring team" come later. */
+export function ControlBar({ call, onLeave, onSettings, onReact, handRaised, onHand }: {
+  call: Pick<LiveKitRoom, 'micOn' | 'camOn' | 'screenOn' | 'pending' | 'toggleMic' | 'toggleCam' | 'startScreenShare' | 'stopScreenShare'>;
   onLeave: () => void;
   onSettings: () => void;
   onReact: (kind: ReactionKind) => void;
   handRaised: boolean;
   onHand: (raised: boolean) => void;
 }) {
-  const [mic, setMic] = useState(initialMicOn);
-  const [cam, setCam] = useState(initialCameraOn);
-  const [sharing, setSharing] = useState(false);
+  const { micOn: mic, camOn: cam, screenOn: sharing, pending } = call;
+  const share = () => (sharing ? call.stopScreenShare() : call.startScreenShare());
   const [chat, setChat] = useState(false);
   const divider = <span className="mx-1 h-6 w-px shrink-0 bg-white/15" aria-hidden="true" />;
 
   return (
     <div role="toolbar" aria-label="Call controls" className="flex max-w-full items-center gap-1 rounded-full bg-navy-900/90 p-1.5 shadow-popover backdrop-blur">
-      <BarButton label={mic ? 'Mute microphone' : 'Unmute microphone'} on={mic} onClick={() => setMic(!mic)}>
+      <BarButton label={mic ? 'Mute microphone' : 'Unmute microphone'} on={mic} busy={pending.microphone} shortcut={SHORTCUTS.mic} onClick={() => { void call.toggleMic(); }}>
         {mic ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
       </BarButton>
-      <BarButton label={cam ? 'Turn camera off' : 'Turn camera on'} on={cam} onClick={() => setCam(!cam)}>
+      <BarButton label={cam ? 'Turn camera off' : 'Turn camera on'} on={cam} busy={pending.camera} shortcut={SHORTCUTS.cam} onClick={() => { void call.toggleCam(); }}>
         {cam ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
       </BarButton>
-      <BarButton label={sharing ? 'Stop sharing' : 'Share screen'} pressed={sharing} onClick={() => setSharing(!sharing)} className="hidden sm:flex">
+      <BarButton label={sharing ? 'Stop sharing' : 'Share screen'} pressed={sharing} busy={pending.screen} onClick={() => { void share(); }} className="hidden sm:flex">
         <MonitorUp className="h-5 w-5" />
       </BarButton>
       {divider}
@@ -179,7 +209,7 @@ export function ControlBar({ initialMicOn, initialCameraOn, onLeave, onSettings,
       >
         {(close) => (
           <>
-            <button role="menuitem" className={cn(menuItem, 'sm:hidden')} onClick={() => { setSharing(!sharing); close(); }}><MonitorUp className="h-4 w-4 text-gold-600" /> {sharing ? 'Stop sharing' : 'Share screen'}</button>
+            <button role="menuitem" className={cn(menuItem, 'sm:hidden')} onClick={() => { void share(); close(); }}><MonitorUp className="h-4 w-4 text-gold-600" /> {sharing ? 'Stop sharing' : 'Share screen'}</button>
             <button role="menuitem" className={cn(menuItem, 'sm:hidden')} onClick={() => { setChat(!chat); close(); }}><MessageSquare className="h-4 w-4 text-gold-600" /> Chat</button>
             <button role="menuitem" className={cn(menuItem, 'sm:hidden')} onClick={close}><Megaphone className="h-4 w-4 text-gold-600" /> Bring your team over</button>
             <button role="menuitem" className={menuItem} onClick={() => { close(); onSettings(); }}><Settings2 className="h-4 w-4 text-gold-600" /> Camera & mic settings</button>

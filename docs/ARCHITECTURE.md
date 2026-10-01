@@ -38,7 +38,8 @@ src/
                          steps and state (branching by type); config/ holds the Rooms, Access,
                          Availability and Branding editors shared by the wizard and the drawer
   types/index.ts         Shared TypeScript types mirroring the database tables
-  spatial/               Spatial workspace data: net/ (realtime multiplayer: channel, presence, moves,
+  spatial/               Spatial workspace data: media/useLiveKitRoom (audio & video, see docs/LIVEKIT.md),
+                         net/ (realtime multiplayer: channel, presence, moves,
                          emotes, interpolation), quality (graphics
                          setting), scene/pathfinding (A* on the nav grid), media/ (camera & mic check: devices, useMediaCheck,
                          useMediaPrefs), slug rules, links, schedule (open hours), access
@@ -46,11 +47,11 @@ src/
                          data/ (types, sizing, templates, rooms, branding)
 supabase/
   migrations/            Schema history (run in order); supabase-setup.sql is the combined file
-  functions/             Edge Functions: form-submit, gmail-oauth, send-email
+  functions/             Edge Functions: form-submit, gmail-oauth, send-email, livekit-token
   config.toml            Per-function JWT settings
 scripts/build-supabase-setup.sh   Regenerates supabase-setup.sql from the migrations
 docs/                    This file, GMAIL_SETUP.md, ART-BRIEF.md (3D art commission brief),
-                         TESTING-MULTIPLAYER.md
+                         TESTING-MULTIPLAYER.md, LIVEKIT.md (audio & video setup)
 ```
 
 ## Routing

@@ -18,6 +18,9 @@ import { normalizeMediaPrefs } from '@/spatial/media/devices';
 import { TypeArt } from '@/components/spaces/TypeArt';
 import { SpaceSettingsDrawer } from '@/components/spaces/SpaceSettingsDrawer';
 import { DeviceCheckModal } from '@/components/spaces/DeviceCheck';
+import { useLiveKitRoom } from '@/spatial/media/useLiveKitRoom';
+import { useCallShortcuts } from '@/spatial/media/shortcuts';
+import { CallNotices } from './CallNotices';
 import { PeoplePanel, PeopleCountButton } from './PeoplePanel';
 import { ConnectionPill, ControlBar, WorldToolbar } from './Overlay';
 import { InviteToSpace } from './InviteToSpace';
@@ -108,6 +111,8 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
   }, [workspace, space.id]);
 
   const media = normalizeMediaPrefs(profile?.media_prefs);
+  const call = useLiveKitRoom(space.id, { prefs: media, onNotice: (m, tone) => toast(m, tone ?? 'info') });
+  useCallShortcuts({ mic: () => { void call.toggleMic(); }, cam: () => { void call.toggleCam(); } });
   const canInvite = can(space.permissions, 'invite', role);
   const canEdit = can(space.permissions, 'edit_office', role);
   const info = spaceTypeInfo(space.space_type);
@@ -197,15 +202,16 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
 
         {mapOpen && <FloorMap spaceName={space.name} rooms={rooms} people={shown.length} onClose={() => setMapOpen(false)} />}
 
-        <div className="absolute bottom-24 left-3 flex flex-col items-start gap-2 sm:bottom-4 sm:left-4">
+        <div className="absolute bottom-24 left-3 flex flex-col items-start gap-2 sm:bottom-auto sm:left-4 sm:top-16 lg:top-4">
           <div className="lg:hidden"><PeopleCountButton count={shown.length} onClick={() => setSheetOpen(true)} /></div>
-          <ConnectionPill state={connection} />
+          <ConnectionPill state={connection} call={call.state} quality={call.connectionQuality} />
         </div>
+
+        <CallNotices call={call} onOpenSettings={() => setDevicesOpen(true)} />
 
         <div className="absolute inset-x-0 bottom-4 flex justify-center px-3">
           <ControlBar
-            initialMicOn={!media.join_muted}
-            initialCameraOn={!media.join_camera_off}
+            call={call}
             onLeave={() => navigate('/workspace')}
             onSettings={() => setDevicesOpen(true)}
             onReact={react}
@@ -232,7 +238,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
       )}
 
       <InviteToSpace space={space} open={inviteOpen} onClose={() => setInviteOpen(false)} />
-      <DeviceCheckModal open={devicesOpen} onClose={() => setDevicesOpen(false)} />
+      <DeviceCheckModal open={devicesOpen} onClose={() => { setDevicesOpen(false); void call.applySavedDevices(); }} />
       {editOpen && (
         <SpaceSettingsDrawer
           space={space}
