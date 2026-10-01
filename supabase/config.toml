@@ -14,3 +14,7 @@ verify_jwt = false
 # The function checks the user's login itself (auth.getUser), which also works with
 # Supabase's newer JWT signing keys; the gateway's legacy check can reject valid logins.
 verify_jwt = false
+
+[functions.livekit-token]
+# Checks the caller's login itself (auth.getUser), like send-email.
+verify_jwt = false
