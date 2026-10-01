@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   Plus, Link2, ArrowRight, MicOff, VideoOff, Mic, Video, UserRound, Camera, DoorOpen, Users, Footprints,
-  Building2, PencilLine,
+  Building2, PencilLine, Clock, Lock, MoreVertical, Settings2, Download,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -10,9 +10,13 @@ import { supabase } from '@/lib/supabase';
 import { listSpaces, type SpaceWithMembers } from '@/lib/spaces';
 import { spaceTypeInfo } from '@/spatial/data/spaceTypes';
 import { templateInfo } from '@/spatial/data/templates';
+import { buildRooms } from '@/spatial/data/rooms';
 import { readDraft, hasMeaningfulDraft, clearDraft, type WizardState } from '@/components/spaces/wizard/state';
 import { SpacePreview } from '@/components/spaces/SpacePreview';
 import { parseJoinLink } from '@/spatial/links';
+import { opensLabel } from '@/spatial/schedule';
+import { exportLayout, layoutFileName } from '@/spatial/layoutFile';
+import { SpaceSettingsDrawer } from '@/components/spaces/SpaceSettingsDrawer';
 import { Avatar } from '@/components/ui/Avatar';
 import { Modal } from '@/components/ui/Modal';
 import { ErrorState, Skeleton } from '@/components/ui/States';
@@ -31,6 +35,7 @@ export function WorkspacesPage() {
   const [people, setPeople] = useState<Record<string, MemberProfile>>({});
   const [draft, setDraft] = useState<WizardState | null>(null);
   const [joinOpen, setJoinOpen] = useState(false);
+  const [settingsFor, setSettingsFor] = useState<SpaceWithMembers | null>(null);
 
   const load = useCallback(async () => {
     if (!workspace) return;
@@ -105,7 +110,15 @@ export function WorkspacesPage() {
       ) : (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {spaces.map((space) => (
-            <SpaceCard key={space.id} space={space} people={people} onEnter={() => navigate(`/workspace/${space.slug}`)} />
+            <SpaceCard
+              key={space.id}
+              space={space}
+              people={people}
+              canManage={canManageTeam}
+              onEnter={() => navigate(`/workspace/${space.slug}`)}
+              onSettings={() => setSettingsFor(space)}
+              onExport={() => downloadLayout(space)}
+            />
           ))}
           {canManageTeam && (
             <button
@@ -135,6 +148,17 @@ export function WorkspacesPage() {
             <button onClick={() => comingNext('Camera & mic check')} className="inline-flex items-center gap-1.5 text-gold-700 hover:text-gold-600"><Camera className="h-4 w-4" /> Check camera & mic</button>
           </div>
         </div>
+      )}
+
+      {settingsFor && (
+        <SpaceSettingsDrawer
+          space={settingsFor}
+          onClose={() => setSettingsFor(null)}
+          onSaved={(updated) => {
+            setSpaces((list) => list?.map((s) => (s.id === updated.id ? { ...s, ...updated } : s)) ?? list);
+            setSettingsFor(null);
+          }}
+        />
       )}
 
       <JoinModal open={joinOpen} onClose={() => setJoinOpen(false)} onSlug={(slug) => navigate(`/workspace/${slug}`)} />
@@ -188,29 +212,48 @@ function FirstVisit({ canCreate, onCreate, onJoin }: { canCreate: boolean; onCre
   );
 }
 
-function SpaceCard({ space, people, onEnter }: { space: SpaceWithMembers; people: Record<string, MemberProfile>; onEnter: () => void }) {
+function SpaceCard({ space, people, canManage, onEnter, onSettings, onExport }: {
+  space: SpaceWithMembers;
+  people: Record<string, MemberProfile>;
+  canManage: boolean;
+  onEnter: () => void;
+  onSettings: () => void;
+  onExport: () => void;
+}) {
   const type = spaceTypeInfo(space.space_type);
   const template = templateInfo(space.template_key);
   const known = space.memberIds.map((id) => people[id]).filter(Boolean);
   const shown = known.slice(0, 4);
   const extra = space.memberIds.length - shown.length;
+  const opens = opensLabel(space.schedule, space.persistence);
+  // Outside opening hours only admins can go in.
+  const blocked = !!opens && !canManage;
   return (
     <div className="card card-hover flex flex-col overflow-hidden">
-      <button onClick={onEnter} className="block p-3 pb-0 text-left" aria-label={`Enter ${space.name}`}>
-        <SpacePreview title={template?.name ?? type.name} subtitle={type.name} icon={type.icon} size="sm" />
-      </button>
+      <div className="relative p-3 pb-0">
+        <button onClick={onEnter} disabled={blocked} className="block w-full text-left disabled:cursor-not-allowed" aria-label={`Enter ${space.name}`}>
+          <SpacePreview title={template?.name ?? type.name} subtitle={type.name} icon={type.icon} size="sm" />
+        </button>
+        {canManage && <CardMenu name={space.name} onSettings={onSettings} onExport={onExport} />}
+      </div>
       <div className="flex flex-1 flex-col p-4">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <h3 className="truncate font-semibold text-navy-800">{space.name}</h3>
             <p className="mt-0.5 flex items-center gap-1.5 text-xs text-ivory-700"><type.icon className="h-3.5 w-3.5" /> {type.name}</p>
           </div>
-          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-ivory-200/60 px-2 py-0.5 text-xs font-medium text-ivory-800">
-            <span className="h-1.5 w-1.5 rounded-full bg-ivory-600" /> 0 online
-          </span>
+          {opens ? (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-gold-50 px-2 py-0.5 text-xs font-semibold text-gold-800">
+              <Clock className="h-3 w-3" /> {opens}
+            </span>
+          ) : (
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-ivory-200/60 px-2 py-0.5 text-xs font-medium text-ivory-800">
+              <span className="h-1.5 w-1.5 rounded-full bg-ivory-600" /> 0 online
+            </span>
+          )}
         </div>
         <div className="mt-4 flex items-center justify-between gap-3">
-          <div className="flex items-center">
+          <div className="flex min-w-0 items-center">
             {shown.map((p, i) => (
               <Avatar key={p.user_id} firstName={p.first_name} lastName={p.last_name} src={p.avatar_url} size="sm" className={cn('ring-2 ring-white', i > 0 && '-ml-2')} />
             ))}
@@ -219,13 +262,64 @@ function SpaceCard({ space, people, onEnter }: { space: SpaceWithMembers; people
                 +{extra}
               </span>
             )}
-            <span className="ml-2 text-xs text-ivory-700">{space.memberIds.length} {space.memberIds.length === 1 ? 'member' : 'members'}</span>
+            <span className="ml-2 truncate text-xs text-ivory-700">{space.memberIds.length} {space.memberIds.length === 1 ? 'member' : 'members'}</span>
           </div>
-          <button onClick={onEnter} className="btn-primary !px-3.5 !py-2">Enter <ArrowRight className="h-4 w-4" /></button>
+          <button onClick={onEnter} disabled={blocked} className="btn-primary shrink-0 !px-3.5 !py-2" title={blocked ? opens ?? undefined : undefined}>
+            {blocked ? <><Lock className="h-4 w-4" /> Closed</> : <>Enter <ArrowRight className="h-4 w-4" /></>}
+          </button>
         </div>
       </div>
     </div>
   );
+}
+
+function CardMenu({ name, onSettings, onExport }: { name: string; onSettings: () => void; onExport: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); };
+  }, [open]);
+  const item = 'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-navy-800 hover:bg-ivory-50';
+  return (
+    <div ref={ref} className="absolute right-5 top-5">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`More options for ${name}`}
+        className="flex h-8 w-8 items-center justify-center rounded-lg bg-navy-950/60 text-white backdrop-blur hover:bg-navy-950/80"
+      >
+        <MoreVertical className="h-4 w-4" />
+      </button>
+      {open && (
+        <div role="menu" className="absolute right-0 top-full z-20 mt-1 w-52 rounded-xl border border-navy-100 bg-white p-1 shadow-popover">
+          <button role="menuitem" className={item} onClick={() => { setOpen(false); onSettings(); }}><Settings2 className="h-4 w-4 text-gold-600" /> Workspace settings</button>
+          <button role="menuitem" className={item} onClick={() => { setOpen(false); onExport(); }}><Download className="h-4 w-4 text-gold-600" /> Export layout</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Saves the space's layout as a .synapse-space.json file others can import. */
+function downloadLayout(space: SpaceWithMembers) {
+  // Spaces created before rooms were configurable export their template's rooms.
+  const rooms = space.config?.rooms?.length ? space.config.rooms : buildRooms(space.template_key, space.size_band);
+  const blob = new Blob([JSON.stringify(exportLayout({ ...space, config: { ...space.config, rooms } }), null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = layoutFileName(space.slug);
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function JoinModal({ open, onClose, onSlug }: { open: boolean; onClose: () => void; onSlug: (slug: string) => void }) {

@@ -9,14 +9,17 @@ import { HowellsLogo } from '@/components/layout/Sidebar';
 import { LoadingSpinner } from '@/components/ui/States';
 import { cn } from '@/lib/utils';
 import {
-  wizardReducer, initialState, canContinue, readDraft, saveDraft, clearDraft,
-  TOTAL_STEPS, STEP_NAMES, type SlugStatus, type WizardState,
+  wizardReducer, freshState, canContinue, readDraft, saveDraft, clearDraft, stepPosition, isLastStep,
+  effectiveRooms, effectiveSizeBand, effectiveTemplateKey, effectiveType, type SlugStatus, type WizardState,
 } from '@/components/spaces/wizard/state';
+import { generateGuestToken } from '@/spatial/access';
 import { StepName } from '@/components/spaces/wizard/StepName';
 import { StepType } from '@/components/spaces/wizard/StepType';
 import { StepSize } from '@/components/spaces/wizard/StepSize';
 import { StepLayout } from '@/components/spaces/wizard/StepLayout';
 import { StepInvite } from '@/components/spaces/wizard/StepInvite';
+import { StepImport } from '@/components/spaces/wizard/StepImport';
+import { StepConfigure } from '@/components/spaces/wizard/StepConfigure';
 import { StepComingNext } from '@/components/spaces/wizard/StepComingNext';
 import { LivePreview } from '@/components/spaces/wizard/LivePreview';
 import type { Space } from '@/types';
@@ -67,7 +70,7 @@ function useSlugStatus(slug: string, recheck: number): SlugStatus {
 function Wizard({ workspaceId, userId, userEmail, userName }: { workspaceId: string; userId: string; userEmail: string | null; userName: string }) {
   const { toast } = useToast();
   const [, navigate] = useRouter();
-  const [state, dispatch] = useReducer(wizardReducer, workspaceId, (id) => readDraft(id) ?? initialState);
+  const [state, dispatch] = useReducer(wizardReducer, workspaceId, (id) => readDraft(id) ?? freshState());
   const [recheck, setRecheck] = useState(0);
   const slugStatus = useSlugStatus(state.slug, recheck);
   const [creating, setCreating] = useState(false);
@@ -79,24 +82,36 @@ function Wizard({ workspaceId, userId, userEmail, userName }: { workspaceId: str
   useEffect(() => { saveDraft(workspaceId, state); }, [workspaceId, state]);
   useEffect(() => { mainRef.current?.scrollTo({ top: 0 }); window.scrollTo({ top: 0 }); }, [state.step]);
 
-  const stepName = STEP_NAMES[state.step - 1];
+  const position = stepPosition(state);
   const ready = canContinue(state, slugStatus);
-  const isLast = state.step === TOTAL_STEPS;
+  const isLast = isLastStep(state);
+  // Type and Configure need more room for the form; the preview panel gets narrower.
+  const wide = state.step === 'type' || state.step === 'configure';
+  const column = wide ? 'max-w-5xl' : 'max-w-2xl';
 
   const finish = async () => {
     setCreating(true);
     setCreateError(null);
+    const guestLinkToken = state.accessMode === 'guest_link' ? state.guestLinkToken ?? generateGuestToken() : null;
     const result = await createSpace({
       workspaceId,
       userId,
       name: state.name,
       slug: state.slug,
       description: state.description,
-      spaceType: state.spaceType,
-      sizeBand: state.sizeBand,
-      templateKey: state.templateKey,
+      spaceType: effectiveType(state),
+      sizeBand: effectiveSizeBand(state),
+      templateKey: effectiveTemplateKey(state),
+      map: state.typeChoice === 'import' ? state.importedLayout?.map ?? {} : {},
       invites: state.invites,
       inviteRole: state.inviteRole,
+      accessMode: state.accessMode,
+      guestLinkToken,
+      permissions: state.permissions,
+      persistence: state.persistence,
+      schedule: state.persistence === 'scheduled' ? state.schedule : null,
+      branding: state.branding,
+      config: { rooms: effectiveRooms(state) },
     }, createdSpace.current);
     setCreating(false);
 
@@ -105,7 +120,7 @@ function Wizard({ workspaceId, userId, userEmail, userName }: { workspaceId: str
       toast(result.error ?? 'Could not create the workspace.', 'error');
       if (result.slugTaken) {
         setRecheck((n) => n + 1);
-        dispatch({ type: 'goTo', step: 1 });
+        dispatch({ type: 'goTo', step: 'name' });
         return;
       }
       setCreateError(result.error ?? 'Could not create the workspace.');
@@ -150,7 +165,7 @@ function Wizard({ workspaceId, userId, userEmail, userName }: { workspaceId: str
 
   const continueLabel = isLast
     ? `Enter ${state.name.trim() || 'workspace'}`
-    : state.step === 5
+    : state.step === 'invite'
       ? state.invites.length ? `Send ${state.invites.length} ${state.invites.length === 1 ? 'invite' : 'invites'}` : 'Continue'
       : 'Continue';
 
@@ -159,7 +174,7 @@ function Wizard({ workspaceId, userId, userEmail, userName }: { workspaceId: str
       <form onSubmit={onContinue} onKeyDown={onKeyDown} className="flex min-w-0 flex-1 flex-col lg:h-full" noValidate>
         {/* Top: logo, save & exit, progress */}
         <header className="px-4 pt-5 sm:px-8 lg:px-12">
-          <div className="mx-auto w-full max-w-2xl lg:mx-0">
+          <div className={cn('mx-auto w-full lg:mx-0', column)}>
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-navy-800"><HowellsLogo className="h-5 w-5" /></span>
@@ -168,32 +183,33 @@ function Wizard({ workspaceId, userId, userEmail, userName }: { workspaceId: str
               <button type="button" onClick={saveAndExit} className="btn-ghost !px-3 !py-2">Save & exit</button>
             </div>
             <div className="mt-6 flex gap-1.5" aria-hidden="true">
-              {Array.from({ length: TOTAL_STEPS }, (_, i) => (
-                <span key={i} className={cn('h-1.5 flex-1 rounded-full transition-colors', i < state.step ? 'bg-gold-400' : 'bg-navy-50')} />
+              {Array.from({ length: position.total }, (_, i) => (
+                <span key={i} className={cn('h-1.5 flex-1 rounded-full transition-colors', i < position.index ? 'bg-gold-400' : 'bg-navy-50')} />
               ))}
             </div>
             <p className="mt-3 text-xs font-semibold uppercase tracking-wider text-ivory-700" aria-live="polite">
-              Step {state.step} of {TOTAL_STEPS} · {stepName}
+              Step {position.index} of {position.total} · {position.label}
             </p>
           </div>
         </header>
 
         {/* Step content */}
         <div ref={mainRef} className="flex-1 px-4 pb-6 pt-5 sm:px-8 lg:overflow-y-auto lg:px-12">
-          <div className="mx-auto w-full max-w-2xl lg:mx-0">
-            <StepContent state={state} dispatch={dispatch} slugStatus={slugStatus} userEmail={userEmail} />
+          <div className={cn('mx-auto w-full lg:mx-0', column)}>
+            <StepContent state={state} dispatch={dispatch} slugStatus={slugStatus} userEmail={userEmail} workspaceId={workspaceId} userId={userId} />
           </div>
         </div>
 
         {/* Live preview stacks under the content on small screens */}
-        <aside className="mx-4 mb-4 rounded-3xl bg-navy-800 p-5 sm:mx-8 lg:hidden" aria-label="Live preview">
+        {/* On the Type step the details show under the chosen card instead. */}
+        <aside className={cn('mx-4 mb-4 rounded-3xl bg-navy-800 p-5 sm:mx-8 lg:hidden', state.step === 'type' && 'hidden')} aria-label="Live preview">
           <LivePreview state={state} userName={userName} />
         </aside>
 
         {/* Footer */}
         <footer className="sticky bottom-0 z-10 border-t border-navy-50 bg-white/95 px-4 py-3 backdrop-blur sm:px-8 lg:px-12">
           {createError && (
-            <div role="alert" className="mx-auto mb-3 flex w-full max-w-2xl lg:mx-0 flex-wrap items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-sm text-burgundy-600">
+            <div role="alert" className={cn('mx-auto mb-3 flex w-full flex-wrap items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-sm text-burgundy-600 lg:mx-0', column)}>
               <AlertTriangle className="h-4 w-4 shrink-0" />
               <span className="min-w-0 flex-1">{createError}</span>
               <button type="button" onClick={finish} disabled={creating} className="inline-flex items-center gap-1 font-semibold underline-offset-2 hover:underline">
@@ -201,17 +217,17 @@ function Wizard({ workspaceId, userId, userEmail, userName }: { workspaceId: str
               </button>
             </div>
           )}
-          <div className="mx-auto flex w-full max-w-2xl items-center gap-2 lg:mx-0">
+          <div className={cn('mx-auto flex w-full items-center gap-2 lg:mx-0', column)}>
             <button
               type="button"
               onClick={() => dispatch({ type: 'back' })}
-              disabled={state.step === 1 || creating}
-              className={cn('btn-secondary', state.step === 1 && 'invisible')}
+              disabled={state.step === 'name' || creating}
+              className={cn('btn-secondary', state.step === 'name' && 'invisible')}
             >
               <ArrowLeft className="h-4 w-4" /> <span className="hidden sm:inline">Back</span>
             </button>
             <div className="flex-1" />
-            {state.step === 5 && (
+            {state.step === 'invite' && (
               <button type="button" onClick={skipInvites} className="btn-ghost !px-3">Skip for now</button>
             )}
             <button type="submit" disabled={!ready || creating} className="btn-primary min-w-0 !px-5">
@@ -222,8 +238,8 @@ function Wizard({ workspaceId, userId, userEmail, userName }: { workspaceId: str
       </form>
 
       {/* Live preview panel (desktop) */}
-      <aside className="hidden w-[44%] max-w-[640px] shrink-0 p-4 lg:block" aria-label="Live preview">
-        <div className="h-full overflow-y-auto rounded-3xl bg-navy-800 p-10">
+      <aside className={cn('hidden shrink-0 p-4 lg:block', wide ? 'w-[380px] xl:w-[430px]' : 'w-[44%] max-w-[640px]')} aria-label={state.step === 'type' ? 'Workspace at a glance' : 'Live preview'}>
+        <div className={cn('h-full overflow-y-auto rounded-3xl bg-navy-800', wide ? 'p-7' : 'p-10')}>
           <LivePreview state={state} userName={userName} />
         </div>
       </aside>
@@ -231,19 +247,23 @@ function Wizard({ workspaceId, userId, userEmail, userName }: { workspaceId: str
   );
 }
 
-function StepContent({ state, dispatch, slugStatus, userEmail }: {
+function StepContent({ state, dispatch, slugStatus, userEmail, workspaceId, userId }: {
   state: WizardState;
   dispatch: Parameters<typeof StepName>[0]['dispatch'];
   slugStatus: SlugStatus;
   userEmail: string | null;
+  workspaceId: string;
+  userId: string;
 }) {
   switch (state.step) {
-    case 1: return <StepName state={state} dispatch={dispatch} slugStatus={slugStatus} />;
-    case 2: return <StepType state={state} dispatch={dispatch} />;
-    case 3: return <StepSize state={state} dispatch={dispatch} />;
-    case 4: return <StepLayout state={state} dispatch={dispatch} />;
-    case 5: return <StepInvite state={state} dispatch={dispatch} ownEmail={userEmail} />;
-    case 6:
+    case 'name': return <StepName state={state} dispatch={dispatch} slugStatus={slugStatus} />;
+    case 'type': return <StepType state={state} dispatch={dispatch} />;
+    case 'size': return <StepSize state={state} dispatch={dispatch} />;
+    case 'layout': return <StepLayout state={state} dispatch={dispatch} />;
+    case 'import': return <StepImport state={state} dispatch={dispatch} />;
+    case 'configure': return <StepConfigure state={state} dispatch={dispatch} workspaceId={workspaceId} userId={userId} />;
+    case 'invite': return <StepInvite state={state} dispatch={dispatch} ownEmail={userEmail} />;
+    case 'avatar':
       return (
         <StepComingNext
           title="Create your avatar"

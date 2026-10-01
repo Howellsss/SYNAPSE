@@ -214,7 +214,53 @@ export interface MediaPrefs {
   data_saver: boolean;
 }
 
-export type SpaceType = 'office' | 'classroom' | 'event_hall' | 'coaching_studio' | 'community_hub';
+export type SpaceType =
+  | 'office'
+  | 'coworking'
+  | 'classroom'
+  | 'event_hall'
+  | 'coaching_studio'
+  | 'town_square'
+  | 'campus'
+  | 'custom';
+
+/** Who may enter: account members, only invited people, or anyone holding the guest link. */
+export type AccessMode = 'members' | 'invite_only' | 'guest_link';
+export type Persistence = 'always_on' | 'scheduled';
+export type SpacePermissionKey = 'edit_office' | 'lock_rooms' | 'broadcast' | 'invite';
+export type SpacePermissions = Record<SpacePermissionKey, UserRole[]>;
+
+export type ScheduleRecurrence = 'daily' | 'weekdays' | 'weekly' | 'once';
+export interface SpaceSchedule {
+  /** Local times "HH:MM" in `timezone`. If closes_at <= opens_at the window runs past midnight. */
+  opens_at: string;
+  closes_at: string;
+  recurrence: ScheduleRecurrence;
+  /** For 'weekly': 0 = Sunday … 6 = Saturday. */
+  days?: number[];
+  /** For 'once': "YYYY-MM-DD". */
+  date?: string;
+  timezone: string;
+  calendar_id: string | null;
+}
+
+export interface SpaceBranding {
+  logo_url?: string | null;
+  accent?: string | null;
+}
+
+export type RoomType = 'open_area' | 'meeting_room' | 'private_office' | 'stage' | 'quiet_zone' | 'lounge' | 'breakout';
+export interface SpaceRoom {
+  id: string;
+  name: string;
+  type: RoomType;
+  capacity: number;
+  lockable: boolean;
+  knock_to_enter: boolean;
+}
+export interface SpaceConfig {
+  rooms?: SpaceRoom[];
+}
 
 /** solo = 1, small = 2–10, medium = 11–25, large = 26–50, xl = 50+ people. */
 export type SizeBand = 'solo' | 'small' | 'medium' | 'large' | 'xl';
@@ -230,6 +276,13 @@ export interface Space {
   template_key: string;
   map: Record<string, unknown>;
   capacity: number;
+  access_mode: AccessMode;
+  guest_link_token: string | null;
+  permissions: SpacePermissions;
+  persistence: Persistence;
+  schedule: SpaceSchedule | null;
+  branding: SpaceBranding;
+  config: SpaceConfig;
   created_by: string | null;
   created_at: string;
   updated_at: string;

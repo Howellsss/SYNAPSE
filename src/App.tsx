@@ -23,6 +23,7 @@ import { ComingSoonPage } from '@/pages/ComingSoonPage';
 import { WorkspacesPage } from '@/pages/WorkspacesPage';
 import { CreateSpaceWizard } from '@/pages/CreateSpaceWizard';
 import { SpacePage } from '@/pages/SpacePage';
+import { GuestJoinPage } from '@/pages/GuestJoinPage';
 import { Video, CalendarHeart, MonitorPlay, MessagesSquare, FolderOpen } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/States';
 
@@ -33,7 +34,7 @@ function AppContent() {
   useGmailReturnNotice(path);
 
   useEffect(() => {
-    if (!loading && !user && !path.startsWith('/book/') && !path.startsWith('/group/') && !path.startsWith('/reset-password') && !path.startsWith('/invite/')) {
+    if (!loading && !user && !path.startsWith('/book/') && !path.startsWith('/group/') && !path.startsWith('/reset-password') && !path.startsWith('/invite/') && !path.startsWith('/join/')) {
       navigate('/dashboard');
     }
   }, [user, loading, path, navigate]);
@@ -50,6 +51,12 @@ function AppContent() {
   if (path.startsWith('/book/') || path.startsWith('/group/')) {
     const slug = path.split('/')[2]?.split('?')[0];
     return <BookingPage slug={slug} isGroup={path.startsWith('/group/')} />;
+  }
+
+  // Guest link for a workspace (no account needed)
+  if (path.startsWith('/join/')) {
+    const token = path.split('/')[2]?.split('?')[0] ?? '';
+    return <GuestJoinPage token={token} />;
   }
 
   // Invitation acceptance page (no auth required to view, auth to accept)

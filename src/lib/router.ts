@@ -22,7 +22,7 @@ export function useRouter(): [string, (to: string) => void] {
   }, []);
 
   const navigate = useCallback((to: string) => {
-    if (to.startsWith('/book/') || to.startsWith('/group/') || to.startsWith('/invite/')) {
+    if (to.startsWith('/book/') || to.startsWith('/group/') || to.startsWith('/invite/') || to.startsWith('/join/')) {
       window.location.href = to;
       return;
     }
