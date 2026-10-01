@@ -1,9 +1,9 @@
 import { useEffect, useReducer, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { ArrowLeft, ArrowRight, Loader2, UserRound, Camera, AlertTriangle, RotateCw, Lock } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Loader2, UserRound, AlertTriangle, RotateCw, Lock } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useRouter } from '@/lib/router';
-import { createSpace, isSlugAvailable } from '@/lib/spaces';
+import { createSpace, isSlugAvailable, markEntered } from '@/lib/spaces';
 import { slugProblem } from '@/spatial/slug';
 import { HowellsLogo } from '@/components/layout/Sidebar';
 import { LoadingSpinner } from '@/components/ui/States';
@@ -21,6 +21,10 @@ import { StepInvite } from '@/components/spaces/wizard/StepInvite';
 import { StepImport } from '@/components/spaces/wizard/StepImport';
 import { StepConfigure } from '@/components/spaces/wizard/StepConfigure';
 import { StepComingNext } from '@/components/spaces/wizard/StepComingNext';
+import { StepTitle } from '@/components/spaces/wizard/ui';
+import { DeviceControls, DevicePreview } from '@/components/spaces/DeviceCheck';
+import { useMediaCheck, type MediaCheck } from '@/spatial/media/useMediaCheck';
+import { useMediaPrefs } from '@/spatial/media/useMediaPrefs';
 import { LivePreview } from '@/components/spaces/wizard/LivePreview';
 import type { Space } from '@/types';
 
@@ -78,6 +82,11 @@ function Wizard({ workspaceId, userId, userEmail, userName }: { workspaceId: str
   // If a create attempt got as far as inserting the space, retries continue from it.
   const createdSpace = useRef<Space | null>(null);
   const mainRef = useRef<HTMLDivElement>(null);
+  // Camera and mic run only on the last step; leaving it (or the wizard) stops every track.
+  const media = useMediaCheck(state.step === 'media');
+  const [mediaPrefs, setMediaPrefs] = useMediaPrefs();
+  const { profile } = useAuth();
+  const you = { name: userName, firstName: profile?.first_name, lastName: profile?.last_name, avatarUrl: profile?.avatar_url };
 
   useEffect(() => { saveDraft(workspaceId, state); }, [workspaceId, state]);
   useEffect(() => { mainRef.current?.scrollTo({ top: 0 }); window.scrollTo({ top: 0 }); }, [state.step]);
@@ -128,6 +137,8 @@ function Wizard({ workspaceId, userId, userEmail, userName }: { workspaceId: str
     }
 
     clearDraft(workspaceId);
+    // Creators have just done the camera check, so they skip the "Get ready" screen.
+    await markEntered(result.space.id, userId);
     if (result.inviteError) {
       toast(`Workspace created, but the invites didn't send. Resend them from Settings → Team. (${result.inviteError})`, 'error');
     } else if (state.invites.length) {
@@ -196,13 +207,21 @@ function Wizard({ workspaceId, userId, userEmail, userName }: { workspaceId: str
         {/* Step content */}
         <div ref={mainRef} className="flex-1 px-4 pb-6 pt-5 sm:px-8 lg:overflow-y-auto lg:px-12">
           <div className={cn('mx-auto w-full lg:mx-0', column)}>
-            <StepContent state={state} dispatch={dispatch} slugStatus={slugStatus} userEmail={userEmail} workspaceId={workspaceId} userId={userId} />
+            {state.step === 'media' ? (
+              <>
+                <StepTitle title="Check your camera & mic" subtitle="Make sure people can see and hear you when you walk over." />
+                <div className="mb-5 rounded-3xl bg-navy-800 p-4 sm:p-6 lg:hidden"><DevicePreview check={media} {...you} /></div>
+                <DeviceControls check={media} prefs={mediaPrefs} onPrefs={setMediaPrefs} />
+              </>
+            ) : (
+              <StepContent state={state} dispatch={dispatch} slugStatus={slugStatus} userEmail={userEmail} workspaceId={workspaceId} userId={userId} />
+            )}
           </div>
         </div>
 
         {/* Live preview stacks under the content on small screens */}
         {/* On the Type step the details show under the chosen card instead. */}
-        <aside className={cn('mx-4 mb-4 rounded-3xl bg-navy-800 p-5 sm:mx-8 lg:hidden', state.step === 'type' && 'hidden')} aria-label="Live preview">
+        <aside className={cn('mx-4 mb-4 rounded-3xl bg-navy-800 p-5 sm:mx-8 lg:hidden', (state.step === 'type' || state.step === 'media') && 'hidden')} aria-label="Live preview">
           <LivePreview state={state} userName={userName} />
         </aside>
 
@@ -230,6 +249,9 @@ function Wizard({ workspaceId, userId, userEmail, userName }: { workspaceId: str
             {state.step === 'invite' && (
               <button type="button" onClick={skipInvites} className="btn-ghost !px-3">Skip for now</button>
             )}
+            {state.step === 'media' && (
+              <button type="button" onClick={finish} disabled={creating} className="btn-ghost !px-3">Skip for now</button>
+            )}
             <button type="submit" disabled={!ready || creating} className="btn-primary min-w-0 !px-5">
               {creating ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating…</> : <><span className="truncate">{continueLabel}</span> <ArrowRight className="h-4 w-4 shrink-0" /></>}
             </button>
@@ -240,9 +262,18 @@ function Wizard({ workspaceId, userId, userEmail, userName }: { workspaceId: str
       {/* Live preview panel (desktop) */}
       <aside className={cn('hidden shrink-0 p-4 lg:block', wide ? 'w-[380px] xl:w-[430px]' : 'w-[44%] max-w-[640px]')} aria-label={state.step === 'type' ? 'Workspace at a glance' : 'Live preview'}>
         <div className={cn('h-full overflow-y-auto rounded-3xl bg-navy-800', wide ? 'p-7' : 'p-10')}>
-          <LivePreview state={state} userName={userName} />
+          {state.step === 'media' ? <MediaPanel check={media} you={you} /> : <LivePreview state={state} userName={userName} />}
         </div>
       </aside>
+    </div>
+  );
+}
+
+function MediaPanel({ check, you }: { check: MediaCheck; you: Omit<Parameters<typeof DevicePreview>[0], 'check'> }) {
+  return (
+    <div className="flex h-full flex-col justify-center">
+      <p className="mb-5 text-[11px] font-bold uppercase tracking-[0.22em] text-gold-400">Your preview</p>
+      <DevicePreview check={check} {...you} />
     </div>
   );
 }
@@ -274,14 +305,7 @@ function StepContent({ state, dispatch, slugStatus, userEmail, workspaceId, user
         />
       );
     default:
-      return (
-        <StepComingNext
-          title="Check your camera & mic"
-          subtitle="Make sure people can see and hear you when you walk over."
-          icon={Camera}
-          cardTitle="Check your camera & mic — coming next"
-          cardText="You'll test your devices here soon. For now you'll join muted, with your camera off."
-        />
-      );
+      // The camera & mic step is rendered by the wizard itself (it shares the preview panel).
+      return null;
   }
 }

@@ -17,13 +17,14 @@ import { parseJoinLink } from '@/spatial/links';
 import { opensLabel } from '@/spatial/schedule';
 import { exportLayout, layoutFileName } from '@/spatial/layoutFile';
 import { SpaceSettingsDrawer } from '@/components/spaces/SpaceSettingsDrawer';
+import { DeviceCheckModal } from '@/components/spaces/DeviceCheck';
+import { normalizeMediaPrefs } from '@/spatial/media/devices';
 import { Avatar } from '@/components/ui/Avatar';
 import { Modal } from '@/components/ui/Modal';
 import { ErrorState, Skeleton } from '@/components/ui/States';
 import { cn } from '@/lib/utils';
-import type { MediaPrefs, Profile } from '@/types';
+import type { Profile } from '@/types';
 
-const DEFAULT_MEDIA: MediaPrefs = { join_muted: true, join_camera_off: true, data_saver: false };
 type MemberProfile = Pick<Profile, 'user_id' | 'first_name' | 'last_name' | 'avatar_url'>;
 
 export function WorkspacesPage() {
@@ -36,6 +37,7 @@ export function WorkspacesPage() {
   const [draft, setDraft] = useState<WizardState | null>(null);
   const [joinOpen, setJoinOpen] = useState(false);
   const [settingsFor, setSettingsFor] = useState<SpaceWithMembers | null>(null);
+  const [devicesOpen, setDevicesOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!workspace) return;
@@ -69,7 +71,7 @@ export function WorkspacesPage() {
   }
 
   const createNew = () => navigate('/workspace/new');
-  const media = profile?.media_prefs ?? DEFAULT_MEDIA;
+  const media = normalizeMediaPrefs(profile?.media_prefs);
   const displayName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || 'you';
   const comingNext = (what: string) => toast(`${what} is coming next.`, 'info');
 
@@ -142,10 +144,11 @@ export function WorkspacesPage() {
             <span className="inline-flex items-center gap-1">{media.join_muted ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}{media.join_muted ? 'Mic muted' : 'Mic on'}</span>
             <span className="text-ivory-500">·</span>
             <span className="inline-flex items-center gap-1">{media.join_camera_off ? <VideoOff className="h-3.5 w-3.5" /> : <Video className="h-3.5 w-3.5" />}{media.join_camera_off ? 'Camera off' : 'Camera on'}</span>
+            {media.data_saver && <><span className="text-ivory-500">·</span><span>Data saver</span></>}
           </p>
           <div className="flex gap-4 text-sm font-semibold">
             <button onClick={() => comingNext('The avatar builder')} className="inline-flex items-center gap-1.5 text-gold-700 hover:text-gold-600"><UserRound className="h-4 w-4" /> Edit avatar</button>
-            <button onClick={() => comingNext('Camera & mic check')} className="inline-flex items-center gap-1.5 text-gold-700 hover:text-gold-600"><Camera className="h-4 w-4" /> Check camera & mic</button>
+            <button onClick={() => setDevicesOpen(true)} className="inline-flex items-center gap-1.5 text-gold-700 hover:text-gold-600"><Camera className="h-4 w-4" /> Check camera & mic</button>
           </div>
         </div>
       )}
@@ -161,6 +164,7 @@ export function WorkspacesPage() {
         />
       )}
 
+      <DeviceCheckModal open={devicesOpen} onClose={() => setDevicesOpen(false)} />
       <JoinModal open={joinOpen} onClose={() => setJoinOpen(false)} onSlug={(slug) => navigate(`/workspace/${slug}`)} />
     </div>
   );

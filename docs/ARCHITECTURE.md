@@ -32,11 +32,13 @@ src/
     layout/              Sidebar, TopBar
     ui/                  Modal, Drawer, ConfirmDialog, Avatar, States, StatusPills, TimezoneSelect
     contacts/ calendar/ forms/ workflow/   Feature components used by the pages
-    spaces/              Space preview tile and settings drawer; wizard/ holds the create-workspace
+    spaces/              Space preview tile, settings drawer, DeviceCheck (camera & mic: wizard last
+                         step, "Get ready" before a first visit, modal from Workspaces and in a space); wizard/ holds the create-workspace
                          steps and state (branching by type); config/ holds the Rooms, Access,
                          Availability and Branding editors shared by the wizard and the drawer
   types/index.ts         Shared TypeScript types mirroring the database tables
-  spatial/               Spatial workspace data: slug rules, links, schedule (open hours), access
+  spatial/               Spatial workspace data: media/ (camera & mic check: devices, useMediaCheck,
+                         useMediaPrefs), slug rules, links, schedule (open hours), access
                          (permissions, guest tokens), layoutFile (.synapse-space.json import/export),
                          data/ (types, sizing, templates, rooms, branding)
 supabase/
