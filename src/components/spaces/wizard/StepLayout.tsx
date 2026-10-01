@@ -4,11 +4,12 @@ import { spaceTypeInfo } from '@/spatial/data/spaceTypes';
 import { SpacePreview } from '../SpacePreview';
 import { StepTitle, SelectedMark } from './ui';
 import { optionClass } from './styles';
-import type { WizardAction, WizardState } from './state';
+import { effectiveType, type WizardAction, type WizardState } from './state';
 
 export function StepLayout({ state, dispatch }: { state: WizardState; dispatch: (a: WizardAction) => void }) {
-  const type = spaceTypeInfo(state.spaceType);
-  const templates = templatesFor(state.spaceType);
+  const spaceType = effectiveType(state);
+  const type = spaceTypeInfo(spaceType);
+  const templates = templatesFor(spaceType);
   const blank = state.templateKey === BLANK_TEMPLATE_KEY;
   return (
     <>

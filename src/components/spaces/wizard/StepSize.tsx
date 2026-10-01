@@ -3,7 +3,7 @@ import { SIZE_OPTIONS, setupSummary } from '@/spatial/data/sizing';
 import { cn } from '@/lib/utils';
 import { StepTitle } from './ui';
 import { optionClass } from './styles';
-import type { WizardAction, WizardState } from './state';
+import { effectiveType, type WizardAction, type WizardState } from './state';
 
 const SETUP_ICONS = { desks: Armchair, rooms: DoorClosed, lounges: Sofa, capacity: Users } as const;
 
@@ -33,7 +33,7 @@ export function StepSize({ state, dispatch }: { state: WizardState; dispatch: (a
       <div className="mt-6 rounded-2xl border border-navy-100 bg-ivory-200/30 p-4 sm:p-5">
         <p className="text-sm font-semibold text-navy-800">What we'll set up</p>
         <ul className="mt-3 grid gap-2.5 sm:grid-cols-2">
-          {setupSummary(state.sizeBand, state.spaceType).map((item) => {
+          {setupSummary(state.sizeBand, effectiveType(state)).map((item) => {
             const Icon = SETUP_ICONS[item.key as keyof typeof SETUP_ICONS];
             return (
               <li key={item.key} className="flex items-center gap-2.5 text-sm text-navy-700">

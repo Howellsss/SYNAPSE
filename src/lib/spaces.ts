@@ -1,7 +1,9 @@
 import { supabase } from '@/lib/supabase';
 import { sendInvitations } from '@/lib/invitations';
 import { sizingFor } from '@/spatial/data/sizing';
-import type { Space, SpaceType, SizeBand, UserRole } from '@/types';
+import type {
+  AccessMode, Persistence, Space, SpaceBranding, SpaceConfig, SpacePermissions, SpaceSchedule, SpaceType, SizeBand, UserRole,
+} from '@/types';
 
 /** A space with who belongs to it, for the Workspaces grid. */
 export interface SpaceWithMembers extends Space {
@@ -62,6 +64,16 @@ export interface NewSpace {
   templateKey: string;
   invites: string[];
   inviteRole: UserRole;
+  /** Imported map data, or {} until the map builder fills it in. */
+  map?: Record<string, unknown>;
+  accessMode: AccessMode;
+  guestLinkToken: string | null;
+  permissions: SpacePermissions;
+  persistence: Persistence;
+  /** Saved only when persistence is 'scheduled'. */
+  schedule: SpaceSchedule | null;
+  branding: SpaceBranding;
+  config: SpaceConfig;
 }
 
 export type CreateStage = 'space' | 'membership' | 'invites';
@@ -95,8 +107,15 @@ export async function createSpace(input: NewSpace, existing: Space | null = null
         space_type: input.spaceType,
         size_band: input.sizeBand,
         template_key: input.templateKey,
-        map: {},
+        map: input.map ?? {},
         capacity: sizingFor(input.sizeBand).capacity,
+        access_mode: input.accessMode,
+        guest_link_token: input.accessMode === 'guest_link' ? input.guestLinkToken : null,
+        permissions: input.permissions,
+        persistence: input.persistence,
+        schedule: input.persistence === 'scheduled' ? input.schedule : null,
+        branding: input.branding,
+        config: input.config,
         created_by: input.userId,
       })
       .select()
@@ -130,4 +149,63 @@ export async function createSpace(input: NewSpace, existing: Space | null = null
   });
 
   return { space, error: null, inviteError };
+}
+
+/** Fields the Workspace settings panel can change. */
+export type SpaceSettingsPatch = Partial<Pick<Space,
+  'name' | 'description' | 'access_mode' | 'guest_link_token' | 'permissions' | 'persistence' | 'schedule' | 'branding' | 'config'>>;
+
+export async function updateSpace(spaceId: string, patch: SpaceSettingsPatch): Promise<{ data: Space | null; error: string | null }> {
+  const { data, error } = await supabase
+    .from('spaces')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', spaceId)
+    .select()
+    .maybeSingle();
+  if (error) return { data: null, error: error.code === '42501' ? 'Only workspace owners and admins can change these settings.' : error.message };
+  if (!data) return { data: null, error: 'Only workspace owners and admins can change these settings.' };
+  return { data: data as Space, error: null };
+}
+
+/** Calendars the user can link a schedule to: the account's, plus their own without an account. */
+export async function listCalendars(workspaceId: string, userId: string): Promise<{ id: string; name: string }[]> {
+  const { data } = await supabase
+    .from('calendars')
+    .select('id, name')
+    .or(`workspace_id.eq.${workspaceId},owner_id.eq.${userId}`)
+    .order('name');
+  return (data ?? []) as { id: string; name: string }[];
+}
+
+/** Uploads a workspace logo to the public workspace-logos bucket (same bucket as account logos). */
+export async function uploadSpaceLogo(workspaceId: string, file: File): Promise<{ url: string | null; error: string | null }> {
+  const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+  const path = `spaces/${workspaceId}/${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from('workspace-logos').upload(path, file, { upsert: false, contentType: file.type });
+  if (error) return { url: null, error: error.message };
+  const { data } = supabase.storage.from('workspace-logos').getPublicUrl(path);
+  return { url: data.publicUrl, error: null };
+}
+
+/** What a guest sees about a guest-link space (from the join_space_as_guest RPC). */
+export interface GuestSpaceInfo {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  space_type: SpaceType;
+  template_key: string;
+  capacity: number;
+  persistence: Persistence;
+  schedule: SpaceSchedule | null;
+  branding: SpaceBranding;
+  config: SpaceConfig;
+  map: Record<string, unknown>;
+}
+
+/** Works without signing in. Returns null for unknown tokens or spaces that aren't guest-link. */
+export async function joinSpaceAsGuest(token: string): Promise<{ data: GuestSpaceInfo | null; error: string | null }> {
+  const { data, error } = await supabase.rpc('join_space_as_guest', { p_token: token });
+  if (error) return { data: null, error: error.message };
+  return { data: (data as GuestSpaceInfo | null) ?? null, error: null };
 }

@@ -45,7 +45,10 @@ const LABELS: Record<SpaceType, { desk: [string, string]; room: [string, string]
   classroom: { desk: ['seat', 'seats'], room: ['breakout room', 'breakout rooms'], lounge: ['reading corner', 'reading corners'] },
   event_hall: { desk: ['seat', 'seats'], room: ['networking table', 'networking tables'], lounge: ['reception area', 'reception areas'] },
   coaching_studio: { desk: ['chair', 'chairs'], room: ['private session room', 'private session rooms'], lounge: ['waiting lounge', 'waiting lounges'] },
-  community_hub: { desk: ['seat', 'seats'], room: ['group room', 'group rooms'], lounge: ['hangout area', 'hangout areas'] },
+  town_square: { desk: ['spot', 'spots'], room: ['group area', 'group areas'], lounge: ['hangout area', 'hangout areas'] },
+  coworking: { desk: ['hot desk', 'hot desks'], room: ['meeting room', 'meeting rooms'], lounge: ['lounge', 'lounges'] },
+  campus: { desk: ['seat', 'seats'], room: ['building room', 'building rooms'], lounge: ['common area', 'common areas'] },
+  custom: { desk: ['place', 'places'], room: ['meeting room', 'meeting rooms'], lounge: ['lounge', 'lounges'] },
 };
 
 const plural = (n: number, [one, many]: [string, string]) => `${n} ${n === 1 ? one : many}`;

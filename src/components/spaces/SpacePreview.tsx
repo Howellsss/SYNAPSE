@@ -11,6 +11,7 @@ export function SpacePreview({
   icon: Icon,
   size = 'md',
   showLabel = true,
+  wallScreen,
   className,
 }: {
   title: string;
@@ -19,6 +20,8 @@ export function SpacePreview({
   size?: 'sm' | 'md' | 'lg';
   /** Hide the name strip when the card already shows the name next to the tile. */
   showLabel?: boolean;
+  /** Draw the office wall screen with the workspace logo and accent colour. */
+  wallScreen?: { logoUrl?: string | null; accent?: string | null };
   className?: string;
 }) {
   return (
@@ -33,11 +36,23 @@ export function SpacePreview({
     >
       <IsoFloor className="absolute inset-x-[8%] top-[10%] h-[70%] w-[84%]" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_40%,rgba(228,169,60,0.16),transparent_60%)]" />
+      {wallScreen && (
+        <span
+          className="absolute left-1/2 top-[7%] flex aspect-video w-[34%] -translate-x-1/2 items-center justify-center overflow-hidden rounded-md bg-navy-950 shadow-lg shadow-black/40"
+          style={{ boxShadow: `0 0 0 2px ${wallScreen.accent ?? '#E4A93C'}` }}
+          aria-label="Wall screen"
+        >
+          {wallScreen.logoUrl
+            ? <img src={wallScreen.logoUrl} alt="" className="h-full w-full object-contain p-1.5" />
+            : <span className="text-[10px] font-semibold uppercase tracking-wider text-ivory-600">Your logo</span>}
+        </span>
+      )}
       {Icon && (
         <span className={cn(
-          'absolute left-1/2 top-[42%] flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-2xl bg-gold-400 text-navy-900 shadow-lg shadow-black/30',
+          'absolute left-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-2xl bg-gold-400 text-navy-900 shadow-lg shadow-black/30',
+          wallScreen ? 'top-[55%]' : 'top-[42%]',
           size === 'sm' ? 'h-9 w-9' : size === 'lg' ? 'h-16 w-16' : 'h-12 w-12',
-        )}>
+        )} style={wallScreen?.accent ? { backgroundColor: wallScreen.accent, color: ['#E4A93C', '#B07A1B'].includes(wallScreen.accent) ? '#091530' : '#fff' } : undefined}>
           <Icon className={size === 'sm' ? 'h-4 w-4' : size === 'lg' ? 'h-8 w-8' : 'h-6 w-6'} />
         </span>
       )}

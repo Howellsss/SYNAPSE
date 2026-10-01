@@ -24,16 +24,21 @@ src/
     group-page-config.ts Group calendar page designer config
     email-accounts.ts    Connected Gmail accounts (hooks + connect/disconnect)
     contact-nav.ts       Prev/next navigation between contacts
-    spaces.ts            Spaces (virtual offices): list, get by slug, slug check, createSpace
+    spaces.ts            Spaces (virtual offices): list, get by slug, slug check, createSpace,
+                         updateSpace, logo upload, joinSpaceAsGuest (guest link RPC)
     invitations.ts       Team invitations (used by Settings → Team and the space wizard)
   pages/                 One component per screen (see Routing)
   components/
     layout/              Sidebar, TopBar
     ui/                  Modal, Drawer, ConfirmDialog, Avatar, States, StatusPills, TimezoneSelect
     contacts/ calendar/ forms/ workflow/   Feature components used by the pages
-    spaces/              Space preview tile; wizard/ holds the create-workspace steps and state
+    spaces/              Space preview tile and settings drawer; wizard/ holds the create-workspace
+                         steps and state (branching by type); config/ holds the Rooms, Access,
+                         Availability and Branding editors shared by the wizard and the drawer
   types/index.ts         Shared TypeScript types mirroring the database tables
-  spatial/               Spatial workspace data: slug rules, links, data/ (types, sizing, templates)
+  spatial/               Spatial workspace data: slug rules, links, schedule (open hours), access
+                         (permissions, guest tokens), layoutFile (.synapse-space.json import/export),
+                         data/ (types, sizing, templates, rooms, branding)
 supabase/
   migrations/            Schema history (run in order); supabase-setup.sql is the combined file
   functions/             Edge Functions: form-submit, gmail-oauth, send-email
@@ -47,15 +52,16 @@ docs/                    This file, GMAIL_SETUP.md
 `src/lib/router.ts` is a tiny hash router. `useRouter()` returns `[path, navigate]`:
 
 - `path` is `location.hash` without the `#`, falling back to `location.pathname`, then `/dashboard`.
-- `navigate('/x')` sets `location.hash`. The public pages `/book/…`, `/group/…` and `/invite/…`
-  use a real page load (`location.href`) so they work as shareable links.
+- `navigate('/x')` sets `location.hash`. The public pages `/book/…`, `/group/…`, `/join/…` and
+  `/invite/…` use a real page load (`location.href`) so they work as shareable links.
 - Query strings ride inside the hash (`#/settings?tab=email`); pages parse them themselves.
 
 `App.tsx` decides what to render, in this order:
 
 1. Auth still loading → spinner.
 2. `/book/:slug` or `/group/:slug` → `BookingPage` (public, no login).
-3. `/invite/:token` → `AcceptInvitePage` (public to view, login to accept).
+3. `/join/:token` → `GuestJoinPage` (public; a space's guest link, via the `join_space_as_guest` RPC).
+   `/invite/:token` → `AcceptInvitePage` (public to view, login to accept).
 4. No user → `AuthPage` (sign in, sign up, forgot/reset password).
 5. `/workspace/new` → `CreateSpaceWizard`, full screen without the shell.
 6. Otherwise the shell (`Sidebar` + `TopBar`) around `renderPage()`, which matches `path` with
@@ -105,7 +111,7 @@ is the fallback. New work should still scope by `workspace_id`.
 | Calendars & booking | `calendars`, `calendar_hosts`, `calendar_groups`, `calendar_group_members`, `calendar_group_analytics`, `availability_rules`, `availability_overrides`, `host_availability_rules`, `external_busy_periods`, `booking_links`, `booking_locks`, `appointments`, `appointment_participants`, `notification_rules` |
 | Forms | `forms`, `form_fields`, `form_field_conditions`, `form_submissions`, `form_notification_logs`, `form_activity_timeline` |
 | Workflows | `workflows`, `workflow_nodes`, `workflow_edges`, `workflow_versions`, `workflow_enrollments`, `workflow_executions`, `workflow_execution_logs`, `workflow_goals`, `workflow_templates` |
-| Spaces (virtual offices) | `spaces` (owned by a workspace; slug unique across all tenants), `space_members` (per-person state in a space) |
+| Spaces (virtual offices) | `spaces` (owned by a workspace; slug unique across all tenants; also `access_mode`, `guest_link_token`, `permissions`, `persistence` + `schedule`, `branding`, `config.rooms`), `space_members` (per-person state in a space) |
 | Messaging | `messages` (email/SMS log per contact), `email_accounts`, `email_account_secrets` (encrypted OAuth tokens, no client access) |
 | Recordings | `recordings` |
 | Integrations | `integrations`, `integration_sync_logs`, `webhooks` |
