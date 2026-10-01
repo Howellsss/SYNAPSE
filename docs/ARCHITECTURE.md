@@ -32,12 +32,14 @@ src/
     layout/              Sidebar, TopBar
     ui/                  Modal, Drawer, ConfirmDialog, Avatar, States, StatusPills, TimezoneSelect
     contacts/ calendar/ forms/ workflow/   Feature components used by the pages
-    spaces/              Space preview tile, settings drawer, DeviceCheck (camera & mic: wizard last
+    spaces/              room/ is the in-space screen (people panel, toolbar, control bar, invite);
+                         space preview tile, settings drawer, DeviceCheck (camera & mic: wizard last
                          step, "Get ready" before a first visit, modal from Workspaces and in a space); wizard/ holds the create-workspace
                          steps and state (branching by type); config/ holds the Rooms, Access,
                          Availability and Branding editors shared by the wizard and the drawer
   types/index.ts         Shared TypeScript types mirroring the database tables
-  spatial/               Spatial workspace data: media/ (camera & mic check: devices, useMediaCheck,
+  spatial/               Spatial workspace data: presence (who's in a space, live), quality (graphics
+                         setting), scene/pathfinding (A* on the nav grid), media/ (camera & mic check: devices, useMediaCheck,
                          useMediaPrefs), slug rules, links, schedule (open hours), access
                          (permissions, guest tokens), layoutFile (.synapse-space.json import/export),
                          data/ (types, sizing, templates, rooms, branding)
@@ -70,7 +72,7 @@ docs/                    This file, GMAIL_SETUP.md, ART-BRIEF.md (3D art commiss
    `startsWith`/regex: `/contacts/:id` → `ContactDetailPage`, `/contacts` → `ContactsPage`,
    `/calendars/groups/:id` → `GroupCalendarSettingsPage`, `/calendars` → `CalendarsPage`,
    `/forms/:id/edit` → `FormBuilder`, `/forms` → `FormsPage`, `/workflows`, `/recordings`,
-   `/workspace/:slug` → `SpacePage`, `/workspace` → `WorkspacesPage`,
+   `/workspace/:slug` → `SpacePage` (rendered full height next to the sidebar, without the top bar), `/workspace` → `WorkspacesPage`,
    `/ai-hub`, `/settings`, and the placeholder routes below. Unknown paths show the Dashboard.
 
 To add a screen: create `src/pages/XPage.tsx`, add a branch in `renderPage()`, and add a
@@ -128,7 +130,7 @@ Child tables (`form_fields`, `workflow_nodes`, `calendar_hosts`, `availability_r
 | --- | --- | --- |
 | Dashboard | `/dashboard` | Real (reads workspace data) |
 | Meetings | `/meetings` | **Placeholder** (`ComingSoonPage`) |
-| Workspaces | `/workspace` | Real: spaces grid and create wizard (`/workspace/new`, full screen); `/workspace/:slug` is a placeholder until the 3D office exists |
+| Workspaces | `/workspace` | Real: spaces grid and create wizard (`/workspace/new`, full screen); `/workspace/:slug` is the in-space screen (people, status, controls); the 3D world itself waits for the art kit |
 | Contacts | `/contacts` | Real: list, add, detail page with composer (email via Gmail) |
 | Conversations | `/conversations` | **Placeholder** (`ComingSoonPage`) |
 | Events | `/events` | **Placeholder** (`ComingSoonPage`) |

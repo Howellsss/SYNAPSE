@@ -106,6 +106,17 @@ function AppContent() {
     return <Dashboard />;
   };
 
+  // Inside a space the world fills the screen next to the sidebar: no top bar, no padding.
+  const inSpace = /^\/workspace\/[a-z0-9-]+(?:[/?]|$)/.test(path);
+  if (inSpace) {
+    return (
+      <div className="h-[100dvh] overflow-hidden bg-white">
+        <Sidebar currentPath={path} onNavigate={navigate} />
+        <main className="h-full lg:ml-[224px]">{renderPage()}</main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-white">
       <Sidebar currentPath={path} onNavigate={navigate} />
