@@ -44,7 +44,7 @@ supabase/
   functions/             Edge Functions: form-submit, gmail-oauth, send-email
   config.toml            Per-function JWT settings
 scripts/build-supabase-setup.sh   Regenerates supabase-setup.sql from the migrations
-docs/                    This file, GMAIL_SETUP.md
+docs/                    This file, GMAIL_SETUP.md, ART-BRIEF.md (3D art commission brief)
 ```
 
 ## Routing
