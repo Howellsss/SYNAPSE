@@ -3,8 +3,8 @@ import { supabase } from '@/lib/supabase';
 import { MoveSender, type LocalState } from './moveSender';
 import { RemoteMover } from './interpolation';
 import {
-  mergePresence, parseEmote, parseMove, parsePath,
-  type EmoteKind, type EmoteMsg, type MoveMsg, type PathMsg, type PresenceMeta,
+  mergePresence, parseAdmit, parseEmote, parseKnock, parseMove, parsePath,
+  type AdmitMsg, type EmoteKind, type EmoteMsg, type KnockMsg, type MoveMsg, type PathMsg, type PresenceMeta,
 } from './protocol';
 import type { ConnectionState } from './status';
 
@@ -22,6 +22,8 @@ export class RemoteStore {
     return m;
   }
   has(userId: string) { return this.movers.has(userId); }
+  /** Where someone is drawn right now, without creating a mover. */
+  pose(userId: string, now: number) { return this.movers.get(userId)?.sample(now) ?? null; }
   ids() { return [...this.movers.keys()]; }
   /** Forget people who left. */
   keepOnly(ids: Set<string>) {
@@ -41,11 +43,12 @@ export function useSpaceChannel(spaceId: string | null, me: MeInput | null, away
   const remotes = useRef(new RemoteStore()).current;
   const presentIds = useRef(new Set<string>());
   const emoteListeners = useRef(new Set<(e: EmoteMsg) => void>());
+  const roomListeners = useRef(new Set<(e: { knock?: KnockMsg; admit?: AdmitMsg }) => void>());
   const lastLocal = useRef<LocalState | null>(null);
   const userId = me?.userId ?? null;
   const payload = useMemo(() => (me ? JSON.stringify({ ...me, away }) : null), [me, away]);
 
-  const send = useCallback((event: 'move' | 'path' | 'emote', body: MoveMsg | PathMsg | EmoteMsg) => {
+  const send = useCallback((event: 'move' | 'path' | 'emote' | 'knock' | 'admit', body: MoveMsg | PathMsg | EmoteMsg | KnockMsg | AdmitMsg) => {
     const ch = channelRef.current;
     if (!ch) return;
     ch.send({ type: 'broadcast', event, payload: body }).catch(() => {});
@@ -94,6 +97,14 @@ export function useSpaceChannel(spaceId: string | null, me: MeInput | null, away
         const e = parseEmote(raw);
         if (!e || !accept(e.userId) || (e.to && e.to !== userId)) return;
         emoteListeners.current.forEach((fn) => fn(e));
+      })
+      .on('broadcast', { event: 'knock' }, ({ payload: raw }) => {
+        const k = parseKnock(raw);
+        if (k && accept(k.userId)) roomListeners.current.forEach((fn) => fn({ knock: k }));
+      })
+      .on('broadcast', { event: 'admit' }, ({ payload: raw }) => {
+        const a = parseAdmit(raw);
+        if (a && accept(a.userId) && a.to === userId) roomListeners.current.forEach((fn) => fn({ admit: a }));
       })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
@@ -151,5 +162,16 @@ export function useSpaceChannel(spaceId: string | null, me: MeInput | null, away
     return () => { emoteListeners.current.delete(fn); };
   }, []);
 
-  return { people, connection, remotes, updateLocal, startPath, endPath, sendEmote, onEmote };
+  const sendKnock = useCallback((zoneId: string) => {
+    if (userId) send('knock', { userId, zoneId, t: Date.now() });
+  }, [send, userId]);
+  const sendAdmit = useCallback((to: string, zoneId: string) => {
+    if (userId) send('admit', { userId, to, zoneId, t: Date.now() });
+  }, [send, userId]);
+  const onRoomSignal = useCallback((fn: (e: { knock?: KnockMsg; admit?: AdmitMsg }) => void) => {
+    roomListeners.current.add(fn);
+    return () => { roomListeners.current.delete(fn); };
+  }, []);
+
+  return { people, connection, remotes, updateLocal, startPath, endPath, sendEmote, onEmote, sendKnock, sendAdmit, onRoomSignal };
 }

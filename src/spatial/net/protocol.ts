@@ -25,8 +25,10 @@ export interface PresenceMeta {
   away: boolean;
   zoneId: string | null;
   deskId: string | null;
-  /** People in this person's conversation circle (proximity video fills this). */
+  /** People in this person's conversation group (from proximity). */
   conversation: string[];
+  /** Rooms this person has locked. A room stays locked while whoever locked it is present. */
+  locks: string[];
   joinedAt: string;
 }
 
@@ -55,6 +57,21 @@ export interface PathMsg {
   /** Sit when they arrive (they clicked a chair). */
   sitAtEnd: boolean;
   seq: number;
+  t: number;
+}
+
+/** Knocking on a locked room. */
+export interface KnockMsg {
+  userId: string;
+  zoneId: string;
+  t: number;
+}
+
+/** Letting a knocker in. */
+export interface AdmitMsg {
+  userId: string;
+  to: string;
+  zoneId: string;
   t: number;
 }
 
@@ -135,6 +152,23 @@ export function parseEmote(raw: unknown): EmoteMsg | null {
   return { userId, kind, to, t };
 }
 
+export function parseKnock(raw: unknown): KnockMsg | null {
+  if (!isObj(raw)) return null;
+  const userId = str(raw.userId);
+  const zoneId = str(raw.zoneId);
+  const t = num(raw.t, Number.MAX_SAFE_INTEGER);
+  return userId && zoneId && t !== null ? { userId, zoneId, t } : null;
+}
+
+export function parseAdmit(raw: unknown): AdmitMsg | null {
+  if (!isObj(raw)) return null;
+  const userId = str(raw.userId);
+  const to = str(raw.to);
+  const zoneId = str(raw.zoneId);
+  const t = num(raw.t, Number.MAX_SAFE_INTEGER);
+  return userId && to && zoneId && t !== null ? { userId, to, zoneId, t } : null;
+}
+
 export function parsePresence(raw: unknown): PresenceMeta | null {
   if (!isObj(raw)) return null;
   const userId = str(raw.userId);
@@ -153,6 +187,7 @@ export function parsePresence(raw: unknown): PresenceMeta | null {
     zoneId: optStr(raw.zoneId),
     deskId: optStr(raw.deskId),
     conversation: Array.isArray(raw.conversation) ? raw.conversation.filter((c): c is string => typeof c === 'string').slice(0, 50) : [],
+    locks: Array.isArray(raw.locks) ? raw.locks.filter((c): c is string => typeof c === 'string' && c.length <= 64).slice(0, 20) : [],
     joinedAt: typeof raw.joinedAt === 'string' ? raw.joinedAt : '',
   };
 }

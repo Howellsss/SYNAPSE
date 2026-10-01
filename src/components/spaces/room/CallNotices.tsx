@@ -19,7 +19,7 @@ export function CallNotices({ call, onOpenSettings }: { call: LiveKitRoom; onOpe
     : null;
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-[11rem] flex flex-col items-center gap-2 px-3 sm:bottom-20">
+    <div className="pointer-events-none absolute inset-x-0 bottom-[11rem] flex flex-col items-center gap-2 px-3 lg:bottom-20">
       {call.state === 'reconnecting' && (
         <p role="status" className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-navy-900/90 px-4 py-2 text-sm font-semibold text-white shadow-popover">
           <Loader2 className="h-4 w-4 animate-spin text-gold-400" /> Reconnecting audio & video…

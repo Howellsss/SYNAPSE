@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Clock, X, DoorClosed, Lock, Hand, Users, Loader2, WifiOff } from 'lucide-react';
+import { Clock, X, Loader2, WifiOff, Gauge } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from '@/lib/router';
 import { listSpaces } from '@/lib/spaces';
 import { spaceTypeInfo } from '@/spatial/data/spaceTypes';
 import { templateInfo } from '@/spatial/data/templates';
-import { buildRooms, roomTypeLabel } from '@/spatial/data/rooms';
+import { buildRooms } from '@/spatial/data/rooms';
 import { can } from '@/spatial/access';
 import { loadStatus, saveStatus, type PresenceStatus } from '@/spatial/net/status';
 import { useSpaceChannel, type MeInput } from '@/spatial/net/useSpaceChannel';
@@ -20,7 +20,11 @@ import { SpaceSettingsDrawer } from '@/components/spaces/SpaceSettingsDrawer';
 import { DeviceCheckModal } from '@/components/spaces/DeviceCheck';
 import { useLiveKitRoom } from '@/spatial/media/useLiveKitRoom';
 import { useCallShortcuts } from '@/spatial/media/shortcuts';
+import { useProximity } from '@/spatial/media/useProximity';
+import { useMediaPrefs } from '@/spatial/media/useMediaPrefs';
 import { CallNotices } from './CallNotices';
+import { VideoStrip } from './VideoStrip';
+import { FloorMap } from './FloorMap';
 import { PeoplePanel, PeopleCountButton } from './PeoplePanel';
 import { ConnectionPill, ControlBar, WorldToolbar } from './Overlay';
 import { InviteToSpace } from './InviteToSpace';
@@ -46,11 +50,27 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
   const { toast } = useToast();
   const name = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || user?.email?.split('@')[0] || 'You';
   const away = useAway();
+  // Where I am. The 3D scene sets this; until it exists nobody is placed.
+  const [myPos, setMyPos] = useState<{ x: number; z: number } | null>(null);
+  const [myZone, setMyZone] = useState<string | null>(null);
+  const [myGroup, setMyGroup] = useState<string[]>([]);
+  const [myLocks, setMyLocks] = useState<string[]>([]);
   const me = useMemo<MeInput | null>(() => (user ? {
     userId: user.id, name, avatarUrl: profile?.avatar_url ?? null, avatarHash: null, status,
-    zoneId: null, deskId: null, conversation: [],
-  } : null), [user, name, profile?.avatar_url, status]);
-  const { people, connection, sendEmote, onEmote } = useSpaceChannel(space.id, me, away);
+    zoneId: myZone, deskId: null, conversation: myGroup, locks: myLocks,
+  } : null), [user, name, profile?.avatar_url, status, myZone, myGroup, myLocks]);
+  const { people, connection, remotes, updateLocal, sendEmote, onEmote, sendKnock, sendAdmit, onRoomSignal } = useSpaceChannel(space.id, me, away);
+
+  // Share my position whenever it changes.
+  useEffect(() => { if (myPos) updateLocal({ x: myPos.x, z: myPos.z, rot: 0, anim: 'idle' }); }, [myPos, updateLocal]);
+  // Development hook: place yourself until the 3D scene does it (window.__synapse.setPose(x, z, zoneId)).
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    (window as unknown as { __synapse?: unknown }).__synapse = {
+      setPose: (x: number, z: number, zone: string | null = null) => { setMyPos({ x, z }); setMyZone(zone); },
+    };
+    return () => { delete (window as unknown as { __synapse?: unknown }).__synapse; };
+  }, []);
   // Always list yourself, even before (or without) the presence channel answering.
   const shown = useMemo<PresenceMeta[]>(
     () => (!me || people.some((p) => p.userId === me.userId) ? people : [...people, { ...me, away, joinedAt: '' }].sort((a, b) => a.name.localeCompare(b.name))),
@@ -111,13 +131,46 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
   }, [workspace, space.id]);
 
   const media = normalizeMediaPrefs(profile?.media_prefs);
+  const [, updatePrefs] = useMediaPrefs();
   const call = useLiveKitRoom(space.id, { prefs: media, onNotice: (m, tone) => toast(m, tone ?? 'info') });
   useCallShortcuts({ mic: () => { void call.toggleMic(); }, cam: () => { void call.toggleCam(); } });
   const canInvite = can(space.permissions, 'invite', role);
   const canEdit = can(space.permissions, 'edit_office', role);
   const info = spaceTypeInfo(space.space_type);
   const template = templateInfo(space.template_key);
-  const rooms = space.config?.rooms?.length ? space.config.rooms : buildRooms(space.template_key, space.size_band);
+  const rooms = useMemo(() => (space.config?.rooms?.length ? space.config.rooms : buildRooms(space.template_key, space.size_band)), [space.config, space.template_key, space.size_band]);
+  const canLock = can(space.permissions, 'lock_rooms', role);
+
+  const proximity = useProximity({
+    room: call.room, meId: user?.id ?? null, myPos, myZone, people: shown, remotes, rooms, dataSaver: media.data_saver,
+  });
+  useEffect(() => { setMyGroup((g) => (g.join() === proximity.myGroup.join() ? g : proximity.myGroup)); }, [proximity.myGroup]);
+
+  // Locked rooms: locked while whoever locked them is here.
+  const locked = useMemo(() => new Set([...people.flatMap((p) => p.locks), ...myLocks]), [people, myLocks]);
+  const [admitted, setAdmitted] = useState<Set<string>>(new Set());
+  const [knocks, setKnocks] = useState<{ userId: string; zoneId: string }[]>([]);
+  const roomName = useCallback((id: string) => rooms.find((r) => r.id === id)?.name ?? 'the room', [rooms]);
+  useEffect(() => onRoomSignal(({ knock, admit }) => {
+    if (knock && knock.zoneId === myZone) {
+      setKnocks((k) => (k.some((x) => x.userId === knock.userId && x.zoneId === knock.zoneId) ? k : [...k, knock]));
+    }
+    if (admit) {
+      setAdmitted((s) => new Set(s).add(admit.zoneId));
+      toast(`${people.find((p) => p.userId === admit.userId)?.name ?? 'Someone'} let you into ${roomName(admit.zoneId)}`, 'info');
+    }
+  }), [onRoomSignal, myZone, people, roomName, toast]);
+  const toggleLock = (zoneId: string) => setMyLocks((l) => (l.includes(zoneId) ? l.filter((z) => z !== zoneId) : [...l, zoneId]));
+  const knock = (zoneId: string) => { sendKnock(zoneId); toast(`You knocked on ${roomName(zoneId)}`); };
+
+  // Suggest data saver when the connection has been poor for a while.
+  const [saverDismissed, setSaverDismissed] = useState(false);
+  const [suggestSaver, setSuggestSaver] = useState(false);
+  useEffect(() => {
+    if (call.connectionQuality !== 'poor' || media.data_saver || saverDismissed) { setSuggestSaver(false); return; }
+    const t = window.setTimeout(() => setSuggestSaver(true), 8000);
+    return () => window.clearTimeout(t);
+  }, [call.connectionQuality, media.data_saver, saverDismissed]);
 
   const changeStatus = (s: PresenceStatus) => { setStatus(s); saveStatus(s); };
   const changeQuality = (q: GraphicsQuality) => { setQuality(q); saveQuality(q); };
@@ -136,6 +189,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
       canInvite={canInvite}
       onInvite={() => { setSheetOpen(false); setInviteOpen(true); }}
       raisedHands={hands}
+      conversation={proximity.myGroup}
       onWave={(id) => { sendEmote('wave', id); toast(`You waved at ${people.find((p) => p.userId === id)?.name ?? 'them'} 👋`); }}
     />
   );
@@ -159,7 +213,34 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
         </div>
 
         {/* Video strip (filled by proximity video) */}
-        <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center px-16" data-slot="video-strip" />
+        <div className="absolute inset-x-0 top-3 z-10 flex justify-center pl-16 pr-3 sm:px-16 lg:left-64 lg:right-4 lg:px-0">
+          <VideoStrip room={call.room} inRange={proximity.inRange} people={shown} activeSpeakers={call.activeSpeakers} />
+        </div>
+
+        {knocks.length > 0 && (
+          <div className="absolute right-16 top-28 z-10 flex w-72 flex-col gap-2 sm:right-20">
+            {knocks.map((k) => (
+              <div key={k.userId + k.zoneId} role="alert" className="rounded-2xl bg-white p-3 text-sm text-navy-800 shadow-popover">
+                <p><strong>{people.find((p) => p.userId === k.userId)?.name ?? 'Someone'}</strong> is knocking on {roomName(k.zoneId)}.</p>
+                <div className="mt-2 flex justify-end gap-2">
+                  <button type="button" className="btn-ghost !px-3 !py-1.5" onClick={() => setKnocks((x) => x.filter((y) => y !== k))}>Ignore</button>
+                  <button type="button" className="btn-primary !px-3 !py-1.5" onClick={() => { sendAdmit(k.userId, k.zoneId); setKnocks((x) => x.filter((y) => y !== k)); }}>Let in</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {suggestSaver && (
+          <div className="absolute inset-x-0 bottom-[17rem] z-10 flex justify-center px-3 lg:bottom-40">
+            <div role="alert" className="flex max-w-md items-center gap-3 rounded-2xl bg-white px-4 py-3 text-sm text-navy-800 shadow-popover">
+              <Gauge className="h-5 w-5 shrink-0 text-gold-600" />
+              <p className="min-w-0 flex-1"><strong>Your connection is weak.</strong> Turn on Data saver? Audio first, at most 2 small videos.</p>
+              <button type="button" className="btn-ghost !px-2 !py-1.5" onClick={() => setSaverDismissed(true)}>Not now</button>
+              <button type="button" className="btn-primary !px-3 !py-1.5" onClick={() => { void updatePrefs({ data_saver: true }); setSaverDismissed(true); toast('Data saver is on'); }}>Turn on</button>
+            </div>
+          </div>
+        )}
 
         {(connection === 'reconnecting' || connection === 'offline') && (
           <div className="absolute inset-x-0 top-14 z-10 flex justify-center px-16">
@@ -200,9 +281,23 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
           />
         </div>
 
-        {mapOpen && <FloorMap spaceName={space.name} rooms={rooms} people={shown.length} onClose={() => setMapOpen(false)} />}
+        {mapOpen && (
+          <FloorMap
+            spaceName={space.name}
+            rooms={rooms}
+            people={shown}
+            locked={locked}
+            myLocks={myLocks}
+            canLock={canLock}
+            admitted={admitted}
+            myZone={myZone}
+            onToggleLock={toggleLock}
+            onKnock={knock}
+            onClose={() => setMapOpen(false)}
+          />
+        )}
 
-        <div className="absolute bottom-24 left-3 flex flex-col items-start gap-2 sm:bottom-auto sm:left-4 sm:top-16 lg:top-4">
+        <div className="absolute bottom-24 left-3 flex flex-col items-start gap-2 sm:left-4 lg:bottom-auto lg:top-4">
           <div className="lg:hidden"><PeopleCountButton count={shown.length} onClick={() => setSheetOpen(true)} /></div>
           <ConnectionPill state={connection} call={call.state} quality={call.connectionQuality} />
         </div>
@@ -246,30 +341,6 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
           onSaved={(s) => { onSpaceChange(s); setEditOpen(false); }}
         />
       )}
-    </div>
-  );
-}
-
-/** Floor map: the rooms and zones in this space, until the 2D map of the 3D office exists. */
-function FloorMap({ spaceName, rooms, people, onClose }: { spaceName: string; rooms: ReturnType<typeof buildRooms>; people: number; onClose: () => void }) {
-  return (
-    <div className="absolute right-16 top-1/2 w-[min(18rem,calc(100%-6rem))] -translate-y-1/2 rounded-2xl bg-white/95 p-4 shadow-popover backdrop-blur sm:right-20" role="dialog" aria-label="Floor map">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="truncate text-sm font-bold text-navy-800">{spaceName}</p>
-        <button type="button" onClick={onClose} aria-label="Close floor map" className="rounded-lg p-1 text-ivory-700 hover:bg-ivory-50"><X className="h-4 w-4" /></button>
-      </div>
-      <p className="mb-2 flex items-center gap-1.5 text-xs text-ivory-700"><Users className="h-3.5 w-3.5" /> Main Floor · {people} online</p>
-      <ul className="max-h-64 space-y-1 overflow-y-auto">
-        {rooms.map((r) => (
-          <li key={r.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-ivory-50">
-            <DoorClosed className="h-4 w-4 shrink-0 text-gold-600" />
-            <span className="min-w-0 flex-1 truncate text-navy-800">{r.name}</span>
-            <span className="shrink-0 text-xs text-ivory-700">{roomTypeLabel(r.type)} · {r.capacity}</span>
-            {r.lockable && <Lock className="h-3.5 w-3.5 shrink-0 text-ivory-700" aria-label="Lockable" />}
-            {r.knock_to_enter && <Hand className="h-3.5 w-3.5 shrink-0 text-ivory-700" aria-label="Knock to enter" />}
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }

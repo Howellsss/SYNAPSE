@@ -1,8 +1,8 @@
 # Audio & video (LiveKit)
 
 Inside a workspace, people talk over **LiveKit** (WebRTC). Each space has one LiveKit room,
-`space_<spaceId>`. Who you actually hear and see is decided by proximity (walk up to someone) —
-that comes with the 3D office; until then you're connected but subscribed to no one.
+`space_<spaceId>`. Who you actually hear and see is decided by proximity (see "Proximity
+conversations" in docs/ARCHITECTURE.md): you subscribe only to people in range.
 
 ```
 Browser                         Supabase                           LiveKit Cloud
@@ -88,7 +88,7 @@ curl -X POST "https://parmtumfpsdtdtgwvscq.supabase.co/functions/v1/livekit-toke
 
 The `livekit-client` library (~150 KB gzipped) is loaded only when someone enters a workspace.
 
-## Privacy note for proximity (Prompt 10)
+## Privacy note for proximity
 
 `autoSubscribe: false` controls **bandwidth and UX, not privacy**. Every token can subscribe to
 every track in `space_<spaceId>`, so a modified client could listen to the whole space. For rooms
