@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Clock, X, DoorClosed, Lock, Hand, Users } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Clock, X, DoorClosed, Lock, Hand, Users, Loader2, WifiOff } from 'lucide-react';
+import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from '@/lib/router';
 import { listSpaces } from '@/lib/spaces';
@@ -7,7 +8,11 @@ import { spaceTypeInfo } from '@/spatial/data/spaceTypes';
 import { templateInfo } from '@/spatial/data/templates';
 import { buildRooms, roomTypeLabel } from '@/spatial/data/rooms';
 import { can } from '@/spatial/access';
-import { loadStatus, saveStatus, useSpacePresence, type PresenceStatus } from '@/spatial/presence';
+import { loadStatus, saveStatus, type PresenceStatus } from '@/spatial/net/status';
+import { useSpaceChannel, type MeInput } from '@/spatial/net/useSpaceChannel';
+import { useAway } from '@/spatial/net/useAway';
+import { EMOTE_EMOJI } from '@/spatial/net/emotes';
+import type { EmoteMsg, PresenceMeta } from '@/spatial/net/protocol';
 import { loadQuality, saveQuality, type GraphicsQuality } from '@/spatial/quality';
 import { normalizeMediaPrefs } from '@/spatial/media/devices';
 import { TypeArt } from '@/components/spaces/TypeArt';
@@ -35,16 +40,67 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
   const [editOpen, setEditOpen] = useState(false);
   const [devicesOpen, setDevicesOpen] = useState(false);
 
+  const { toast } = useToast();
   const name = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || user?.email?.split('@')[0] || 'You';
-  const me = useMemo(() => (user ? {
-    user_id: user.id, name, avatar_url: profile?.avatar_url ?? null, status, zone: null, conversation: [] as string[],
+  const away = useAway();
+  const me = useMemo<MeInput | null>(() => (user ? {
+    userId: user.id, name, avatarUrl: profile?.avatar_url ?? null, avatarHash: null, status,
+    zoneId: null, deskId: null, conversation: [],
   } : null), [user, name, profile?.avatar_url, status]);
-  const { people, connection } = useSpacePresence(space.id, me);
+  const { people, connection, sendEmote, onEmote } = useSpaceChannel(space.id, me, away);
   // Always list yourself, even before (or without) the presence channel answering.
-  const shown = useMemo(
-    () => (!me || people.some((p) => p.user_id === me.user_id) ? people : [...people, { ...me, joined_at: '' }].sort((a, b) => a.name.localeCompare(b.name))),
-    [people, me],
+  const shown = useMemo<PresenceMeta[]>(
+    () => (!me || people.some((p) => p.userId === me.userId) ? people : [...people, { ...me, away, joinedAt: '' }].sort((a, b) => a.name.localeCompare(b.name))),
+    [people, me, away],
   );
+  const [handRaised, setHandRaised] = useState(false);
+  const [raisedHands, setRaisedHands] = useState<Set<string>>(new Set());
+  const [bubbles, setBubbles] = useState<{ id: number; text: string }[]>([]);
+
+  // Emotes from others: a bubble over the world, a toast for a wave aimed at you, and hands.
+  useEffect(() => onEmote((e: EmoteMsg) => {
+    const who = people.find((p) => p.userId === e.userId)?.name ?? 'Someone';
+    if (e.kind === 'raise_hand' || e.kind === 'lower_hand') {
+      setRaisedHands((s) => {
+        const next = new Set(s);
+        if (e.kind === 'raise_hand') next.add(e.userId); else next.delete(e.userId);
+        return next;
+      });
+      if (e.kind === 'raise_hand') toast(`${who} raised their hand ✋`, 'info');
+      return;
+    }
+    if (e.to) { toast(`${who} waved at you 👋`, 'info'); return; }
+    const id = Date.now() + Math.random();
+    setBubbles((b) => [...b.slice(-4), { id, text: `${who} ${EMOTE_EMOJI[e.kind]}` }]);
+    window.setTimeout(() => setBubbles((b) => b.filter((x) => x.id !== id)), 3500);
+  }), [onEmote, people, toast]);
+
+  // Forget hands of people who left.
+  useEffect(() => {
+    setRaisedHands((s) => {
+      const ids = new Set(people.map((p) => p.userId));
+      const next = new Set([...s].filter((id) => ids.has(id)));
+      return next.size === s.size ? s : next;
+    });
+  }, [people]);
+
+  const react = useCallback((kind: 'wave' | 'cheer' | 'heart') => {
+    sendEmote(kind);
+    const id = Date.now() + Math.random();
+    setBubbles((b) => [...b.slice(-4), { id, text: `You ${EMOTE_EMOJI[kind]}` }]);
+    window.setTimeout(() => setBubbles((b) => b.filter((x) => x.id !== id)), 3500);
+  }, [sendEmote]);
+  const raiseHand = (raised: boolean) => {
+    setHandRaised(raised);
+    sendEmote(raised ? 'raise_hand' : 'lower_hand');
+  };
+  // Re-announce a raised hand after reconnecting, so people who joined meanwhile see it.
+  useEffect(() => { if (connection === 'connected' && handRaised) sendEmote('raise_hand'); }, [connection]); // eslint-disable-line react-hooks/exhaustive-deps
+  const hands = useMemo(() => {
+    const s = new Set(raisedHands);
+    if (handRaised && user) s.add(user.id);
+    return s;
+  }, [raisedHands, handRaised, user]);
 
   useEffect(() => {
     if (!workspace) return;
@@ -74,6 +130,8 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
       onAllSpaces={() => navigate('/workspace')}
       canInvite={canInvite}
       onInvite={() => { setSheetOpen(false); setInviteOpen(true); }}
+      raisedHands={hands}
+      onWave={(id) => { sendEmote('wave', id); toast(`You waved at ${people.find((p) => p.userId === id)?.name ?? 'them'} 👋`); }}
     />
   );
 
@@ -97,6 +155,23 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
 
         {/* Video strip (filled by proximity video) */}
         <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center px-16" data-slot="video-strip" />
+
+        {(connection === 'reconnecting' || connection === 'offline') && (
+          <div className="absolute inset-x-0 top-14 z-10 flex justify-center px-16">
+            <p role="alert" className="inline-flex items-center gap-2 rounded-full bg-gold-400 px-4 py-2 text-sm font-semibold text-navy-900 shadow-popover">
+              {connection === 'offline' ? <WifiOff className="h-4 w-4" /> : <Loader2 className="h-4 w-4 animate-spin" />}
+              {connection === 'offline' ? "You're offline. We'll reconnect when you're back." : 'Reconnecting…'}
+            </p>
+          </div>
+        )}
+
+        {bubbles.length > 0 && (
+          <ul className="pointer-events-none absolute left-1/2 top-24 flex -translate-x-1/2 flex-col items-center gap-2" aria-live="polite">
+            {bubbles.map((b) => (
+              <li key={b.id} className="animate-scale-in rounded-full bg-white/95 px-4 py-1.5 text-sm font-semibold text-navy-800 shadow-popover">{b.text}</li>
+            ))}
+          </ul>
+        )}
 
         {closedNote && (
           <div className="absolute inset-x-0 top-3 flex justify-center px-16">
@@ -133,6 +208,9 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
             initialCameraOn={!media.join_camera_off}
             onLeave={() => navigate('/workspace')}
             onSettings={() => setDevicesOpen(true)}
+            onReact={react}
+            handRaised={handRaised}
+            onHand={raiseHand}
           />
         </div>
       </section>

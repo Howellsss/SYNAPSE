@@ -19,6 +19,7 @@ import { exportLayout, layoutFileName } from '@/spatial/layoutFile';
 import { SpaceSettingsDrawer } from '@/components/spaces/SpaceSettingsDrawer';
 import { DeviceCheckModal } from '@/components/spaces/DeviceCheck';
 import { normalizeMediaPrefs } from '@/spatial/media/devices';
+import { usePresenceCounts } from '@/spatial/net/usePresenceCounts';
 import { Avatar } from '@/components/ui/Avatar';
 import { Modal } from '@/components/ui/Modal';
 import { ErrorState, Skeleton } from '@/components/ui/States';
@@ -38,6 +39,7 @@ export function WorkspacesPage() {
   const [joinOpen, setJoinOpen] = useState(false);
   const [settingsFor, setSettingsFor] = useState<SpaceWithMembers | null>(null);
   const [devicesOpen, setDevicesOpen] = useState(false);
+  const online = usePresenceCounts(spaces?.map((s) => s.id) ?? []);
 
   const load = useCallback(async () => {
     if (!workspace) return;
@@ -115,6 +117,7 @@ export function WorkspacesPage() {
             <SpaceCard
               key={space.id}
               space={space}
+              online={online[space.id] ?? 0}
               people={people}
               canManage={canManageTeam}
               onEnter={() => navigate(`/workspace/${space.slug}`)}
@@ -216,8 +219,9 @@ function FirstVisit({ canCreate, onCreate, onJoin }: { canCreate: boolean; onCre
   );
 }
 
-function SpaceCard({ space, people, canManage, onEnter, onSettings, onExport }: {
+function SpaceCard({ space, online, people, canManage, onEnter, onSettings, onExport }: {
   space: SpaceWithMembers;
+  online: number;
   people: Record<string, MemberProfile>;
   canManage: boolean;
   onEnter: () => void;
@@ -251,8 +255,8 @@ function SpaceCard({ space, people, canManage, onEnter, onSettings, onExport }: 
               <Clock className="h-3 w-3" /> {opens}
             </span>
           ) : (
-            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-ivory-200/60 px-2 py-0.5 text-xs font-medium text-ivory-800">
-              <span className="h-1.5 w-1.5 rounded-full bg-ivory-600" /> 0 online
+            <span className={cn('inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium', online ? 'bg-green-50 text-green-800' : 'bg-ivory-200/60 text-ivory-800')}>
+              <span className={cn('h-1.5 w-1.5 rounded-full', online ? 'bg-green-500' : 'bg-ivory-600')} /> {online} online
             </span>
           )}
         </div>
