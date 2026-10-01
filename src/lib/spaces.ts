@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { sendInvitations } from '@/lib/invitations';
 import { sizingFor } from '@/spatial/data/sizing';
 import type {
-  AccessMode, Persistence, Space, SpaceBranding, SpaceConfig, SpacePermissions, SpaceSchedule, SpaceType, SizeBand, UserRole,
+  AccessMode, MediaPrefs, Persistence, Space, SpaceBranding, SpaceConfig, SpacePermissions, SpaceSchedule, SpaceType, SizeBand, UserRole,
 } from '@/types';
 
 /** A space with who belongs to it, for the Workspaces grid. */
@@ -37,6 +37,24 @@ export async function isSlugAvailable(slug: string): Promise<boolean | null> {
   const { data, error } = await supabase.rpc('is_space_slug_available', { p_slug: slug });
   if (error || typeof data !== 'boolean') return null;
   return data;
+}
+
+/** Whether the person has entered this space before. Null when it couldn't be checked. */
+export async function hasEntered(spaceId: string, userId: string): Promise<boolean | null> {
+  const { data, error } = await supabase
+    .from('space_members')
+    .select('first_entered_at')
+    .eq('space_id', spaceId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) return null;
+  return !!(data as { first_entered_at: string | null } | null)?.first_entered_at;
+}
+
+/** Saves how the person joins spaces (muted, camera off, data saver) on their profile. */
+export async function saveMediaPrefs(userId: string, prefs: MediaPrefs): Promise<string | null> {
+  const { error } = await supabase.from('profiles').update({ media_prefs: prefs }).eq('user_id', userId);
+  return error?.message ?? null;
 }
 
 /** Records the person's first visit to a space (their own space_members row). */

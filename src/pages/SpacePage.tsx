@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Copy, SearchX, Clock } from 'lucide-react';
+import { ArrowLeft, Copy, SearchX, Clock, Camera } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useRouter } from '@/lib/router';
-import { getSpaceBySlug, markEntered } from '@/lib/spaces';
+import { getSpaceBySlug, hasEntered, markEntered } from '@/lib/spaces';
 import { spaceTypeInfo } from '@/spatial/data/spaceTypes';
 import { templateInfo } from '@/spatial/data/templates';
 import { displaySpaceLink, spaceUrl } from '@/spatial/links';
 import { opensLabel, describeSchedule } from '@/spatial/schedule';
 import { SpacePreview } from '@/components/spaces/SpacePreview';
+import { DeviceCheckModal, GetReadyScreen } from '@/components/spaces/DeviceCheck';
 import { ErrorState, LoadingSpinner } from '@/components/ui/States';
 import type { Space } from '@/types';
 
@@ -20,24 +21,37 @@ export function SpacePage({ slug }: { slug: string }) {
   const [space, setSpace] = useState<Space | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  // undefined while checking; false shows "Get ready" before the first visit.
+  const [entered, setEntered] = useState<boolean | undefined>(undefined);
+  const [devicesOpen, setDevicesOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
     setSpace(undefined);
     setError(null);
-    getSpaceBySlug(slug).then(({ data, error: err }) => {
+    setEntered(undefined);
+    getSpaceBySlug(slug).then(async ({ data, error: err }) => {
       if (!active) return;
       if (err) { setError(err); return; }
       setSpace(data);
-      // Only count a visit when the person is actually let in.
+      // Only check (and later count) a visit when the person is actually let in.
       const closed = data ? opensLabel(data.schedule, data.persistence) : null;
-      if (data && user && (!closed || canManageTeam)) markEntered(data.id, user.id);
+      if (!data || !user || (closed && !canManageTeam)) { setEntered(true); return; }
+      const before = await hasEntered(data.id, user.id);
+      if (!active) return;
+      if (before === null) {
+        // Couldn't check: let them in rather than block, and record the visit as before.
+        markEntered(data.id, user.id);
+        setEntered(true);
+        return;
+      }
+      setEntered(before);
     });
     return () => { active = false; };
   }, [slug, user, attempt, canManageTeam]);
 
   if (error) return <ErrorState message={`Couldn't open this workspace. ${error}`} onRetry={() => setAttempt((n) => n + 1)} />;
-  if (space === undefined) return <div className="flex justify-center py-20"><LoadingSpinner className="h-8 w-8" /></div>;
+  if (space === undefined || (space && entered === undefined)) return <div className="flex justify-center py-20"><LoadingSpinner className="h-8 w-8" /></div>;
 
   if (space === null) {
     return (
@@ -62,6 +76,16 @@ export function SpacePage({ slug }: { slug: string }) {
     );
   }
 
+  if (entered === false && user) {
+    return (
+      <GetReadyScreen
+        spaceName={space.name}
+        onBack={() => navigate('/workspace')}
+        onEnter={async () => { await markEntered(space.id, user.id); setEntered(true); }}
+      />
+    );
+  }
+
   const type = spaceTypeInfo(space.space_type);
   const template = templateInfo(space.template_key);
   const copy = async () => {
@@ -83,8 +107,10 @@ export function SpacePage({ slug }: { slug: string }) {
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <span className="rounded-xl bg-white/10 px-3 py-2 font-mono text-sm text-ivory-200">{displaySpaceLink(space.slug)}</span>
           <button onClick={copy} className="inline-flex items-center gap-1.5 rounded-xl border border-white/20 px-3 py-2 text-sm font-semibold hover:bg-white/10"><Copy className="h-4 w-4" /> Copy link</button>
+          <button onClick={() => setDevicesOpen(true)} className="inline-flex items-center gap-1.5 rounded-xl border border-white/20 px-3 py-2 text-sm font-semibold hover:bg-white/10"><Camera className="h-4 w-4" /> Camera & mic</button>
         </div>
       </section>
+      <DeviceCheckModal open={devicesOpen} onClose={() => setDevicesOpen(false)} />
     </div>
   );
 }

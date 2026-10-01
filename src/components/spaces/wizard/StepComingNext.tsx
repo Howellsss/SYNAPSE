@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import { StepTitle } from './ui';
 
-/** Steps 6 and 7 until the avatar builder and the camera check exist. */
+/** The avatar step until the avatar builder exists. */
 export function StepComingNext({ title, subtitle, icon: Icon, cardTitle, cardText }: {
   title: string;
   subtitle: string;
