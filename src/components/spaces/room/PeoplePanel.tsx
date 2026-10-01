@@ -23,6 +23,8 @@ interface PeoplePanelProps {
   onInvite: () => void;
   /** People with a raised hand. */
   raisedHands: Set<string>;
+  /** My conversation group from proximity (falls back to my presence). */
+  conversation?: string[];
   onWave: (userId: string) => void;
   className?: string;
 }
@@ -34,7 +36,7 @@ const splitName = (name: string) => {
 
 /** Left panel inside a space: switcher, search, your status, and who's where. */
 export function PeoplePanel({
-  space, otherSpaces, people, meId, status, onStatus, onOpenSpace, onAllSpaces, canInvite, onInvite, raisedHands, onWave, className,
+  space, otherSpaces, people, meId, status, onStatus, onOpenSpace, onAllSpaces, canInvite, onInvite, raisedHands, onWave, conversation, className,
 }: PeoplePanelProps) {
   const [query, setQuery] = useState('');
   const rooms = useMemo(() => new Map((space.config?.rooms ?? []).map((r) => [r.id, r])), [space.config]);
@@ -45,7 +47,7 @@ export function PeoplePanel({
     return q ? people.filter((p) => p.name.toLowerCase().includes(q)) : people;
   }, [people, query]);
 
-  const conversationIds = new Set(me?.conversation ?? []);
+  const conversationIds = new Set(conversation ?? me?.conversation ?? []);
   const inConversation = visible.filter((p) => p.userId === meId ? conversationIds.size > 0 : conversationIds.has(p.userId));
   const rest = visible.filter((p) => !inConversation.includes(p));
   const zoneGroups = new Map<string, PresenceMeta[]>();

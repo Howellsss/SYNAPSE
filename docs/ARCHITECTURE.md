@@ -219,6 +219,34 @@ What that means for one busy 25-person office:
 - **Cheapest fix:** raise `HEARTBEAT_MS` to 30 s (≈ 31 M/month ≈ $65 overage) — newcomers already
   get everyone's position when they join, so a slow heartbeat only affects drift correction.
 
+## Proximity conversations (`src/spatial/media/proximity.ts`, `useProximity.ts`)
+
+Who you hear and see is decided on each position update and at least every 500 ms:
+
+| Where | Rule |
+| --- | --- |
+| Open floor, lounges, breakouts | In range at ≤ 4 tiles, out at > 5 (hysteresis). Volume full at ≤ 1.5 tiles, ~20 % at the edge. |
+| Meeting rooms, private offices | Everyone in the same room at full volume, nobody outside (not even the stage). Lockable rooms: people with the `lock_rooms` permission lock them (the lock lasts while they're present, shared in presence `locks`); others **Knock**, and anyone inside can **Let in**. |
+| Stage | People on the stage are heard and seen by the whole space (except closed rooms and quiet zones); the audience is heard only by people near them. |
+| Quiet zone | Chat only: no audio or video in or out. |
+
+`useProximity` subscribes only to in-range participants' tracks and unsubscribes from everyone else
+(LiveKit `autoSubscribe` is off), sets each person's volume, and plays the subscribed audio.
+Conversation groups are connected groups of in-range people; each open-floor group gets a floor
+circle (centre and radius in tiles) for the scene to draw as the soft gold dashed ring. Your group
+fills "In your conversation" and your presence `conversation`. Above 30 people, neighbours come
+from a spatial hash instead of checking every pair.
+
+Video strip (top centre): a tile per person you hear — camera or avatar portrait, name, gold ring
+while speaking, muted icon, click to enlarge, "+N" when they don't fit. **Data saver:** audio
+from everyone in range, video from the nearest 2 only, at low quality; it's suggested
+automatically after 8 s of a poor connection.
+
+Your position comes from the 3D scene, which isn't built yet. Until then you're "nowhere": only
+stage speakers reach you. In development, `window.__synapse.setPose(x, z, zoneId?)` places you
+for testing. Note: proximity decides what the client subscribes to; it isn't a privacy boundary
+(see the privacy note in docs/LIVEKIT.md).
+
 ## Checks
 
 `npm run typecheck`, `npm run lint`, `npm run build`, `npx vitest run`.
