@@ -53,6 +53,10 @@ export interface LiveKitRoom {
 
 interface Options {
   prefs: MediaPrefs;
+  /** Body for the livekit-token function (default { spaceId }). Meetings pass { meetingCode }. */
+  tokenBody?: Record<string, string>;
+  /** Spaces leave this off (proximity decides); meetings subscribe to everyone. */
+  autoSubscribe?: boolean;
   /** Short messages for a toast ("Switched to AirPods"). */
   onNotice?: (message: string, tone?: 'info' | 'error') => void;
 }
@@ -70,6 +74,7 @@ async function tokenError(err: unknown): Promise<string> {
     } catch { /* not JSON */ }
     if (ctx.status === 401) return 'Please sign in again to use audio and video.';
     if (ctx.status === 403) return "You don't have access to audio and video in this workspace.";
+    if (ctx.status === 410) return 'This meeting has ended.';
   }
   return "Couldn't reach the audio and video service.";
 }
@@ -79,7 +84,8 @@ async function tokenError(err: unknown): Promise<string> {
  * subscribes to nothing by itself (proximity decides who you hear and see), and publishes your
  * mic and camera according to your join preferences.
  */
-export function useLiveKitRoom(spaceId: string | null, { prefs, onNotice }: Options): LiveKitRoom {
+export function useLiveKitRoom(spaceId: string | null, { prefs, onNotice, tokenBody, autoSubscribe = false }: Options): LiveKitRoom {
+  const bodyKey = JSON.stringify(tokenBody ?? { spaceId });
   const [state, setState] = useState<CallState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [room, setRoom] = useState<Room | null>(null);
@@ -106,7 +112,7 @@ export function useLiveKitRoom(spaceId: string | null, { prefs, onNotice }: Opti
 
     (async () => {
       const lk = await import('livekit-client');
-      const { data, error: fnError } = await supabase.functions.invoke<{ token: string; url: string }>('livekit-token', { body: { spaceId } });
+      const { data, error: fnError } = await supabase.functions.invoke<{ token: string; url: string }>('livekit-token', { body: JSON.parse(bodyKey) });
       if (!alive) return;
       if (fnError || !data?.token || !data?.url) {
         setError(await tokenError(fnError));
@@ -159,6 +165,8 @@ export function useLiveKitRoom(spaceId: string | null, { prefs, onNotice }: Opti
         .on(E.ParticipantConnected, bump)
         .on(E.ParticipantDisconnected, bump)
         .on(E.TrackPublished, bump)
+        .on(E.TrackSubscribed, bump)
+        .on(E.TrackUnsubscribed, bump)
         .on(E.TrackUnpublished, bump)
         .on(E.TrackMuted, bump)
         .on(E.TrackUnmuted, bump)
@@ -219,7 +227,7 @@ export function useLiveKitRoom(spaceId: string | null, { prefs, onNotice }: Opti
       }
 
       try {
-        await r.connect(data.url, data.token, { autoSubscribe: false });
+        await r.connect(data.url, data.token, { autoSubscribe });
       } catch (err) {
         if (!alive) return;
         console.warn('LiveKit connect failed', err);
@@ -256,7 +264,7 @@ export function useLiveKitRoom(spaceId: string | null, { prefs, onNotice }: Opti
       current?.disconnect();
       setRoom(null);
     };
-  }, [spaceId, attempt, bump]);
+  }, [spaceId, attempt, bump, bodyKey, autoSubscribe]);
 
   // Permission taken away in browser settings while in the call.
   useEffect(() => {

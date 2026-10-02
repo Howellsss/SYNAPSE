@@ -70,7 +70,8 @@ docs/                    This file, GMAIL_SETUP.md, ART-BRIEF.md (3D art commiss
 3. `/join/:token` → `GuestJoinPage` (public; a space's guest link, via the `join_space_as_guest` RPC).
    `/invite/:token` → `AcceptInvitePage` (public to view, login to accept).
 4. No user → `AuthPage` (sign in, sign up, forgot/reset password).
-5. `/workspace/new` → `CreateSpaceWizard`, full screen without the shell.
+5. `/meetings/:code` → `MeetingRoomPage` (camera check, then the video call), full screen.
+   `/workspace/new` → `CreateSpaceWizard`, full screen without the shell.
 6. Otherwise the shell (`Sidebar` + `TopBar`) around `renderPage()`, which matches `path` with
    `startsWith`/regex: `/contacts/:id` → `ContactDetailPage`, `/contacts` → `ContactsPage`,
    `/calendars/groups/:id` → `GroupCalendarSettingsPage`, `/calendars` → `CalendarsPage`,
@@ -118,6 +119,7 @@ is the fallback. New work should still scope by `workspace_id`.
 | Calendars & booking | `calendars`, `calendar_hosts`, `calendar_groups`, `calendar_group_members`, `calendar_group_analytics`, `availability_rules`, `availability_overrides`, `host_availability_rules`, `external_busy_periods`, `booking_links`, `booking_locks`, `appointments`, `appointment_participants`, `notification_rules` |
 | Forms | `forms`, `form_fields`, `form_field_conditions`, `form_submissions`, `form_notification_logs`, `form_activity_timeline` |
 | Workflows | `workflows`, `workflow_nodes`, `workflow_edges`, `workflow_versions`, `workflow_enrollments`, `workflow_executions`, `workflow_execution_logs`, `workflow_goals`, `workflow_templates` |
+| Meetings | `meetings` (owned by a workspace; join code like FOCU-358, optional nickname, instant/later/scheduled, ended_at) |
 | Spaces (virtual offices) | `spaces` (owned by a workspace; slug unique across all tenants; also `access_mode`, `guest_link_token`, `permissions`, `persistence` + `schedule`, `branding`, `config.rooms`), `space_members` (per-person state in a space) |
 | Messaging | `messages` (email/SMS log per contact), `email_accounts`, `email_account_secrets` (encrypted OAuth tokens, no client access) |
 | Recordings | `recordings` |
@@ -132,7 +134,7 @@ Child tables (`form_fields`, `workflow_nodes`, `calendar_hosts`, `availability_r
 | Item | Route | State |
 | --- | --- | --- |
 | Dashboard | `/dashboard` | Real (reads workspace data) |
-| Meetings | `/meetings` | **Placeholder** (`ComingSoonPage`) |
+| Meetings | `/meetings` | Real: today's meetings, upcoming rooms, join by code/nickname, New (later / instant / scheduled with calendar links), Calls history; rooms at `/meetings/:code` (LiveKit) |
 | Workspaces | `/workspace` | Real: spaces grid and create wizard (`/workspace/new`, full screen); `/workspace/:slug` is the in-space screen (people, status, controls); the 3D world itself waits for the art kit |
 | Contacts | `/contacts` | Real: list, add, detail page with composer (email via Gmail) |
 | Conversations | `/conversations` | **Placeholder** (`ComingSoonPage`) |

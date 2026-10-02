@@ -1,5 +1,11 @@
 # Audio & video (LiveKit)
 
+**Meetings** (`/meetings/<code>`) use LiveKit too: the function accepts `{ meetingCode }` instead of
+`{ spaceId }`, checks the caller is an active member of the meeting's account, refuses ended
+meetings (410), and issues a token for room `meeting_<meetingId>`. Meetings subscribe to everyone
+automatically. The host can **End meeting for everyone** (sets `meetings.ended_at` and tells
+everyone over LiveKit's data channel).
+
 Inside a workspace, people talk over **LiveKit** (WebRTC). Each space has one LiveKit room,
 `space_<spaceId>`. Who you actually hear and see is decided by proximity (see "Proximity
 conversations" in docs/ARCHITECTURE.md): you subscribe only to people in range.
