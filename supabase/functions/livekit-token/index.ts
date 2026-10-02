@@ -1,9 +1,10 @@
-// A LiveKit access token for one space's audio/video room.
+// A LiveKit access token for a space's audio/video room or a meeting.
 //
-//   POST (with the user's Supabase JWT)  { spaceId }
-//   -> { token, url }    room "space_<spaceId>", identity = user id, valid 6 hours
+//   POST (with the user's Supabase JWT)  { spaceId }      -> room "space_<spaceId>"
+//   POST (with the user's Supabase JWT)  { meetingCode }  -> room "meeting_<meetingId>"
+//   -> { token, url }    identity = user id, valid 6 hours
 //
-// Only active members of the tenant (workspaces row) that owns the space get a token.
+// Only active members of the tenant (workspaces row) that owns the space/meeting get a token.
 // Secrets: LIVEKIT_URL (wss://…), LIVEKIT_API_KEY, LIVEKIT_API_SECRET
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 import { AccessToken } from "npm:livekit-server-sdk@2.19.1";
@@ -33,6 +34,13 @@ Deno.serve(async (req: Request) => {
         const { data, error } = await admin().from("spaces").select("workspace_id").eq("id", spaceId).maybeSingle();
         if (error) throw new Error(error.message);
         return (data as { workspace_id: string } | null)?.workspace_id ?? null;
+      },
+
+      async getMeeting(code) {
+        const { data, error } = await admin().from("meetings").select("id, workspace_id, ended_at").eq("code", code).maybeSingle();
+        if (error) throw new Error(error.message);
+        const row = data as { id: string; workspace_id: string; ended_at: string | null } | null;
+        return row ? { id: row.id, workspaceId: row.workspace_id, ended: !!row.ended_at } : null;
       },
 
       async getMembershipStatus(workspaceId, userId) {

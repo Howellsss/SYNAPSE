@@ -22,6 +22,8 @@ export interface Deps {
   getUser(jwt: string): Promise<{ id: string; email?: string | null } | null>;
   /** The space's owning tenant (workspaces.id), or null if there's no such space. */
   getSpaceWorkspace(spaceId: string): Promise<string | null>;
+  /** A meeting's id and owning tenant by code, or null. Ended meetings return ended: true. */
+  getMeeting(code: string): Promise<{ id: string; workspaceId: string; ended: boolean } | null>;
   /** The caller's membership status in that tenant, or null if not a member. */
   getMembershipStatus(workspaceId: string, userId: string): Promise<string | null>;
   getProfileName(userId: string): Promise<{ first_name: string | null; last_name: string | null } | null>;
@@ -42,14 +44,20 @@ export function roomName(spaceId: string): string {
   return `space_${spaceId}`;
 }
 
+export function meetingRoomName(meetingId: string): string {
+  return `meeting_${meetingId}`;
+}
+
+const CODE_RE = /^[A-Z]{4}-[0-9]{3}$/;
+
 export function displayName(profile: { first_name: string | null; last_name: string | null } | null, email?: string | null): string {
   const n = [profile?.first_name, profile?.last_name].map((s) => (s ?? "").trim()).filter(Boolean).join(" ");
   return (n || email?.split("@")[0] || "Guest").slice(0, 80);
 }
 
 /**
- * POST { spaceId } with the user's Supabase JWT  ->  { token, url }
- * Only active members of the tenant that owns the space get a token.
+ * POST { spaceId } or { meetingCode } with the user's Supabase JWT  ->  { token, url }
+ * Only active members of the tenant that owns the space or meeting get a token.
  */
 export async function handle(req: Request, deps: Deps): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
@@ -60,20 +68,33 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
   const user = await deps.getUser(jwt);
   if (!user) return json({ error: "Please sign in again." }, 401);
 
-  const body = await req.json().catch(() => ({})) as { spaceId?: unknown };
-  const spaceId = typeof body.spaceId === "string" ? body.spaceId.trim() : "";
-  if (!UUID_RE.test(spaceId)) return json({ error: "Missing or invalid spaceId." }, 400);
-
-  // Same answer for "no such space" and "not yours", so ids can't be probed.
-  const workspaceId = await deps.getSpaceWorkspace(spaceId);
-  const status = workspaceId ? await deps.getMembershipStatus(workspaceId, user.id) : null;
-  if (!workspaceId || status !== "active") {
-    return json({ error: "You don't have access to this workspace." }, 403);
+  const body = await req.json().catch(() => ({})) as { spaceId?: unknown; meetingCode?: unknown };
+  let room: string;
+  let workspaceId: string | null;
+  if (typeof body.meetingCode === "string") {
+    const code = body.meetingCode.trim().toUpperCase();
+    if (!CODE_RE.test(code)) return json({ error: "Missing or invalid meeting code." }, 400);
+    const meeting = await deps.getMeeting(code);
+    workspaceId = meeting?.workspaceId ?? null;
+    const status = workspaceId ? await deps.getMembershipStatus(workspaceId, user.id) : null;
+    if (!meeting || status !== "active") return json({ error: "You don't have access to this meeting." }, 403);
+    if (meeting.ended) return json({ error: "This meeting has ended." }, 410);
+    room = meetingRoomName(meeting.id);
+  } else {
+    const spaceId = typeof body.spaceId === "string" ? body.spaceId.trim() : "";
+    if (!UUID_RE.test(spaceId)) return json({ error: "Missing or invalid spaceId." }, 400);
+    // Same answer for "no such space" and "not yours", so ids can't be probed.
+    workspaceId = await deps.getSpaceWorkspace(spaceId);
+    const status = workspaceId ? await deps.getMembershipStatus(workspaceId, user.id) : null;
+    if (!workspaceId || status !== "active") {
+      return json({ error: "You don't have access to this workspace." }, 403);
+    }
+    room = roomName(spaceId);
   }
 
   if (!deps.livekitUrl) throw new Error("Missing secret LIVEKIT_URL");
 
   const name = displayName(await deps.getProfileName(user.id), user.email);
-  const token = await deps.makeToken({ room: roomName(spaceId), identity: user.id, name, ttl: TOKEN_TTL });
+  const token = await deps.makeToken({ room, identity: user.id, name, ttl: TOKEN_TTL });
   return json({ token, url: deps.livekitUrl });
 }
