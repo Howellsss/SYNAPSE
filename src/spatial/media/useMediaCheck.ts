@@ -46,12 +46,13 @@ const audioConstraints = (id?: string, exact = false): MediaTrackConstraints => 
  * Camera and microphone for the device check. While `active` it holds the streams;
  * when it becomes inactive or unmounts, every track is stopped so no camera light stays on.
  */
-export function useMediaCheck(active: boolean): MediaCheck {
+/** `initial` sets whether the camera and mic start on (both on by default). */
+export function useMediaCheck(active: boolean, initial: { cam?: boolean; mic?: boolean } = {}): MediaCheck {
   const [ready, setReady] = useState(false);
   const [devices, setDevices] = useState<DeviceLists>(EMPTY);
   const [selected, setSelected] = useState<DeviceIds>(() => loadDeviceIds());
-  const [cameraOn, setCameraOnState] = useState(true);
-  const [micOn, setMicOnState] = useState(true);
+  const [cameraOn, setCameraOnState] = useState(initial.cam ?? true);
+  const [micOn, setMicOnState] = useState(initial.mic ?? true);
   const [video, setVideo] = useState<MediaStream | null>(null);
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
   const [cameraProblem, setCameraProblem] = useState<DeviceProblem | null>(null);
