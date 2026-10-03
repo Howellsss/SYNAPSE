@@ -70,7 +70,7 @@ docs/                    This file, GMAIL_SETUP.md, ART-BRIEF.md (3D art commiss
 3. `/join/:token` → `GuestJoinPage` (public; a space's guest link, via the `join_space_as_guest` RPC).
    `/invite/:token` → `AcceptInvitePage` (public to view, login to accept).
 4. No user → `AuthPage` (sign in, sign up, forgot/reset password).
-5. `/meetings/:code` → `MeetingRoomPage` (camera check, then the video call), full screen.
+5. `/meetings/:code` → `MeetingRoomPage` (Zoom-style preview with mic/camera pickers, then the video call), full screen. See "Meetings" in docs/LIVEKIT.md for devices, chat, reactions and annotation.
    `/workspace/new` → `CreateSpaceWizard`, full screen without the shell.
 6. Otherwise the shell (`Sidebar` + `TopBar`) around `renderPage()`, which matches `path` with
    `startsWith`/regex: `/contacts/:id` → `ContactDetailPage`, `/contacts` → `ContactsPage`,
@@ -134,7 +134,7 @@ Child tables (`form_fields`, `workflow_nodes`, `calendar_hosts`, `availability_r
 | Item | Route | State |
 | --- | --- | --- |
 | Dashboard | `/dashboard` | Real (reads workspace data) |
-| Meetings | `/meetings` | Real: today's meetings, upcoming rooms, join by code/nickname, New (later / instant / scheduled with calendar links), Calls history; rooms at `/meetings/:code` (LiveKit) |
+| Meetings | `/meetings` | Real: today's meetings, upcoming rooms, join by code/nickname, New (later / instant / scheduled with calendar links), Calls history; rooms at `/meetings/:code` (LiveKit: switch camera/mic/speaker mid-call incl. iPhone Continuity Camera, chat, reactions, raise hand, screen share with live annotation and laser pointer) |
 | Workspaces | `/workspace` | Real: spaces grid and create wizard (`/workspace/new`, full screen); `/workspace/:slug` is the in-space screen (people, status, controls); the 3D world itself waits for the art kit |
 | Contacts | `/contacts` | Real: list, add, detail page with composer (email via Gmail) |
 | Conversations | `/conversations` | **Placeholder** (`ComingSoonPage`) |

@@ -3,8 +3,7 @@
 **Meetings** (`/meetings/<code>`) use LiveKit too: the function accepts `{ meetingCode }` instead of
 `{ spaceId }`, checks the caller is an active member of the meeting's account, refuses ended
 meetings (410), and issues a token for room `meeting_<meetingId>`. Meetings subscribe to everyone
-automatically. The host can **End meeting for everyone** (sets `meetings.ended_at` and tells
-everyone over LiveKit's data channel).
+automatically. See [Meetings](#meetings) below for what's in the room.
 
 Inside a workspace, people talk over **LiveKit** (WebRTC). Each space has one LiveKit room,
 `space_<spaceId>`. Who you actually hear and see is decided by proximity (see "Proximity
@@ -94,6 +93,56 @@ curl -X POST "https://parmtumfpsdtdtgwvscq.supabase.co/functions/v1/livekit-toke
 
 The `livekit-client` library (~150 KB gzipped) is loaded only when someone enters a workspace.
 
+## Meetings
+
+The room looks and works like Zoom:
+
+| | |
+| --- | --- |
+| **Before joining** | Your camera preview with **Audio** / **Video** toggles, a **Microphone** and a **Camera** list, and **Start** (host) or **Join**. Audio starts off if "join muted" is on in your camera & mic settings; video starts on so you can check yourself. What you pick is what you join with. |
+| **Top right** | Shield (audio, video and chat are encrypted in transit by WebRTC; not end-to-end), time in the meeting, the annotate pen while someone shares, and Speaker / Gallery view. |
+| **Audio ^ / Video ^** | Click the icon to mute/unmute or start/stop video (⌘/Ctrl+Shift+A and V still work). The caret lists every microphone, speaker (Chrome/Edge) and camera with a tick on the one in use; picking one switches it live (`room.switchActiveDevice`) and remembers it. "Audio/Video settings…" opens the full camera & mic check. |
+| **Participants** | Everyone, with host, mic, camera and raised hands; copy the invite link. |
+| **Chat** | Everyone in the meeting, sent over the data channel (`synapse.chat`). Not saved: it's gone when the meeting ends. Unread count on the button. |
+| **React** | 👏 👍 ❤️ 😂 😮 🎉 show on your tile for 4 seconds; **Raise hand** stays until lowered (people who join later see it). |
+| **Share** | Share a screen, window or tab (not on phones: mobile browsers can't). |
+| **Annotate** | While anyone shares, everyone can draw on the shared screen: pen, highlighter, text, eraser, spotlight (laser pointer with your name), colours, undo, clear mine / clear all (presenter and host). The presenter can switch **Others can draw** off. People who join late get the drawings so far from the presenter. |
+| **More** | Meeting info, copy invite link, settings. On phones, reactions and raise hand are here too. |
+| **End** | Everyone: **Leave meeting**. Host: also **End meeting for all** (sets `meetings.ended_at` and tells everyone; only a message from the host is obeyed). |
+
+### Using an iPhone as the camera (Mac)
+
+macOS Continuity Camera makes an iPhone a normal camera for every app, including the browser. It
+shows up in **Video ^** and the pre-join **Camera** list as e.g. "Howells's iPhone Camera". It needs
+macOS Ventura (13) or later and iOS 16 or later, the same Apple ID on both, Wi-Fi and Bluetooth on,
+and the phone nearby, locked, in landscape and still (a mount helps). If it doesn't appear, open the
+menu again after a few seconds (the list refreshes itself) or wake the phone. On Windows, apps like
+Camo or Iriun do the same over USB/Wi-Fi.
+
+### Annotation vs. remote control
+
+Annotations are drawn on top of the shared video in each person's browser, positioned in
+fractions of the frame so they line up at any window size. They are **not** drawn on the
+presenter's actual desktop, and nobody can move the presenter's mouse or type on their computer:
+browsers don't allow a web page to control the operating system (Zoom's remote control needs
+its desktop app). Annotation plus the spotlight pointer covers "show me where to click"; actually
+taking control would need a desktop helper app.
+
+### Data channel messages
+
+All on LiveKit's data channel with a topic; the sender is the LiveKit identity set by the server,
+never a field in the message. Every message is validated (`src/meetings/annotations.ts`,
+`src/meetings/messages.ts`) and size-limited.
+
+| Topic | Messages |
+| --- | --- |
+| `synapse.annotate` | `begin` / `pts` (strokes), `text`, `erase`, `clear`, `laser` (lossy), `perm`, `sync-req`, `sync` (chunked under ~12 KB) |
+| `synapse.chat` | `msg` (≤ 1000 characters) |
+| `synapse.react` | `emoji`, `hand` |
+| `synapse.control` | `ended` (host only) |
+
+Recording isn't built: it would need LiveKit Egress (a paid server-side recorder) and storage.
+
 ## Privacy note for proximity
 
 `autoSubscribe: false` controls **bandwidth and UX, not privacy**. Every token can subscribe to
@@ -129,3 +178,7 @@ the data-saver option all keep bandwidth down.
 - The browser suite swaps `livekit-client` for a scriptable fake and covers joining per media
   prefs, toggles and shortcuts, screen share, quality, unplugged devices, permission loss,
   reconnecting, automatic retries, duplicate tabs and the "not set up" states.
+- For meetings it also covers the pre-join pickers, switching to an iPhone camera mid-call, chat,
+  reactions and raised hands, layouts, End for all (host only), and annotation sync between people
+  (late joiners, permissions, who may erase what).
+- `src/meetings/*.test.ts` — message validation and the annotation rules.
