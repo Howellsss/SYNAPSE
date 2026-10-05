@@ -105,15 +105,15 @@
   }
 
   .nav-item {
-    @apply flex items-center gap-3 px-3 h-10 rounded-xl text-[14px] font-medium text-ivory-500 transition-colors duration-200 relative;
+    @apply flex items-center gap-3 px-3 h-10 rounded-[10px] text-[14px] font-medium text-navy-800 transition-colors duration-200 relative;
   }
 
   .nav-item-active {
-    @apply text-gold-400 bg-gold-400/10;
+    @apply bg-[#ECE9E0] font-semibold;
   }
 
   .nav-item:not(.nav-item-active):hover {
-    @apply text-ivory-100 bg-white/5;
+    @apply bg-sand/50;
   }
 }
 

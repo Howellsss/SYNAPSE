@@ -142,10 +142,10 @@ export function ContactDetailPage({ contactId }: { contactId: string }) {
   const contactTags = (contact.contact_tags ?? []).map((ct) => ct.tags).filter((t): t is Tag => Boolean(t));
 
   return (
-    <div className="-mx-4 -my-6 flex min-h-[calc(100vh-4rem)] flex-col bg-ivory-50 lg:-mx-8">
+    <div className="-mx-4 -my-6 flex min-h-[calc(100vh-4rem)] flex-col bg-paper lg:-mx-10 lg:-my-8">
       {/* Top bar */}
-      <div className="flex items-center gap-3 border-b border-navy-100 bg-white px-4 py-3 lg:px-8">
-        <button onClick={() => navigate('/contacts')} className="inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold text-navy-700 hover:bg-ivory-50">
+      <div className="flex items-center gap-3 border-b border-sand bg-white/85 px-4 py-3 backdrop-blur lg:px-10">
+        <button onClick={() => navigate('/contacts')} className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-gold-700 hover:bg-[#EFEDE6]">
           <ArrowLeft className="h-4 w-4" /> Contacts
         </button>
         <ChevronRight className="h-4 w-4 text-ivory-400" />
@@ -154,10 +154,10 @@ export function ContactDetailPage({ contactId }: { contactId: string }) {
         {nav && navIndex >= 0 && (
           <div className="flex items-center gap-1 text-sm text-ivory-600">
             <span className="mr-1 whitespace-nowrap tabular-nums">{(nav.offset + navIndex + 1).toLocaleString()} / {nav.total.toLocaleString()}</span>
-            <button aria-label="Previous contact" disabled={navIndex === 0} onClick={() => goTo(navIndex - 1)} className="flex h-8 w-8 items-center justify-center rounded-lg border border-navy-100 bg-white text-navy-700 hover:bg-ivory-50 disabled:opacity-40">
+            <button aria-label="Previous contact" disabled={navIndex === 0} onClick={() => goTo(navIndex - 1)} className="flex h-9 w-9 items-center justify-center rounded-full text-navy-700 hover:bg-[#EFEDE6] disabled:opacity-40">
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <button aria-label="Next contact" disabled={navIndex === nav.ids.length - 1} onClick={() => goTo(navIndex + 1)} className="flex h-8 w-8 items-center justify-center rounded-lg border border-navy-100 bg-white text-navy-700 hover:bg-ivory-50 disabled:opacity-40">
+            <button aria-label="Next contact" disabled={navIndex === nav.ids.length - 1} onClick={() => goTo(navIndex + 1)} className="flex h-9 w-9 items-center justify-center rounded-full text-navy-700 hover:bg-[#EFEDE6] disabled:opacity-40">
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
@@ -207,7 +207,7 @@ export function ContactDetailPage({ contactId }: { contactId: string }) {
 // ============================================================
 
 function Card({ children, className }: { children: ReactNode; className?: string }) {
-  return <section className={cn('rounded-2xl border border-navy-100 bg-white', className)}>{children}</section>;
+  return <section className={cn('rounded-[20px] border border-sand bg-white', className)}>{children}</section>;
 }
 
 function ProfileCard({ contact, tags, allTags, members, onUpdate, onDelete, onTagsChanged }: {
@@ -252,19 +252,15 @@ function ProfileCard({ contact, tags, allTags, members, onUpdate, onDelete, onTa
 
   return (
     <Card className="overflow-hidden">
-      <div className="bg-navy-800 px-5 pb-5 pt-5 text-white">
-        <div className="flex items-start gap-3">
-          <Avatar firstName={contact.first_name} lastName={contact.last_name} src={contact.avatar_url} size="lg" className="ring-2 ring-gold-400/60" />
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-lg font-semibold">{getFullName(contact)}</h1>
-            <p className="truncate text-sm text-ivory-300">{[contact.job_title, contact.company].filter(Boolean).join(' · ') || 'No company'}</p>
-            {typeLabel && <span className="mt-1.5 inline-block rounded-full bg-gold-400 px-2 py-0.5 text-[11px] font-semibold text-navy-900">{typeLabel}</span>}
-          </div>
-          <button onClick={onDelete} aria-label="Delete contact" title="Delete contact" className="rounded-lg p-1.5 text-ivory-300 hover:bg-white/10 hover:text-white">
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="mt-4 grid grid-cols-3 gap-2">
+      <div className="relative px-5 pb-5 pt-7 text-center">
+        <button onClick={onDelete} aria-label="Delete contact" title="Delete contact" className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-ivory-700 hover:bg-[#EFEDE6] hover:text-burgundy-600">
+          <Trash2 className="h-4 w-4" />
+        </button>
+        <Avatar firstName={contact.first_name} lastName={contact.last_name} src={contact.avatar_url} size="xl" className="mx-auto !h-24 !w-24 !text-3xl" />
+        <h1 className="mt-3 font-display text-[26px] font-bold leading-tight tracking-[-0.025em] text-navy-800">{getFullName(contact)}</h1>
+        <p className="mt-1 truncate text-[15px] text-ivory-700">{[contact.job_title, contact.company].filter(Boolean).join(' · ') || 'No company'}</p>
+        {typeLabel && <span className="mt-2 inline-block rounded-full bg-gold-50 px-2.5 py-0.5 text-xs font-semibold text-gold-700">{typeLabel}</span>}
+        <div className="mx-auto mt-5 grid max-w-[300px] grid-cols-3 gap-2">
           <QuickAction href={contact.phone ? `tel:${contact.phone.replace(/\s/g, '')}` : undefined} icon={Phone} label="Call" />
           <QuickAction href={contact.email ? `mailto:${contact.email}` : undefined} icon={Mail} label="Email" />
           <QuickAction onClick={contact.email || contact.phone ? () => copy(contact.email || contact.phone || '') : undefined} icon={Copy} label="Copy" />
@@ -273,7 +269,7 @@ function ProfileCard({ contact, tags, allTags, members, onUpdate, onDelete, onTa
 
       <div className="space-y-4 p-5">
         <label className="block">
-          <span className="text-xs font-semibold uppercase tracking-wider text-ivory-600">Owner</span>
+          <span className="text-[13px] font-semibold text-ivory-700">Owner</span>
           <div className="relative mt-1.5">
             <select
               className="input-field appearance-none pr-9"
@@ -289,7 +285,7 @@ function ProfileCard({ contact, tags, allTags, members, onUpdate, onDelete, onTa
 
         <div>
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-ivory-600">Tags</span>
+            <span className="text-[13px] font-semibold text-ivory-700">Tags</span>
             <button onClick={() => setTagOpen((v) => !v)} aria-label="Add tag" className="rounded-md p-1 text-gold-700 hover:bg-ivory-50"><Plus className="h-4 w-4" /></button>
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -334,11 +330,11 @@ function ProfileCard({ contact, tags, allTags, members, onUpdate, onDelete, onTa
 }
 
 function QuickAction({ href, onClick, icon: Icon, label }: { href?: string; onClick?: () => void; icon: ComponentType<{ className?: string }>; label: string }) {
-  const cls = 'flex flex-col items-center gap-1 rounded-xl bg-white/10 py-2 text-xs font-medium text-white transition hover:bg-white/20';
-  if (href) return <a href={href} className={cls}><Icon className="h-4 w-4 text-gold-400" />{label}</a>;
+  const cls = 'flex flex-col items-center gap-1.5 rounded-2xl border border-sand bg-white py-3 text-xs font-semibold text-gold-700 transition hover:bg-paper';
+  if (href) return <a href={href} className={cls}><Icon className="h-5 w-5" />{label}</a>;
   return (
     <button onClick={onClick} disabled={!onClick} className={cn(cls, !onClick && 'cursor-not-allowed opacity-40')}>
-      <Icon className="h-4 w-4 text-gold-400" />{label}
+      <Icon className="h-5 w-5" />{label}
     </button>
   );
 }

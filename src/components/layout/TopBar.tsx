@@ -19,6 +19,16 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
   const [notifOpen, setNotifOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // ⌘K / Ctrl+K jumps to search.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); searchRef.current?.focus(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const [, navigate] = useRouter();
   const [activity, setActivity] = useState<ActivityItem[] | null>(null);
 
@@ -44,18 +54,20 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
   }, []);
 
   return (
-    <header className="sticky top-0 z-30 bg-white/85 backdrop-blur-xl backdrop-saturate-150 border-b border-navy-100 h-[68px] flex items-center pl-16 pr-4 lg:px-8 gap-4">
+    <header className="sticky top-0 z-30 bg-white/85 backdrop-blur-xl backdrop-saturate-150 border-b border-sand h-[68px] flex items-center pl-16 pr-4 lg:px-10 gap-4">
       {/* Search */}
       <div className="flex-1 max-w-xl relative">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-ivory-600 pointer-events-none" />
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-ivory-700 pointer-events-none" />
         <input
+          ref={searchRef}
           type="text"
           value={searchQuery ?? ''}
           onChange={(e) => onSearchChange?.(e.target.value)}
           placeholder="Search contacts, appointments, forms..."
           aria-label="Search contacts, appointments and forms"
-          className="w-full h-11 pl-11 pr-4 bg-white text-sm text-navy-700 rounded-xl border border-navy-100 transition-all placeholder:text-ivory-600 focus:border-gold-400 focus:ring-4 focus:ring-gold-400/20 outline-none"
+          className="w-full h-10 pl-10 pr-12 bg-[#EFEDE6] text-sm text-navy-800 rounded-[10px] border border-transparent transition-all placeholder:text-ivory-700 focus:bg-white focus:border-gold-400 focus:ring-4 focus:ring-gold-400/20 outline-none"
         />
+        <kbd className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 hidden text-xs text-ivory-700 sm:block">⌘K</kbd>
         {searchQuery && searchQuery.length > 0 && searchResults && (
           <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl border border-navy-100/80 shadow-popover max-h-96 overflow-y-auto animate-scale-in">
             {searchResults}
@@ -69,7 +81,7 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
         {onQuickCreate && (
           <button
             onClick={onQuickCreate}
-            className="btn-primary btn-sm hidden sm:inline-flex"
+            className="hidden sm:inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-navy-800 text-white text-sm font-semibold transition-colors hover:bg-navy-700"
           >
             <Plus className="w-4 h-4" />
             Create
@@ -77,7 +89,7 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
         )}
 
         {/* Help */}
-        <button aria-label="Help" className="w-9 h-9 rounded-full text-navy-600 hover:bg-paper hover:text-navy-800 transition-colors items-center justify-center hidden md:flex">
+        <button aria-label="Help" className="w-9 h-9 rounded-full text-navy-600 hover:bg-[#EFEDE6] hover:text-navy-800 transition-colors items-center justify-center hidden md:flex">
           <HelpCircle className="w-[18px] h-[18px]" />
         </button>
 
@@ -87,7 +99,7 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
             onClick={() => setNotifOpen(!notifOpen)}
             aria-label="Notifications"
             aria-expanded={notifOpen}
-            className="w-9 h-9 rounded-full text-navy-600 hover:bg-paper hover:text-navy-800 transition-colors flex items-center justify-center relative"
+            className="w-9 h-9 rounded-full text-navy-600 hover:bg-[#EFEDE6] hover:text-navy-800 transition-colors flex items-center justify-center relative"
           >
             <Bell className="w-[18px] h-[18px]" />
             {activity && activity.length > 0 && <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-gold-400" />}

@@ -127,7 +127,7 @@ function AppContent() {
     return (
       <div className="h-[100dvh] overflow-hidden bg-white">
         <Sidebar currentPath={path} onNavigate={navigate} />
-        <main className="h-full lg:ml-[224px]">{renderPage()}</main>
+        <main className="h-full lg:ml-[240px]">{renderPage()}</main>
       </div>
     );
   }
@@ -135,7 +135,7 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-white">
       <Sidebar currentPath={path} onNavigate={navigate} />
-      <div className="lg:ml-[224px] flex flex-col min-h-screen">
+      <div className="lg:ml-[240px] flex flex-col min-h-screen">
         <TopBar
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
