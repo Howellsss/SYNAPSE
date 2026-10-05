@@ -1,4 +1,7 @@
-import { ChevronRight, Lock, MessageSquare, Mic, MonitorUp, Video } from 'lucide-react';
+import { useState } from 'react';
+import {
+  Bot, Brain, CalendarClock, Check, ChevronRight, Lock, MessageSquare, MessagesSquare, Mic, MonitorPlay, MonitorUp, Shield, Users, Video, Workflow,
+} from 'lucide-react';
 import { useRouter } from '@/lib/router';
 import { HowellsLogo } from '@/components/layout/Sidebar';
 import { cn } from '@/lib/utils';
@@ -56,32 +59,7 @@ export function HomePage() {
           <p className="mt-4 text-sm text-ivory-600">Free to start. No credit card.</p>
 
           {/* The product, working */}
-          <figure className="mt-14 w-full max-w-[1180px] rounded-[28px] bg-navy-800 p-2.5 shadow-[0_40px_100px_rgba(0,0,0,0.22)] sm:p-3.5">
-            <div className="rounded-[18px] bg-navy-950 p-2.5 sm:p-3">
-              <div className="flex items-center justify-between px-1.5 pb-2.5 text-xs text-ivory-400 sm:text-[13px]">
-                <span className="font-semibold text-white">Q4 Strategy Review</span>
-                <span className="inline-flex items-center gap-1.5"><Lock className="h-3.5 w-3.5" /> Encrypted · 18:42</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5">
-                {people.map((p) => (
-                  <div key={p.name} className="relative aspect-[16/10] overflow-hidden rounded-xl sm:rounded-[14px]">
-                    <img src={p.img} alt={p.name + (p.speaking ? ', speaking' : '') + (p.hand ? ', hand raised' : '')} className="h-full w-full object-cover" />
-                    {p.speaking && <span aria-hidden="true" className="absolute inset-0 rounded-xl ring-[3px] ring-inset ring-gold-300 sm:rounded-[14px]" />}
-                    {p.hand && <span className="absolute left-2 top-2 rounded-full bg-gold-400 px-2.5 py-1 text-[11px] font-semibold text-white">Hand raised</span>}
-                    <span className="absolute bottom-2 left-2 rounded-full bg-black/50 px-2.5 py-1 text-[11px] text-white backdrop-blur sm:text-xs">{p.name}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="flex justify-center pt-3" aria-hidden="true">
-                <div className="flex items-center gap-1 rounded-full bg-navy-700/90 p-1.5">
-                  {[Mic, Video, MonitorUp, MessageSquare].map((Icon, i) => (
-                    <span key={i} className={cn('flex h-9 w-9 items-center justify-center rounded-full text-white sm:h-10 sm:w-10', i < 2 && 'bg-white/10')}><Icon className="h-4 w-4" /></span>
-                  ))}
-                  <span className="ml-1 rounded-full bg-burgundy-500 px-4 py-2 text-xs font-semibold text-white">Leave</span>
-                </div>
-              </div>
-            </div>
-          </figure>
+          <div className="mt-14 w-full max-w-[1180px]"><MeetingMock /></div>
         </section>
 
         <section className="mx-auto max-w-[1040px] px-5 pb-10 pt-28 sm:pt-36">
@@ -158,14 +136,49 @@ export function HomePage() {
           </article>
         </section>
 
+        <div className="mt-28 sm:mt-36"><Tour /></div>
+
+        {/* Six modules */}
+        <section aria-label="Modules" className="mx-auto max-w-[1080px] px-5 pt-28 sm:pt-36">
+          <h2 className="text-center text-[34px] font-bold leading-[1.08] tracking-[-0.035em] sm:text-[48px]">Everything you need. Nothing you don’t.</h2>
+          <p className="mx-auto mt-4 max-w-[620px] text-center text-lg text-ivory-600 sm:text-[21px]">Six modules that replace a dozen disconnected tools.</p>
+          <div className="mt-12 grid gap-x-10 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
+            {MODULES.map((m) => (
+              <div key={m.title}>
+                <m.icon className="h-7 w-7 stroke-[1.6] text-gold-400" />
+                <h3 className="mt-4 text-[21px] font-semibold tracking-[-0.015em]">{m.title}</h3>
+                <p className="mt-2 text-[17px] leading-snug text-ivory-600">{m.desc}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* In depth */}
+        <section aria-label="In depth" className="mx-auto max-w-[1080px] px-5 pt-28 sm:pt-36">
+          <h2 className="max-w-[760px] text-[34px] font-bold leading-[1.08] tracking-[-0.035em] sm:text-[48px]">A complete operating system for your work.</h2>
+          <p className="mt-4 max-w-[680px] text-lg text-ivory-600 sm:text-[21px]">From scheduling to automation, everything works together, so your team switches tools less and does more.</p>
+          <div className="mt-12 grid gap-5 md:grid-cols-2">
+            {DETAILS.map((d) => (
+              <article key={d.title} className="rounded-[30px] bg-ivory-100 p-8 sm:p-10">
+                <d.icon className="h-7 w-7 stroke-[1.6] text-gold-400" />
+                <h3 className="mt-4 text-[26px] font-bold tracking-[-0.025em]">{d.title}</h3>
+                <p className="mt-2 text-[17px] leading-snug text-ivory-600">{d.desc}</p>
+                <ul className="mt-5 space-y-2.5">
+                  {d.points.map((pt) => <li key={pt} className="flex items-center gap-2.5 text-[15px]"><Check className="h-4 w-4 shrink-0 text-gold-400" />{pt}</li>)}
+                </ul>
+              </article>
+            ))}
+          </div>
+        </section>
+
         <section className="mt-28 bg-black px-5 py-28 text-center text-white sm:mt-36 sm:py-36">
           <h2 className="text-[40px] font-bold leading-[1.05] tracking-[-0.04em] sm:text-[64px]">One app. <span className="text-gold-300">Not twelve.</span></h2>
           <p className="mx-auto mt-5 max-w-[640px] text-lg leading-relaxed text-ivory-400 sm:text-[21px]">Booking, email, texting, forms, pipeline, meetings and your team's office. Learn it once, use it all day.</p>
         </section>
 
         <section id="start" className="flex scroll-mt-20 flex-col items-center px-5 py-28 text-center sm:py-36">
-          <h2 className="text-[40px] font-bold leading-[1.07] tracking-[-0.035em] sm:text-[56px]">Start in minutes.</h2>
-          <p className="mt-4 text-lg text-ivory-600 sm:text-[21px]">Free to start. Bring your team when you're ready.</p>
+          <h2 className="text-[40px] font-bold leading-[1.07] tracking-[-0.035em] sm:text-[56px]">Ready to enter the future?</h2>
+          <p className="mt-4 max-w-[620px] text-lg text-ivory-600 sm:text-[21px]">Join teams building the next generation of remote work. Free to start, no credit card required.</p>
           <div className="mt-8 flex flex-wrap justify-center gap-3.5">
             <button type="button" onClick={signUp} className="h-12 rounded-full bg-gold-400 px-7 text-[17px] font-medium text-white transition-colors hover:bg-gold-500">Create your SYNAPSE</button>
             <button type="button" onClick={signIn} className="h-12 rounded-full border border-gold-400 px-7 text-[17px] font-medium text-gold-400 transition-colors hover:bg-gold-50">Sign in</button>
@@ -183,5 +196,85 @@ export function HomePage() {
         </div>
       </footer>
     </div>
+  );
+}
+
+/** The product, working: a live meeting with the six people. */
+function MeetingMock() {
+  return (
+    <figure className="w-full rounded-[28px] bg-navy-800 p-2.5 shadow-[0_40px_100px_rgba(0,0,0,0.22)] sm:p-3.5">
+      <div className="rounded-[18px] bg-navy-950 p-2.5 sm:p-3">
+        <div className="flex items-center justify-between px-1.5 pb-2.5 text-xs text-ivory-400 sm:text-[13px]">
+          <span className="font-semibold text-white">Q4 Strategy Review</span>
+          <span className="inline-flex items-center gap-1.5"><Lock className="h-3.5 w-3.5" /> Encrypted · 18:42</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5">
+          {people.map((p) => (
+            <div key={p.name} className="relative aspect-[16/10] overflow-hidden rounded-xl sm:rounded-[14px]">
+              <img src={p.img} alt={p.name + (p.speaking ? ', speaking' : '') + (p.hand ? ', hand raised' : '')} className="h-full w-full object-cover" />
+              {p.speaking && <span aria-hidden="true" className="absolute inset-0 rounded-xl ring-[3px] ring-inset ring-gold-300 sm:rounded-[14px]" />}
+              {p.hand && <span className="absolute left-2 top-2 rounded-full bg-gold-400 px-2.5 py-1 text-[11px] font-semibold text-white">Hand raised</span>}
+              <span className="absolute bottom-2 left-2 rounded-full bg-black/50 px-2.5 py-1 text-[11px] text-white backdrop-blur sm:text-xs">{p.name}</span>
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-center pt-3" aria-hidden="true">
+          <div className="flex items-center gap-1 rounded-full bg-navy-700/90 p-1.5">
+            {[Mic, Video, MonitorUp, MessageSquare].map((Icon, i) => (
+              <span key={i} className={cn('flex h-9 w-9 items-center justify-center rounded-full text-white sm:h-10 sm:w-10', i < 2 && 'bg-white/10')}><Icon className="h-4 w-4" /></span>
+            ))}
+            <span className="ml-1 rounded-full bg-burgundy-500 px-4 py-2 text-xs font-semibold text-white">Leave</span>
+          </div>
+        </div>
+      </div>
+    </figure>
+  );
+}
+
+const MODULES = [
+  { icon: Video, title: 'Live meetings', desc: 'HD video in the browser, with annotation, reactions and AI-generated summaries and action items.' },
+  { icon: Brain, title: 'AI intelligence', desc: 'Transcription, sentiment and automatic action items from your conversations.' },
+  { icon: Users, title: 'Spatial workspaces', desc: 'Move freely in an online office built for deep work and quick chats.' },
+  { icon: MessagesSquare, title: 'Team channels', desc: 'Conversations that never sleep, with the full history kept.' },
+  { icon: MonitorPlay, title: 'Live webinars', desc: 'Host events for large audiences, with engagement you can measure.' },
+  { icon: Shield, title: 'Secure by default', desc: 'Encrypted in transit, with row-level security on every record.' },
+];
+
+const DETAILS = [
+  { icon: CalendarClock, title: 'Smart scheduling', desc: 'Conflict detection, group bookings, round-robin and buffers. Connect your calendars and let SYNAPSE find the time.', points: ['Group and round-robin bookings', 'Real-time conflict detection', 'Google and Outlook calendar sync', 'Custom buffers and availability'] },
+  { icon: Users, title: 'Built-in CRM', desc: 'Every contact, conversation and appointment in one timeline, so you never lose context.', points: ['Contact timelines and history', 'Conversation tracking', 'Custom fields and tags', 'Search across everything'] },
+  { icon: Bot, title: 'AI assistant and automation', desc: 'Summarize meetings, pull out action items, draft follow-ups and run workflows.', points: ['Meeting summaries', 'Action items, extracted for you', 'Follow-up drafts', 'A visual workflow builder'] },
+  { icon: Workflow, title: 'Security you don’t think about', desc: 'Row-level database security and role-based access protect every layer by default.', points: ['Row-level security policies', 'Encryption in transit', 'Role-based access', 'Audit logs'] },
+];
+
+type TourTab = 'sessions' | 'conversations' | 'pulse';
+
+/** "One space. Three ways to flow.": a segmented control over three views. */
+function Tour() {
+  const [tab, setTab] = useState<TourTab>('sessions');
+  const tabs: { id: TourTab; label: string }[] = [{ id: 'sessions', label: 'Sessions' }, { id: 'conversations', label: 'Conversations' }, { id: 'pulse', label: 'Pulse' }];
+  return (
+    <section aria-label="Tour" className="bg-black px-5 py-24 text-center text-white sm:py-32">
+      <h2 className="text-[36px] font-bold leading-[1.07] tracking-[-0.035em] sm:text-[56px]">One space. Three ways to flow.</h2>
+      <p className="mx-auto mt-4 max-w-[640px] text-lg leading-relaxed text-ivory-400 sm:text-[21px]">Run a focus session, keep conversations alive, and watch your team’s pulse, all without leaving the room.</p>
+      <div role="tablist" aria-label="Views" className="mx-auto mt-8 inline-flex rounded-full bg-white/10 p-1">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            role="tab"
+            aria-selected={tab === t.id}
+            onClick={() => setTab(t.id)}
+            className={cn('h-9 rounded-full px-5 text-sm font-medium transition-colors', tab === t.id ? 'bg-white text-navy-900' : 'text-white/80 hover:text-white')}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div className="mx-auto mt-10 max-w-[1080px]" role="tabpanel">
+        {tab === 'sessions' && <MeetingMock />}
+        {tab === 'conversations' && <img src="/tour-conversations.webp" alt="Conversations flowing through SYNAPSE" loading="lazy" className="w-full rounded-[28px]" />}
+        {tab === 'pulse' && <img src="/tour-pulse.webp" alt="Team pulse dashboard in SYNAPSE" loading="lazy" className="w-full rounded-[28px]" />}
+      </div>
+    </section>
   );
 }
