@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ArrowLeft, Copy, Hand, Info, LayoutGrid, MessageSquare, Mic, MicOff, MonitorUp, MoreHorizontal, PenLine, PhoneOff,
-  SearchX, Settings2, ShieldCheck, SmilePlus, Square, Users, Video, VideoOff, Camera, X,
+  ArrowLeft, Check, ChevronDown, Copy, RefreshCw, Smartphone, Hand, Info, LayoutGrid, MessageSquare, Mic, MicOff, MonitorUp, MoreHorizontal, PenLine, PhoneOff,
+  Lock, SearchX, Settings2, SmilePlus, Square, Users, Video, VideoOff, Camera, X,
 } from 'lucide-react';
 import type { LocalTrack, RemoteTrack, Room, Track } from 'livekit-client';
 import { useAuth } from '@/context/AuthContext';
@@ -16,7 +16,7 @@ import { normalizeMediaPrefs, problemText } from '@/spatial/media/devices';
 import { useLiveKitRoom, type LiveKitRoom } from '@/spatial/media/useLiveKitRoom';
 import { useMediaCheck } from '@/spatial/media/useMediaCheck';
 import { deviceLabel, useDevices } from '@/spatial/media/useDevices';
-import { iphoneStatus, isMacDesktop } from '@/spatial/media/continuity';
+import { iphoneStatus, isIphoneDevice, isMacDesktop } from '@/spatial/media/continuity';
 import { IphoneCameraHelp } from '@/components/meetings/IphoneCameraHelp';
 import { useCallShortcuts, SHORTCUTS } from '@/spatial/media/shortcuts';
 import { DeviceCheckModal } from '@/components/spaces/DeviceCheck';
@@ -140,24 +140,24 @@ function PreJoin({ meeting, isHost, onJoin, onBack }: { meeting: Meeting; isHost
   const iphone = iphoneStatus(check.devices.cameras, check.devices.microphones);
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-navy-950 text-white">
+    <div className="flex min-h-[100dvh] flex-col bg-[#081226] text-white">
       <header className="flex items-center justify-between gap-3 px-4 pt-4 sm:px-8">
         <div className="flex items-center gap-2">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-navy-800 text-white"><HowellsLogo className="h-5 w-5" /></span>
-          <span className="text-lg font-bold tracking-wide">SYNAPSE</span>
+          <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-[#1D3363]"><HowellsLogo className="h-[18px] w-[18px]" /></span>
+          <span className="text-[13px] font-semibold tracking-[0.14em]">SYNAPSE</span>
         </div>
-        <button type="button" onClick={onBack} className="rounded-lg px-3 py-2 text-sm font-semibold text-ivory-300 hover:bg-white/10 hover:text-white">Back to meetings</button>
+        <button type="button" onClick={onBack} className="rounded-full px-4 py-2 text-sm font-semibold text-ivory-300 ring-1 ring-inset ring-white/15 hover:bg-white/10 hover:text-white">Back to meetings</button>
       </header>
 
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-4 py-6 sm:px-8">
         <p className="text-xs font-semibold uppercase tracking-wider text-gold-300">Ready to join?</p>
-        <h1 className="mt-1 break-words text-2xl font-bold sm:text-[28px]">{meeting.title}</h1>
+        <h1 className="mt-1 break-words font-display text-[28px] font-semibold tracking-tight sm:text-[34px]">{meeting.title}</h1>
         <div className="mb-5 mt-1 flex flex-wrap items-center gap-3 text-sm text-ivory-400">
           <span>Room <strong className="font-mono text-white">{meeting.code}</strong></span>
           <button type="button" onClick={copy} className="inline-flex items-center gap-1 font-semibold text-gold-300 hover:text-gold-200"><Copy className="h-4 w-4" /> Copy link</button>
         </div>
 
-        <div className="relative aspect-video overflow-hidden rounded-2xl bg-black ring-1 ring-white/10">
+        <div className="relative aspect-video overflow-hidden rounded-[24px] bg-[#13244A] ring-1 ring-white/10">
           {showVideo ? (
             <video ref={videoRef} muted playsInline autoPlay aria-label="Your camera preview" className="h-full w-full -scale-x-100 object-cover" />
           ) : (
@@ -166,8 +166,8 @@ function PreJoin({ meeting, isHost, onJoin, onBack }: { meeting: Meeting; isHost
               <p className="text-xs text-ivory-500">{!check.ready ? 'Starting your camera…' : check.cameraOn ? (check.cameraProblem ? 'Camera unavailable' : 'Starting your camera…') : 'Your camera is off'}</p>
             </div>
           )}
-          <span className="absolute left-3 top-3 max-w-[60%] truncate rounded-md bg-black/60 px-2 py-1 text-xs font-semibold">{you.name}</span>
-          <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-xl bg-black/70 p-1 backdrop-blur">
+          <span className="absolute left-3 top-3 max-w-[60%] truncate rounded-full bg-black/45 px-3 py-1 text-xs font-semibold backdrop-blur">{you.name}</span>
+          <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-3">
             <PillToggle on={check.micOn} onClick={() => check.setMicOn(!check.micOn)} label="Audio" iconOn={Mic} iconOff={MicOff} />
             <PillToggle on={check.cameraOn} onClick={() => check.setCameraOn(!check.cameraOn)} label="Video" iconOn={Video} iconOff={VideoOff} />
           </div>
@@ -175,8 +175,8 @@ function PreJoin({ meeting, isHost, onJoin, onBack }: { meeting: Meeting; isHost
 
         {problem && <p role="alert" className="mt-3 rounded-lg bg-burgundy-500/20 px-3 py-2 text-sm text-red-200">{problem} <button type="button" onClick={check.retry} className="font-semibold underline">Try again</button></p>}
 
-        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
-          <DarkSelect
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
+          <DevicePicker
             label="Microphone"
             icon={Mic}
             value={check.selected.microphone}
@@ -184,8 +184,9 @@ function PreJoin({ meeting, isHost, onJoin, onBack }: { meeting: Meeting; isHost
             fallback="Microphone"
             empty={check.micOn ? undefined : 'Turn on audio to choose'}
             onChange={check.selectMicrophone}
+            onRescan={check.rescanDevices}
           />
-          <DarkSelect
+          <DevicePicker
             label="Camera"
             icon={Camera}
             value={check.selected.camera}
@@ -193,17 +194,18 @@ function PreJoin({ meeting, isHost, onJoin, onBack }: { meeting: Meeting; isHost
             fallback="Camera"
             empty={check.cameraOn ? undefined : 'Turn on video to choose'}
             onChange={check.selectCamera}
+            onRescan={check.rescanDevices}
           />
           <button
             type="button"
             onClick={() => onJoin({ mic: micLive, cam: camLive })}
-            className="h-11 shrink-0 rounded-xl bg-gold-400 px-8 text-sm font-bold text-navy-900 hover:bg-gold-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-200"
+            className="h-12 shrink-0 rounded-full bg-gold-400 px-9 text-[15px] font-semibold text-navy-900 hover:bg-gold-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-200"
           >
             {isHost ? 'Start' : 'Join'}
           </button>
         </div>
         {check.ready && iphone !== 'camera' && (iphone === 'mic-only' || isMacDesktop()) && (
-          <IphoneCameraHelp key={iphone} status={iphone} onLookAgain={check.refreshDevices} className="mt-3" />
+          <IphoneCameraHelp key={iphone} status={iphone} onLookAgain={check.rescanDevices} className="mt-3" />
         )}
       </main>
     </div>
@@ -218,35 +220,80 @@ function PillToggle({ on, onClick, label, iconOn: On, iconOff: Off }: { on: bool
       aria-pressed={on}
       aria-label={`${label} ${on ? 'on' : 'off'}`}
       title={`Turn ${label.toLowerCase()} ${on ? 'off' : 'on'}`}
-      className="flex min-w-[64px] flex-col items-center gap-0.5 rounded-lg px-3 py-1.5 text-[11px] font-medium text-white hover:bg-white/10"
+      className={cn('flex h-12 w-12 items-center justify-center rounded-full text-white backdrop-blur transition focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400', on ? 'bg-white/20 hover:bg-white/30' : 'bg-[#C42B1C] hover:bg-[#A82316]')}
     >
-      {on ? <On className="h-5 w-5" /> : <Off className="h-5 w-5 text-red-400" />}
-      {label}
+      {on ? <On className="h-5 w-5" /> : <Off className="h-5 w-5" />}
     </button>
   );
 }
 
-function DarkSelect({ label, icon: Icon, value, devices, fallback, empty, onChange }: {
-  label: string; icon: typeof Mic; value?: string; devices: MediaDeviceInfo[]; fallback: string; empty?: string; onChange: (id: string) => void;
+/**
+ * A device dropdown like Google Meet's: every camera or microphone the computer offers
+ * (FaceTime HD Camera, iPhone Camera…), the chosen one ticked, and a way to look again.
+ */
+function DevicePicker({ label, icon: Icon, value, devices, fallback, empty, onChange, onRescan }: {
+  label: string; icon: typeof Mic; value?: string; devices: MediaDeviceInfo[]; fallback: string; empty?: string;
+  onChange: (id: string) => void; onRescan: () => Promise<void>;
 }) {
-  const current = value && devices.some((d) => d.deviceId === value) ? value : devices[0]?.deviceId ?? '';
+  const [scanning, setScanning] = useState(false);
+  const current = devices.find((d) => d.deviceId === value) ?? devices[0];
+  const currentIndex = current ? devices.indexOf(current) : 0;
+  const rescan = async () => {
+    setScanning(true);
+    try { await onRescan(); } finally { setScanning(false); }
+  };
   return (
-    <label className="min-w-0 flex-1">
-      <span className="mb-1 block text-xs font-semibold text-ivory-400">{label}</span>
-      <span className="relative block">
-        <Icon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ivory-400" />
-        <select
-          value={current}
-          onChange={(e) => onChange(e.target.value)}
-          aria-label={label}
-          disabled={!devices.length}
-          className="h-11 w-full truncate rounded-xl border border-white/15 bg-navy-900 pl-9 pr-8 text-sm text-white focus:border-gold-400 focus:outline-none disabled:opacity-50"
-        >
-          {!devices.length && <option value="">{empty ?? `No ${label.toLowerCase()} found`}</option>}
-          {devices.map((d, i) => <option key={d.deviceId} value={d.deviceId}>{deviceLabel(d, i, fallback)}</option>)}
-        </select>
-      </span>
-    </label>
+    <div className="min-w-0 flex-1">
+      <span className="mb-1.5 block text-xs font-semibold text-ivory-400">{label}</span>
+      <Popover
+        label={`${label} list`}
+        panelClassName={cn('bottom-full left-0 mb-2 w-full min-w-[260px] p-1.5', darkPanel)}
+        trigger={({ open, toggle }) => (
+          <button
+            type="button"
+            onClick={toggle}
+            aria-label={label}
+            aria-haspopup="menu"
+            aria-expanded={open}
+            disabled={!devices.length}
+            className="flex h-12 w-full items-center gap-2.5 rounded-full bg-[#13244A] pl-4 pr-3 text-left text-sm text-white ring-1 ring-inset ring-white/10 hover:bg-[#1A2F5C] focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400 disabled:opacity-60"
+          >
+            {current && isIphoneDevice(current) ? <Smartphone className="h-4 w-4 shrink-0 text-gold-300" /> : <Icon className="h-4 w-4 shrink-0 text-ivory-300" />}
+            <span className="min-w-0 flex-1 truncate">{current ? deviceLabel(current, currentIndex, fallback) : empty ?? `No ${label.toLowerCase()} found`}</span>
+            <ChevronDown className={cn('h-4 w-4 shrink-0 text-ivory-400 transition', open && 'rotate-180')} />
+          </button>
+        )}
+      >
+        {(close) => (
+          <>
+            <p className="px-3 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wider text-ivory-400">{label}</p>
+            {devices.map((d, i) => {
+              const on = d.deviceId === current?.deviceId;
+              const phone = isIphoneDevice(d);
+              return (
+                <button
+                  key={d.deviceId}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={on}
+                  onClick={() => { onChange(d.deviceId); close(); }}
+                  className={cn(darkItem, on && 'text-gold-300')}
+                >
+                  {phone ? <Smartphone className="h-4 w-4 shrink-0" /> : <Icon className="h-4 w-4 shrink-0" />}
+                  <span className="min-w-0 flex-1 truncate text-left">{deviceLabel(d, i, fallback)}</span>
+                  {on && <Check className="h-4 w-4 shrink-0" />}
+                </button>
+              );
+            })}
+            <div className="my-1 h-px bg-white/10" />
+            <button type="button" role="menuitem" disabled={scanning} onClick={() => { void rescan(); }} className={cn(darkItem, 'disabled:opacity-60')}>
+              <RefreshCw className={cn('h-4 w-4 shrink-0', scanning && 'animate-spin')} />
+              {scanning ? 'Looking…' : `Look for ${label === 'Camera' ? 'cameras' : 'microphones'}`}
+            </button>
+          </>
+        )}
+      </Popover>
+    </div>
   );
 }
 
@@ -426,7 +473,7 @@ function InCall({ meeting, join, onLeave, onEnded }: { meeting: Meeting; join: J
   if (sharer) {
     stage = (
       <div className="flex h-full flex-col gap-2 lg:flex-row">
-        <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl bg-black" data-share-stage>
+        <div className="relative min-h-0 flex-1 overflow-hidden rounded-[22px] bg-black" data-share-stage>
           <TrackVideo track={sharer.screen} onVideo={setShareVideo} className="h-full w-full object-contain" />
           <AnnotationLayer
             bus={bus}
@@ -456,24 +503,24 @@ function InCall({ meeting, join, onLeave, onEnded }: { meeting: Meeting; join: J
     );
   } else {
     stage = (
-      <div className={cn('grid h-full auto-rows-fr gap-2', count === 1 ? 'grid-cols-1' : count <= 4 ? 'grid-cols-1 sm:grid-cols-2' : count <= 9 ? 'grid-cols-2 lg:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4')}>
+      <div className={cn('grid h-full auto-rows-fr gap-3', count === 1 ? 'grid-cols-1' : count <= 4 ? 'grid-cols-1 sm:grid-cols-2' : count <= 9 ? 'grid-cols-2 lg:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4')}>
         {tiles.map((t) => <ParticipantTile key={t.id} {...tileProps(t)} big={count === 1} />)}
       </div>
     );
   }
 
   return (
-    <div className="flex h-[100dvh] flex-col bg-navy-950 text-white">
-      <header className="flex items-center gap-3 px-3 py-2 sm:px-4">
+    <div className="flex h-[100dvh] flex-col bg-[#081226] text-white">
+      <header className="flex flex-wrap items-center gap-3 px-4 pb-3 pt-4 sm:px-6">
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-sm font-semibold sm:text-base">{meeting.title}</h1>
-          <p className="font-mono text-[11px] text-ivory-400">{meeting.code}</p>
+          <h1 className="truncate font-display text-[17px] font-semibold tracking-[-0.015em] sm:text-[19px]">{meeting.title}</h1>
+          <p className="text-[13px] text-[#AEB8CC]">Room {meeting.code} · {count} {count === 1 ? 'person' : 'people'}</p>
         </div>
-        <div className="flex items-center gap-1">
-          <span title="Audio, video and chat are encrypted in transit" aria-label="Encrypted" className="flex h-8 w-8 items-center justify-center rounded-lg text-green-400"><ShieldCheck className="h-[18px] w-[18px]" /></span>
-          {startedAt !== null && <span className="rounded-lg px-2 py-1 font-mono text-xs tabular-nums text-ivory-200" aria-label="Time in meeting">{elapsed(now - startedAt)}</span>}
+        <div className="flex items-center gap-2">
+          <span title="Audio, video and chat are encrypted in transit" aria-label="Encrypted" className="hidden h-8 items-center gap-1.5 rounded-full bg-[#13244A] px-3 text-[13px] text-[#AEB8CC] sm:inline-flex"><Lock className="h-3.5 w-3.5" /> Encrypted</span>
+          {startedAt !== null && <span className="inline-flex h-8 items-center rounded-full bg-[#13244A] px-3 text-[13px] tabular-nums" aria-label="Time in meeting">{elapsed(now - startedAt)}</span>}
           {sharer && (
-            <button type="button" onClick={() => setAnnotating((v) => !v)} aria-pressed={annotating} aria-label="Annotate" title="Annotate the shared screen" className={cn('flex h-8 w-8 items-center justify-center rounded-lg', annotating ? 'bg-gold-400 text-navy-900' : 'text-ivory-200 hover:bg-white/10')}>
+            <button type="button" onClick={() => setAnnotating((v) => !v)} aria-pressed={annotating} aria-label="Annotate" title="Annotate the shared screen" className={cn('flex h-10 w-10 items-center justify-center rounded-full', annotating ? 'bg-gold-400 text-navy-900' : 'bg-[#13244A] text-white hover:bg-[#1D3363]')}>
               <PenLine className="h-[18px] w-[18px]" />
             </button>
           )}
@@ -483,20 +530,19 @@ function InCall({ meeting, join, onLeave, onEnded }: { meeting: Meeting; join: J
             disabled={!!sharer}
             aria-label={layout === 'gallery' ? 'Switch to speaker view' : 'Switch to gallery view'}
             title={layout === 'gallery' ? 'Speaker view' : 'Gallery view'}
-            className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-ivory-200 hover:bg-white/10 disabled:opacity-40"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-[#13244A] text-white hover:bg-[#1D3363] disabled:opacity-40"
           >
-            {layout === 'gallery' ? <Square className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
-            <span className="hidden sm:inline">{layout === 'gallery' ? 'Speaker' : 'Gallery'}</span>
+            {layout === 'gallery' ? <Square className="h-[18px] w-[18px]" /> : <LayoutGrid className="h-[18px] w-[18px]" />}
           </button>
         </div>
       </header>
 
-      <div className="relative flex min-h-0 flex-1 gap-2 px-2 pb-2 sm:px-3">
+      <div className="relative flex min-h-0 flex-1 gap-3 px-3 pb-2 sm:px-6">
         <main className="relative min-h-0 min-w-0 flex-1">
           {stage}
           {count === 1 && call.state === 'connected' && (
             <div className="pointer-events-none absolute inset-x-0 top-4 flex justify-center px-3">
-              <p className="pointer-events-auto rounded-full bg-navy-900/90 px-4 py-2 text-center text-sm">You're the only one here. <button type="button" onClick={copy} className="font-semibold text-gold-300 hover:text-gold-200">Copy the link</button> to invite people.</p>
+              <p className="pointer-events-auto rounded-full bg-[#102041]/95 px-4 py-2 text-center text-sm shadow-[0_10px_30px_rgba(0,0,0,0.35)]">You're the only one here. <button type="button" onClick={copy} className="font-semibold text-gold-300 hover:text-gold-200">Copy the link</button> to invite people.</p>
             </div>
           )}
           {infoOpen && <MeetingInfo meeting={meeting} hostName={names[meeting.host_id] ?? (isHost ? you.name : null)} onCopy={copy} onClose={() => setInfoOpen(false)} />}
@@ -512,11 +558,13 @@ function InCall({ meeting, join, onLeave, onEnded }: { meeting: Meeting; join: J
         {panel === 'chat' && <ChatPanel lines={chat} onSend={sendChat} onClose={() => setPanel(null)} />}
       </div>
 
-      <footer role="toolbar" aria-label="Meeting controls" className="flex items-center justify-between gap-1 border-t border-white/5 bg-navy-900 px-1 py-1.5 sm:px-3">
-        <div className="flex items-center">
+      <div className="flex justify-center px-2 pb-4 pt-2 sm:pb-6">
+      <footer role="toolbar" aria-label="Meeting controls" className="flex max-w-full items-center gap-1 rounded-[32px] bg-[rgba(16,32,65,0.94)] p-1.5 shadow-[0_10px_40px_rgba(0,0,0,0.35)] backdrop-blur sm:gap-1.5 sm:p-2">
+        <div className="flex items-center gap-1 sm:gap-1.5">
           <AudioButton micOn={call.micOn} busy={call.pending.microphone} onToggle={() => { void call.toggleMic(); }} devices={devices} active={active} onChoose={onChoose} onSettings={() => setSettingsOpen(true)} shortcut={SHORTCUTS.mic} />
-          <VideoButton onRefresh={devices.refresh} camOn={call.camOn} busy={call.pending.camera} onToggle={() => { void call.toggleCam(); }} devices={devices} active={active} onChoose={onChoose} onSettings={() => setSettingsOpen(true)} shortcut={SHORTCUTS.cam} />
+          <VideoButton onRefresh={devices.rescan} camOn={call.camOn} busy={call.pending.camera} onToggle={() => { void call.toggleCam(); }} devices={devices} active={active} onChoose={onChoose} onSettings={() => setSettingsOpen(true)} shortcut={SHORTCUTS.cam} />
         </div>
+        <span aria-hidden="true" className="mx-0.5 hidden h-7 w-px bg-white/15 sm:block" />
 
         <div className="flex items-center">
           <ToolButton label="Participants" icon={<Users className="h-5 w-5" />} badge={count} pressed={panel === 'people'} onClick={() => openPanel('people')} />
@@ -556,13 +604,14 @@ function InCall({ meeting, join, onLeave, onEnded }: { meeting: Meeting; join: J
             )}
           </Popover>
         </div>
+        <span aria-hidden="true" className="mx-0.5 hidden h-7 w-px bg-white/15 sm:block" />
 
         <Popover
           label="Leave options"
           panelClassName={cn('bottom-full right-0 mb-3 w-60 p-2', darkPanel)}
           trigger={({ open, toggle }) => (
-            <button type="button" onClick={toggle} aria-haspopup="menu" aria-expanded={open} className="mr-1 h-9 rounded-lg bg-burgundy-500 px-3 text-sm font-semibold text-white hover:bg-burgundy-600 sm:px-4">
-              End
+            <button type="button" onClick={toggle} aria-haspopup="menu" aria-expanded={open} aria-label="Leave" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#C42B1C] text-[15px] font-semibold text-white hover:bg-[#A82316] sm:h-[52px] sm:w-auto sm:px-6">
+              <PhoneOff className="h-5 w-5 sm:hidden" aria-hidden="true" /><span className="hidden sm:inline">Leave</span>
             </button>
           )}
         >
@@ -574,6 +623,7 @@ function InCall({ meeting, join, onLeave, onEnded }: { meeting: Meeting; join: J
           )}
         </Popover>
       </footer>
+      </div>
       <DeviceCheckModal open={settingsOpen} onClose={() => { setSettingsOpen(false); void call.applySavedDevices(); }} />
     </div>
   );
@@ -648,7 +698,7 @@ function ParticipantTile({ tile, hand, reaction, host, big, className }: { tile:
   const label = `${tile.name}${tile.local ? ' (you)' : ''}`;
   return (
     <div
-      className={cn('relative min-h-0 overflow-hidden rounded-xl bg-navy-800 ring-2 transition', tile.speaking ? 'ring-green-400' : 'ring-transparent', className)}
+      className={cn('relative min-h-0 overflow-hidden rounded-[22px] bg-[#13244A] transition', className)}
       data-speaking={tile.speaking || undefined}
       aria-label={`${label}${host ? ', host' : ''}${tile.muted ? ', muted' : ''}${tile.speaking ? ', speaking' : ''}${hand ? ', hand raised' : ''}`}
       role="group"
@@ -657,17 +707,20 @@ function ParticipantTile({ tile, hand, reaction, host, big, className }: { tile:
         <TrackVideo track={tile.video} mirror={tile.local} className="h-full w-full object-cover" />
       ) : (
         <div className="flex h-full w-full items-center justify-center">
-          <Avatar firstName={first} lastName={rest.join(' ')} src={tile.avatarUrl} size={big ? 'xl' : 'lg'} className={big ? '!h-24 !w-24 !text-3xl' : undefined} />
+          {tile.avatarUrl
+            ? <Avatar firstName={first} lastName={rest.join(' ')} src={tile.avatarUrl} size="xl" className={big ? '!h-28 !w-28' : '!h-20 !w-20'} />
+            : <span className={cn('flex items-center justify-center rounded-full bg-[#2A4377] font-display font-semibold tracking-[-0.02em]', big ? 'h-28 w-28 text-[38px]' : 'h-20 w-20 text-[28px]')}>{(first?.[0] ?? '') + (rest[rest.length - 1]?.[0] ?? '')}</span>}
         </div>
       )}
+      {tile.speaking && <span aria-hidden="true" className="pointer-events-none absolute inset-0 rounded-[22px] shadow-[inset_0_0_0_3px_#E4A93C]" />}
       {(hand || reaction) && (
-        <span className="absolute left-2 top-2 flex items-center gap-1">
-          {hand && <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gold-400 text-navy-900" aria-hidden="true"><Hand className="h-4 w-4" /></span>}
+        <span className="absolute left-3.5 top-3.5 flex items-center gap-1">
+          {hand && <span className="inline-flex h-[30px] items-center gap-1.5 rounded-full bg-gold-400 px-2.5 text-[13px] font-semibold text-navy-900" aria-hidden="true"><Hand className="h-3.5 w-3.5" /> Hand raised</span>}
           {reaction && <span className="animate-bounce text-3xl drop-shadow" aria-label={`Reacted ${reaction}`}>{reaction}</span>}
         </span>
       )}
-      <span className="absolute bottom-1.5 left-1.5 flex max-w-[90%] items-center gap-1 truncate rounded bg-black/60 px-1.5 py-0.5 text-[11px] font-medium">
-        {tile.muted ? <MicOff className="h-3 w-3 shrink-0 text-red-400" /> : <Mic className="h-3 w-3 shrink-0" />}
+      <span className="absolute bottom-3.5 left-3.5 flex h-7 max-w-[90%] items-center gap-1.5 truncate rounded-full bg-black/45 px-2.5 text-[13px] font-medium">
+        {tile.muted ? <MicOff className="h-3.5 w-3.5 shrink-0 text-[#FF8A80]" /> : <Mic className="h-3.5 w-3.5 shrink-0" />}
         <span className="truncate">{label}</span>
       </span>
     </div>
