@@ -27,7 +27,7 @@ export function SelectedMark({ selected }: { selected: boolean }) {
       aria-hidden="true"
       className={cn(
         'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition',
-        selected ? 'border-gold-400 bg-gold-400 text-white' : 'border-navy-100 bg-white',
+        selected ? 'border-gold-400 bg-gold-400 text-navy-900' : 'border-navy-100 bg-white',
       )}
     >
       {selected && <Check className="h-3 w-3" strokeWidth={3} />}

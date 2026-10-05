@@ -197,7 +197,7 @@ function PreJoin({ meeting, isHost, onJoin, onBack }: { meeting: Meeting; isHost
           <button
             type="button"
             onClick={() => onJoin({ mic: micLive, cam: camLive })}
-            className="h-11 shrink-0 rounded-xl bg-gold-400 px-8 text-sm font-bold text-white hover:bg-gold-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-200"
+            className="h-11 shrink-0 rounded-xl bg-gold-400 px-8 text-sm font-bold text-navy-900 hover:bg-gold-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-200"
           >
             {isHost ? 'Start' : 'Join'}
           </button>
@@ -473,7 +473,7 @@ function InCall({ meeting, join, onLeave, onEnded }: { meeting: Meeting; join: J
           <span title="Audio, video and chat are encrypted in transit" aria-label="Encrypted" className="flex h-8 w-8 items-center justify-center rounded-lg text-green-400"><ShieldCheck className="h-[18px] w-[18px]" /></span>
           {startedAt !== null && <span className="rounded-lg px-2 py-1 font-mono text-xs tabular-nums text-ivory-200" aria-label="Time in meeting">{elapsed(now - startedAt)}</span>}
           {sharer && (
-            <button type="button" onClick={() => setAnnotating((v) => !v)} aria-pressed={annotating} aria-label="Annotate" title="Annotate the shared screen" className={cn('flex h-8 w-8 items-center justify-center rounded-lg', annotating ? 'bg-gold-400 text-white' : 'text-ivory-200 hover:bg-white/10')}>
+            <button type="button" onClick={() => setAnnotating((v) => !v)} aria-pressed={annotating} aria-label="Annotate" title="Annotate the shared screen" className={cn('flex h-8 w-8 items-center justify-center rounded-lg', annotating ? 'bg-gold-400 text-navy-900' : 'text-ivory-200 hover:bg-white/10')}>
               <PenLine className="h-[18px] w-[18px]" />
             </button>
           )}
@@ -662,7 +662,7 @@ function ParticipantTile({ tile, hand, reaction, host, big, className }: { tile:
       )}
       {(hand || reaction) && (
         <span className="absolute left-2 top-2 flex items-center gap-1">
-          {hand && <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gold-400 text-white" aria-hidden="true"><Hand className="h-4 w-4" /></span>}
+          {hand && <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gold-400 text-navy-900" aria-hidden="true"><Hand className="h-4 w-4" /></span>}
           {reaction && <span className="animate-bounce text-3xl drop-shadow" aria-label={`Reacted ${reaction}`}>{reaction}</span>}
         </span>
       )}

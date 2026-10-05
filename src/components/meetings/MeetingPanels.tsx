@@ -90,7 +90,7 @@ export function ChatPanel({ lines, onSend, onClose }: { lines: ChatLine[]; onSen
         {lines.map((l) => (
           <div key={l.id} className={cn('flex flex-col', l.mine && 'items-end')}>
             <span className="text-[11px] text-ivory-400">{l.mine ? 'You' : l.name} · {time(l.at)}</span>
-            <p className={cn('mt-0.5 max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-sm', l.mine ? 'bg-gold-400 text-white' : 'bg-white/10')}>{l.text}</p>
+            <p className={cn('mt-0.5 max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-sm', l.mine ? 'bg-gold-400 text-navy-900' : 'bg-white/10')}>{l.text}</p>
           </div>
         ))}
       </div>
@@ -105,7 +105,7 @@ export function ChatPanel({ lines, onSend, onClose }: { lines: ChatLine[]; onSen
           placeholder="Message everyone"
           className="max-h-32 min-h-[40px] flex-1 resize-none rounded-xl border border-white/15 bg-navy-950 px-3 py-2 text-sm text-white placeholder:text-ivory-500 focus:border-gold-400 focus:outline-none"
         />
-        <button type="submit" aria-label="Send" disabled={!draft.trim()} className="flex h-10 w-10 items-center justify-center rounded-xl bg-gold-400 text-white hover:bg-gold-500 disabled:opacity-40"><Send className="h-4 w-4" /></button>
+        <button type="submit" aria-label="Send" disabled={!draft.trim()} className="flex h-10 w-10 items-center justify-center rounded-xl bg-gold-400 text-navy-900 hover:bg-gold-300 disabled:opacity-40"><Send className="h-4 w-4" /></button>
       </form>
     </Panel>
   );

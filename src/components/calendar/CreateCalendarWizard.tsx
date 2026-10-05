@@ -408,7 +408,7 @@ export function CreateCalendarWizard({ onClose, onCreated }: { onClose: () => vo
             </button>
             <button
               onClick={() => { onClose(); onCreated(); }}
-              className="flex items-center justify-center gap-2 rounded-xl bg-gold-400 px-4 py-3 text-sm font-semibold text-white transition hover:bg-gold-500"
+              className="flex items-center justify-center gap-2 rounded-xl bg-gold-400 px-4 py-3 text-sm font-semibold text-navy-800 transition hover:bg-gold-300"
             >
               <SettingsIcon className="h-4 w-4" />
               Go to Calendar Settings
@@ -481,7 +481,7 @@ export function CreateCalendarWizard({ onClose, onCreated }: { onClose: () => vo
           <div key={s} className="flex items-center gap-1 shrink-0">
             <div className={cn(
               'flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold shrink-0 transition',
-              i < step ? 'bg-green-500 text-white' : i === step ? 'bg-gold-400 text-white' : 'bg-ivory-100 text-ivory-500'
+              i < step ? 'bg-green-500 text-white' : i === step ? 'bg-gold-400 text-navy-800' : 'bg-ivory-100 text-ivory-500'
             )}>
               {i < step ? <Check className="h-3 w-3" /> : i + 1}
             </div>

@@ -352,7 +352,7 @@ export function CalendarSettingsPage() {
           <Filter className="h-4 w-4" />
           Filters
           {(typeFilter !== 'all' ? 1 : 0) + (statusFilter !== 'all' ? 1 : 0) + (hostFilter !== 'all' ? 1 : 0) > 0 && (
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gold-400 text-[10px] text-white">
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gold-400 text-[10px] text-navy-800">
               {(typeFilter !== 'all' ? 1 : 0) + (statusFilter !== 'all' ? 1 : 0) + (hostFilter !== 'all' ? 1 : 0)}
             </span>
           )}

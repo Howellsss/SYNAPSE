@@ -16,7 +16,7 @@
   body {
     font-family: theme('fontFamily.sans');
     background: #ffffff;
-    color: #1D1D1F;
+    color: #0D1C3B;
     margin: 0;
     padding: 0;
     letter-spacing: -0.003em;
@@ -29,11 +29,11 @@
   }
 
   ::selection {
-    background: rgba(67, 80, 230, 0.2);
+    background: rgba(228, 169, 60, 0.25);
   }
 
   :focus-visible {
-    outline: 2px solid rgba(67, 80, 230, 0.6);
+    outline: 2px solid rgba(228, 169, 60, 0.7);
     outline-offset: 2px;
   }
 
@@ -54,11 +54,11 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.18);
+    background: rgba(57, 69, 96, 0.25);
     border-radius: 4px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(0, 0, 0, 0.32);
+    background: rgba(57, 69, 96, 0.4);
   }
 
   /* Dark sidebar scrollbar */
@@ -69,19 +69,19 @@
 
 @layer components {
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-gold-400 text-white text-sm font-semibold rounded-full transition-all duration-200 hover:bg-gold-500 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-gold-400 text-navy-800 text-sm font-semibold rounded-full transition-all duration-200 hover:bg-gold-300 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-navy-50 text-navy-800 text-sm font-semibold rounded-full transition-all duration-200 hover:bg-navy-100 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-white text-navy-700 text-sm font-semibold rounded-full border border-navy-100 transition-all duration-200 hover:bg-paper hover:border-navy-200 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
   }
 
   .btn-danger {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-burgundy-500 text-white text-sm font-semibold rounded-full transition-all duration-200 hover:bg-burgundy-600 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-burgundy-600 text-white text-sm font-semibold rounded-full transition-all duration-200 hover:bg-burgundy-500 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 text-gold-400 text-sm font-medium rounded-full transition-all duration-200 hover:bg-gold-50 active:scale-[0.98];
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 text-navy-500 text-sm font-medium rounded-full transition-all duration-200 hover:bg-paper hover:text-navy-700 active:scale-[0.98];
   }
 
   .btn-sm {
@@ -89,11 +89,11 @@
   }
 
   .input-field {
-    @apply w-full px-3.5 py-2.5 bg-white text-navy-800 text-sm rounded-xl border border-navy-100 transition-all outline-none placeholder:text-ivory-500 focus:border-gold-400 focus:ring-4 focus:ring-gold-400/15;
+    @apply w-full px-3.5 py-2.5 bg-white text-navy-700 text-sm rounded-xl border border-navy-100 transition-all outline-none placeholder:text-ivory-600 focus:border-gold-400 focus:ring-4 focus:ring-gold-400/20;
   }
 
   .card {
-    @apply bg-white rounded-[20px] border border-navy-100/80;
+    @apply bg-white rounded-[20px] border border-navy-100 shadow-card;
   }
 
   .card-hover {
@@ -105,15 +105,15 @@
   }
 
   .nav-item {
-    @apply flex items-center gap-3 px-3 h-9 rounded-[10px] text-[14px] font-medium text-navy-800 transition-colors duration-200 relative;
+    @apply flex items-center gap-3 px-3 h-10 rounded-xl text-[14px] font-medium text-ivory-500 transition-colors duration-200 relative;
   }
 
   .nav-item-active {
-    @apply bg-navy-100/80 font-semibold;
+    @apply text-gold-400 bg-gold-400/10;
   }
 
   .nav-item:not(.nav-item-active):hover {
-    @apply bg-navy-100/50;
+    @apply text-ivory-100 bg-white/5;
   }
 }
 

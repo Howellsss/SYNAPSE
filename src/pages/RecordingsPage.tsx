@@ -170,7 +170,7 @@ function RecordingDetailDrawer({
             <div className="flex items-center gap-4">
               <button
                 onClick={togglePlay}
-                className="w-14 h-14 rounded-full bg-gold-400 flex items-center justify-center shrink-0 hover:bg-gold-500 transition-colors"
+                className="w-14 h-14 rounded-full bg-gold-400 flex items-center justify-center shrink-0 hover:bg-gold-300 transition-colors"
                 aria-label={isPlaying ? 'Pause' : 'Play'}
               >
                 {isPlaying ? (
