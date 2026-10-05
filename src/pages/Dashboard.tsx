@@ -1,20 +1,5 @@
 import { useEffect, useState, type ComponentType } from 'react';
-import {
-  Activity,
-  ArrowRight,
-  Bell,
-  CalendarDays,
-  FileText,
-  FolderUp,
-  MessageCircle,
-  MoreHorizontal,
-  Plus,
-  Send,
-  Sparkles,
-  UserPlus,
-  Users,
-  Video,
-} from 'lucide-react';
+import { Building2, CalendarDays, ChevronRight, MessageCircle, Plus, Users, Video } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Skeleton } from '@/components/ui/States';
@@ -32,18 +17,10 @@ interface DashboardData {
   upcomingAppointments: DashboardAppointment[];
   contactCount: number;
   workspaceMemberCount: number;
-  completedCount: number;
   messageCount: number;
 }
 
-interface ActionCardProps {
-  label: string;
-  detail: string;
-  icon: ComponentType<{ className?: string }>;
-  tone: string;
-  onClick: () => void;
-}
-
+/** "Today": what's next, the day's schedule and a few honest numbers. */
 export function Dashboard() {
   const { profile, workspace } = useAuth();
   const [, navigate] = useRouter();
@@ -63,7 +40,7 @@ export function Dashboard() {
     const weekEnd = new Date(now);
     weekEnd.setDate(weekEnd.getDate() + 7);
 
-    const [todayRes, upcomingRes, contactsRes, membersRes, completedRes, messagesRes] = await Promise.all([
+    const [todayRes, upcomingRes, contactsRes, membersRes, messagesRes] = await Promise.all([
       supabase
         .from('appointments')
         .select('*, contacts(*), calendars(*)')
@@ -83,7 +60,6 @@ export function Dashboard() {
         .limit(5),
       supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
       supabase.from('workspace_members').select('*', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
-      supabase.from('appointments').select('*', { count: 'exact', head: true }).eq('workspace_id', workspaceId).eq('status', 'completed'),
       supabase.from('messages').select('*', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
     ]);
 
@@ -92,181 +68,162 @@ export function Dashboard() {
       upcomingAppointments: (upcomingRes.data ?? []) as DashboardAppointment[],
       contactCount: contactsRes.count ?? 0,
       workspaceMemberCount: membersRes.count ?? 0,
-      completedCount: completedRes.count ?? 0,
       messageCount: messagesRes.count ?? 0,
     });
     setLoading(false);
   }
 
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  const firstName = profile?.first_name || 'there';
+  const today = formatDate(new Date().toISOString(), { weekday: 'long', month: 'long', day: 'numeric' });
+
   if (loading) {
     return (
-      <div className="space-y-5">
-        <Skeleton className="h-24 w-full" />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
-          {Array.from({ length: 6 }, (_, index) => <Skeleton key={index} className="h-20" />)}
-        </div>
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
-          <Skeleton className="h-[430px] xl:col-span-8" />
-          <Skeleton className="h-[430px] xl:col-span-4" />
-        </div>
+      <div className="mx-auto max-w-[1080px] space-y-8">
+        <Skeleton className="h-16 w-80" />
+        <div className="grid gap-5 lg:grid-cols-5"><Skeleton className="h-60 lg:col-span-3" /><Skeleton className="h-60 lg:col-span-2" /></div>
+        <div className="grid gap-5 lg:grid-cols-2"><Skeleton className="h-72" /><Skeleton className="h-72" /></div>
       </div>
     );
   }
 
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-  const firstName = profile?.first_name || 'there';
-  const appointments = data?.upcomingAppointments ?? [];
-  const recentAppointments = [...(data?.todayAppointments ?? []), ...appointments].slice(0, 5);
-
-  const formattedDate = formatDate(new Date().toISOString(), { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-  const formattedTime = formatTime(new Date().toISOString());
+  const next = data?.upcomingAppointments[0] ?? null;
+  const todayList = data?.todayAppointments ?? [];
 
   return (
-    <div className="space-y-4 pb-8">
-      <section className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ivory-500">{formattedDate}</p>
-          <h1 className="mt-1 text-[28px] font-bold tracking-[-0.04em] text-navy-800 sm:text-[32px]">
-            {greeting}, <span className="text-blue-600">{firstName}</span>
-          </h1>
-          <p className="mt-1 text-xs text-ivory-600">Here&apos;s what&apos;s happening in your collaboration hub today.</p>
-        </div>
-        <div className="flex items-center gap-4 xl:text-right">
-          <div className="hidden sm:block">
-            <p className="text-[10px] font-semibold text-ivory-500">{formattedDate}</p>
-            <p className="text-2xl font-bold leading-none text-navy-800">{formattedTime}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => navigate('/meetings')} className="btn-primary px-4"><Plus className="h-4 w-4" />Create</button>
-            <button className="flex h-10 w-10 items-center justify-center rounded-xl border border-navy-100 bg-white text-ivory-600 transition hover:border-blue-300 hover:text-blue-700" aria-label="Notifications"><Bell className="h-4 w-4" /></button>
-          </div>
-        </div>
-      </section>
+    <div className="mx-auto max-w-[1080px] space-y-9 pb-10">
+      <header>
+        <p className="text-[15px] text-ivory-600">{today}</p>
+        <h1 className="mt-1 text-[34px] font-bold tracking-[-0.032em] text-navy-800 sm:text-[44px]">{greeting}, {firstName}</h1>
+      </header>
 
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        <ActionCard label="New Meeting" detail="Start an instant meeting" icon={Video} tone="bg-blue-50 text-blue-600" onClick={() => navigate('/meetings')} />
-        <ActionCard label="Schedule Meeting" detail="Plan for later" icon={CalendarDays} tone="bg-emerald-50 text-emerald-600" onClick={() => navigate('/calendars')} />
-        <ActionCard label="AI Assistant" detail="Get AI help" icon={Sparkles} tone="bg-sky-50 text-sky-600" onClick={() => navigate('/ai-hub')} />
-        <ActionCard label="Start Webinar" detail="Broadcast to a large audience" icon={Activity} tone="bg-amber-50 text-amber-600" onClick={() => navigate('/webinars')} />
-        <ActionCard label="Open Classroom" detail="Launch a learning session" icon={Users} tone="bg-cyan-50 text-cyan-600" onClick={() => navigate('/workspace')} />
-        <ActionCard label="Create Workspace" detail="Build a new space" icon={Plus} tone="bg-rose-50 text-rose-600" onClick={() => navigate('/workspace')} />
-      </section>
+      <div className="grid gap-5 lg:grid-cols-5">
+        <section aria-label="Up next" className="card flex flex-col gap-5 p-7 lg:col-span-3">
+          {next ? (
+            <>
+              <span className="inline-flex items-center gap-2 self-start rounded-full bg-gold-50 px-3 py-1 text-[13px] font-semibold text-gold-700">
+                <span className="h-1.5 w-1.5 rounded-full bg-gold-400" /> Up next · {startsIn(next.start_time)}
+              </span>
+              <div>
+                <h2 className="text-[26px] font-semibold tracking-[-0.022em] text-navy-800">{next.title || next.calendars?.name || 'Appointment'}</h2>
+                <p className="mt-1 text-[15px] text-ivory-600">
+                  {formatTime(next.start_time)}{next.end_time ? ` – ${formatTime(next.end_time)}` : ''}
+                  {next.contacts ? ` · with ${getFullName(next.contacts)}` : ''}
+                </p>
+              </div>
+              <div className="mt-auto flex flex-wrap gap-2.5">
+                <button onClick={() => navigate('/meetings')} className="btn-primary h-11 px-6 text-[15px]"><Video className="h-4 w-4" /> Join</button>
+                <button onClick={() => navigate('/calendars')} className="btn-secondary h-11 px-6 text-[15px]">Open calendar</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <h2 className="text-[26px] font-semibold tracking-[-0.022em] text-navy-800">Nothing scheduled this week</h2>
+              <p className="text-[15px] text-ivory-600">Start a meeting now, or share a booking page so people can pick a time.</p>
+              <div className="mt-auto flex flex-wrap gap-2.5">
+                <button onClick={() => navigate('/meetings')} className="btn-primary h-11 px-6 text-[15px]"><Video className="h-4 w-4" /> New meeting</button>
+                <button onClick={() => navigate('/calendars')} className="btn-secondary h-11 px-6 text-[15px]">Booking pages</button>
+              </div>
+            </>
+          )}
+        </section>
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        <div className="xl:col-span-4">
-          <SectionHeading title="Upcoming Meetings" subtitle="Rooms that are ready to enter" action="View all" onAction={() => navigate('/meetings')} />
-          <div className="card mt-3 min-h-[326px] divide-y divide-navy-100">
-            {appointments.length === 0 ? <EmptyPanel icon={CalendarDays} title="No upcoming meetings" detail="Your next meetings will appear here." /> : appointments.slice(0, 3).map((appointment) => <MeetingRow key={appointment.id} appointment={appointment} onClick={() => navigate('/meetings')} />)}
-          </div>
-        </div>
+        <section aria-label="At a glance" className="card p-7 lg:col-span-2">
+          <h2 className="text-[17px] font-semibold text-navy-800">At a glance</h2>
+          <dl className="mt-3 divide-y divide-navy-100">
+            <Stat label="Today's appointments" value={todayList.length} />
+            <Stat label="Contacts" value={data?.contactCount ?? 0} />
+            <Stat label="Messages" value={data?.messageCount ?? 0} />
+            <Stat label="People on your team" value={data?.workspaceMemberCount ?? 0} />
+          </dl>
+        </section>
+      </div>
 
-        <div className="space-y-4 xl:col-span-4">
-          <div>
-            <SectionHeading title="Today Overview" subtitle="Your collaboration pulse" />
-            <div className="card mt-3 grid grid-cols-2 gap-2 p-3 sm:grid-cols-4 xl:grid-cols-2 2xl:grid-cols-4">
-              <OverviewStat label="Meetings" value={data?.todayAppointments.length ?? 0} detail="Live agenda" icon={Video} tone="blue" />
-              <OverviewStat label="Workspaces" value={1} detail="Active spaces" icon={Users} tone="green" />
-              <OverviewStat label="Messages" value={data?.messageCount ?? 0} detail="New messages" icon={MessageCircle} tone="amber" />
-              <OverviewStat label="Members" value={data?.workspaceMemberCount ?? 0} detail="In your hub" icon={Users} tone="rose" />
-            </div>
+      <div className="grid gap-5 lg:grid-cols-2">
+        <section aria-label="Today">
+          <SectionTitle title="Today" action="Calendar" onAction={() => navigate('/calendars')} />
+          <div className="card mt-3 overflow-hidden">
+            {todayList.length === 0 ? (
+              <Empty icon={CalendarDays} title="A clear day" detail="Appointments booked for today show up here." />
+            ) : (
+              <ul className="divide-y divide-navy-100">
+                {todayList.map((a) => (
+                  <li key={a.id} className="flex items-center gap-4 px-5 py-3.5">
+                    <span className="w-14 text-sm font-semibold tabular-nums text-navy-800">{formatTime(a.start_time)}</span>
+                    <span className="w-[3px] self-stretch rounded-full" style={{ background: a.calendars?.color || '#4350E6' }} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[15px] font-medium text-navy-800">{a.title || a.calendars?.name || 'Appointment'}</span>
+                      <span className="block truncate text-[13px] text-ivory-600">{a.contacts ? getFullName(a.contacts) : a.calendars?.name}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-          <div>
-            <SectionHeading title="Activity Overview" subtitle="Collaboration activity over the last seven days" action="This week" />
-            <div className="card mt-3 min-h-[204px] overflow-hidden p-4">
-              <div className="flex items-start justify-between"><div><p className="text-2xl font-bold text-navy-800">{(data?.completedCount ?? 0) + (data?.messageCount ?? 0)}</p><p className="text-xs text-ivory-500">Completed actions</p></div><span className="rounded-lg bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-600">This week</span></div>
-              <ActivityChart />
-            </div>
-          </div>
-        </div>
+        </section>
 
-        <div className="xl:col-span-4">
-          <SectionHeading title="Recent Activity" subtitle="What&apos;s moving across your hub" action="View all" onAction={() => navigate('/conversations')} />
-          <div className="card mt-3 min-h-[326px] divide-y divide-navy-100">
-            {recentAppointments.length === 0 ? <EmptyPanel icon={Activity} title="No recent activity" detail="New workspace activity will appear here." /> : recentAppointments.map((appointment) => <div key={appointment.id} className="flex items-center gap-3 px-4 py-3"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><Video className="h-4 w-4" /></div><div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-navy-700">{appointment.title || 'Meeting scheduled'}</p><p className="text-[10px] text-ivory-500">{formatTime(appointment.start_time)}</p></div><MoreHorizontal className="h-4 w-4 text-ivory-400" /></div>)}
+        <section aria-label="Start something">
+          <SectionTitle title="Start something" />
+          <div className="card mt-3 divide-y divide-navy-100 overflow-hidden">
+            <Shortcut icon={Video} title="New meeting" detail="Get a link and start now" onClick={() => navigate('/meetings')} />
+            <Shortcut icon={Building2} title="Enter a workspace" detail="Walk over to talk to your team" onClick={() => navigate('/workspace')} />
+            <Shortcut icon={Users} title="Add a contact" detail="Keep every conversation in one place" onClick={() => navigate('/contacts')} />
+            <Shortcut icon={MessageCircle} title="Conversations" detail="Email and texts in one inbox" onClick={() => navigate('/conversations')} />
+            <Shortcut icon={Plus} title="New booking page" detail="Let people pick a time" onClick={() => navigate('/calendars')} />
           </div>
-        </div>
-      </section>
-
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div>
-          <SectionHeading title="Active Workspaces" subtitle="Spaces with recent movement" action="View all" onAction={() => navigate('/workspace')} />
-          <div className="card mt-3 divide-y divide-navy-100"><WorkspaceRow name={workspace?.name || 'My Workspace'} detail={`${data?.workspaceMemberCount ?? 0} members · ${data?.contactCount ?? 0} contacts`} color="bg-navy-800" /><WorkspaceRow name="Team Space" detail="Shared projects and conversations" color="bg-blue-600" /><WorkspaceRow name="Events Space" detail="Events, webinars, and planning" color="bg-cyan-600" /></div>
-        </div>
-        <div>
-          <SectionHeading title="AI Assistant" subtitle="Ask, summarize, or plan" />
-          <div className="card mt-3 overflow-hidden"><div className="flex gap-2 p-3"><input className="input-field h-9 flex-1 text-xs" placeholder="Ask anything..." /><button className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white transition hover:bg-blue-700" aria-label="Send question"><Send className="h-3.5 w-3.5" /></button></div><div className="divide-y divide-navy-100 border-t border-navy-100">{['Summarize today’s meetings', 'What are my priorities this week?', 'Show me project updates', 'Generate meeting brief'].map((prompt) => <button key={prompt} className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-navy-600 transition hover:bg-blue-50 hover:text-blue-600"><Sparkles className="h-3 w-3 text-blue-500" />{prompt}</button>)}</div></div>
-        </div>
-        <div>
-          <SectionHeading title="Quick Actions" subtitle="Common workspace tasks" />
-          <div className="card mt-3 divide-y divide-navy-100"><QuickAction label="Share Screen" detail="Present to your team" icon={FolderUp} onClick={() => navigate('/meetings')} /><QuickAction label="Upload Document" detail="Share files with your team" icon={FileText} onClick={() => navigate('/media-library')} /><QuickAction label="Record Meeting" detail="Record for later review" icon={Video} onClick={() => navigate('/meetings')} /><QuickAction label="Invite People" detail="Add members to your workspace" icon={UserPlus} onClick={() => navigate('/workspace')} /></div>
-        </div>
-        <div>
-          <SectionHeading title="Notifications" subtitle="Signals that need attention" action="View all" onAction={() => navigate('/conversations')} />
-          <div className="card mt-3 flex min-h-[228px] flex-col items-center justify-center p-6 text-center"><Bell className="h-7 w-7 text-ivory-400" /><p className="mt-2 text-xs font-semibold text-navy-600">No notifications yet</p><p className="mt-1 text-[10px] text-ivory-500">You&apos;re all caught up.</p></div>
-        </div>
-      </section>
+        </section>
+      </div>
     </div>
   );
 }
 
-function ActionCard({ label, detail, icon: Icon, tone, onClick }: ActionCardProps) {
-  return (
-    <button onClick={onClick} className="card card-hover flex min-h-[74px] items-center gap-3 p-3 text-left">
-      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tone}`}><Icon className="h-4 w-4" /></span>
-      <span className="min-w-0"><span className="block truncate text-[11px] font-bold text-navy-700">{label}</span><span className="mt-0.5 block truncate text-[9px] text-ivory-500">{detail}</span></span>
-    </button>
-  );
+function startsIn(iso: string): string {
+  const mins = Math.round((new Date(iso).getTime() - Date.now()) / 60000);
+  if (mins <= 1) return 'now';
+  if (mins < 60) return `in ${mins} min`;
+  const d = new Date(iso);
+  const sameDay = d.toDateString() === new Date().toDateString();
+  return sameDay ? `today at ${formatTime(iso)}` : formatDate(iso, { weekday: 'long' });
 }
 
-function SectionHeading({ title, subtitle, action, onAction }: { title: string; subtitle: string; action?: string; onAction?: () => void }) {
+function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="flex items-end justify-between gap-3">
-      <div><h2 className="text-sm font-bold text-navy-800">{title}</h2><p className="mt-0.5 text-[10px] text-ivory-500">{subtitle}</p></div>
-      {action && onAction && <button onClick={onAction} className="flex items-center gap-1 text-[10px] font-semibold text-gold-700 hover:text-gold-600">{action}<ArrowRight className="h-3 w-3" /></button>}
+    <div className="flex items-baseline justify-between gap-4 py-3">
+      <dt className="text-[15px] text-ivory-600">{label}</dt>
+      <dd className="font-display text-[28px] font-semibold tabular-nums tracking-[-0.03em] text-navy-800">{value.toLocaleString()}</dd>
     </div>
   );
 }
 
-function MeetingRow({ appointment, onClick }: { appointment: DashboardAppointment; onClick: () => void }) {
-  const contact = appointment.contacts;
+function SectionTitle({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
   return (
-    <button onClick={onClick} className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-ivory-50">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><Video className="h-4 w-4" /></div>
-      <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-navy-700">{appointment.title || appointment.calendars?.name || 'Focus room'}</p><p className="mt-0.5 text-[10px] text-ivory-500">{formatDate(appointment.start_time, { weekday: 'short', month: 'short', day: 'numeric' })} · {formatTime(appointment.start_time)}</p></div>
-      <span className="hidden text-[10px] text-ivory-500 sm:block">{getFullName(contact ?? { first_name: null, last_name: null })}</span>
-      <span className="rounded-md bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-600">Join</span>
+    <div className="flex items-baseline justify-between">
+      <h2 className="text-xl font-semibold tracking-[-0.015em] text-navy-800">{title}</h2>
+      {action && onAction && <button onClick={onAction} className="text-sm text-gold-400 hover:underline">{action}</button>}
+    </div>
+  );
+}
+
+function Shortcut({ icon: Icon, title, detail, onClick }: { icon: ComponentType<{ className?: string }>; title: string; detail: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="flex w-full items-center gap-4 px-5 py-3.5 text-left transition-colors hover:bg-ivory-50">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gold-50 text-gold-400"><Icon className="h-[18px] w-[18px]" /></span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[15px] font-medium text-navy-800">{title}</span>
+        <span className="block text-[13px] text-ivory-600">{detail}</span>
+      </span>
+      <ChevronRight className="h-4 w-4 text-ivory-400" />
     </button>
   );
 }
 
-function WorkspaceRow({ name, detail, color }: { name: string; detail: string; color: string }) {
-  return <div className="flex items-center gap-3 px-4 py-3"><div className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold text-white ${color}`}>{name.charAt(0).toUpperCase()}</div><div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-navy-700">{name}</p><p className="truncate text-[10px] text-ivory-500">{detail}</p></div><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /></div>;
-}
-
-function OverviewStat({ label, value, detail, icon: Icon, tone }: { label: string; value: number; detail: string; icon: ComponentType<{ className?: string }>; tone: 'blue' | 'green' | 'amber' | 'rose' }) {
-  const tones = { blue: 'bg-blue-50 text-blue-600', green: 'bg-emerald-50 text-emerald-600', amber: 'bg-amber-50 text-amber-600', rose: 'bg-rose-50 text-rose-600' };
-  return <div className="flex items-start gap-2 rounded-xl bg-white p-3"><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${tones[tone]}`}><Icon className="h-3.5 w-3.5" /></span><div><p className="text-[9px] text-ivory-500">{label}</p><p className="text-lg font-bold leading-tight text-navy-800">{value}</p><p className="text-[9px] text-ivory-500">{detail}</p></div></div>;
-}
-
-function QuickAction({ label, detail, icon: Icon, onClick }: { label: string; detail: string; icon: ComponentType<{ className?: string }>; onClick: () => void }) {
-  return <button onClick={onClick} className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-ivory-50"><Icon className="h-4 w-4 shrink-0 text-blue-600" /><span><span className="block text-[11px] font-semibold text-navy-700">{label}</span><span className="block text-[9px] text-ivory-500">{detail}</span></span></button>;
-}
-
-function EmptyPanel({ icon: Icon, title, detail }: { icon: ComponentType<{ className?: string }>; title: string; detail: string }) {
-  return <div className="flex min-h-28 flex-col items-center justify-center p-5 text-center"><Icon className="h-5 w-5 text-ivory-400" /><p className="mt-2 text-xs font-semibold text-navy-600">{title}</p><p className="mt-1 text-[10px] text-ivory-500">{detail}</p></div>;
-}
-
-function ActivityChart() {
+function Empty({ icon: Icon, title, detail }: { icon: ComponentType<{ className?: string }>; title: string; detail: string }) {
   return (
-    <div className="mt-4 overflow-hidden">
-      <svg viewBox="0 0 700 180" className="h-40 w-full" preserveAspectRatio="none" role="img" aria-label="Weekly activity chart">
-        <defs><linearGradient id="activityFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#4f7df3" stopOpacity="0.18" /><stop offset="100%" stopColor="#4f7df3" stopOpacity="0" /></linearGradient></defs>
-        <path d="M0 144 C45 136 58 72 116 76 C165 79 166 124 214 112 C267 99 288 46 339 58 C387 70 394 137 448 132 C500 127 524 130 563 116 C608 101 641 104 700 52 L700 180 L0 180 Z" fill="url(#activityFill)" />
-        <path d="M0 144 C45 136 58 72 116 76 C165 79 166 124 214 112 C267 99 288 46 339 58 C387 70 394 137 448 132 C500 127 524 130 563 116 C608 101 641 104 700 52" fill="none" stroke="#4f7df3" strokeWidth="3" vectorEffect="non-scaling-stroke" />
-        <circle cx="339" cy="58" r="5" fill="#4f7df3" stroke="white" strokeWidth="3" />
-      </svg>
-      <div className="flex justify-between px-1 text-[9px] text-ivory-400"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
+    <div className="flex min-h-[200px] flex-col items-center justify-center p-6 text-center">
+      <Icon className="h-6 w-6 text-ivory-400" />
+      <p className="mt-2 text-[15px] font-medium text-navy-800">{title}</p>
+      <p className="mt-1 text-[13px] text-ivory-600">{detail}</p>
     </div>
   );
 }

@@ -296,7 +296,7 @@ export function MessageComposer({ contact, onSent }: { contact: Contact; onSent:
           type="button"
           onClick={() => { setMode('note'); setChannelMenu(false); setPopover(null); }}
           aria-pressed={mode === 'note'}
-          className={cn('inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-semibold transition', mode === 'note' ? 'bg-gold-400 text-navy-900 shadow-sm' : 'text-ivory-600 hover:text-navy-800')}
+          className={cn('inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-semibold transition', mode === 'note' ? 'bg-gold-400 text-white shadow-sm' : 'text-ivory-600 hover:text-navy-800')}
         >
           <StickyNote className="h-4 w-4" /> Internal note
         </button>

@@ -135,7 +135,7 @@ function Initials({ label, you }: { label: string; you?: boolean }) {
   return (
     <span
       title={you ? `${label} (you)` : label}
-      className={`flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold ${you ? 'bg-gold-400 text-navy-900' : 'bg-white/10 text-ivory-100 ring-1 ring-white/15'}`}
+      className={`flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold ${you ? 'bg-gold-400 text-white' : 'bg-white/10 text-ivory-100 ring-1 ring-white/15'}`}
     >
       {getInitials(parts[0], parts[1]) || '?'}
     </span>

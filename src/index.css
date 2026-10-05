@@ -14,15 +14,35 @@
   }
 
   body {
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: theme('fontFamily.sans');
     background: #ffffff;
-    color: #0D1C3B;
+    color: #1D1D1F;
     margin: 0;
     padding: 0;
+    letter-spacing: -0.003em;
+  }
+
+  /* Titles: Apple-style display face with tighter tracking. */
+  h1, h2, h3 {
+    font-family: theme('fontFamily.display');
+    letter-spacing: -0.02em;
   }
 
   ::selection {
-    background: rgba(228, 169, 60, 0.25);
+    background: rgba(67, 80, 230, 0.2);
+  }
+
+  :focus-visible {
+    outline: 2px solid rgba(67, 80, 230, 0.6);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 
   /* Scrollbar */
@@ -34,11 +54,11 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(57, 69, 96, 0.25);
+    background: rgba(0, 0, 0, 0.18);
     border-radius: 4px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(57, 69, 96, 0.4);
+    background: rgba(0, 0, 0, 0.32);
   }
 
   /* Dark sidebar scrollbar */
@@ -49,19 +69,19 @@
 
 @layer components {
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-gold-400 text-navy-800 text-sm font-semibold rounded-xl transition-all hover:bg-gold-300 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-gold-400 text-white text-sm font-semibold rounded-full transition-all duration-200 hover:bg-gold-500 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white text-navy-700 text-sm font-semibold rounded-xl border border-navy-100 transition-all hover:bg-ivory-50 hover:border-navy-200 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-navy-50 text-navy-800 text-sm font-semibold rounded-full transition-all duration-200 hover:bg-navy-100 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
   }
 
   .btn-danger {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-burgundy-600 text-white text-sm font-semibold rounded-xl transition-all hover:bg-burgundy-500 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-burgundy-500 text-white text-sm font-semibold rounded-full transition-all duration-200 hover:bg-burgundy-600 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 text-navy-500 text-sm font-medium rounded-xl transition-all hover:bg-ivory-100 hover:text-navy-700 active:scale-[0.98];
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 text-gold-400 text-sm font-medium rounded-full transition-all duration-200 hover:bg-gold-50 active:scale-[0.98];
   }
 
   .btn-sm {
@@ -69,15 +89,15 @@
   }
 
   .input-field {
-    @apply w-full px-3.5 py-2.5 bg-white text-navy-700 text-sm rounded-xl border border-navy-100 transition-all outline-none placeholder:text-ivory-600 focus:border-gold-400 focus:ring-2 focus:ring-gold-400/20;
+    @apply w-full px-3.5 py-2.5 bg-white text-navy-800 text-sm rounded-xl border border-navy-100 transition-all outline-none placeholder:text-ivory-500 focus:border-gold-400 focus:ring-4 focus:ring-gold-400/15;
   }
 
   .card {
-    @apply bg-white rounded-2xl border border-navy-100 shadow-card;
+    @apply bg-white rounded-[20px] border border-navy-100/80;
   }
 
   .card-hover {
-    @apply transition-all hover:shadow-card-hover hover:border-navy-200;
+    @apply transition-all duration-200 hover:shadow-card-hover;
   }
 
   .status-pill {
@@ -85,15 +105,15 @@
   }
 
   .nav-item {
-    @apply flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-[13px] font-medium text-ivory-500 transition-all relative;
+    @apply flex items-center gap-3 px-3 h-9 rounded-[10px] text-[14px] font-medium text-navy-800 transition-colors duration-200 relative;
   }
 
   .nav-item-active {
-    @apply text-gold-400 bg-gold-400/10;
+    @apply bg-navy-100/80 font-semibold;
   }
 
   .nav-item:not(.nav-item-active):hover {
-    @apply text-ivory-100 bg-white/5;
+    @apply bg-navy-100/50;
   }
 }
 

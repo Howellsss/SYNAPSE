@@ -172,7 +172,7 @@ export function AcceptInvitePage({ token }: { token: string }) {
         <div className="relative">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl bg-navy-700 border border-navy-600 flex items-center justify-center">
-              <HowellsLogo className="w-6 h-6" />
+              <HowellsLogo className="w-6 h-6 text-white" />
             </div>
             <span className="text-2xl font-bold tracking-wide text-ivory-100">SYNAPSE</span>
           </div>
@@ -205,7 +205,7 @@ export function AcceptInvitePage({ token }: { token: string }) {
         <div className="w-full max-w-sm">
           <div className="flex items-center gap-2.5 mb-8 lg:hidden">
             <div className="w-10 h-10 rounded-xl bg-navy-800 flex items-center justify-center">
-              <HowellsLogo className="w-5 h-5" />
+              <HowellsLogo className="w-5 h-5 text-white" />
             </div>
             <span className="text-xl font-bold tracking-wide text-navy-800">SYNAPSE</span>
           </div>

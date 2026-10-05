@@ -244,7 +244,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
 
         {(connection === 'reconnecting' || connection === 'offline') && (
           <div className="absolute inset-x-0 top-14 z-10 flex justify-center px-16">
-            <p role="alert" className="inline-flex items-center gap-2 rounded-full bg-gold-400 px-4 py-2 text-sm font-semibold text-navy-900 shadow-popover">
+            <p role="alert" className="inline-flex items-center gap-2 rounded-full bg-gold-400 px-4 py-2 text-sm font-semibold text-white shadow-popover">
               {connection === 'offline' ? <WifiOff className="h-4 w-4" /> : <Loader2 className="h-4 w-4 animate-spin" />}
               {connection === 'offline' ? "You're offline. We'll reconnect when you're back." : 'Reconnecting…'}
             </p>

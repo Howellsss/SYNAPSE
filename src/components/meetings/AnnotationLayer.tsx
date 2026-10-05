@@ -260,7 +260,7 @@ export function AnnotationLayer({ bus, me, roles, video, open, onClose, names }:
               title={t.label}
               aria-pressed={tool === t.id}
               disabled={t.id !== 'none' && !allowedForMe}
-              className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition disabled:opacity-40', tool === t.id ? 'bg-gold-400 text-navy-900' : 'hover:bg-white/10')}
+              className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition disabled:opacity-40', tool === t.id ? 'bg-gold-400 text-white' : 'hover:bg-white/10')}
             >
               <t.icon className="h-[18px] w-[18px]" />
             </button>

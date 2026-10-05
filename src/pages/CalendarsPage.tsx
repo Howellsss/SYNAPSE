@@ -326,7 +326,7 @@ export function CalendarsPage() {
               >
                 <Filter className="h-3.5 w-3.5" />
                 Filters
-                {statusFilter.size > 0 && <span className="flex h-4 w-4 items-center justify-center rounded-full bg-gold-400 text-[9px] text-navy-800">{statusFilter.size}</span>}
+                {statusFilter.size > 0 && <span className="flex h-4 w-4 items-center justify-center rounded-full bg-gold-400 text-[9px] text-white">{statusFilter.size}</span>}
               </button>
             </div>
 
@@ -1429,7 +1429,7 @@ function MonthView({
                     <div className="flex items-center justify-between">
                       <span className={cn(
                         'flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold',
-                        isToday(day) ? 'bg-gold-400 text-navy-800' : isCurrentMonth ? 'text-navy-700' : 'text-ivory-400'
+                        isToday(day) ? 'bg-gold-400 text-white' : isCurrentMonth ? 'text-navy-700' : 'text-ivory-400'
                       )}>
                         {day.getDate()}
                       </span>
@@ -1561,7 +1561,7 @@ function DatePicker({ currentDate, onSelect, onClose }: { currentDate: Date; onS
                   onClick={() => onSelect(d)}
                   className={cn(
                     'flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium transition',
-                    selected ? 'bg-gold-400 text-navy-800 font-bold' : today ? 'bg-gold-50 text-gold-700 font-semibold' : 'text-navy-600 hover:bg-ivory-50'
+                    selected ? 'bg-gold-400 text-white font-bold' : today ? 'bg-gold-50 text-gold-700 font-semibold' : 'text-navy-600 hover:bg-ivory-50'
                   )}
                 >
                   {d.getDate()}

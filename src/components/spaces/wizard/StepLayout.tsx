@@ -29,7 +29,7 @@ export function StepLayout({ state, dispatch }: { state: WizardState; dispatch: 
               <span className="relative block">
                 <SpacePreview title={t.name} icon={type.icon} size="sm" showLabel={false} />
                 {i === 0 && (
-                  <span className="absolute left-2 top-2 rounded-full bg-gold-400 px-2 py-0.5 text-[11px] font-bold text-navy-900">Recommended</span>
+                  <span className="absolute left-2 top-2 rounded-full bg-gold-400 px-2 py-0.5 text-[11px] font-bold text-white">Recommended</span>
                 )}
               </span>
               <span className="mt-2.5 flex items-start justify-between gap-2 px-1">

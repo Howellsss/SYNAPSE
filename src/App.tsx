@@ -6,6 +6,7 @@ import { useGmailReturnNotice } from '@/lib/email-accounts';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
 import { AuthPage } from '@/pages/AuthPage';
+import { HomePage } from '@/pages/HomePage';
 import { AcceptInvitePage } from '@/pages/AcceptInvitePage';
 import { Dashboard } from '@/pages/Dashboard';
 import { ContactsPage } from '@/pages/ContactsPage';
@@ -35,11 +36,14 @@ function AppContent() {
   const [searchQuery, setSearchQuery] = useState('');
   useGmailReturnNotice(path);
 
+  const authPath = path === '/signin' || path === '/signup';
   useEffect(() => {
-    if (!loading && !user && !path.startsWith('/book/') && !path.startsWith('/group/') && !path.startsWith('/reset-password') && !path.startsWith('/invite/') && !path.startsWith('/join/')) {
-      navigate('/dashboard');
+    if (loading) return;
+    if (user && authPath) { navigate('/dashboard'); return; }
+    if (!user && !authPath && path !== '/' && !path.startsWith('/book/') && !path.startsWith('/group/') && !path.startsWith('/reset-password') && !path.startsWith('/invite/') && !path.startsWith('/join/')) {
+      navigate('/');
     }
-  }, [user, loading, path, navigate]);
+  }, [user, loading, path, authPath, navigate]);
 
   if (loading) {
     return (
@@ -69,7 +73,9 @@ function AppContent() {
 
   // Auth page (includes sign in, sign up, forgot password, reset password)
   if (!user) {
-    return <AuthPage />;
+    if (path.startsWith('/reset-password') || window.location.hash.includes('reset-password')) return <AuthPage />;
+    if (authPath) return <AuthPage key={path} initialMode={path === '/signup' ? 'signup' : 'signin'} onBack={() => navigate('/')} />;
+    return <HomePage />;
   }
 
   // A meeting room is full screen, without the sidebar and top bar
@@ -135,7 +141,8 @@ function AppContent() {
           onSearchChange={setSearchQuery}
           onQuickCreate={() => navigate('/calendars')}
         />
-        <main className="flex-1 px-4 lg:px-8 py-6 animate-fade-in">{renderPage()}</main>
+        {/* Each section fades in with a slight rise when you move to it. */}
+        <main key={path.split(/[/?]/)[1] || 'dashboard'} className="flex-1 px-4 lg:px-10 py-6 lg:py-8 animate-page-in">{renderPage()}</main>
       </div>
     </div>
   );
