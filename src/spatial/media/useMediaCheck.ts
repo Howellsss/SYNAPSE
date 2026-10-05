@@ -27,6 +27,8 @@ export interface MediaCheck {
   selectMicrophone: (id: string) => void;
   selectSpeaker: (id: string) => void;
   retry: () => void;
+  /** Look for newly connected devices (e.g. an iPhone camera) now. */
+  refreshDevices: () => Promise<void>;
 }
 
 const EMPTY: DeviceLists = { cameras: [], microphones: [], speakers: [] };
@@ -201,6 +203,12 @@ export function useMediaCheck(active: boolean, initial: { cam?: boolean; mic?: b
 
     const onDeviceChange = () => refreshDevices();
     navigator.mediaDevices.addEventListener?.('devicechange', onDeviceChange);
+    // Coming back after setting up a phone, and a fallback for browsers that miss devicechange
+    // (Continuity Camera sometimes doesn't fire it).
+    const onVisible = () => { if (document.visibilityState === 'visible') refreshDevices(); };
+    window.addEventListener('focus', onDeviceChange);
+    document.addEventListener('visibilitychange', onVisible);
+    const poll = window.setInterval(onDeviceChange, 4000);
     // Leaving the page (closing the tab, bfcache) must also turn the camera light off.
     const onPageHide = () => { releaseVideo(); releaseAudio(); };
     window.addEventListener('pagehide', onPageHide);
@@ -210,6 +218,9 @@ export function useMediaCheck(active: boolean, initial: { cam?: boolean; mic?: b
     return () => {
       aliveRef.current = false;
       navigator.mediaDevices.removeEventListener?.('devicechange', onDeviceChange);
+      window.removeEventListener('focus', onDeviceChange);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.clearInterval(poll);
       window.removeEventListener('pagehide', onPageHide);
       window.removeEventListener('pointerdown', resume);
       releaseVideo();
@@ -264,6 +275,6 @@ export function useMediaCheck(active: boolean, initial: { cam?: boolean; mic?: b
 
   return {
     ready, devices, selected, cameraOn, micOn, video, analyser, cameraProblem, micProblem,
-    setCameraOn, setMicOn, selectCamera, selectMicrophone, selectSpeaker, retry,
+    setCameraOn, setMicOn, selectCamera, selectMicrophone, selectSpeaker, retry, refreshDevices,
   };
 }

@@ -115,8 +115,14 @@ The room looks and works like Zoom:
 macOS Continuity Camera makes an iPhone a normal camera for every app, including the browser. It
 shows up in **Video ^** and the pre-join **Camera** list as e.g. "Howells's iPhone Camera". It needs
 macOS Ventura (13) or later and iOS 16 or later, the same Apple ID on both, Wi-Fi and Bluetooth on,
-and the phone nearby, locked, in landscape and still (a mount helps). If it doesn't appear, open the
-menu again after a few seconds (the list refreshes itself) or wake the phone. On Windows, apps like
+and the phone nearby, locked, in landscape and still (a mount helps). The list refreshes itself every few
+seconds and whenever you come back to the window.
+
+If the **iPhone microphone** is listed but not the camera, macOS is offering only the mic: SYNAPSE
+says so in the pre-join screen and the Video menu, with the fixes (turn on Continuity Camera on the
+iPhone under Settings → General → AirPlay & Continuity; lock it and stand it still in landscape,
+or plug it in by USB; check FaceTime's Video menu; quit and reopen the browser) and a **Look
+again** button. On Windows, apps like
 Camo or Iriun do the same over USB/Wi-Fi.
 
 ### Annotation vs. remote control
