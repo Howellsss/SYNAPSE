@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft, Copy, Hand, Info, LayoutGrid, MessageSquare, Mic, MicOff, MonitorUp, MoreHorizontal, PenLine, PhoneOff,
-  SearchX, Settings2, ShieldCheck, Smartphone, SmilePlus, Square, Users, Video, VideoOff, Camera, X,
+  SearchX, Settings2, ShieldCheck, SmilePlus, Square, Users, Video, VideoOff, Camera, X,
 } from 'lucide-react';
 import type { LocalTrack, RemoteTrack, Room, Track } from 'livekit-client';
 import { useAuth } from '@/context/AuthContext';
@@ -15,7 +15,9 @@ import { useActiveDevices, type DeviceKind } from '@/meetings/useActiveDevices';
 import { normalizeMediaPrefs, problemText } from '@/spatial/media/devices';
 import { useLiveKitRoom, type LiveKitRoom } from '@/spatial/media/useLiveKitRoom';
 import { useMediaCheck } from '@/spatial/media/useMediaCheck';
-import { deviceLabel, isIphoneCamera, useDevices } from '@/spatial/media/useDevices';
+import { deviceLabel, useDevices } from '@/spatial/media/useDevices';
+import { iphoneStatus, isMacDesktop } from '@/spatial/media/continuity';
+import { IphoneCameraHelp } from '@/components/meetings/IphoneCameraHelp';
 import { useCallShortcuts, SHORTCUTS } from '@/spatial/media/shortcuts';
 import { DeviceCheckModal } from '@/components/spaces/DeviceCheck';
 import { CallNotices } from '@/components/spaces/room/CallNotices';
@@ -135,7 +137,7 @@ function PreJoin({ meeting, isHost, onJoin, onBack }: { meeting: Meeting; isHost
   const camLive = check.cameraOn && !check.cameraProblem;
   const problem = (check.cameraOn && check.cameraProblem && problemText(check.cameraProblem, 'camera'))
     || (check.micOn && check.micProblem && problemText(check.micProblem, 'microphone'));
-  const hasIphone = check.devices.cameras.some(isIphoneCamera);
+  const iphone = iphoneStatus(check.devices.cameras, check.devices.microphones);
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-navy-950 text-white">
@@ -200,11 +202,8 @@ function PreJoin({ meeting, isHost, onJoin, onBack }: { meeting: Meeting; isHost
             {isHost ? 'Start' : 'Join'}
           </button>
         </div>
-        {check.ready && !hasIphone && /Mac/.test(navigator.userAgent) && !/iPhone|iPad/.test(navigator.userAgent) && (
-          <p className="mt-3 flex items-start gap-1.5 text-xs text-ivory-500">
-            <Smartphone className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            Want to use your iPhone as the camera? Put it near your Mac, signed in to the same Apple ID with Wi-Fi and Bluetooth on. It appears in the Camera list.
-          </p>
+        {check.ready && iphone !== 'camera' && (iphone === 'mic-only' || isMacDesktop()) && (
+          <IphoneCameraHelp key={iphone} status={iphone} onLookAgain={check.refreshDevices} className="mt-3" />
         )}
       </main>
     </div>
@@ -516,7 +515,7 @@ function InCall({ meeting, join, onLeave, onEnded }: { meeting: Meeting; join: J
       <footer role="toolbar" aria-label="Meeting controls" className="flex items-center justify-between gap-1 border-t border-white/5 bg-navy-900 px-1 py-1.5 sm:px-3">
         <div className="flex items-center">
           <AudioButton micOn={call.micOn} busy={call.pending.microphone} onToggle={() => { void call.toggleMic(); }} devices={devices} active={active} onChoose={onChoose} onSettings={() => setSettingsOpen(true)} shortcut={SHORTCUTS.mic} />
-          <VideoButton camOn={call.camOn} busy={call.pending.camera} onToggle={() => { void call.toggleCam(); }} devices={devices} active={active} onChoose={onChoose} onSettings={() => setSettingsOpen(true)} shortcut={SHORTCUTS.cam} />
+          <VideoButton onRefresh={devices.refresh} camOn={call.camOn} busy={call.pending.camera} onToggle={() => { void call.toggleCam(); }} devices={devices} active={active} onChoose={onChoose} onSettings={() => setSettingsOpen(true)} shortcut={SHORTCUTS.cam} />
         </div>
 
         <div className="flex items-center">

@@ -2,6 +2,8 @@ import type { ReactNode } from 'react';
 import { Check, ChevronUp, Mic, MicOff, Settings2, Smartphone, Video, VideoOff, Volume2 } from 'lucide-react';
 import { Popover } from '@/components/spaces/room/Popover';
 import { deviceLabel, isIphoneCamera, type DeviceLists } from '@/spatial/media/useDevices';
+import { iphoneStatus, isMacDesktop } from '@/spatial/media/continuity';
+import { IphoneCameraHelp } from './IphoneCameraHelp';
 import { supportsSpeakerChoice } from '@/spatial/media/devices';
 import type { DeviceKind } from '@/meetings/useActiveDevices';
 import { cn } from '@/lib/utils';
@@ -133,13 +135,11 @@ export function AudioButton({ micOn, busy, onToggle, devices, active, onChoose, 
   );
 }
 
-const isMac = () => typeof navigator !== 'undefined' && /Mac/.test(navigator.platform || navigator.userAgent) && !/iPhone|iPad/.test(navigator.userAgent);
-
-export function VideoButton({ camOn, busy, onToggle, devices, active, onChoose, onSettings, shortcut }: {
+export function VideoButton({ camOn, busy, onToggle, devices, active, onChoose, onSettings, onRefresh, shortcut }: {
   camOn: boolean; busy?: boolean; onToggle: () => void; devices: DeviceLists; active: Record<DeviceKind, string | undefined>;
-  onChoose: (kind: DeviceKind, d: MediaDeviceInfo) => void; onSettings: () => void; shortcut: string;
+  onChoose: (kind: DeviceKind, d: MediaDeviceInfo) => void; onSettings: () => void; onRefresh: () => Promise<void>; shortcut: string;
 }) {
-  const hasIphone = devices.cameras.some(isIphoneCamera);
+  const iphone = iphoneStatus(devices.cameras, devices.microphones);
   return (
     <SplitButton
       menuLabel="Video options"
@@ -158,11 +158,8 @@ export function VideoButton({ camOn, busy, onToggle, devices, active, onChoose, 
         <>
           <p className={heading}>Camera</p>
           <DeviceRows kind="videoinput" devices={devices.cameras} active={active.videoinput} fallback="Camera" onChoose={onChoose} close={close} />
-          {isMac() && !hasIphone && (
-            <p className="mx-2 my-1 rounded-lg bg-white/5 px-3 py-2 text-xs leading-relaxed text-ivory-400">
-              <Smartphone className="mr-1 inline h-3.5 w-3.5 align-[-2px]" />
-              To use your iPhone, put it near your Mac (same Apple ID, Wi-Fi and Bluetooth on). It shows up here as a camera.
-            </p>
+          {iphone !== 'camera' && (iphone === 'mic-only' || isMacDesktop()) && (
+            <IphoneCameraHelp status={iphone} onLookAgain={onRefresh} className="mx-2 my-1" />
           )}
           <div className="my-1 h-px bg-white/10" />
           <button role="menuitem" className={darkItem} onClick={() => { close(); onSettings(); }}><Settings2 className="h-4 w-4" /> Video settings…</button>
