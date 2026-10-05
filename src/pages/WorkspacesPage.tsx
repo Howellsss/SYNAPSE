@@ -78,16 +78,16 @@ export function WorkspacesPage() {
   const comingNext = (what: string) => toast(`${what} is coming next.`, 'info');
 
   return (
-    <div className="mx-auto max-w-6xl pb-6">
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+    <div className="mx-auto max-w-[1180px] pb-6">
+      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-navy-800 sm:text-[28px]">Workspaces</h1>
-          <p className="mt-1 text-sm text-ivory-700">Virtual offices where your team can walk over and talk.</p>
+          <h1 className="font-display text-[34px] font-bold tracking-[-0.032em] text-navy-800 sm:text-[44px]">Workspaces</h1>
+          <p className="mt-1 text-[17px] text-ivory-700">Walk up to someone to talk. Step into a room for privacy.</p>
         </div>
         {spaces && spaces.length > 0 && (
           <div className="flex flex-wrap gap-2">
-            <button onClick={() => setJoinOpen(true)} className="btn-secondary"><Link2 className="h-4 w-4" /> Join with link</button>
-            {canManageTeam && <button onClick={createNew} className="btn-primary"><Plus className="h-4 w-4" /> Create workspace</button>}
+            <button onClick={() => setJoinOpen(true)} className="flex h-11 items-center gap-1.5 rounded-full bg-[#EFEDE6] px-5 text-[15px] font-semibold text-navy-800 transition hover:bg-sand"><Link2 className="h-4 w-4" /> Join with link</button>
+            {canManageTeam && <button onClick={createNew} className="flex h-11 items-center gap-1.5 rounded-full bg-navy-800 px-5 text-[15px] font-semibold text-white transition hover:bg-navy-700"><Plus className="h-4 w-4" /> New workspace</button>}
           </div>
         )}
       </div>
@@ -112,7 +112,7 @@ export function WorkspacesPage() {
       ) : spaces.length === 0 ? (
         <FirstVisit canCreate={canManageTeam} onCreate={createNew} onJoin={() => setJoinOpen(true)} />
       ) : (
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {spaces.map((space) => (
             <SpaceCard
               key={space.id}
@@ -128,7 +128,7 @@ export function WorkspacesPage() {
           {canManageTeam && (
             <button
               onClick={createNew}
-              className="flex min-h-[240px] flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-navy-100 p-6 text-center transition hover:border-gold-400 hover:bg-gold-50/40"
+              className="flex min-h-[300px] flex-col items-center justify-center gap-3 rounded-[22px] border-2 border-dashed border-sand p-6 text-center transition hover:border-gold-400 hover:bg-paper"
             >
               <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gold-50 text-gold-600"><Plus className="h-6 w-6" /></span>
               <span className="font-semibold text-navy-800">Create another workspace</span>
@@ -139,7 +139,7 @@ export function WorkspacesPage() {
       )}
 
       {spaces && spaces.length > 0 && (
-        <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-navy-100 bg-white px-4 py-3 shadow-card">
+        <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[20px] bg-paper px-5 py-4">
           <Avatar firstName={profile?.first_name} lastName={profile?.last_name} src={profile?.avatar_url} size="sm" />
           <p className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-navy-700">
             <span>Joining as <strong className="text-navy-800">{displayName}</strong></span>
@@ -181,32 +181,36 @@ function FirstVisit({ canCreate, onCreate, onJoin }: { canCreate: boolean; onCre
   ];
   return (
     <>
-      <section className="overflow-hidden rounded-3xl bg-navy-800 text-white shadow-card">
-        <div className="grid items-center gap-8 p-6 sm:p-10 lg:grid-cols-[1.05fr_1fr]">
+      <section className="overflow-hidden rounded-[30px] bg-paper text-navy-800">
+        <div className="grid items-center gap-8 p-6 sm:p-10 lg:grid-cols-[1fr_1.15fr]">
           <div className="min-w-0">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-gold-400/15 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-gold-300">New</span>
-            <h2 className="mt-4 text-2xl font-bold leading-tight sm:text-4xl">Your team's office, <span className="text-gold-400">online</span></h2>
-            <p className="mt-3 max-w-md text-sm leading-relaxed text-ivory-500 sm:text-base">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-gold-50 px-3 py-1 text-xs font-semibold text-gold-700">New</span>
+            <h2 className="mt-4 font-display text-[32px] font-bold leading-[1.08] tracking-[-0.03em] sm:text-[44px]">Your team's office, <span className="text-gold-700">online</span></h2>
+            <p className="mt-3 max-w-md text-[17px] leading-relaxed text-ivory-700">
               See who's around, walk over for a quick chat, and meet in rooms. It feels like being together, wherever you are.
             </p>
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               {canCreate && (
-                <button onClick={onCreate} className="btn-primary !px-5 !py-3 !text-base">
+                <button onClick={onCreate} className="inline-flex h-12 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-navy-800 px-6 text-base font-semibold text-white transition hover:bg-navy-700">
                   <Plus className="h-5 w-5" /> Create a workspace
                 </button>
               )}
-              <button onClick={onJoin} className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 px-5 py-3 text-base font-semibold text-white transition hover:bg-white/10">
+              <button onClick={onJoin} className="inline-flex h-12 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-white px-6 text-base font-semibold text-navy-800 transition hover:bg-sand/60">
                 <Link2 className="h-5 w-5" /> Join with invite link
               </button>
             </div>
-            {!canCreate && <p className="mt-4 text-sm text-ivory-500">Ask a workspace owner or admin to create one, or join with a link.</p>}
+            {!canCreate && <p className="mt-4 text-sm text-ivory-700">Ask a workspace owner or admin to create one, or join with a link.</p>}
           </div>
-          <SpacePreview title="Open plan studio" subtitle="Office · desks, rooms and a lounge" icon={Building2} size="lg" className="shadow-2xl shadow-black/30" />
+          <img
+            src="/landing/office.webp"
+            alt="A SYNAPSE workspace from above: reception, a lounge, glass meeting rooms and people talking"
+            className="w-full mix-blend-multiply"
+          />
         </div>
       </section>
-      <div className="mt-5 grid gap-4 sm:grid-cols-3">
+      <div className="mt-6 grid gap-5 sm:grid-cols-3">
         {steps.map((s, i) => (
-          <div key={s.title} className="card flex gap-3 p-4">
+          <div key={s.title} className="card flex gap-3 p-5">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gold-50 text-sm font-bold text-gold-700">{i + 1}</span>
             <div className="min-w-0">
               <p className="flex items-center gap-1.5 font-semibold text-navy-800"><s.icon className="h-4 w-4 text-gold-600" /> {s.title}</p>
@@ -237,17 +241,17 @@ function SpaceCard({ space, online, people, canManage, onEnter, onSettings, onEx
   // Outside opening hours only admins can go in.
   const blocked = !!opens && !canManage;
   return (
-    <div className="card card-hover flex flex-col overflow-hidden">
+    <div className="card card-hover flex flex-col overflow-hidden !rounded-[22px]">
       <div className="relative p-3 pb-0">
         <button onClick={onEnter} disabled={blocked} className="block w-full text-left disabled:cursor-not-allowed" aria-label={`Enter ${space.name}`}>
           <SpacePreview title={template?.name ?? type.name} subtitle={type.name} icon={type.icon} size="sm" />
         </button>
         {canManage && <CardMenu name={space.name} onSettings={onSettings} onExport={onExport} />}
       </div>
-      <div className="flex flex-1 flex-col p-4">
+      <div className="flex flex-1 flex-col p-5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <h3 className="truncate font-semibold text-navy-800">{space.name}</h3>
+            <h3 className="truncate font-display text-[21px] font-semibold tracking-[-0.018em] text-navy-800">{space.name}</h3>
             <p className="mt-0.5 flex items-center gap-1.5 text-xs text-ivory-700"><type.icon className="h-3.5 w-3.5" /> {type.name}</p>
           </div>
           {opens ? (
@@ -272,7 +276,7 @@ function SpaceCard({ space, online, people, canManage, onEnter, onSettings, onEx
             )}
             <span className="ml-2 truncate text-xs text-ivory-700">{space.memberIds.length} {space.memberIds.length === 1 ? 'member' : 'members'}</span>
           </div>
-          <button onClick={onEnter} disabled={blocked} className="btn-primary shrink-0 !px-3.5 !py-2" title={blocked ? opens ?? undefined : undefined}>
+          <button onClick={onEnter} disabled={blocked} className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-navy-800 px-5 text-sm font-semibold text-white transition hover:bg-navy-700 disabled:opacity-50" title={blocked ? opens ?? undefined : undefined}>
             {blocked ? <><Lock className="h-4 w-4" /> Closed</> : <>Enter <ArrowRight className="h-4 w-4" /></>}
           </button>
         </div>

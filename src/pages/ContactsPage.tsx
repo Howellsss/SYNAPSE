@@ -194,17 +194,17 @@ export function ContactsPage() {
     <div className="space-y-6 pb-8">
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-[30px] leading-tight font-bold tracking-[-0.02em] text-navy-800">Contacts</h1>
-          <p className="mt-1 text-sm text-ivory-700">Manage your contacts, clients, and relationships.</p>
+          <h1 className="font-display text-[34px] leading-tight font-bold tracking-[-0.032em] text-navy-800 sm:text-[40px]">Contacts</h1>
+          <p className="mt-1 text-[15px] text-ivory-700">Manage your contacts, clients, and relationships.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button onClick={() => setShowAddModal(true)} className="btn-primary btn-sm"><Plus className="h-4 w-4" /> Add Contact</button>
-          <button onClick={() => setShowImportModal(true)} className="btn-secondary btn-sm"><Upload className="h-4 w-4" /> Import</button>
-          <button onClick={() => handleExport('all')} className="btn-secondary btn-sm"><Download className="h-4 w-4" /> Export</button>
+          <button onClick={() => setShowAddModal(true)} className="flex h-10 items-center gap-1.5 rounded-full bg-navy-800 px-5 text-sm font-semibold text-white transition hover:bg-navy-700"><Plus className="h-4 w-4" /> Add Contact</button>
+          <button onClick={() => setShowImportModal(true)} className="flex h-10 items-center gap-1.5 rounded-full bg-[#EFEDE6] px-4 text-sm font-semibold text-navy-800 transition hover:bg-sand"><Upload className="h-4 w-4" /> Import</button>
+          <button onClick={() => handleExport('all')} className="flex h-10 items-center gap-1.5 rounded-full bg-[#EFEDE6] px-4 text-sm font-semibold text-navy-800 transition hover:bg-sand"><Download className="h-4 w-4" /> Export</button>
         </div>
       </section>
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="card grid grid-cols-2 gap-px overflow-hidden bg-sand xl:grid-cols-4">
         <ContactMetric label="Total Contacts" value={total} icon={Users} tone="gold" />
         <ContactMetric label="New This Month" value={newThisMonth} icon={UserRound} tone="gold" />
         <ContactMetric label="Active" value={total} icon={CheckCircle2} tone="green" />
@@ -212,10 +212,10 @@ export function ContactsPage() {
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-[196px_minmax(0,1fr)]">
-        <aside className="card flex h-fit flex-col p-3">
-          <div className="flex items-center justify-between px-2 pb-3">
-            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-ivory-600">Smart Lists</p>
-            <button onClick={() => toast('Smart list creation is coming soon')} className="rounded-md p-1 text-ivory-600 hover:bg-ivory-100 hover:text-gold-700"><Plus className="h-4 w-4" /></button>
+        <aside className="flex h-fit flex-col rounded-[20px] bg-paper p-3">
+          <div className="flex items-center justify-between px-2 pb-2 pt-1">
+            <p className="text-[13px] font-semibold text-ivory-700">Smart Lists</p>
+            <button onClick={() => toast('Smart list creation is coming soon')} aria-label="New smart list" className="flex h-7 w-7 items-center justify-center rounded-full text-navy-700 hover:bg-sand/70"><Plus className="h-4 w-4" /></button>
           </div>
           <div className="space-y-1">
             <ContactListButton icon={UserRound} label="All Leads" count={total} active={activeView === 'all' && !activeSmartList && !activeTag} onClick={() => { setActiveView('all'); setActiveSmartList(null); setActiveTag(null); }} />
@@ -225,7 +225,7 @@ export function ContactsPage() {
             <ContactListButton icon={Calendar} label="Booked an Appointment" count={withAppointments} active={false} onClick={() => toast('Appointment filter selected')} />
             <ContactListButton icon={ClipboardList} label="Submitted Intake Form" count={undefined} active={false} onClick={() => toast('Form filter selected')} />
           </div>
-          <div className="mt-6 rounded-xl border border-gold-200 bg-gold-50/50 p-3">
+          <div className="mt-5 rounded-2xl bg-white p-4">
             <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-full bg-gold-100 text-gold-700"><Star className="h-4 w-4" /></div>
             <p className="text-xs font-semibold leading-relaxed text-navy-700">Smart lists help you segment and automate outreach efficiently.</p>
             <button onClick={() => toast('Smart lists organize contacts by rules and activity')} className="mt-3 text-xs font-semibold text-gold-700 hover:text-gold-600">Learn more <span className="ml-1">→</span></button>
@@ -233,31 +233,31 @@ export function ContactsPage() {
         </aside>
 
         <div className="card min-w-0 overflow-hidden">
-          <div className="flex items-center justify-between border-b border-navy-100 px-4">
-            <div className="flex items-center gap-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand px-4 py-3">
+            <div role="tablist" aria-label="Show" className="flex rounded-[10px] bg-[#EFEDE6] p-[3px]">
               {(['all', 'smart', 'tags'] as const).map((view) => (
-                <button key={view} onClick={() => setActiveView(view)} className={cn('border-b-2 px-1 py-4 text-xs font-semibold capitalize transition-colors', activeView === view ? 'border-gold-500 text-navy-800' : 'border-transparent text-ivory-600 hover:text-navy-700')}>
+                <button key={view} role="tab" aria-selected={activeView === view} onClick={() => setActiveView(view)} className={cn('h-8 rounded-lg px-4 text-[13px] transition-all duration-200', activeView === view ? 'bg-white font-semibold text-navy-800 shadow-[0_1px_3px_rgba(13,28,59,0.12)]' : 'font-medium text-navy-700 hover:text-navy-900')}>
                   {view === 'all' ? 'All Contacts' : view === 'smart' ? 'Smart Lists' : 'Tags'}
                 </button>
               ))}
             </div>
-            <button className="hidden rounded-lg border border-navy-100 p-2 text-ivory-600 hover:bg-ivory-50 sm:block"><SlidersHorizontal className="h-4 w-4" /></button>
+            <button aria-label="Table settings" className="hidden h-9 w-9 items-center justify-center rounded-full text-navy-700 hover:bg-[#EFEDE6] sm:flex"><SlidersHorizontal className="h-4 w-4" /></button>
           </div>
-          <div className="flex flex-wrap items-center gap-2 border-b border-navy-100 p-3">
-            <div className="relative min-w-[200px] flex-1 sm:flex-none">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ivory-600" />
-              <input type="text" value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} placeholder="Search contacts..." className="input-field h-9 pl-9 text-xs" />
-            </div>
-            <button className="btn-secondary btn-sm"><Filter className="h-3.5 w-3.5" /> Filter</button>
-            <button className="btn-secondary btn-sm"><Tag className="h-3.5 w-3.5" /> Tags</button>
-            <button className="btn-secondary btn-sm"><Globe2 className="h-3.5 w-3.5" /> Source</button>
-            <button className="btn-secondary btn-sm"><CheckCircle2 className="h-3.5 w-3.5" /> Status</button>
-            <button className="btn-secondary btn-sm"><Calendar className="h-3.5 w-3.5" /> Appointments</button>
-            <button className="btn-secondary btn-sm"><ListFilter className="h-3.5 w-3.5" /> More filters</button>
-            <button onClick={() => handleExport('all')} className="btn-secondary btn-sm sm:ml-auto"><Upload className="h-3.5 w-3.5" /> Export</button>
+          <div className="flex flex-wrap items-center gap-2 border-b border-sand px-4 py-3">
+            <label className="relative min-w-[220px] flex-1 sm:flex-none">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ivory-700" />
+              <input type="text" value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} placeholder="Search contacts" aria-label="Search contacts" className="h-9 w-full rounded-[10px] border border-transparent bg-[#EFEDE6] pl-9 pr-3 text-sm text-navy-800 outline-none placeholder:text-ivory-700 focus:border-gold-400 focus:bg-white" />
+            </label>
+            {[
+              [Filter, 'Filter'], [Tag, 'Tags'], [Globe2, 'Source'], [CheckCircle2, 'Status'], [Calendar, 'Appointments'], [ListFilter, 'More filters'],
+            ].map(([Icon, label]) => {
+              const I = Icon as typeof Filter;
+              return <button key={label as string} className="flex h-9 items-center gap-1.5 rounded-full bg-[#EFEDE6] px-3.5 text-[13px] font-medium text-navy-800 transition hover:bg-sand"><I className="h-3.5 w-3.5" /> {label as string}</button>;
+            })}
+            <button onClick={() => handleExport('all')} className="flex h-9 items-center gap-1.5 rounded-full bg-[#EFEDE6] px-3.5 text-[13px] font-medium text-navy-800 transition hover:bg-sand sm:ml-auto"><Upload className="h-3.5 w-3.5" /> Export</button>
           </div>
           {selectedIds.size > 0 && (
-            <div className="flex flex-wrap items-center gap-2 border-b border-gold-100 bg-gold-50/50 px-4 py-2.5">
+            <div className="flex flex-wrap items-center gap-2 border-b border-gold-100 bg-gold-50/60 px-4 py-2.5">
               <span className="mr-1 text-xs font-semibold text-navy-700">{selectedIds.size} selected</span>
               <button onClick={() => toast('Select a tag to add')} className="btn-secondary btn-sm"><Tag className="h-3.5 w-3.5" /> Add Tag</button>
               <button onClick={() => toast('Tag removal ready')} className="btn-secondary btn-sm"><Tag className="h-3.5 w-3.5" /> Remove Tag</button>
@@ -296,7 +296,7 @@ export function ContactsPage() {
             <div className="hidden md:block">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-navy-100">
+                  <tr className="border-b border-sand">
                     <th className="px-4 py-3 text-left">
                       <input
                         type="checkbox"
@@ -305,24 +305,24 @@ export function ContactsPage() {
                         className="rounded border-navy-300 text-gold-500 focus:ring-gold-400"
                       />
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-ivory-600 uppercase tracking-wider">Name</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-ivory-600 uppercase tracking-wider">Email</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-ivory-600 uppercase tracking-wider">Phone</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-ivory-600 uppercase tracking-wider">Tags</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-ivory-600 uppercase tracking-wider">Source</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-ivory-600 uppercase tracking-wider">Last Activity</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-ivory-600 uppercase tracking-wider">Created</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-ivory-600 uppercase tracking-wider">Status</th>
+                    <th className="px-4 py-3 text-left text-[13px] font-medium text-ivory-700">Name</th>
+                    <th className="px-4 py-3 text-left text-[13px] font-medium text-ivory-700">Email</th>
+                    <th className="px-4 py-3 text-left text-[13px] font-medium text-ivory-700">Phone</th>
+                    <th className="px-4 py-3 text-left text-[13px] font-medium text-ivory-700">Tags</th>
+                    <th className="px-4 py-3 text-left text-[13px] font-medium text-ivory-700">Source</th>
+                    <th className="px-4 py-3 text-left text-[13px] font-medium text-ivory-700">Last Activity</th>
+                    <th className="px-4 py-3 text-left text-[13px] font-medium text-ivory-700">Created</th>
+                    <th className="px-4 py-3 text-left text-[13px] font-medium text-ivory-700">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {contacts.map((contact) => (
                     <tr
                       key={contact.id}
-                      className="border-b border-navy-50 last:border-0 hover:bg-ivory-50 transition-colors cursor-pointer"
+                      className="border-b border-[#F0EEE7] last:border-0 hover:bg-paper transition-colors cursor-pointer"
                       onClick={() => openContact(contact.id)}
                     >
-                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={selectedIds.has(contact.id)}
@@ -330,15 +330,15 @@ export function ContactsPage() {
                           className="rounded border-navy-300 text-gold-500 focus:ring-gold-400"
                         />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3.5">
                         <div className="flex items-center gap-2.5">
                           <Avatar firstName={contact.first_name} lastName={contact.last_name} src={contact.avatar_url} size="sm" />
-                          <span className="text-sm font-medium text-navy-700">{getFullName(contact)}</span>
+                          <span className="text-[15px] font-semibold text-navy-800">{getFullName(contact)}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-ivory-600">{contact.email || '—'}</td>
-                      <td className="px-4 py-3 text-sm text-ivory-600">{contact.phone || '—'}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3.5 text-sm text-ivory-600">{contact.email || '—'}</td>
+                      <td className="px-4 py-3.5 text-sm text-ivory-600">{contact.phone || '—'}</td>
+                      <td className="px-4 py-3.5">
                         <div className="flex flex-wrap gap-1">
                           {contact.tags.slice(0, 3).map((tag) => (
                             <TagPill key={tag.id} name={tag.name} color={tag.color} />
@@ -348,10 +348,10 @@ export function ContactsPage() {
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-ivory-600 capitalize">{contact.source}</td>
-                      <td className="px-4 py-3 text-sm text-ivory-600"><span className="inline-flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-green-600" />{timeAgo(contact.last_activity_at)}</span></td>
-                      <td className="px-4 py-3 text-sm text-ivory-600">{formatDate(contact.created_at)}</td>
-                      <td className="px-4 py-3"><span className="inline-flex items-center gap-1.5 rounded-md bg-green-50 px-2 py-1 text-[11px] font-semibold text-green-700"><span className="h-1.5 w-1.5 rounded-full bg-green-600" />Active</span></td>
+                      <td className="px-4 py-3.5 text-sm text-ivory-600 capitalize">{contact.source}</td>
+                      <td className="px-4 py-3.5 text-sm text-ivory-600"><span className="inline-flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-green-600" />{timeAgo(contact.last_activity_at)}</span></td>
+                      <td className="px-4 py-3.5 text-sm text-ivory-600">{formatDate(contact.created_at)}</td>
+                      <td className="px-4 py-3.5"><span className="inline-flex items-center gap-1.5 rounded-md bg-green-50 px-2 py-1 text-[11px] font-semibold text-green-700"><span className="h-1.5 w-1.5 rounded-full bg-green-600" />Active</span></td>
                     </tr>
                   ))}
                 </tbody>
@@ -497,13 +497,10 @@ export function ContactsPage() {
 
 function ContactMetric({ label, value, icon: Icon, tone }: { label: string; value: number; icon: ComponentType<{ className?: string }>; tone: 'gold' | 'green' }) {
   return (
-    <div className="card flex items-center gap-4 p-5">
-      <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl', tone === 'green' ? 'bg-green-50 text-green-700' : 'bg-gold-50 text-gold-700')}>
-        <Icon className="h-5 w-5" />
-      </div>
+    <div className="flex items-center justify-between gap-4 bg-white px-6 py-5">
       <div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-ivory-600">{label}</p>
-        <p className="mt-1 text-[25px] leading-none font-bold tracking-[-0.03em] text-navy-800">{value.toLocaleString()}</p>
+        <p className="flex items-center gap-1.5 text-[13px] text-ivory-700"><Icon className={cn('h-3.5 w-3.5', tone === 'green' ? 'text-green-700' : 'text-gold-600')} />{label}</p>
+        <p className="mt-1 font-display text-[32px] leading-none font-bold tracking-[-0.03em] tabular-nums text-navy-800">{value.toLocaleString()}</p>
       </div>
     </div>
   );
@@ -511,10 +508,10 @@ function ContactMetric({ label, value, icon: Icon, tone }: { label: string; valu
 
 function ContactListButton({ icon: Icon, label, count, active, onClick }: { icon: ComponentType<{ className?: string }>; label: string; count: number | undefined; active: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} className={cn('flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-left transition-colors', active ? 'bg-gold-50 text-navy-800' : 'text-ivory-700 hover:bg-ivory-50 hover:text-navy-700')}>
-      <Icon className={cn('h-4 w-4 shrink-0', active ? 'text-gold-700' : 'text-ivory-600')} />
-      <span className="min-w-0 flex-1 truncate text-xs font-semibold">{label}</span>
-      {count !== undefined && <span className={cn('rounded-md px-1.5 py-0.5 text-[10px] font-semibold', active ? 'bg-white text-gold-700' : 'bg-ivory-100 text-ivory-600')}>{count.toLocaleString()}</span>}
+    <button onClick={onClick} aria-current={active || undefined} className={cn('flex h-10 w-full items-center gap-2.5 rounded-[10px] px-2.5 text-left transition-colors', active ? 'bg-[#ECE9E0] text-navy-800' : 'text-navy-800 hover:bg-sand/50')}>
+      <Icon className={cn('h-4 w-4 shrink-0', active ? 'text-gold-600' : 'text-ivory-700')} />
+      <span className={cn('min-w-0 flex-1 truncate text-[14px]', active ? 'font-semibold' : 'font-medium')}>{label}</span>
+      {count !== undefined && <span className="text-[13px] tabular-nums text-ivory-700">{count.toLocaleString()}</span>}
     </button>
   );
 }

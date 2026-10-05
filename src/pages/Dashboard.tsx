@@ -171,7 +171,7 @@ export function Dashboard() {
         <div className="flex flex-col gap-6">
           <div>
             <SectionHeading title="Today Overview" subtitle="Your collaboration pulse" />
-            <div className="card mt-3 grid grid-cols-2 gap-2 p-4 sm:grid-cols-4">
+            <div className="card mt-3 grid grid-cols-2 gap-2 p-4 2xl:grid-cols-4">
               <OverviewStat label="Meetings" value={data?.todayAppointments.length ?? 0} detail="Live agenda" icon={Video} tone="blue" />
               <OverviewStat label="Workspaces" value={Math.max(1, data?.spaces.length ?? 0)} detail="Active spaces" icon={Users} tone="green" />
               <OverviewStat label="Messages" value={data?.messageCount ?? 0} detail="New messages" icon={MessageCircle} tone="amber" />

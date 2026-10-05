@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo, type ComponentType } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo, type ComponentType } from 'react';
 import {
   Calendar, Plus, Search, Clock, Users, Video, MapPin, Copy, List, X,
   ChevronLeft, ChevronRight, CalendarDays, Calendar as CalendarIcon,
@@ -27,6 +27,21 @@ const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const HOUR_HEIGHT = 56;
+
+/** Soft event block in the calendar's own colour, with a coloured bar on the left (the redesign). */
+function eventStyle(color: string | null | undefined): React.CSSProperties {
+  const c = /^#[0-9a-f]{6}$/i.test(color ?? '') ? color! : '#0D1C3B';
+  const r = parseInt(c.slice(1, 3), 16); const g = parseInt(c.slice(3, 5), 16); const b = parseInt(c.slice(5, 7), 16);
+  return { backgroundColor: `rgba(${r}, ${g}, ${b}, 0.12)`, boxShadow: `inset 3px 0 0 ${c}` };
+}
+const DIMMED: AppointmentStatus[] = ['cancelled', 'no_show'];
+
+/** Scroll a time grid to the start of the working day when it first appears. */
+function useScrollToMorning() {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (ref.current) ref.current.scrollTop = HOUR_HEIGHT * 7; }, []);
+  return ref;
+}
 
 const CALENDAR_TYPES: { value: CalType; label: string; icon: typeof User; desc: string }[] = [
   { value: 'one_on_one', label: 'One-on-One', icon: User, desc: 'One host with one participant' },
@@ -207,73 +222,78 @@ export function CalendarsPage() {
 
   return (
     <div className="relative flex h-full flex-col">
-      {/* Top Calendar Navigation */}
-      <div className="border-b border-navy-100 bg-white">
-        <div className="flex items-center justify-between px-6 pt-4">
-          {/* Tabs */}
-          <div className="flex gap-1">
+      {/* Header: the redesign's large title, segmented controls and pill buttons */}
+      <div className="bg-white">
+        <div className="flex flex-wrap items-center gap-4 px-1 pb-4 pt-1">
+          <h1 className="font-display text-[34px] font-bold tracking-[-0.032em] text-navy-800 sm:text-[40px]">
+            {tab === 'calendar' ? (
+              <>{MONTHS[currentDate.getMonth()]} <span className="font-medium text-ivory-700">{currentDate.getFullYear()}</span></>
+            ) : tab === 'list' ? 'Appointments' : 'Calendar settings'}
+          </h1>
+          <div className="flex-1" />
+          {/* Calendar / List / Settings */}
+          <div role="tablist" aria-label="Section" className="flex rounded-[10px] bg-[#EFEDE6] p-[3px]">
             {(['calendar', 'list', 'settings'] as const).map(t => (
               <button
                 key={t}
+                role="tab"
+                aria-selected={tab === t}
                 onClick={() => setTab(t)}
                 className={cn(
-                  'flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-all border-b-2 -mb-px',
-                  tab === t ? 'text-gold-700 border-gold-400' : 'text-ivory-600 border-transparent hover:text-navy-700'
+                  'flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-[13px] transition-all duration-200',
+                  tab === t ? 'bg-white font-semibold text-navy-800 shadow-[0_1px_3px_rgba(13,28,59,0.12)]' : 'font-medium text-navy-700 hover:text-navy-900'
                 )}
               >
-                {t === 'calendar' && <CalendarDays className="h-4 w-4" />}
-                {t === 'list' && <List className="h-4 w-4" />}
-                {t === 'settings' && <SettingsIcon className="h-4 w-4" />}
-                {t === 'calendar' ? 'Calendar view' : t === 'list' ? 'Appointment list view' : 'Calendar settings'}
+                {t === 'calendar' && <CalendarDays className="h-3.5 w-3.5" />}
+                {t === 'list' && <List className="h-3.5 w-3.5" />}
+                {t === 'settings' && <SettingsIcon className="h-3.5 w-3.5" />}
+                {t === 'calendar' ? 'Calendar' : t === 'list' ? 'List' : 'Settings'}
               </button>
             ))}
           </div>
-
           {tab !== 'settings' && (
-            <div className="flex items-center gap-2">
+            <>
               <button
                 onClick={() => setShowManage(true)}
-                className="flex items-center gap-1.5 rounded-lg border border-navy-100 px-3 py-1.5 text-xs font-semibold text-ivory-700 transition hover:bg-ivory-50"
+                className="flex h-10 items-center gap-1.5 rounded-full bg-[#EFEDE6] px-4 text-sm font-semibold text-navy-800 transition hover:bg-sand"
               >
-                <SlidersHorizontal className="h-3.5 w-3.5" />
+                <SlidersHorizontal className="h-4 w-4" />
                 Manage view
               </button>
               <button
                 onClick={() => setShowCreate(true)}
-                className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700"
+                className="flex h-10 items-center gap-1.5 rounded-full bg-navy-800 px-5 text-sm font-semibold text-white transition hover:bg-navy-700"
               >
-                <Plus className="h-3.5 w-3.5" />
+                <Plus className="h-4 w-4" />
                 New
               </button>
-            </div>
+            </>
           )}
         </div>
 
         {tab === 'calendar' && (
           <>
-            {/* Controls Row */}
-            <div className="flex flex-wrap items-center gap-2 px-6 py-3">
-              {/* Date Navigation */}
+            {/* Controls row */}
+            <div className="flex flex-wrap items-center gap-3 px-1 pb-4">
               <div className="flex items-center gap-1">
-                <button onClick={goPrev} className="flex h-8 w-8 items-center justify-center rounded-lg border border-navy-100 text-ivory-600 transition hover:bg-ivory-50 hover:text-navy-700" aria-label="Previous">
-                  <ChevronLeft className="h-4 w-4" />
+                <button onClick={goPrev} className="flex h-9 w-9 items-center justify-center rounded-full text-navy-700 transition hover:bg-[#EFEDE6]" aria-label="Previous">
+                  <ChevronLeft className="h-[18px] w-[18px]" />
                 </button>
-                <button onClick={goToday} className="rounded-lg border border-navy-100 px-3 py-1.5 text-xs font-semibold text-ivory-700 transition hover:bg-ivory-50">
+                <button onClick={goToday} className="h-9 rounded-full bg-[#EFEDE6] px-4 text-sm font-semibold text-navy-800 transition hover:bg-sand">
                   Today
                 </button>
-                <button onClick={goNext} className="flex h-8 w-8 items-center justify-center rounded-lg border border-navy-100 text-ivory-600 transition hover:bg-ivory-50 hover:text-navy-700" aria-label="Next">
-                  <ChevronRight className="h-4 w-4" />
+                <button onClick={goNext} className="flex h-9 w-9 items-center justify-center rounded-full text-navy-700 transition hover:bg-[#EFEDE6]" aria-label="Next">
+                  <ChevronRight className="h-[18px] w-[18px]" />
                 </button>
               </div>
 
-              {/* Date Label / Picker */}
               <div className="relative">
                 <button
                   onClick={() => setShowDatePicker(!showDatePicker)}
-                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-navy-800 transition hover:bg-ivory-50"
+                  className="flex h-9 items-center gap-1.5 rounded-full px-3 text-[15px] font-semibold text-navy-800 transition hover:bg-[#EFEDE6]"
                 >
                   {headerLabel}
-                  <CalendarDays className="h-3.5 w-3.5 text-ivory-500" />
+                  <CalendarDays className="h-4 w-4 text-ivory-700" />
                 </button>
                 {showDatePicker && (
                   <DatePicker
@@ -284,15 +304,18 @@ export function CalendarsPage() {
                 )}
               </div>
 
-              {/* View Selector */}
-              <div className="flex items-center gap-0.5 rounded-lg border border-navy-100 bg-ivory-50 p-0.5">
+              <div className="flex-1" />
+
+              {/* Day / Week / Month */}
+              <div role="group" aria-label="View" className="flex rounded-[10px] bg-[#EFEDE6] p-[3px]">
                 {(['day', 'week', 'month'] as const).map(v => (
                   <button
                     key={v}
                     onClick={() => setView(v)}
+                    aria-pressed={view === v}
                     className={cn(
-                      'rounded-md px-3 py-1 text-xs font-semibold capitalize transition',
-                      view === v ? 'bg-white text-navy-800 shadow-sm' : 'text-ivory-600 hover:text-navy-700'
+                      'h-8 rounded-lg px-4 text-[13px] capitalize transition-all duration-200',
+                      view === v ? 'bg-white font-semibold text-navy-800 shadow-[0_1px_3px_rgba(13,28,59,0.12)]' : 'font-medium text-navy-700 hover:text-navy-900'
                     )}
                   >
                     {v}
@@ -300,71 +323,68 @@ export function CalendarsPage() {
                 ))}
               </div>
 
-              {/* Timezone */}
-              <div className="flex items-center gap-1.5">
-                <TimezoneSelect value={displayTimezone} onChange={setDisplayTimezone} className="w-44" />
-              </div>
+              <TimezoneSelect value={displayTimezone} onChange={setDisplayTimezone} className="w-44" />
 
-              {/* Search */}
-              <div className="relative flex-1 min-w-[140px] max-w-[220px]">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-ivory-400" />
+              <label className="relative flex-1 min-w-[160px] max-w-[240px]">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ivory-700" />
                 <input
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Search appointments..."
-                  className="w-full rounded-lg border border-navy-100 bg-ivory-50 py-1.5 pl-8 pr-3 text-xs text-navy-700 placeholder:text-ivory-400 outline-none focus:border-gold-300 focus:bg-white"
+                  placeholder="Search appointments"
+                  aria-label="Search appointments"
+                  className="h-9 w-full rounded-[10px] border border-transparent bg-[#EFEDE6] pl-9 pr-3 text-sm text-navy-800 outline-none placeholder:text-ivory-700 focus:border-gold-400 focus:bg-white"
                 />
-              </div>
+              </label>
 
-              {/* Filter Button */}
               <button
                 onClick={() => setShowFilters(!showFilters)}
+                aria-expanded={showFilters}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition',
-                  showFilters || statusFilter.size > 0 ? 'border-gold-300 bg-gold-50 text-gold-700' : 'border-navy-100 text-ivory-600 hover:bg-ivory-50'
+                  'flex h-9 items-center gap-1.5 rounded-full px-4 text-sm font-semibold transition',
+                  showFilters || statusFilter.size > 0 ? 'bg-gold-50 text-gold-700 ring-1 ring-gold-300' : 'bg-[#EFEDE6] text-navy-800 hover:bg-sand'
                 )}
               >
-                <Filter className="h-3.5 w-3.5" />
+                <Filter className="h-4 w-4" />
                 Filters
-                {statusFilter.size > 0 && <span className="flex h-4 w-4 items-center justify-center rounded-full bg-gold-400 text-[9px] text-navy-800">{statusFilter.size}</span>}
+                {statusFilter.size > 0 && <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gold-400 text-[11px] text-navy-800">{statusFilter.size}</span>}
               </button>
             </div>
 
-            {/* Filter Panel */}
+            {/* Filter panel */}
             {showFilters && (
-              <div className="border-t border-navy-100 bg-ivory-50/50 px-6 py-3">
+              <div className="mb-4 rounded-2xl bg-paper px-5 py-4">
                 <div className="flex flex-wrap items-center gap-4">
-                  {/* Calendar visibility */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-ivory-600">Calendars:</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[13px] font-semibold text-ivory-700">Calendars</span>
                     {calendars.map(cal => (
                       <button
                         key={cal.id}
                         onClick={() => toggleCalendarVisible(cal.id)}
+                        aria-pressed={visibleCalendars.has(cal.id)}
                         className={cn(
-                          'flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition',
-                          visibleCalendars.has(cal.id) ? 'border-navy-200 bg-white text-navy-700' : 'border-navy-100 bg-ivory-50 text-ivory-400'
+                          'flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium transition',
+                          visibleCalendars.has(cal.id) ? 'bg-white text-navy-800 shadow-[0_1px_2px_rgba(13,28,59,0.08)]' : 'bg-transparent text-ivory-600'
                         )}
                       >
                         <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: visibleCalendars.has(cal.id) ? cal.color : '#cbd5e1' }} />
                         {cal.name}
-                        {visibleCalendars.has(cal.id) ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                        {visibleCalendars.has(cal.id) ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
                       </button>
                     ))}
                   </div>
 
-                  <div className="h-5 w-px bg-navy-100" />
+                  <div className="h-5 w-px bg-sand" />
 
-                  {/* Status filters */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-ivory-600">Status:</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[13px] font-semibold text-ivory-700">Status</span>
                     {(Object.keys(STATUS_CONFIG) as AppointmentStatus[]).map(status => (
                       <button
                         key={status}
                         onClick={() => toggleStatusFilter(status)}
+                        aria-pressed={statusFilter.has(status)}
                         className={cn(
-                          'flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition',
-                          statusFilter.has(status) ? `${STATUS_CONFIG[status].bg} ${STATUS_CONFIG[status].text} border-current` : 'border-navy-100 bg-white text-ivory-500 hover:text-navy-700'
+                          'flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium transition',
+                          statusFilter.has(status) ? `${STATUS_CONFIG[status].bg} ${STATUS_CONFIG[status].text} ring-1 ring-current` : 'bg-white text-navy-700 hover:text-navy-900'
                         )}
                       >
                         <span className={cn('h-2 w-2 rounded-full', STATUS_CONFIG[status].dot)} />
@@ -376,7 +396,7 @@ export function CalendarsPage() {
                   {(statusFilter.size > 0 || visibleCalendars.size < calendars.length) && (
                     <button
                       onClick={() => { setStatusFilter(new Set()); setVisibleCalendars(new Set(calendars.map(c => c.id))); }}
-                      className="text-xs font-semibold text-burgundy-600 hover:text-burgundy-700"
+                      className="text-[13px] font-semibold text-burgundy-600 hover:text-burgundy-700"
                     >
                       Clear all
                     </button>
@@ -389,7 +409,7 @@ export function CalendarsPage() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-hidden">
+      <div className={cn('overflow-hidden', tab === 'calendar' ? 'rounded-[20px] border border-sand bg-white md:h-[calc(100dvh-250px)] md:min-h-[520px]' : 'flex-1')}>
         {tab === 'calendar' && (
           <>
             {loading ? (
@@ -1177,32 +1197,33 @@ function WeekView({
     return d;
   });
 
+  const scrollRef = useScrollToMorning();
   return (
     <div className="flex h-full flex-col">
       {/* Day headers */}
-      <div className="flex border-b border-navy-100 bg-white">
-        <div className="w-14 shrink-0 border-r border-navy-100" />
+      <div className="flex border-b border-sand bg-white">
+        <div className="w-16 shrink-0 border-r border-sand" />
         {days.map((day, i) => (
-          <div key={i} className="flex-1 border-r border-navy-100 last:border-r-0 px-2 py-2 text-center">
-            <p className="text-xs font-semibold text-ivory-500">{DAYS_SHORT[day.getDay()]}</p>
-            <p className={cn(
-              'mt-0.5 text-lg font-bold',
-              isToday(day) ? 'text-gold-600' : 'text-navy-800'
+          <div key={i} className="flex flex-1 items-center justify-center gap-2 border-r border-sand last:border-r-0 px-2 py-3">
+            <span className="text-[13px] text-ivory-700">{DAYS_SHORT[day.getDay()]}</span>
+            <span className={cn(
+              'flex h-8 w-8 items-center justify-center rounded-full text-[15px] font-semibold',
+              isToday(day) ? 'bg-navy-800 text-white' : 'text-navy-800'
             )}>
               {day.getDate()}
-            </p>
+            </span>
           </div>
         ))}
       </div>
 
       {/* Scrollable calendar grid */}
-      <div className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div className="flex">
           {/* Time axis */}
-          <div className="w-14 shrink-0 border-r border-navy-100">
+          <div className="w-16 shrink-0 border-r border-sand">
             {HOURS.map(hour => (
-              <div key={hour} style={{ height: HOUR_HEIGHT }} className="relative border-b border-navy-50">
-                <span className="absolute -top-2 right-1.5 text-[10px] text-ivory-400">
+              <div key={hour} style={{ height: HOUR_HEIGHT }} className="relative border-b border-[#F0EEE7]">
+                <span className="absolute -top-2 right-2 text-[11px] text-ivory-700">
                   {hour === 0 ? '' : formatHourLabel(hour)}
                 </span>
               </div>
@@ -1217,9 +1238,9 @@ function WeekView({
               displayTimezone
             );
             return (
-              <div key={dayIdx} className="relative flex-1 border-r border-navy-100 last:border-r-0">
+              <div key={dayIdx} className="relative flex-1 border-r border-sand last:border-r-0">
                 {HOURS.map(hour => (
-                  <div key={hour} style={{ height: HOUR_HEIGHT }} className="border-b border-navy-50" />
+                  <div key={hour} style={{ height: HOUR_HEIGHT }} className="border-b border-[#F0EEE7]" />
                 ))}
                 {/* Appointments */}
                 {dayAppts.map(appt => {
@@ -1232,22 +1253,23 @@ function WeekView({
                       key={appt.id}
                       onClick={() => onAppointmentClick(appt)}
                       className={cn(
-                        'absolute left-1 right-1 overflow-hidden rounded-md border-l-[3px] px-1.5 py-1 text-left transition hover:z-10 hover:shadow-md',
-                        statusCfg.border, statusCfg.bg
+                        'absolute left-1.5 right-1.5 overflow-hidden rounded-[10px] py-1 pl-3 pr-2 text-left transition hover:z-10 hover:shadow-card-hover',
+                        DIMMED.includes(appt.status) && 'opacity-60'
                       )}
-                      style={{ top, height: Math.max(height, 22) }}
+                      style={{ top, height: Math.max(height, 24), ...eventStyle(cal?.color) }}
+                      title={`${appt.title} · ${statusCfg.label}`}
                     >
-                      <p className="truncate text-[10px] font-bold text-navy-800">{appt.title}</p>
-                      <p className="truncate text-[9px] text-navy-600">
+                      <p className={cn('truncate text-[12px] font-semibold text-navy-800', DIMMED.includes(appt.status) && 'line-through')}>{appt.title}</p>
+                      <p className="truncate text-[11px] text-navy-600">
                         {formatTimeInZone(appt.start_time, displayTimezone)}
                       </p>
                       {height > 40 && (
-                        <p className="truncate text-[9px] text-ivory-600">
+                        <p className="truncate text-[11px] text-ivory-700">
                           {getFullName(appt.contacts ?? { first_name: null, last_name: null })}
                         </p>
                       )}
                       {height > 56 && cal && (
-                        <p className="truncate text-[8px] text-ivory-500">{cal.name}</p>
+                        <p className="truncate text-[10px] text-ivory-700">{cal.name}</p>
                       )}
                     </button>
                   );
@@ -1282,27 +1304,29 @@ function DayView({
     displayTimezone
   );
 
+  const scrollRef = useScrollToMorning();
   return (
     <div className="flex h-full flex-col">
       {/* Day header */}
-      <div className="flex border-b border-navy-100 bg-white">
-        <div className="w-14 shrink-0 border-r border-navy-100" />
-        <div className="flex-1 px-4 py-2">
-          <p className="text-xs font-semibold text-ivory-500">{DAYS[currentDate.getDay()]}</p>
-          <p className={cn('text-lg font-bold', isToday(currentDate) ? 'text-gold-600' : 'text-navy-800')}>
-            {formatDate(currentDate, { month: 'long', day: 'numeric', year: 'numeric' })}
-          </p>
+      <div className="flex border-b border-sand bg-white">
+        <div className="w-16 shrink-0 border-r border-sand" />
+        <div className="flex flex-1 items-center gap-3 px-4 py-3">
+          <span className={cn('flex h-9 w-9 items-center justify-center rounded-full text-base font-semibold', isToday(currentDate) ? 'bg-navy-800 text-white' : 'bg-paper text-navy-800')}>{currentDate.getDate()}</span>
+          <span>
+            <span className="block text-[13px] text-ivory-700">{DAYS[currentDate.getDay()]}</span>
+            <span className="block text-[15px] font-semibold text-navy-800">{formatDate(currentDate, { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+          </span>
         </div>
       </div>
 
       {/* Calendar grid */}
-      <div className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div className="flex">
           {/* Time axis */}
-          <div className="w-14 shrink-0 border-r border-navy-100">
+          <div className="w-16 shrink-0 border-r border-sand">
             {HOURS.map(hour => (
-              <div key={hour} style={{ height: HOUR_HEIGHT }} className="relative border-b border-navy-50">
-                <span className="absolute -top-2 right-1.5 text-[10px] text-ivory-400">
+              <div key={hour} style={{ height: HOUR_HEIGHT }} className="relative border-b border-[#F0EEE7]">
+                <span className="absolute -top-2 right-2 text-[11px] text-ivory-700">
                   {hour === 0 ? '' : formatHourLabel(hour)}
                 </span>
               </div>
@@ -1312,7 +1336,7 @@ function DayView({
           {/* Day column */}
           <div className="relative flex-1">
             {HOURS.map(hour => (
-              <div key={hour} style={{ height: HOUR_HEIGHT }} className="border-b border-navy-50" />
+              <div key={hour} style={{ height: HOUR_HEIGHT }} className="border-b border-[#F0EEE7]" />
             ))}
             {dayAppts.map(appt => {
               const top = getAppointmentTopOffset(appt.start_time, displayTimezone);
@@ -1325,10 +1349,11 @@ function DayView({
                   key={appt.id}
                   onClick={() => onAppointmentClick(appt)}
                   className={cn(
-                    'absolute left-2 right-2 overflow-hidden rounded-lg border-l-[3px] px-2.5 py-1.5 text-left transition hover:z-10 hover:shadow-md',
-                    statusCfg.border, statusCfg.bg
+                    'absolute left-2 right-2 overflow-hidden rounded-xl py-1.5 pl-3.5 pr-3 text-left transition hover:z-10 hover:shadow-card-hover',
+                    DIMMED.includes(appt.status) && 'opacity-60'
                   )}
-                  style={{ top, height: Math.max(height, 28) }}
+                  style={{ top, height: Math.max(height, 28), ...eventStyle(cal?.color) }}
+                  title={`${appt.title} · ${statusCfg.label}`}
                 >
                   <div className="flex items-center justify-between gap-1">
                     <p className="truncate text-xs font-bold text-navy-800">{appt.title}</p>
@@ -1401,9 +1426,9 @@ function MonthView({
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Day headers */}
-      <div className="flex border-b border-navy-100 bg-white">
+      <div className="flex border-b border-sand bg-white">
         {DAYS_SHORT.map(day => (
-          <div key={day} className="flex-1 px-2 py-2 text-center text-xs font-semibold text-ivory-500">
+          <div key={day} className="flex-1 px-2 py-3 text-center text-[13px] text-ivory-700">
             {day}
           </div>
         ))}
@@ -1422,19 +1447,19 @@ function MonthView({
                     key={dayIdx}
                     onClick={() => onDayClick(day)}
                     className={cn(
-                      'flex-1 border-r border-navy-100 last:border-r-0 p-1 transition cursor-pointer hover:bg-ivory-50',
+                      'flex-1 border-r border-sand last:border-r-0 p-1 transition cursor-pointer hover:bg-ivory-50',
                       !isCurrentMonth && 'bg-ivory-50/50'
                     )}
                   >
                     <div className="flex items-center justify-between">
                       <span className={cn(
-                        'flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold',
-                        isToday(day) ? 'bg-gold-400 text-navy-800' : isCurrentMonth ? 'text-navy-700' : 'text-ivory-400'
+                        'flex h-7 w-7 items-center justify-center rounded-full text-[13px] font-semibold',
+                        isToday(day) ? 'bg-navy-800 text-white' : isCurrentMonth ? 'text-navy-800' : 'text-ivory-400'
                       )}>
                         {day.getDate()}
                       </span>
                       {dayAppts.length > 0 && (
-                        <span className="text-[9px] font-medium text-ivory-400">{dayAppts.length}</span>
+                        <span className="text-[11px] font-medium text-ivory-700">{dayAppts.length}</span>
                       )}
                     </div>
                     <div className="mt-1 space-y-0.5">
@@ -1444,17 +1469,17 @@ function MonthView({
                           <button
                             key={appt.id}
                             onClick={(e) => { e.stopPropagation(); onAppointmentClick(appt); }}
-                            className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left transition hover:bg-navy-50"
+                            className="flex w-full items-center gap-1.5 rounded-md py-0.5 pl-2 pr-1 text-left transition hover:brightness-95"
+                            style={eventStyle(cal?.color)}
                           >
-                            <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: cal?.color ?? '#64748b' }} />
-                            <span className="truncate text-[9px] text-navy-600">
+                            <span className="truncate text-[11px] font-medium text-navy-800">
                               {formatTimeInZone(appt.start_time, displayTimezone)} {appt.title}
                             </span>
                           </button>
                         );
                       })}
                       {dayAppts.length > 3 && (
-                        <p className="px-1 text-[9px] text-ivory-400">+{dayAppts.length - 3} more</p>
+                        <p className="px-1 text-[11px] font-medium text-ivory-700">+{dayAppts.length - 3} more</p>
                       )}
                     </div>
                   </div>
@@ -1481,8 +1506,8 @@ function CurrentTimeIndicator({ timezone }: { timezone: string }) {
   return (
     <div className="pointer-events-none absolute left-0 right-0 z-5" style={{ top }}>
       <div className="flex items-center">
-        <div className="h-2.5 w-2.5 rounded-full bg-red-500 -ml-1" />
-        <div className="h-px flex-1 bg-red-500" />
+        <div className="h-2.5 w-2.5 rounded-full bg-gold-500 -ml-1" />
+        <div className="h-[2px] flex-1 bg-gold-500" />
       </div>
     </div>
   );
