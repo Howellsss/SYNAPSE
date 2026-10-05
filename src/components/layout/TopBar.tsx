@@ -3,7 +3,8 @@ import { Search, Bell, ChevronDown, Plus, HelpCircle } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Avatar } from '@/components/ui/Avatar';
 import { useRouter } from '@/lib/router';
-import { cn } from '@/lib/utils';
+import { cn, timeAgo } from '@/lib/utils';
+import { recentActivity, type ActivityItem } from '@/lib/activity';
 
 interface TopBarProps {
   onQuickCreate?: () => void;
@@ -19,6 +20,15 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
   const dropdownRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const [, navigate] = useRouter();
+  const [activity, setActivity] = useState<ActivityItem[] | null>(null);
+
+  // Real notifications: new bookings and form submissions, loaded when the bell opens.
+  useEffect(() => {
+    if (!notifOpen || !workspace) return;
+    let alive = true;
+    recentActivity(workspace.id, 6).then((items) => { if (alive) setActivity(items); }).catch(() => { if (alive) setActivity([]); });
+    return () => { alive = false; };
+  }, [notifOpen, workspace]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -86,10 +96,30 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
               <div className="px-4 py-3 border-b border-navy-100">
                 <h3 className="text-sm font-semibold text-navy-800">Notifications</h3>
               </div>
-              <div className="px-4 py-10 text-center">
-                <Bell className="mx-auto h-6 w-6 text-ivory-400" />
-                <p className="mt-2 text-sm font-medium text-navy-800">You're all caught up</p>
-                <p className="mt-0.5 text-xs text-ivory-600">New bookings, form replies and messages will show here.</p>
+              {activity && activity.length > 0 ? (
+                <ul className="max-h-80 overflow-y-auto divide-y divide-navy-100">
+                  {activity.map((n) => (
+                    <li key={n.id} className="px-4 py-3">
+                      <p className="text-sm font-medium text-navy-800">{n.title}</p>
+                      <p className="mt-0.5 text-xs text-ivory-600">{n.detail}</p>
+                      <p className="mt-1 text-xs text-ivory-500">{timeAgo(n.at)}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="px-4 py-10 text-center">
+                  <Bell className="mx-auto h-6 w-6 text-ivory-400" />
+                  <p className="mt-2 text-sm font-medium text-navy-800">{activity ? "You're all caught up" : 'Loading…'}</p>
+                  <p className="mt-0.5 text-xs text-ivory-600">New bookings and form submissions show here.</p>
+                </div>
+              )}
+              <div className="px-4 py-2.5 border-t border-navy-100 text-center">
+                <button
+                  onClick={() => { navigate('/conversations'); setNotifOpen(false); }}
+                  className="text-sm text-gold-400 hover:underline"
+                >
+                  View all notifications
+                </button>
               </div>
             </div>
           )}

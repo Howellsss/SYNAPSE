@@ -23,7 +23,8 @@ const SUGGESTED_PROMPTS = [
 export function AIAgentPage() {
   const { workspace, profile } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState('');
+  // A question handed over from Today (#/ai-hub?q=…) starts in the box.
+  const [input, setInput] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('q') ?? '');
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
