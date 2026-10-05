@@ -5,11 +5,12 @@ import { Sparkles, Shield, Calendar, Users, ArrowLeft, CheckCircle2, ArrowRight,
 
 type Mode = 'signin' | 'signup' | 'forgot' | 'reset';
 
-export function AuthPage() {
+/** `initialMode` opens the form straight away (from the home page); `onBack` leaves it. */
+export function AuthPage({ initialMode, onBack }: { initialMode?: 'signin' | 'signup'; onBack?: () => void } = {}) {
   const { signIn, signUp, resetPassword, updatePassword } = useAuth();
   const [mode, setMode] = useState<Mode>(() => {
     if (window.location.hash.includes('reset-password')) return 'reset';
-    return 'signin';
+    return initialMode ?? 'signin';
   });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -19,7 +20,7 @@ export function AuthPage() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [showAuth, setShowAuth] = useState(() => window.location.hash.includes('reset-password'));
+  const [showAuth, setShowAuth] = useState(() => window.location.hash.includes('reset-password') || !!initialMode);
   const [tourTab, setTourTab] = useState<'sessions' | 'conversations' | 'pulse'>('sessions');
   const [speakingIndex, setSpeakingIndex] = useState(0);
 
@@ -122,9 +123,9 @@ export function AuthPage() {
           </div>
 
           <div className="relative">
-            <button onClick={() => setShowAuth(false)} className="flex items-center gap-3 group">
+            <button onClick={() => (onBack ? onBack() : setShowAuth(false))} className="flex items-center gap-3 group">
               <div className="w-11 h-11 rounded-xl bg-navy-700 border border-navy-600 flex items-center justify-center transition group-hover:border-gold-400/40">
-                <HowellsLogo className="w-6 h-6" />
+                <HowellsLogo className="w-6 h-6 text-white" />
               </div>
               <span className="text-2xl font-bold tracking-wide text-ivory-100">SYNAPSE</span>
             </button>
@@ -159,7 +160,7 @@ export function AuthPage() {
             {/* Mobile logo */}
             <div className="flex items-center gap-2.5 mb-8 lg:hidden">
               <div className="w-10 h-10 rounded-xl bg-navy-800 flex items-center justify-center">
-                <HowellsLogo className="w-5 h-5" />
+                <HowellsLogo className="w-5 h-5 text-white" />
               </div>
               <span className="text-xl font-bold tracking-wide text-navy-800">SYNAPSE</span>
             </div>
@@ -329,7 +330,7 @@ export function AuthPage() {
       <nav className="relative z-10 flex items-center justify-between px-6 py-5 sm:px-10 sm:py-6 lg:px-14">
         <div className="flex items-center gap-2.5">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#E4A93C] shadow-[0_0_22px_rgba(228,169,60,0.35)]">
-            <HowellsLogo className="h-6 w-6" />
+            <HowellsLogo className="h-6 w-6 text-navy-900" />
           </div>
           <span className="text-[17px] font-bold tracking-[-0.02em] text-white">SYNAPSE</span>
         </div>

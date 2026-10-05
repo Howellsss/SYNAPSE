@@ -28,7 +28,7 @@ export function GuestJoinPage({ token }: { token: string }) {
   return (
     <div className="min-h-screen bg-ivory-200/30">
       <header className="flex items-center gap-2 px-4 py-5 sm:px-8">
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-navy-800"><HowellsLogo className="h-5 w-5" /></span>
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-navy-800 text-white"><HowellsLogo className="h-5 w-5" /></span>
         <span className="text-lg font-bold tracking-wide text-navy-800">SYNAPSE</span>
       </header>
       <main className="mx-auto max-w-2xl px-4 pb-12 sm:px-8">

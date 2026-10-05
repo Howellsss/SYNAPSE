@@ -49,7 +49,7 @@ export function SpacePreview({
       )}
       {Icon && (
         <span className={cn(
-          'absolute left-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-2xl bg-gold-400 text-navy-900 shadow-lg shadow-black/30',
+          'absolute left-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-2xl bg-gold-400 text-white shadow-lg shadow-black/30',
           wallScreen ? 'top-[55%]' : 'top-[42%]',
           size === 'sm' ? 'h-9 w-9' : size === 'lg' ? 'h-16 w-16' : 'h-12 w-12',
         )} style={wallScreen?.accent ? { backgroundColor: wallScreen.accent, color: ['#E4A93C', '#B07A1B'].includes(wallScreen.accent) ? '#091530' : '#fff' } : undefined}>

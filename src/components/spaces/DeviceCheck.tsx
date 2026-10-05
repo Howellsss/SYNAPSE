@@ -350,7 +350,7 @@ export function GetReadyScreen({ spaceName, onEnter, onBack }: { spaceName: stri
     <div className="fixed inset-0 z-[80] flex flex-col overflow-y-auto bg-white">
       <header className="flex items-center justify-between gap-3 px-4 pt-5 sm:px-8">
         <div className="flex items-center gap-2">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-navy-800"><HowellsLogo className="h-5 w-5" /></span>
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-navy-800 text-white"><HowellsLogo className="h-5 w-5" /></span>
           <span className="text-lg font-bold tracking-wide text-navy-800">SYNAPSE</span>
         </div>
         <button type="button" onClick={onBack} className="btn-ghost !px-3 !py-2">Back to workspaces</button>
