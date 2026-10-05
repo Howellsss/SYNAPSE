@@ -232,7 +232,7 @@ export function CalendarsPage() {
           </h1>
           <div className="flex-1" />
           {/* Calendar / List / Settings */}
-          <div role="tablist" aria-label="Section" className="flex rounded-[10px] bg-[#EFEDE6] p-[3px]">
+          <div role="tablist" aria-label="Section" className="flex rounded-[10px] bg-white ring-1 ring-inset ring-navy-100 p-[3px]">
             {(['calendar', 'list', 'settings'] as const).map(t => (
               <button
                 key={t}
@@ -241,7 +241,7 @@ export function CalendarsPage() {
                 onClick={() => setTab(t)}
                 className={cn(
                   'flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-[13px] transition-all duration-200',
-                  tab === t ? 'bg-white font-semibold text-navy-800 shadow-[0_1px_3px_rgba(13,28,59,0.12)]' : 'font-medium text-navy-700 hover:text-navy-900'
+                  tab === t ? 'bg-navy-800 font-semibold text-white' : 'font-medium text-navy-700 hover:text-navy-900'
                 )}
               >
                 {t === 'calendar' && <CalendarDays className="h-3.5 w-3.5" />}
@@ -255,7 +255,7 @@ export function CalendarsPage() {
             <>
               <button
                 onClick={() => setShowManage(true)}
-                className="flex h-10 items-center gap-1.5 rounded-full bg-[#EFEDE6] px-4 text-sm font-semibold text-navy-800 transition hover:bg-sand"
+                className="flex h-10 items-center gap-1.5 rounded-full bg-white ring-1 ring-inset ring-navy-100 px-4 text-sm font-semibold text-navy-800 transition hover:bg-navy-50"
               >
                 <SlidersHorizontal className="h-4 w-4" />
                 Manage view
@@ -276,13 +276,13 @@ export function CalendarsPage() {
             {/* Controls row */}
             <div className="flex flex-wrap items-center gap-3 px-1 pb-4">
               <div className="flex items-center gap-1">
-                <button onClick={goPrev} className="flex h-9 w-9 items-center justify-center rounded-full text-navy-700 transition hover:bg-[#EFEDE6]" aria-label="Previous">
+                <button onClick={goPrev} className="flex h-9 w-9 items-center justify-center rounded-full text-navy-700 transition hover:bg-navy-50" aria-label="Previous">
                   <ChevronLeft className="h-[18px] w-[18px]" />
                 </button>
-                <button onClick={goToday} className="h-9 rounded-full bg-[#EFEDE6] px-4 text-sm font-semibold text-navy-800 transition hover:bg-sand">
+                <button onClick={goToday} className="h-9 rounded-full bg-white ring-1 ring-inset ring-navy-100 px-4 text-sm font-semibold text-navy-800 transition hover:bg-navy-50">
                   Today
                 </button>
-                <button onClick={goNext} className="flex h-9 w-9 items-center justify-center rounded-full text-navy-700 transition hover:bg-[#EFEDE6]" aria-label="Next">
+                <button onClick={goNext} className="flex h-9 w-9 items-center justify-center rounded-full text-navy-700 transition hover:bg-navy-50" aria-label="Next">
                   <ChevronRight className="h-[18px] w-[18px]" />
                 </button>
               </div>
@@ -290,7 +290,7 @@ export function CalendarsPage() {
               <div className="relative">
                 <button
                   onClick={() => setShowDatePicker(!showDatePicker)}
-                  className="flex h-9 items-center gap-1.5 rounded-full px-3 text-[15px] font-semibold text-navy-800 transition hover:bg-[#EFEDE6]"
+                  className="flex h-9 items-center gap-1.5 rounded-full px-3 text-[15px] font-semibold text-navy-800 transition hover:bg-navy-50"
                 >
                   {headerLabel}
                   <CalendarDays className="h-4 w-4 text-ivory-700" />
@@ -307,7 +307,7 @@ export function CalendarsPage() {
               <div className="flex-1" />
 
               {/* Day / Week / Month */}
-              <div role="group" aria-label="View" className="flex rounded-[10px] bg-[#EFEDE6] p-[3px]">
+              <div role="group" aria-label="View" className="flex rounded-[10px] bg-white ring-1 ring-inset ring-navy-100 p-[3px]">
                 {(['day', 'week', 'month'] as const).map(v => (
                   <button
                     key={v}
@@ -315,7 +315,7 @@ export function CalendarsPage() {
                     aria-pressed={view === v}
                     className={cn(
                       'h-8 rounded-lg px-4 text-[13px] capitalize transition-all duration-200',
-                      view === v ? 'bg-white font-semibold text-navy-800 shadow-[0_1px_3px_rgba(13,28,59,0.12)]' : 'font-medium text-navy-700 hover:text-navy-900'
+                      view === v ? 'bg-navy-800 font-semibold text-white' : 'font-medium text-navy-700 hover:text-navy-900'
                     )}
                   >
                     {v}
@@ -332,7 +332,7 @@ export function CalendarsPage() {
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder="Search appointments"
                   aria-label="Search appointments"
-                  className="h-9 w-full rounded-[10px] border border-transparent bg-[#EFEDE6] pl-9 pr-3 text-sm text-navy-800 outline-none placeholder:text-ivory-700 focus:border-gold-400 focus:bg-white"
+                  className="h-9 w-full rounded-[10px] border border-navy-100 bg-white pl-9 pr-3 text-sm text-navy-800 outline-none placeholder:text-ivory-700 focus:border-gold-400 focus:bg-white"
                 />
               </label>
 
@@ -341,7 +341,7 @@ export function CalendarsPage() {
                 aria-expanded={showFilters}
                 className={cn(
                   'flex h-9 items-center gap-1.5 rounded-full px-4 text-sm font-semibold transition',
-                  showFilters || statusFilter.size > 0 ? 'bg-gold-50 text-gold-700 ring-1 ring-gold-300' : 'bg-[#EFEDE6] text-navy-800 hover:bg-sand'
+                  showFilters || statusFilter.size > 0 ? 'bg-gold-50 text-gold-700 ring-1 ring-gold-300' : 'bg-white ring-1 ring-inset ring-navy-100 text-navy-800 hover:bg-navy-50'
                 )}
               >
                 <Filter className="h-4 w-4" />
@@ -352,7 +352,7 @@ export function CalendarsPage() {
 
             {/* Filter panel */}
             {showFilters && (
-              <div className="mb-4 rounded-2xl bg-paper px-5 py-4">
+              <div className="mb-4 rounded-2xl bg-white ring-1 ring-inset ring-navy-100 px-5 py-4">
                 <div className="flex flex-wrap items-center gap-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-[13px] font-semibold text-ivory-700">Calendars</span>
@@ -363,7 +363,7 @@ export function CalendarsPage() {
                         aria-pressed={visibleCalendars.has(cal.id)}
                         className={cn(
                           'flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium transition',
-                          visibleCalendars.has(cal.id) ? 'bg-white text-navy-800 shadow-[0_1px_2px_rgba(13,28,59,0.08)]' : 'bg-transparent text-ivory-600'
+                          visibleCalendars.has(cal.id) ? 'bg-white text-navy-800 ring-1 ring-navy-200' : 'bg-transparent text-ivory-600 line-through'
                         )}
                       >
                         <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: visibleCalendars.has(cal.id) ? cal.color : '#cbd5e1' }} />
@@ -1222,7 +1222,7 @@ function WeekView({
           {/* Time axis */}
           <div className="w-16 shrink-0 border-r border-sand">
             {HOURS.map(hour => (
-              <div key={hour} style={{ height: HOUR_HEIGHT }} className="relative border-b border-[#F0EEE7]">
+              <div key={hour} style={{ height: HOUR_HEIGHT }} className="relative border-b border-navy-50">
                 <span className="absolute -top-2 right-2 text-[11px] text-ivory-700">
                   {hour === 0 ? '' : formatHourLabel(hour)}
                 </span>
@@ -1240,7 +1240,7 @@ function WeekView({
             return (
               <div key={dayIdx} className="relative flex-1 border-r border-sand last:border-r-0">
                 {HOURS.map(hour => (
-                  <div key={hour} style={{ height: HOUR_HEIGHT }} className="border-b border-[#F0EEE7]" />
+                  <div key={hour} style={{ height: HOUR_HEIGHT }} className="border-b border-navy-50" />
                 ))}
                 {/* Appointments */}
                 {dayAppts.map(appt => {
@@ -1311,7 +1311,7 @@ function DayView({
       <div className="flex border-b border-sand bg-white">
         <div className="w-16 shrink-0 border-r border-sand" />
         <div className="flex flex-1 items-center gap-3 px-4 py-3">
-          <span className={cn('flex h-9 w-9 items-center justify-center rounded-full text-base font-semibold', isToday(currentDate) ? 'bg-navy-800 text-white' : 'bg-paper text-navy-800')}>{currentDate.getDate()}</span>
+          <span className={cn('flex h-9 w-9 items-center justify-center rounded-full text-base font-semibold', isToday(currentDate) ? 'bg-navy-800 text-white' : 'bg-navy-50 text-navy-800')}>{currentDate.getDate()}</span>
           <span>
             <span className="block text-[13px] text-ivory-700">{DAYS[currentDate.getDay()]}</span>
             <span className="block text-[15px] font-semibold text-navy-800">{formatDate(currentDate, { month: 'long', day: 'numeric', year: 'numeric' })}</span>
@@ -1325,7 +1325,7 @@ function DayView({
           {/* Time axis */}
           <div className="w-16 shrink-0 border-r border-sand">
             {HOURS.map(hour => (
-              <div key={hour} style={{ height: HOUR_HEIGHT }} className="relative border-b border-[#F0EEE7]">
+              <div key={hour} style={{ height: HOUR_HEIGHT }} className="relative border-b border-navy-50">
                 <span className="absolute -top-2 right-2 text-[11px] text-ivory-700">
                   {hour === 0 ? '' : formatHourLabel(hour)}
                 </span>
@@ -1336,7 +1336,7 @@ function DayView({
           {/* Day column */}
           <div className="relative flex-1">
             {HOURS.map(hour => (
-              <div key={hour} style={{ height: HOUR_HEIGHT }} className="border-b border-[#F0EEE7]" />
+              <div key={hour} style={{ height: HOUR_HEIGHT }} className="border-b border-navy-50" />
             ))}
             {dayAppts.map(appt => {
               const top = getAppointmentTopOffset(appt.start_time, displayTimezone);

@@ -142,10 +142,10 @@ export function ContactDetailPage({ contactId }: { contactId: string }) {
   const contactTags = (contact.contact_tags ?? []).map((ct) => ct.tags).filter((t): t is Tag => Boolean(t));
 
   return (
-    <div className="-mx-4 -my-6 flex min-h-[calc(100vh-4rem)] flex-col bg-paper lg:-mx-10 lg:-my-8">
+    <div className="-mx-4 -my-6 flex min-h-[calc(100vh-4rem)] flex-col bg-white lg:-mx-10 lg:-my-8">
       {/* Top bar */}
       <div className="flex items-center gap-3 border-b border-sand bg-white/85 px-4 py-3 backdrop-blur lg:px-10">
-        <button onClick={() => navigate('/contacts')} className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-gold-700 hover:bg-[#EFEDE6]">
+        <button onClick={() => navigate('/contacts')} className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-gold-700 hover:bg-navy-50">
           <ArrowLeft className="h-4 w-4" /> Contacts
         </button>
         <ChevronRight className="h-4 w-4 text-ivory-400" />
@@ -154,10 +154,10 @@ export function ContactDetailPage({ contactId }: { contactId: string }) {
         {nav && navIndex >= 0 && (
           <div className="flex items-center gap-1 text-sm text-ivory-600">
             <span className="mr-1 whitespace-nowrap tabular-nums">{(nav.offset + navIndex + 1).toLocaleString()} / {nav.total.toLocaleString()}</span>
-            <button aria-label="Previous contact" disabled={navIndex === 0} onClick={() => goTo(navIndex - 1)} className="flex h-9 w-9 items-center justify-center rounded-full text-navy-700 hover:bg-[#EFEDE6] disabled:opacity-40">
+            <button aria-label="Previous contact" disabled={navIndex === 0} onClick={() => goTo(navIndex - 1)} className="flex h-9 w-9 items-center justify-center rounded-full text-navy-700 hover:bg-navy-50 disabled:opacity-40">
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <button aria-label="Next contact" disabled={navIndex === nav.ids.length - 1} onClick={() => goTo(navIndex + 1)} className="flex h-9 w-9 items-center justify-center rounded-full text-navy-700 hover:bg-[#EFEDE6] disabled:opacity-40">
+            <button aria-label="Next contact" disabled={navIndex === nav.ids.length - 1} onClick={() => goTo(navIndex + 1)} className="flex h-9 w-9 items-center justify-center rounded-full text-navy-700 hover:bg-navy-50 disabled:opacity-40">
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
@@ -253,7 +253,7 @@ function ProfileCard({ contact, tags, allTags, members, onUpdate, onDelete, onTa
   return (
     <Card className="overflow-hidden">
       <div className="relative px-5 pb-5 pt-7 text-center">
-        <button onClick={onDelete} aria-label="Delete contact" title="Delete contact" className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-ivory-700 hover:bg-[#EFEDE6] hover:text-burgundy-600">
+        <button onClick={onDelete} aria-label="Delete contact" title="Delete contact" className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-ivory-700 hover:bg-navy-50 hover:text-burgundy-600">
           <Trash2 className="h-4 w-4" />
         </button>
         <Avatar firstName={contact.first_name} lastName={contact.last_name} src={contact.avatar_url} size="xl" className="mx-auto !h-24 !w-24 !text-3xl" />
@@ -330,7 +330,7 @@ function ProfileCard({ contact, tags, allTags, members, onUpdate, onDelete, onTa
 }
 
 function QuickAction({ href, onClick, icon: Icon, label }: { href?: string; onClick?: () => void; icon: ComponentType<{ className?: string }>; label: string }) {
-  const cls = 'flex flex-col items-center gap-1.5 rounded-2xl border border-sand bg-white py-3 text-xs font-semibold text-gold-700 transition hover:bg-paper';
+  const cls = 'flex flex-col items-center gap-1.5 rounded-2xl border border-sand bg-white py-3 text-xs font-semibold text-gold-700 transition hover:bg-navy-50';
   if (href) return <a href={href} className={cls}><Icon className="h-5 w-5" />{label}</a>;
   return (
     <button onClick={onClick} disabled={!onClick} className={cn(cls, !onClick && 'cursor-not-allowed opacity-40')}>

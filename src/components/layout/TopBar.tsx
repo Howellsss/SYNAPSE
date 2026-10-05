@@ -65,7 +65,7 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
           onChange={(e) => onSearchChange?.(e.target.value)}
           placeholder="Search contacts, appointments, forms..."
           aria-label="Search contacts, appointments and forms"
-          className="w-full h-10 pl-10 pr-12 bg-[#EFEDE6] text-sm text-navy-800 rounded-[10px] border border-transparent transition-all placeholder:text-ivory-700 focus:bg-white focus:border-gold-400 focus:ring-4 focus:ring-gold-400/20 outline-none"
+          className="w-full h-10 pl-10 pr-12 bg-white text-sm text-navy-800 rounded-[10px] border border-navy-100 transition-all placeholder:text-ivory-700 focus:bg-white focus:border-gold-400 focus:ring-4 focus:ring-gold-400/20 outline-none"
         />
         <kbd className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 hidden text-xs text-ivory-700 sm:block">⌘K</kbd>
         {searchQuery && searchQuery.length > 0 && searchResults && (
@@ -89,7 +89,7 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
         )}
 
         {/* Help */}
-        <button aria-label="Help" className="w-9 h-9 rounded-full text-navy-600 hover:bg-[#EFEDE6] hover:text-navy-800 transition-colors items-center justify-center hidden md:flex">
+        <button aria-label="Help" className="w-9 h-9 rounded-full text-navy-600 hover:bg-navy-50 hover:text-navy-800 transition-colors items-center justify-center hidden md:flex">
           <HelpCircle className="w-[18px] h-[18px]" />
         </button>
 
@@ -99,7 +99,7 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
             onClick={() => setNotifOpen(!notifOpen)}
             aria-label="Notifications"
             aria-expanded={notifOpen}
-            className="w-9 h-9 rounded-full text-navy-600 hover:bg-[#EFEDE6] hover:text-navy-800 transition-colors flex items-center justify-center relative"
+            className="w-9 h-9 rounded-full text-navy-600 hover:bg-navy-50 hover:text-navy-800 transition-colors flex items-center justify-center relative"
           >
             <Bell className="w-[18px] h-[18px]" />
             {activity && activity.length > 0 && <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-gold-400" />}
@@ -142,7 +142,7 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setDropdownOpen(!dropdownOpen)}
-            className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full hover:bg-paper transition-colors"
+            className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full hover:bg-navy-50 transition-colors"
           >
             <Avatar
               firstName={profile?.first_name}
@@ -214,7 +214,7 @@ function DropdownItem({
       onClick={onClick}
       className={cn(
         'w-full px-4 py-2 text-left text-sm font-medium transition-colors',
-        danger ? 'text-burgundy-600 hover:bg-burgundy-400/10' : 'text-navy-600 hover:bg-paper'
+        danger ? 'text-burgundy-600 hover:bg-burgundy-400/10' : 'text-navy-600 hover:bg-navy-50'
       )}
     >
       {label}

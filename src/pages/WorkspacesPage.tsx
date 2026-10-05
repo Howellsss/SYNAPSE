@@ -86,7 +86,7 @@ export function WorkspacesPage() {
         </div>
         {spaces && spaces.length > 0 && (
           <div className="flex flex-wrap gap-2">
-            <button onClick={() => setJoinOpen(true)} className="flex h-11 items-center gap-1.5 rounded-full bg-[#EFEDE6] px-5 text-[15px] font-semibold text-navy-800 transition hover:bg-sand"><Link2 className="h-4 w-4" /> Join with link</button>
+            <button onClick={() => setJoinOpen(true)} className="flex h-11 items-center gap-1.5 rounded-full bg-white ring-1 ring-inset ring-navy-100 px-5 text-[15px] font-semibold text-navy-800 transition hover:bg-navy-50"><Link2 className="h-4 w-4" /> Join with link</button>
             {canManageTeam && <button onClick={createNew} className="flex h-11 items-center gap-1.5 rounded-full bg-navy-800 px-5 text-[15px] font-semibold text-white transition hover:bg-navy-700"><Plus className="h-4 w-4" /> New workspace</button>}
           </div>
         )}
@@ -128,7 +128,7 @@ export function WorkspacesPage() {
           {canManageTeam && (
             <button
               onClick={createNew}
-              className="flex min-h-[300px] flex-col items-center justify-center gap-3 rounded-[22px] border-2 border-dashed border-sand p-6 text-center transition hover:border-gold-400 hover:bg-paper"
+              className="flex min-h-[300px] flex-col items-center justify-center gap-3 rounded-[22px] border-2 border-dashed border-sand p-6 text-center transition hover:border-gold-400 hover:bg-navy-50"
             >
               <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gold-50 text-gold-600"><Plus className="h-6 w-6" /></span>
               <span className="font-semibold text-navy-800">Create another workspace</span>
@@ -139,7 +139,7 @@ export function WorkspacesPage() {
       )}
 
       {spaces && spaces.length > 0 && (
-        <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[20px] bg-paper px-5 py-4">
+        <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[20px] bg-white ring-1 ring-inset ring-navy-100 px-5 py-4">
           <Avatar firstName={profile?.first_name} lastName={profile?.last_name} src={profile?.avatar_url} size="sm" />
           <p className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-navy-700">
             <span>Joining as <strong className="text-navy-800">{displayName}</strong></span>
@@ -181,7 +181,7 @@ function FirstVisit({ canCreate, onCreate, onJoin }: { canCreate: boolean; onCre
   ];
   return (
     <>
-      <section className="overflow-hidden rounded-[30px] bg-paper text-navy-800">
+      <section className="overflow-hidden rounded-[30px] bg-white ring-1 ring-inset ring-navy-100 text-navy-800">
         <div className="grid items-center gap-8 p-6 sm:p-10 lg:grid-cols-[1fr_1.15fr]">
           <div className="min-w-0">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-gold-50 px-3 py-1 text-xs font-semibold text-gold-700">New</span>
@@ -195,7 +195,7 @@ function FirstVisit({ canCreate, onCreate, onJoin }: { canCreate: boolean; onCre
                   <Plus className="h-5 w-5" /> Create a workspace
                 </button>
               )}
-              <button onClick={onJoin} className="inline-flex h-12 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-white px-6 text-base font-semibold text-navy-800 transition hover:bg-sand/60">
+              <button onClick={onJoin} className="inline-flex h-12 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-white px-6 text-base font-semibold text-navy-800 transition hover:bg-navy-50">
                 <Link2 className="h-5 w-5" /> Join with invite link
               </button>
             </div>

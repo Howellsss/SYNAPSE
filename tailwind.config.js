@@ -18,7 +18,7 @@ export default {
           950: '#060F22',
         },
         gold: {
-          50: '#FDF8EC',
+          50: '#FBEFD6',
           100: '#FAEDCF',
           200: '#F5DA9E',
           300: '#EFC56D',
@@ -32,18 +32,18 @@ export default {
         ivory: {
           50: '#FFFFFF',
           100: '#FFFFFF',
-          200: '#EDE9DD',
-          300: '#DFD9C8',
-          400: '#CDC5AE',
+          200: '#EDEFF3',
+          300: '#DDE1E8',
+          400: '#C3C9D4',
           500: '#B5BDCC',
           600: '#8E97A8',
           700: '#6B7588',
           800: '#4A526A',
           900: '#2E3548',
         },
-        // Warm ivory panels and hairlines for the Apple-style layouts (navy & gold stay the brand).
-        paper: '#F6F5F1',
-        sand: '#E6E3DA',
+        // White surfaces and neutral hairlines (no off-white anywhere); navy & gold stay the brand.
+        paper: '#FFFFFF',
+        sand: '#E3E7EE',
         burgundy: {
           50: '#FBEFF0',
           100: '#F5DCDF',

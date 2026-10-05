@@ -83,7 +83,7 @@ export function HomePage() {
             </div>
           </article>
 
-          <article className="flex min-h-[420px] flex-col justify-between rounded-[30px] bg-paper px-8 py-10 text-center md:col-span-2 md:min-h-[560px]">
+          <article className="flex min-h-[420px] flex-col justify-between rounded-[30px] bg-white ring-1 ring-inset ring-navy-100 px-8 py-10 text-center md:col-span-2 md:min-h-[560px]">
             <div>
               <p className="text-[17px] font-semibold text-gold-700">Privacy</p>
               <h3 className="mt-2 text-[30px] font-bold leading-tight tracking-[-0.025em]">Encrypted. Yours.</h3>
@@ -92,7 +92,7 @@ export function HomePage() {
             <p className="text-[17px] leading-snug text-ivory-700">Calls are encrypted in transit. Only people in your account can join your rooms.</p>
           </article>
 
-          <article id="workspaces" className="scroll-mt-20 overflow-hidden rounded-[30px] bg-paper md:col-span-6">
+          <article id="workspaces" className="scroll-mt-20 overflow-hidden rounded-[30px] bg-white ring-1 ring-inset ring-navy-100 md:col-span-6">
             <div className="flex flex-col items-center px-8 pt-12 text-center sm:pt-14">
               <p className="text-[17px] font-semibold text-gold-700">Workspaces</p>
               <h3 className="mt-2 max-w-[640px] text-[32px] font-bold leading-[1.08] tracking-[-0.03em] sm:text-[44px]">An office you can walk into.</h3>
@@ -106,7 +106,7 @@ export function HomePage() {
             />
           </article>
 
-          <article id="crm" className="flex min-h-[440px] scroll-mt-20 flex-col gap-7 rounded-[30px] bg-paper p-8 sm:p-10 md:col-span-3">
+          <article id="crm" className="flex min-h-[440px] scroll-mt-20 flex-col gap-7 rounded-[30px] bg-white ring-1 ring-inset ring-navy-100 p-8 sm:p-10 md:col-span-3">
             <div>
               <p className="text-[17px] font-semibold text-gold-700">Contacts</p>
               <h3 className="mt-2 text-[30px] font-bold leading-[1.08] tracking-[-0.03em] sm:text-[36px]">Every conversation, one timeline.</h3>
@@ -125,7 +125,7 @@ export function HomePage() {
             </div>
           </article>
 
-          <article id="calendar" className="flex min-h-[440px] scroll-mt-20 flex-col items-center gap-6 rounded-[30px] bg-paper p-8 text-center sm:p-10 md:col-span-3">
+          <article id="calendar" className="flex min-h-[440px] scroll-mt-20 flex-col items-center gap-6 rounded-[30px] bg-white ring-1 ring-inset ring-navy-100 p-8 text-center sm:p-10 md:col-span-3">
             <p className="text-[17px] font-semibold text-gold-700">Calendar</p>
             <span aria-hidden="true" className="flex h-36 w-36 flex-col items-center justify-center rounded-[30px] bg-white shadow-[0_12px_30px_rgba(0,0,0,0.08)]">
               <span className="text-sm font-semibold text-burgundy-500">WED</span>
@@ -159,7 +159,7 @@ export function HomePage() {
           <p className="mt-4 max-w-[680px] text-lg text-ivory-700 sm:text-[21px]">From scheduling to automation, everything works together, so your team switches tools less and does more.</p>
           <div className="mt-12 grid gap-5 md:grid-cols-2">
             {DETAILS.map((d) => (
-              <article key={d.title} className="rounded-[30px] bg-paper p-8 sm:p-10">
+              <article key={d.title} className="rounded-[30px] bg-white ring-1 ring-inset ring-navy-100 p-8 sm:p-10">
                 <d.icon className="h-7 w-7 stroke-[1.6] text-gold-700" />
                 <h3 className="mt-4 text-[26px] font-bold tracking-[-0.025em]">{d.title}</h3>
                 <p className="mt-2 text-[17px] leading-snug text-ivory-700">{d.desc}</p>
@@ -181,12 +181,12 @@ export function HomePage() {
           <p className="mt-4 max-w-[620px] text-lg text-ivory-700 sm:text-[21px]">Join teams building the next generation of remote work. Free to start, no credit card required.</p>
           <div className="mt-8 flex flex-wrap justify-center gap-3.5">
             <button type="button" onClick={signUp} className="h-12 rounded-full bg-gold-400 px-7 text-[17px] font-semibold text-navy-900 transition-colors hover:bg-gold-300">Create your SYNAPSE</button>
-            <button type="button" onClick={signIn} className="h-12 rounded-full border border-gold-400 px-7 text-[17px] font-semibold text-navy-800 transition-colors hover:bg-paper">Sign in</button>
+            <button type="button" onClick={signIn} className="h-12 rounded-full border border-gold-400 px-7 text-[17px] font-semibold text-navy-800 transition-colors hover:bg-navy-50">Sign in</button>
           </div>
         </section>
       </main>
 
-      <footer className="border-t border-navy-100 bg-paper px-5 py-8 text-xs text-ivory-700">
+      <footer className="border-t border-navy-100 bg-white px-5 py-8 text-xs text-ivory-700">
         <div className="mx-auto flex max-w-[1040px] flex-wrap items-center justify-between gap-3">
           <span>© {new Date().getFullYear()} SYNAPSE. All rights reserved.</span>
           <span className="flex gap-5">
