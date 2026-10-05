@@ -27,7 +27,13 @@ import { WorkspacesPage } from '@/pages/WorkspacesPage';
 import { CreateSpaceWizard } from '@/pages/CreateSpaceWizard';
 import { SpacePage } from '@/pages/SpacePage';
 import { GuestJoinPage } from '@/pages/GuestJoinPage';
-import { CalendarHeart, MonitorPlay, MessagesSquare, FolderOpen } from 'lucide-react';
+import { EventsHomePage } from '@/pages/events/EventsHomePage';
+import { EventDetailPage } from '@/pages/events/EventDetailPage';
+import { TicketPage } from '@/pages/events/TicketPage';
+import { EventsPage } from '@/pages/events/EventsPage';
+import { EventBuilder } from '@/pages/events/EventBuilder';
+import { EventManagePage } from '@/pages/events/EventManagePage';
+import { MonitorPlay, MessagesSquare, FolderOpen } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/States';
 
 function AppContent() {
@@ -37,13 +43,15 @@ function AppContent() {
   useGmailReturnNotice(path);
 
   const authPath = path === '/signin' || path === '/signup';
+  // Public events pages: /e, /e/<slug>, /e/ticket/<token>. Open to everyone, signed in or not.
+  const isPublicEvents = path === '/e' || path.startsWith('/e/') || path.startsWith('/e?');
   useEffect(() => {
     if (loading) return;
     if (user && authPath) { navigate('/dashboard'); return; }
-    if (!user && !authPath && path !== '/' && !path.startsWith('/book/') && !path.startsWith('/group/') && !path.startsWith('/reset-password') && !path.startsWith('/invite/') && !path.startsWith('/join/')) {
+    if (!user && !authPath && path !== '/' && !path.startsWith('/book/') && !path.startsWith('/group/') && !path.startsWith('/reset-password') && !path.startsWith('/invite/') && !path.startsWith('/join/') && !isPublicEvents) {
       navigate('/');
     }
-  }, [user, loading, path, authPath, navigate]);
+  }, [user, loading, path, authPath, isPublicEvents, navigate]);
 
   if (loading) {
     return (
@@ -57,6 +65,13 @@ function AppContent() {
   if (path.startsWith('/book/') || path.startsWith('/group/')) {
     const slug = path.split('/')[2]?.split('?')[0];
     return <BookingPage slug={slug} isGroup={path.startsWith('/group/')} />;
+  }
+
+  if (isPublicEvents) {
+    const [, , a, b] = path.split('?')[0].split('/');
+    if (a === 'ticket' && b) return <TicketPage key={b} token={b} />;
+    if (a) return <EventDetailPage key={a} slug={decodeURIComponent(a)} />;
+    return <EventsHomePage />;
   }
 
   // Guest link for a workspace (no account needed)
@@ -111,7 +126,10 @@ function AppContent() {
     if (path.startsWith('/ai-hub')) return <AIAgentPage />;
     if (path.startsWith('/settings')) return <SettingsPage />;
     if (path.startsWith('/meetings')) return <MeetingsPage />;
-    if (path.startsWith('/events')) return <ComingSoonPage title="Events" description="Create and manage group events" icon={CalendarHeart} />;
+    if (path === '/events/new') return <EventBuilder />;
+    const eventMatch = path.match(/^\/events\/([0-9a-f-]{36})(\/edit)?(?:[/?]|$)/);
+    if (eventMatch) return eventMatch[2] ? <EventBuilder key={eventMatch[1]} eventId={eventMatch[1]} /> : <EventManagePage key={eventMatch[1]} eventId={eventMatch[1]} />;
+    if (path.startsWith('/events')) return <EventsPage />;
     if (path.startsWith('/webinars')) return <ComingSoonPage title="Webinars" description="Host live and on-demand webinars" icon={MonitorPlay} />;
     if (path.startsWith('/conversations')) return <ComingSoonPage title="Conversations" description="Manage messages across channels" icon={MessagesSquare} />;
     if (path.startsWith('/media-library')) return <ComingSoonPage title="Media Library" description="Store and organize your media assets" icon={FolderOpen} />;

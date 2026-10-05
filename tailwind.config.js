@@ -58,6 +58,9 @@ export default {
       fontFamily: {
         sans: ['-apple-system', 'BlinkMacSystemFont', '"SF Pro Text"', 'Geist', '"Helvetica Neue"', 'system-ui', 'sans-serif'],
         display: ['-apple-system', 'BlinkMacSystemFont', '"SF Pro Display"', 'Geist', '"Helvetica Neue"', 'system-ui', 'sans-serif'],
+        // Events pages only: a wide geometric display face with a clean body, loaded on demand.
+        'event-display': ['Unbounded', '"SF Pro Display"', '-apple-system', 'system-ui', 'sans-serif'],
+        event: ['Raleway', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
         xl: '14px',
