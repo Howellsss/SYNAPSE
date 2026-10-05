@@ -3,6 +3,7 @@ import {
   classifyMediaError, loadDeviceIds, mediaSupport, pickDevice, saveDeviceIds,
   type DeviceIds, type DeviceProblem,
 } from './devices';
+import { probeDevices } from './useDevices';
 
 export interface DeviceLists {
   cameras: MediaDeviceInfo[];
@@ -29,6 +30,8 @@ export interface MediaCheck {
   retry: () => void;
   /** Look for newly connected devices (e.g. an iPhone camera) now. */
   refreshDevices: () => Promise<void>;
+  /** Ask for the camera again, then list devices: finds cameras that connected after the page loaded. */
+  rescanDevices: () => Promise<void>;
 }
 
 const EMPTY: DeviceLists = { cameras: [], microphones: [], speakers: [] };
@@ -90,6 +93,11 @@ export function useMediaCheck(active: boolean, initial: { cam?: boolean; mic?: b
       });
     } catch { /* keep the old list */ }
   }, []);
+
+  const rescanDevices = useCallback(async () => {
+    await probeDevices({ video: true });
+    await refreshDevices();
+  }, [refreshDevices]);
 
   const releaseVideo = useCallback(() => {
     stopStream(videoRef.current);
@@ -275,6 +283,6 @@ export function useMediaCheck(active: boolean, initial: { cam?: boolean; mic?: b
 
   return {
     ready, devices, selected, cameraOn, micOn, video, analyser, cameraProblem, micProblem,
-    setCameraOn, setMicOn, selectCamera, selectMicrophone, selectSpeaker, retry, refreshDevices,
+    setCameraOn, setMicOn, selectCamera, selectMicrophone, selectSpeaker, retry, refreshDevices, rescanDevices,
   };
 }

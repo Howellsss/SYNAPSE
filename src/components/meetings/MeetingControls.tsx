@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { Check, ChevronUp, Mic, MicOff, Settings2, Smartphone, Video, VideoOff, Volume2 } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { Check, ChevronUp, Mic, MicOff, RefreshCw, Settings2, Smartphone, Video, VideoOff, Volume2 } from 'lucide-react';
 import { Popover } from '@/components/spaces/room/Popover';
 import { deviceLabel, isIphoneCamera, type DeviceLists } from '@/spatial/media/useDevices';
 import { iphoneStatus, isMacDesktop } from '@/spatial/media/continuity';
@@ -9,11 +9,11 @@ import type { DeviceKind } from '@/meetings/useActiveDevices';
 import { cn } from '@/lib/utils';
 
 /** Dark menu panel and rows for the meeting toolbar. */
-export const darkPanel = '!border-white/10 !bg-navy-900 text-white shadow-popover';
+export const darkPanel = '!border-white/10 !bg-[#102041] !rounded-2xl text-white shadow-[0_20px_60px_rgba(0,0,0,0.45)]';
 export const darkItem = 'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-ivory-100 hover:bg-white/10 focus:bg-white/10 focus:outline-none disabled:opacity-50';
 const heading = 'px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-ivory-500';
 
-/** A labelled toolbar button: icon above a short label (label hidden on phones). */
+/** A round toolbar button (the redesign's floating control bar); the label is its tooltip. */
 export function ToolButton({ label, icon, onClick, pressed, off, badge, busy, title, className, ...rest }: {
   label: string; icon: ReactNode; onClick: () => void; pressed?: boolean; off?: boolean; badge?: number | string; busy?: boolean; title?: string; className?: string;
   'aria-expanded'?: boolean; 'aria-haspopup'?: 'menu' | 'dialog';
@@ -28,31 +28,43 @@ export function ToolButton({ label, icon, onClick, pressed, off, badge, busy, ti
       aria-busy={busy || undefined}
       {...rest}
       className={cn(
-        'relative flex min-w-[44px] flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-1.5 text-[11px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400 sm:min-w-[64px] sm:px-2',
-        pressed ? 'bg-white/15 text-gold-300' : 'text-ivory-100 hover:bg-white/10',
+        'relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400 sm:h-[52px] sm:w-[52px]',
+        pressed ? 'bg-white/15 text-gold-300' : 'text-white hover:bg-white/10',
         busy && 'cursor-wait opacity-70',
         className,
       )}
     >
-      <span className={cn('relative flex h-6 items-center', off && 'text-red-400')}>
-        {icon}
-        {badge !== undefined && badge !== 0 && (
-          <span className="absolute -right-3 -top-1.5 min-w-[18px] rounded-full bg-burgundy-500 px-1 text-center text-[10px] font-bold leading-[18px] text-white">{badge}</span>
-        )}
-      </span>
-      <span className="hidden whitespace-nowrap md:block">{label}</span>
+      <span className={cn('flex items-center', off && 'text-[#FF8A80]')}>{icon}</span>
+      {badge !== undefined && badge !== 0 && (
+        <span className="absolute right-0.5 top-1 min-w-[18px] rounded-full bg-gold-400 px-1 text-center text-[11px] font-bold leading-[18px] text-navy-900 sm:right-1 sm:top-2">{badge}</span>
+      )}
     </button>
   );
 }
 
-/** Audio ^ and Video ^: the main button toggles, the caret opens the device list. */
+/** "Look for cameras": asks for the camera again, which makes a newly connected iPhone show up. */
+function LookAgainRow({ onLookAgain }: { onLookAgain: () => Promise<void> }) {
+  const [looking, setLooking] = useState(false);
+  return (
+    <button
+      role="menuitem"
+      disabled={looking}
+      className={cn(darkItem, 'disabled:opacity-60')}
+      onClick={async () => { setLooking(true); try { await onLookAgain(); } finally { setLooking(false); } }}
+    >
+      <RefreshCw className={cn('h-4 w-4', looking && 'animate-spin')} /> {looking ? 'Looking…' : 'Look for cameras'}
+    </button>
+  );
+}
+
+/** Audio ^ and Video ^: a pill with the toggle and a caret that opens the device list. */
 function SplitButton({ main, menuLabel, children }: { main: ReactNode; menuLabel: string; children: (close: () => void) => ReactNode }) {
   return (
-    <div className="flex items-stretch">
+    <div className="flex items-center rounded-full bg-[#1D3363] pr-1">
       {main}
       <Popover
         label={menuLabel}
-        panelClassName={cn('bottom-full left-0 mb-3 max-h-[70vh] w-80 overflow-y-auto', darkPanel)}
+        panelClassName={cn('bottom-full left-0 mb-4 max-h-[70vh] w-80 overflow-y-auto', darkPanel)}
         trigger={({ open, toggle }) => (
           <button
             type="button"
@@ -61,7 +73,7 @@ function SplitButton({ main, menuLabel, children }: { main: ReactNode; menuLabel
             title={menuLabel}
             aria-haspopup="menu"
             aria-expanded={open}
-            className={cn('flex w-5 items-start justify-center rounded-lg pt-2 sm:w-6 text-ivory-300 hover:bg-white/10 hover:text-white', open && 'bg-white/10 text-white')}
+            className={cn('flex h-9 w-7 items-center justify-center rounded-full text-ivory-300 hover:bg-white/10 hover:text-white', open && 'bg-white/10 text-white')}
           >
             <ChevronUp className="h-4 w-4" />
           </button>
@@ -158,6 +170,7 @@ export function VideoButton({ camOn, busy, onToggle, devices, active, onChoose, 
         <>
           <p className={heading}>Camera</p>
           <DeviceRows kind="videoinput" devices={devices.cameras} active={active.videoinput} fallback="Camera" onChoose={onChoose} close={close} />
+          <LookAgainRow onLookAgain={onRefresh} />
           {iphone !== 'camera' && (iphone === 'mic-only' || isMacDesktop()) && (
             <IphoneCameraHelp status={iphone} onLookAgain={onRefresh} className="mx-2 my-1" />
           )}

@@ -14,7 +14,7 @@ const EMPTY: DeviceLists = { microphones: [], cameras: [], speakers: [] };
  * (an iPhone used as a Continuity Camera appears here when it connects).
  * Labels are only filled in once the page has camera/mic permission.
  */
-export function useDevices(enabled = true): DeviceLists & { refresh: () => Promise<void> } {
+export function useDevices(enabled = true): DeviceLists & { refresh: () => Promise<void>; rescan: () => Promise<void> } {
   const [lists, setLists] = useState<DeviceLists>(EMPTY);
   const alive = useRef(false);
   const load = useCallback(async () => {
@@ -47,7 +47,11 @@ export function useDevices(enabled = true): DeviceLists & { refresh: () => Promi
       window.clearInterval(t);
     };
   }, [enabled, load]);
-  return { ...lists, refresh: load };
+  const rescan = useCallback(async () => {
+    await probeDevices({ video: true });
+    await load();
+  }, [load]);
+  return { ...lists, refresh: load, rescan };
 }
 
 /** A friendly name for a device, e.g. "Howells's iPhone Camera". */
@@ -55,6 +59,18 @@ export function deviceLabel(d: MediaDeviceInfo, index: number, fallback: string)
   const l = d.label.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '').trim();
   if (d.deviceId === 'default') return l.replace(/^Default - /, '') ? `Same as system (${l.replace(/^Default - /, '')})` : 'Same as system';
   return l || `${fallback} ${index + 1}`;
+}
+
+/**
+ * Ask the browser for the camera (and mic) for a moment, then let go. Some browsers only report
+ * a camera that connected after the page loaded, like an iPhone, once a page asks for video again.
+ */
+export async function probeDevices(kinds: { video?: boolean; audio?: boolean } = { video: true }): Promise<void> {
+  if (!navigator.mediaDevices?.getUserMedia) return;
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ video: !!kinds.video, audio: !!kinds.audio });
+    s.getTracks().forEach((t) => t.stop());
+  } catch { /* denied or busy: the plain list is the best we can do */ }
 }
 
 export const isIphoneCamera = (d: MediaDeviceInfo) => isIphoneDevice(d);
