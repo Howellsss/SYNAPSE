@@ -214,7 +214,7 @@ export function Dashboard() {
               <WorkspaceRow key={s.id} name={s.name} detail={`${s.memberIds.length} ${s.memberIds.length === 1 ? 'member' : 'members'}`} color={SPACE_COLORS[(i + 1) % SPACE_COLORS.length]} onClick={() => navigate('/workspace/' + s.slug)} />
             ))}
             {(data?.spaces.length ?? 0) === 0 && (
-              <button onClick={() => navigate('/workspace/new')} className="flex w-full items-center gap-4 px-5 py-4 text-left text-sm font-medium text-gold-700 transition hover:bg-paper">
+              <button onClick={() => navigate('/workspace/new')} className="flex w-full items-center gap-4 px-5 py-4 text-left text-sm font-medium text-gold-700 transition hover:bg-navy-50">
                 <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-dashed border-navy-200 text-navy-500"><Plus className="h-4 w-4" /></span>
                 Create a workspace
               </button>
@@ -292,7 +292,7 @@ function SectionHeading({ title, subtitle, action, onAction }: { title: string; 
 function MeetingRow({ appointment, onClick }: { appointment: DashboardAppointment; onClick: () => void }) {
   const contact = appointment.contacts;
   return (
-    <button onClick={onClick} className="flex w-full items-center gap-4 px-5 py-4 text-left transition hover:bg-paper">
+    <button onClick={onClick} className="flex w-full items-center gap-4 px-5 py-4 text-left transition hover:bg-navy-50">
       <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><Video className="h-5 w-5" /></span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[15px] font-semibold text-navy-700">{appointment.title || appointment.calendars?.name || 'Focus room'}</span>
@@ -305,7 +305,7 @@ function MeetingRow({ appointment, onClick }: { appointment: DashboardAppointmen
 
 function WorkspaceRow({ name, detail, color, onClick }: { name: string; detail: string; color: string; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="flex w-full items-center gap-4 px-5 py-4 text-left transition hover:bg-paper">
+    <button onClick={onClick} className="flex w-full items-center gap-4 px-5 py-4 text-left transition hover:bg-navy-50">
       <span className={cn('flex h-10 w-10 items-center justify-center rounded-xl text-sm font-bold text-white', color)}>{name.charAt(0).toUpperCase()}</span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[15px] font-semibold text-navy-700">{name}</span>
@@ -346,7 +346,7 @@ function ActivityRow({ item }: { item: ActivityItem }) {
 
 function QuickAction({ label, detail, icon: Icon, onClick }: { label: string; detail: string; icon: ComponentType<{ className?: string }>; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="flex w-full items-center gap-4 px-5 py-4 text-left transition hover:bg-paper">
+    <button onClick={onClick} className="flex w-full items-center gap-4 px-5 py-4 text-left transition hover:bg-navy-50">
       <Icon className="h-5 w-5 shrink-0 text-blue-600" />
       <span>
         <span className="block text-[15px] font-semibold text-navy-700">{label}</span>

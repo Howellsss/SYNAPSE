@@ -54,7 +54,7 @@ export function Sidebar({ currentPath, onNavigate }: SidebarProps) {
         aria-current={active ? 'page' : undefined}
         className={cn('nav-item w-full', active && 'nav-item-active')}
       >
-        <Icon className={cn('h-[18px] w-[18px] shrink-0 stroke-[1.8]', active ? 'text-gold-600' : 'text-ivory-700')} />
+        <Icon className={cn('h-[18px] w-[18px] shrink-0 stroke-[1.8]', active ? 'text-gold-400' : 'text-ivory-700')} />
         <span>{label}</span>
       </button>
     );
@@ -79,7 +79,7 @@ export function Sidebar({ currentPath, onNavigate }: SidebarProps) {
       <aside
         aria-label="Main"
         className={cn(
-          'fixed left-0 top-0 bottom-0 w-[240px] bg-paper border-r border-sand z-40 flex flex-col overflow-y-auto transition-transform duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] lg:translate-x-0',
+          'fixed left-0 top-0 bottom-0 w-[240px] bg-white border-r border-navy-100 z-40 flex flex-col overflow-y-auto transition-transform duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] lg:translate-x-0',
           mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
       >
@@ -94,7 +94,7 @@ export function Sidebar({ currentPath, onNavigate }: SidebarProps) {
           <button
             onClick={() => setMobileOpen(false)}
             aria-label="Close menu"
-            className="lg:hidden w-8 h-8 rounded-full flex items-center justify-center text-ivory-700 hover:bg-sand/60"
+            className="lg:hidden w-8 h-8 rounded-full flex items-center justify-center text-ivory-700 hover:bg-navy-50"
           >
             <X className="w-4 h-4" />
           </button>
@@ -122,7 +122,7 @@ export function Sidebar({ currentPath, onNavigate }: SidebarProps) {
               onClick={() => signOut()}
               aria-label="Sign out"
               title="Sign out"
-              className="w-8 h-8 rounded-full flex items-center justify-center text-ivory-700 hover:bg-sand/60 hover:text-burgundy-500"
+              className="w-8 h-8 rounded-full flex items-center justify-center text-ivory-700 hover:bg-navy-50 hover:text-burgundy-500"
             >
               <LogOut className="w-4 h-4" />
             </button>

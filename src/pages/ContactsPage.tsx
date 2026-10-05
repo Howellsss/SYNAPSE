@@ -199,8 +199,8 @@ export function ContactsPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button onClick={() => setShowAddModal(true)} className="flex h-10 items-center gap-1.5 rounded-full bg-navy-800 px-5 text-sm font-semibold text-white transition hover:bg-navy-700"><Plus className="h-4 w-4" /> Add Contact</button>
-          <button onClick={() => setShowImportModal(true)} className="flex h-10 items-center gap-1.5 rounded-full bg-[#EFEDE6] px-4 text-sm font-semibold text-navy-800 transition hover:bg-sand"><Upload className="h-4 w-4" /> Import</button>
-          <button onClick={() => handleExport('all')} className="flex h-10 items-center gap-1.5 rounded-full bg-[#EFEDE6] px-4 text-sm font-semibold text-navy-800 transition hover:bg-sand"><Download className="h-4 w-4" /> Export</button>
+          <button onClick={() => setShowImportModal(true)} className="flex h-10 items-center gap-1.5 rounded-full bg-white ring-1 ring-inset ring-navy-100 px-4 text-sm font-semibold text-navy-800 transition hover:bg-navy-50"><Upload className="h-4 w-4" /> Import</button>
+          <button onClick={() => handleExport('all')} className="flex h-10 items-center gap-1.5 rounded-full bg-white ring-1 ring-inset ring-navy-100 px-4 text-sm font-semibold text-navy-800 transition hover:bg-navy-50"><Download className="h-4 w-4" /> Export</button>
         </div>
       </section>
 
@@ -212,10 +212,10 @@ export function ContactsPage() {
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-[196px_minmax(0,1fr)]">
-        <aside className="flex h-fit flex-col rounded-[20px] bg-paper p-3">
+        <aside className="flex h-fit flex-col rounded-[20px] bg-white ring-1 ring-inset ring-navy-100 p-3">
           <div className="flex items-center justify-between px-2 pb-2 pt-1">
             <p className="text-[13px] font-semibold text-ivory-700">Smart Lists</p>
-            <button onClick={() => toast('Smart list creation is coming soon')} aria-label="New smart list" className="flex h-7 w-7 items-center justify-center rounded-full text-navy-700 hover:bg-sand/70"><Plus className="h-4 w-4" /></button>
+            <button onClick={() => toast('Smart list creation is coming soon')} aria-label="New smart list" className="flex h-7 w-7 items-center justify-center rounded-full text-navy-700 hover:bg-navy-50"><Plus className="h-4 w-4" /></button>
           </div>
           <div className="space-y-1">
             <ContactListButton icon={UserRound} label="All Leads" count={total} active={activeView === 'all' && !activeSmartList && !activeTag} onClick={() => { setActiveView('all'); setActiveSmartList(null); setActiveTag(null); }} />
@@ -234,27 +234,27 @@ export function ContactsPage() {
 
         <div className="card min-w-0 overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand px-4 py-3">
-            <div role="tablist" aria-label="Show" className="flex rounded-[10px] bg-[#EFEDE6] p-[3px]">
+            <div role="tablist" aria-label="Show" className="flex rounded-[10px] bg-white ring-1 ring-inset ring-navy-100 p-[3px]">
               {(['all', 'smart', 'tags'] as const).map((view) => (
-                <button key={view} role="tab" aria-selected={activeView === view} onClick={() => setActiveView(view)} className={cn('h-8 rounded-lg px-4 text-[13px] transition-all duration-200', activeView === view ? 'bg-white font-semibold text-navy-800 shadow-[0_1px_3px_rgba(13,28,59,0.12)]' : 'font-medium text-navy-700 hover:text-navy-900')}>
+                <button key={view} role="tab" aria-selected={activeView === view} onClick={() => setActiveView(view)} className={cn('h-8 rounded-lg px-4 text-[13px] transition-all duration-200', activeView === view ? 'bg-navy-800 font-semibold text-white' : 'font-medium text-navy-700 hover:text-navy-900')}>
                   {view === 'all' ? 'All Contacts' : view === 'smart' ? 'Smart Lists' : 'Tags'}
                 </button>
               ))}
             </div>
-            <button aria-label="Table settings" className="hidden h-9 w-9 items-center justify-center rounded-full text-navy-700 hover:bg-[#EFEDE6] sm:flex"><SlidersHorizontal className="h-4 w-4" /></button>
+            <button aria-label="Table settings" className="hidden h-9 w-9 items-center justify-center rounded-full text-navy-700 hover:bg-navy-50 sm:flex"><SlidersHorizontal className="h-4 w-4" /></button>
           </div>
           <div className="flex flex-wrap items-center gap-2 border-b border-sand px-4 py-3">
             <label className="relative min-w-[220px] flex-1 sm:flex-none">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ivory-700" />
-              <input type="text" value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} placeholder="Search contacts" aria-label="Search contacts" className="h-9 w-full rounded-[10px] border border-transparent bg-[#EFEDE6] pl-9 pr-3 text-sm text-navy-800 outline-none placeholder:text-ivory-700 focus:border-gold-400 focus:bg-white" />
+              <input type="text" value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} placeholder="Search contacts" aria-label="Search contacts" className="h-9 w-full rounded-[10px] border border-navy-100 bg-white pl-9 pr-3 text-sm text-navy-800 outline-none placeholder:text-ivory-700 focus:border-gold-400 focus:bg-white" />
             </label>
             {[
               [Filter, 'Filter'], [Tag, 'Tags'], [Globe2, 'Source'], [CheckCircle2, 'Status'], [Calendar, 'Appointments'], [ListFilter, 'More filters'],
             ].map(([Icon, label]) => {
               const I = Icon as typeof Filter;
-              return <button key={label as string} className="flex h-9 items-center gap-1.5 rounded-full bg-[#EFEDE6] px-3.5 text-[13px] font-medium text-navy-800 transition hover:bg-sand"><I className="h-3.5 w-3.5" /> {label as string}</button>;
+              return <button key={label as string} className="flex h-9 items-center gap-1.5 rounded-full bg-white ring-1 ring-inset ring-navy-100 px-3.5 text-[13px] font-medium text-navy-800 transition hover:bg-navy-50"><I className="h-3.5 w-3.5" /> {label as string}</button>;
             })}
-            <button onClick={() => handleExport('all')} className="flex h-9 items-center gap-1.5 rounded-full bg-[#EFEDE6] px-3.5 text-[13px] font-medium text-navy-800 transition hover:bg-sand sm:ml-auto"><Upload className="h-3.5 w-3.5" /> Export</button>
+            <button onClick={() => handleExport('all')} className="flex h-9 items-center gap-1.5 rounded-full bg-white ring-1 ring-inset ring-navy-100 px-3.5 text-[13px] font-medium text-navy-800 transition hover:bg-navy-50 sm:ml-auto"><Upload className="h-3.5 w-3.5" /> Export</button>
           </div>
           {selectedIds.size > 0 && (
             <div className="flex flex-wrap items-center gap-2 border-b border-gold-100 bg-gold-50/60 px-4 py-2.5">
@@ -319,7 +319,7 @@ export function ContactsPage() {
                   {contacts.map((contact) => (
                     <tr
                       key={contact.id}
-                      className="border-b border-[#F0EEE7] last:border-0 hover:bg-paper transition-colors cursor-pointer"
+                      className="border-b border-navy-50 last:border-0 hover:bg-navy-50 transition-colors cursor-pointer"
                       onClick={() => openContact(contact.id)}
                     >
                       <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
@@ -508,10 +508,10 @@ function ContactMetric({ label, value, icon: Icon, tone }: { label: string; valu
 
 function ContactListButton({ icon: Icon, label, count, active, onClick }: { icon: ComponentType<{ className?: string }>; label: string; count: number | undefined; active: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} aria-current={active || undefined} className={cn('flex h-10 w-full items-center gap-2.5 rounded-[10px] px-2.5 text-left transition-colors', active ? 'bg-[#ECE9E0] text-navy-800' : 'text-navy-800 hover:bg-sand/50')}>
-      <Icon className={cn('h-4 w-4 shrink-0', active ? 'text-gold-600' : 'text-ivory-700')} />
+    <button onClick={onClick} aria-current={active || undefined} className={cn('flex h-10 w-full items-center gap-2.5 rounded-[10px] px-2.5 text-left transition-colors', active ? 'bg-navy-800 text-white' : 'text-navy-800 hover:bg-navy-50')}>
+      <Icon className={cn('h-4 w-4 shrink-0', active ? 'text-gold-400' : 'text-ivory-700')} />
       <span className={cn('min-w-0 flex-1 truncate text-[14px]', active ? 'font-semibold' : 'font-medium')}>{label}</span>
-      {count !== undefined && <span className="text-[13px] tabular-nums text-ivory-700">{count.toLocaleString()}</span>}
+      {count !== undefined && <span className={cn('text-[13px] tabular-nums', active ? 'text-ivory-300' : 'text-ivory-700')}>{count.toLocaleString()}</span>}
     </button>
   );
 }

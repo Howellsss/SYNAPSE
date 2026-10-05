@@ -7,10 +7,12 @@ space, large titles, quiet surfaces, one bright accent where you can act, and ge
 
 | Token | Use |
 | --- | --- |
-| `navy-800` #0D1C3B | Text, the sidebar, dark surfaces, the meeting room (`navy-900/950`) |
+| `navy-800` #0D1C3B | Text, accents, the meeting room (`navy-900/950`) |
 | `gold-400` #E4A93C | Main buttons (with navy text), the active page, live and unread marks |
 | `gold-700` #875C16 | Gold used as text on white (links, "View all"); plain `gold-400` is too light to read on white |
-| `paper` #F6F5F1, `sand` #E6E3DA | Warm ivory panels and hairlines in the Apple-style layouts |
+| White | Every surface: pages, the sidebar, panels, controls. No off-white or cream anywhere. |
+| `sand` #E3E7EE, `navy-100` | Neutral hairlines and outlines |
+| `navy-800` fills | The few navy accents: the active menu item, selected tabs, Create/New/Add buttons |
 | `ivory-700` | Secondary text |
 | `burgundy-*` | Leave, delete, errors |
 
