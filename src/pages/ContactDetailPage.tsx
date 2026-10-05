@@ -258,7 +258,7 @@ function ProfileCard({ contact, tags, allTags, members, onUpdate, onDelete, onTa
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-lg font-semibold">{getFullName(contact)}</h1>
             <p className="truncate text-sm text-ivory-300">{[contact.job_title, contact.company].filter(Boolean).join(' · ') || 'No company'}</p>
-            {typeLabel && <span className="mt-1.5 inline-block rounded-full bg-gold-400 px-2 py-0.5 text-[11px] font-semibold text-white">{typeLabel}</span>}
+            {typeLabel && <span className="mt-1.5 inline-block rounded-full bg-gold-400 px-2 py-0.5 text-[11px] font-semibold text-navy-900">{typeLabel}</span>}
           </div>
           <button onClick={onDelete} aria-label="Delete contact" title="Delete contact" className="rounded-lg p-1.5 text-ivory-300 hover:bg-white/10 hover:text-white">
             <Trash2 className="h-4 w-4" />

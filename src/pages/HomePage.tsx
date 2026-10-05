@@ -37,7 +37,7 @@ export function HomePage() {
           </div>
           <div className="ml-auto flex items-center gap-4 md:ml-0">
             <button type="button" onClick={signIn} className="text-[13px] text-navy-700 hover:text-navy-900">Sign in</button>
-            <button type="button" onClick={signUp} className="h-8 rounded-full bg-gold-400 px-4 text-[13px] font-medium text-white transition-colors hover:bg-gold-500">Get started</button>
+            <button type="button" onClick={signUp} className="h-8 rounded-full bg-gold-400 px-4 text-[13px] font-semibold text-navy-900 transition-colors hover:bg-gold-300">Get started</button>
           </div>
         </nav>
       </header>
@@ -45,18 +45,18 @@ export function HomePage() {
       <main>
         {/* Hero */}
         <section className="flex flex-col items-center px-5 pt-20 text-center sm:pt-24">
-          <p className="text-lg font-semibold text-gold-400 sm:text-[21px]">SYNAPSE</p>
+          <p className="text-lg font-semibold text-gold-700 sm:text-[21px]">SYNAPSE</p>
           <h1 className="mt-3 max-w-[980px] text-[44px] font-bold leading-[1.05] tracking-[-0.04em] sm:text-[64px] lg:text-[80px]">
             Your whole business.<br />One calm place.
           </h1>
-          <p className="mt-5 max-w-[680px] text-lg leading-snug text-ivory-600 sm:text-2xl">
+          <p className="mt-5 max-w-[680px] text-lg leading-snug text-ivory-700 sm:text-2xl">
             Contacts, calendar, meetings and a living office, designed to work as one.
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-x-7 gap-y-4">
-            <button type="button" onClick={signUp} className="h-12 rounded-full bg-gold-400 px-7 text-[17px] font-medium text-white transition-colors hover:bg-gold-500">Start free</button>
-            <button type="button" onClick={() => jump('meetings')} className="inline-flex items-center gap-0.5 text-[17px] text-gold-400 hover:underline">See how it works <ChevronRight className="h-4 w-4" /></button>
+            <button type="button" onClick={signUp} className="h-12 rounded-full bg-gold-400 px-7 text-[17px] font-semibold text-navy-900 transition-colors hover:bg-gold-300">Start free</button>
+            <button type="button" onClick={() => jump('meetings')} className="inline-flex items-center gap-0.5 text-[17px] text-gold-700 hover:underline">See how it works <ChevronRight className="h-4 w-4" /></button>
           </div>
-          <p className="mt-4 text-sm text-ivory-600">Free to start. No credit card.</p>
+          <p className="mt-4 text-sm text-ivory-700">Free to start. No credit card.</p>
 
           {/* The product, working */}
           <div className="mt-14 w-full max-w-[1180px]"><MeetingMock /></div>
@@ -64,16 +64,16 @@ export function HomePage() {
 
         <section className="mx-auto max-w-[1040px] px-5 pb-10 pt-28 sm:pt-36">
           <h2 className="max-w-[760px] text-[34px] font-bold leading-[1.08] tracking-[-0.035em] sm:text-[56px]">
-            Everything you were juggling. <span className="text-ivory-600">Now in one place that just works.</span>
+            Everything you were juggling. <span className="text-ivory-700">Now in one place that just works.</span>
           </h2>
         </section>
 
         {/* Highlights */}
         <section aria-label="Highlights" className="mx-auto grid max-w-[1080px] grid-cols-1 gap-5 px-5 md:grid-cols-6">
-          <article id="meetings" className="relative min-h-[460px] scroll-mt-20 overflow-hidden rounded-[30px] bg-black text-white md:col-span-4 md:min-h-[560px]">
+          <article id="meetings" className="relative min-h-[460px] scroll-mt-20 overflow-hidden rounded-[30px] bg-navy-900 text-white md:col-span-4 md:min-h-[560px]">
             <img src="/p3.webp" alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover opacity-80" />
             <div className="absolute inset-x-0 top-0 bg-gradient-to-b from-black/60 to-transparent p-8 sm:p-10">
-              <p className="text-[17px] font-semibold text-gold-200">Meetings</p>
+              <p className="text-[17px] font-semibold text-gold-300">Meetings</p>
               <h3 className="mt-2 max-w-[460px] text-[32px] font-bold leading-[1.08] tracking-[-0.03em] sm:text-[40px]">Face to face, from anywhere.</h3>
             </div>
             <div className="absolute inset-x-8 bottom-8 flex flex-wrap gap-2.5 sm:inset-x-10 sm:bottom-10">
@@ -83,20 +83,20 @@ export function HomePage() {
             </div>
           </article>
 
-          <article className="flex min-h-[420px] flex-col justify-between rounded-[30px] bg-ivory-100 px-8 py-10 text-center md:col-span-2 md:min-h-[560px]">
+          <article className="flex min-h-[420px] flex-col justify-between rounded-[30px] bg-paper px-8 py-10 text-center md:col-span-2 md:min-h-[560px]">
             <div>
-              <p className="text-[17px] font-semibold text-gold-400">Privacy</p>
+              <p className="text-[17px] font-semibold text-gold-700">Privacy</p>
               <h3 className="mt-2 text-[30px] font-bold leading-tight tracking-[-0.025em]">Encrypted. Yours.</h3>
             </div>
             <span aria-hidden="true" className="mx-auto flex h-36 w-36 items-center justify-center rounded-full bg-white"><Lock className="h-14 w-14 stroke-[1.4]" /></span>
-            <p className="text-[17px] leading-snug text-ivory-600">Calls are encrypted in transit. Only people in your account can join your rooms.</p>
+            <p className="text-[17px] leading-snug text-ivory-700">Calls are encrypted in transit. Only people in your account can join your rooms.</p>
           </article>
 
-          <article id="workspaces" className="scroll-mt-20 overflow-hidden rounded-[30px] bg-ivory-100 md:col-span-6">
+          <article id="workspaces" className="scroll-mt-20 overflow-hidden rounded-[30px] bg-paper md:col-span-6">
             <div className="flex flex-col items-center px-8 pt-12 text-center sm:pt-14">
-              <p className="text-[17px] font-semibold text-gold-400">Workspaces</p>
+              <p className="text-[17px] font-semibold text-gold-700">Workspaces</p>
               <h3 className="mt-2 max-w-[640px] text-[32px] font-bold leading-[1.08] tracking-[-0.03em] sm:text-[44px]">An office you can walk into.</h3>
-              <p className="mt-3 max-w-[560px] text-[17px] leading-snug text-ivory-600 sm:text-[19px]">Walk over to talk. Step into a room for privacy. Reception, lounges and meeting rooms, all online.</p>
+              <p className="mt-3 max-w-[560px] text-[17px] leading-snug text-ivory-700 sm:text-[19px]">Walk over to talk. Step into a room for privacy. Reception, lounges and meeting rooms, all online.</p>
             </div>
             <img
               src="/landing/office.webp"
@@ -106,33 +106,33 @@ export function HomePage() {
             />
           </article>
 
-          <article id="crm" className="flex min-h-[440px] scroll-mt-20 flex-col gap-7 rounded-[30px] bg-ivory-100 p-8 sm:p-10 md:col-span-3">
+          <article id="crm" className="flex min-h-[440px] scroll-mt-20 flex-col gap-7 rounded-[30px] bg-paper p-8 sm:p-10 md:col-span-3">
             <div>
-              <p className="text-[17px] font-semibold text-gold-400">Contacts</p>
+              <p className="text-[17px] font-semibold text-gold-700">Contacts</p>
               <h3 className="mt-2 text-[30px] font-bold leading-[1.08] tracking-[-0.03em] sm:text-[36px]">Every conversation, one timeline.</h3>
-              <p className="mt-3 text-[17px] leading-snug text-ivory-600">Email, texts, forms, calls and meetings, all on the person they belong to.</p>
+              <p className="mt-3 text-[17px] leading-snug text-ivory-700">Email, texts, forms, calls and meetings, all on the person they belong to.</p>
             </div>
             <div className="flex-1 rounded-2xl border border-navy-100 bg-white p-5">
               <div className="flex items-center gap-3">
                 <img src="/p4.webp" alt="" loading="lazy" className="h-11 w-11 rounded-full object-cover" />
-                <span className="flex flex-col"><strong className="font-semibold">Liam Murphy</strong><span className="text-[13px] text-ivory-600">Proposal sent</span></span>
+                <span className="flex flex-col"><strong className="font-semibold">Liam Murphy</strong><span className="text-[13px] text-ivory-700">Proposal sent</span></span>
               </div>
               <ul className="mt-4 space-y-2.5 text-sm">
                 <li className="flex items-baseline gap-2.5"><span className="h-2 w-2 shrink-0 rounded-full bg-gold-400" />Meeting today at 10:30</li>
-                <li className="flex items-baseline gap-2.5 text-ivory-600"><span className="h-2 w-2 shrink-0 rounded-full bg-navy-200" />Opened your proposal</li>
-                <li className="flex items-baseline gap-2.5 text-ivory-600"><span className="h-2 w-2 shrink-0 rounded-full bg-navy-200" />Replied by text: “Looks great.”</li>
+                <li className="flex items-baseline gap-2.5 text-ivory-700"><span className="h-2 w-2 shrink-0 rounded-full bg-navy-200" />Opened your proposal</li>
+                <li className="flex items-baseline gap-2.5 text-ivory-700"><span className="h-2 w-2 shrink-0 rounded-full bg-navy-200" />Replied by text: “Looks great.”</li>
               </ul>
             </div>
           </article>
 
-          <article id="calendar" className="flex min-h-[440px] scroll-mt-20 flex-col items-center gap-6 rounded-[30px] bg-ivory-100 p-8 text-center sm:p-10 md:col-span-3">
-            <p className="text-[17px] font-semibold text-gold-400">Calendar</p>
+          <article id="calendar" className="flex min-h-[440px] scroll-mt-20 flex-col items-center gap-6 rounded-[30px] bg-paper p-8 text-center sm:p-10 md:col-span-3">
+            <p className="text-[17px] font-semibold text-gold-700">Calendar</p>
             <span aria-hidden="true" className="flex h-36 w-36 flex-col items-center justify-center rounded-[30px] bg-white shadow-[0_12px_30px_rgba(0,0,0,0.08)]">
               <span className="text-sm font-semibold text-burgundy-500">WED</span>
               <span className="font-display text-[68px] font-semibold leading-none tracking-[-0.04em]">14</span>
             </span>
             <h3 className="max-w-[380px] text-[28px] font-bold leading-tight tracking-[-0.025em]">Booking pages that fill your week.</h3>
-            <p className="max-w-[380px] text-[17px] leading-snug text-ivory-600">Share a link. People pick a time. Reminders go out on their own.</p>
+            <p className="max-w-[380px] text-[17px] leading-snug text-ivory-700">Share a link. People pick a time. Reminders go out on their own.</p>
           </article>
         </section>
 
@@ -141,13 +141,13 @@ export function HomePage() {
         {/* Six modules */}
         <section aria-label="Modules" className="mx-auto max-w-[1080px] px-5 pt-28 sm:pt-36">
           <h2 className="text-center text-[34px] font-bold leading-[1.08] tracking-[-0.035em] sm:text-[48px]">Everything you need. Nothing you don’t.</h2>
-          <p className="mx-auto mt-4 max-w-[620px] text-center text-lg text-ivory-600 sm:text-[21px]">Six modules that replace a dozen disconnected tools.</p>
+          <p className="mx-auto mt-4 max-w-[620px] text-center text-lg text-ivory-700 sm:text-[21px]">Six modules that replace a dozen disconnected tools.</p>
           <div className="mt-12 grid gap-x-10 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
             {MODULES.map((m) => (
               <div key={m.title}>
-                <m.icon className="h-7 w-7 stroke-[1.6] text-gold-400" />
+                <m.icon className="h-7 w-7 stroke-[1.6] text-gold-700" />
                 <h3 className="mt-4 text-[21px] font-semibold tracking-[-0.015em]">{m.title}</h3>
-                <p className="mt-2 text-[17px] leading-snug text-ivory-600">{m.desc}</p>
+                <p className="mt-2 text-[17px] leading-snug text-ivory-700">{m.desc}</p>
               </div>
             ))}
           </div>
@@ -156,37 +156,37 @@ export function HomePage() {
         {/* In depth */}
         <section aria-label="In depth" className="mx-auto max-w-[1080px] px-5 pt-28 sm:pt-36">
           <h2 className="max-w-[760px] text-[34px] font-bold leading-[1.08] tracking-[-0.035em] sm:text-[48px]">A complete operating system for your work.</h2>
-          <p className="mt-4 max-w-[680px] text-lg text-ivory-600 sm:text-[21px]">From scheduling to automation, everything works together, so your team switches tools less and does more.</p>
+          <p className="mt-4 max-w-[680px] text-lg text-ivory-700 sm:text-[21px]">From scheduling to automation, everything works together, so your team switches tools less and does more.</p>
           <div className="mt-12 grid gap-5 md:grid-cols-2">
             {DETAILS.map((d) => (
-              <article key={d.title} className="rounded-[30px] bg-ivory-100 p-8 sm:p-10">
-                <d.icon className="h-7 w-7 stroke-[1.6] text-gold-400" />
+              <article key={d.title} className="rounded-[30px] bg-paper p-8 sm:p-10">
+                <d.icon className="h-7 w-7 stroke-[1.6] text-gold-700" />
                 <h3 className="mt-4 text-[26px] font-bold tracking-[-0.025em]">{d.title}</h3>
-                <p className="mt-2 text-[17px] leading-snug text-ivory-600">{d.desc}</p>
+                <p className="mt-2 text-[17px] leading-snug text-ivory-700">{d.desc}</p>
                 <ul className="mt-5 space-y-2.5">
-                  {d.points.map((pt) => <li key={pt} className="flex items-center gap-2.5 text-[15px]"><Check className="h-4 w-4 shrink-0 text-gold-400" />{pt}</li>)}
+                  {d.points.map((pt) => <li key={pt} className="flex items-center gap-2.5 text-[15px]"><Check className="h-4 w-4 shrink-0 text-gold-700" />{pt}</li>)}
                 </ul>
               </article>
             ))}
           </div>
         </section>
 
-        <section className="mt-28 bg-black px-5 py-28 text-center text-white sm:mt-36 sm:py-36">
-          <h2 className="text-[40px] font-bold leading-[1.05] tracking-[-0.04em] sm:text-[64px]">One app. <span className="text-gold-300">Not twelve.</span></h2>
+        <section className="mt-28 bg-navy-900 px-5 py-28 text-center text-white sm:mt-36 sm:py-36">
+          <h2 className="text-[40px] font-bold leading-[1.05] tracking-[-0.04em] sm:text-[64px]">One app. <span className="text-gold-400">Not twelve.</span></h2>
           <p className="mx-auto mt-5 max-w-[640px] text-lg leading-relaxed text-ivory-400 sm:text-[21px]">Booking, email, texting, forms, pipeline, meetings and your team's office. Learn it once, use it all day.</p>
         </section>
 
         <section id="start" className="flex scroll-mt-20 flex-col items-center px-5 py-28 text-center sm:py-36">
           <h2 className="text-[40px] font-bold leading-[1.07] tracking-[-0.035em] sm:text-[56px]">Ready to enter the future?</h2>
-          <p className="mt-4 max-w-[620px] text-lg text-ivory-600 sm:text-[21px]">Join teams building the next generation of remote work. Free to start, no credit card required.</p>
+          <p className="mt-4 max-w-[620px] text-lg text-ivory-700 sm:text-[21px]">Join teams building the next generation of remote work. Free to start, no credit card required.</p>
           <div className="mt-8 flex flex-wrap justify-center gap-3.5">
-            <button type="button" onClick={signUp} className="h-12 rounded-full bg-gold-400 px-7 text-[17px] font-medium text-white transition-colors hover:bg-gold-500">Create your SYNAPSE</button>
-            <button type="button" onClick={signIn} className="h-12 rounded-full border border-gold-400 px-7 text-[17px] font-medium text-gold-400 transition-colors hover:bg-gold-50">Sign in</button>
+            <button type="button" onClick={signUp} className="h-12 rounded-full bg-gold-400 px-7 text-[17px] font-semibold text-navy-900 transition-colors hover:bg-gold-300">Create your SYNAPSE</button>
+            <button type="button" onClick={signIn} className="h-12 rounded-full border border-gold-400 px-7 text-[17px] font-semibold text-navy-800 transition-colors hover:bg-paper">Sign in</button>
           </div>
         </section>
       </main>
 
-      <footer className="border-t border-navy-100 bg-ivory-100 px-5 py-8 text-xs text-ivory-600">
+      <footer className="border-t border-navy-100 bg-paper px-5 py-8 text-xs text-ivory-700">
         <div className="mx-auto flex max-w-[1040px] flex-wrap items-center justify-between gap-3">
           <span>© {new Date().getFullYear()} SYNAPSE. All rights reserved.</span>
           <span className="flex gap-5">
@@ -212,8 +212,8 @@ function MeetingMock() {
           {people.map((p) => (
             <div key={p.name} className="relative aspect-[16/10] overflow-hidden rounded-xl sm:rounded-[14px]">
               <img src={p.img} alt={p.name + (p.speaking ? ', speaking' : '') + (p.hand ? ', hand raised' : '')} className="h-full w-full object-cover" />
-              {p.speaking && <span aria-hidden="true" className="absolute inset-0 rounded-xl ring-[3px] ring-inset ring-gold-300 sm:rounded-[14px]" />}
-              {p.hand && <span className="absolute left-2 top-2 rounded-full bg-gold-400 px-2.5 py-1 text-[11px] font-semibold text-white">Hand raised</span>}
+              {p.speaking && <span aria-hidden="true" className="absolute inset-0 rounded-xl ring-[3px] ring-inset ring-gold-400 sm:rounded-[14px]" />}
+              {p.hand && <span className="absolute left-2 top-2 rounded-full bg-gold-400 px-2.5 py-1 text-[11px] font-semibold text-navy-900">Hand raised</span>}
               <span className="absolute bottom-2 left-2 rounded-full bg-black/50 px-2.5 py-1 text-[11px] text-white backdrop-blur sm:text-xs">{p.name}</span>
             </div>
           ))}
@@ -254,7 +254,7 @@ function Tour() {
   const [tab, setTab] = useState<TourTab>('sessions');
   const tabs: { id: TourTab; label: string }[] = [{ id: 'sessions', label: 'Sessions' }, { id: 'conversations', label: 'Conversations' }, { id: 'pulse', label: 'Pulse' }];
   return (
-    <section aria-label="Tour" className="bg-black px-5 py-24 text-center text-white sm:py-32">
+    <section aria-label="Tour" className="bg-navy-900 px-5 py-24 text-center text-white sm:py-32">
       <h2 className="text-[36px] font-bold leading-[1.07] tracking-[-0.035em] sm:text-[56px]">One space. Three ways to flow.</h2>
       <p className="mx-auto mt-4 max-w-[640px] text-lg leading-relaxed text-ivory-400 sm:text-[21px]">Run a focus session, keep conversations alive, and watch your team’s pulse, all without leaving the room.</p>
       <div role="tablist" aria-label="Views" className="mx-auto mt-8 inline-flex rounded-full bg-white/10 p-1">
@@ -264,7 +264,7 @@ function Tour() {
             role="tab"
             aria-selected={tab === t.id}
             onClick={() => setTab(t.id)}
-            className={cn('h-9 rounded-full px-5 text-sm font-medium transition-colors', tab === t.id ? 'bg-white text-navy-900' : 'text-white/80 hover:text-white')}
+            className={cn('h-9 rounded-full px-5 text-sm font-medium transition-colors', tab === t.id ? 'bg-gold-400 text-navy-900' : 'text-white/80 hover:text-white')}
           >
             {t.label}
           </button>

@@ -38,7 +38,7 @@ export function StepType({ state, dispatch }: { state: WizardState; dispatch: (a
                   <span className="mt-1 line-clamp-3 block text-xs leading-snug text-ivory-700">{t.description}</span>
                 </span>
                 {selected && (
-                  <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-gold-400 text-white">
+                  <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-gold-400 text-navy-900">
                     <Check className="h-3 w-3" strokeWidth={3} />
                   </span>
                 )}

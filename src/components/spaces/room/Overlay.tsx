@@ -24,7 +24,7 @@ function ToolButton({ label, onClick, active, children }: { label: string; onCli
       aria-pressed={active}
       className={cn(
         'flex h-10 w-10 items-center justify-center rounded-xl transition focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400',
-        active ? 'bg-gold-400 text-white' : 'text-navy-700 hover:bg-ivory-50',
+        active ? 'bg-gold-400 text-navy-900' : 'text-navy-700 hover:bg-ivory-50',
       )}
     >
       {children}
@@ -153,7 +153,7 @@ function BarButton({ label, onClick, on = true, danger, children, className, pre
       className={cn(
         'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400',
         danger ? 'bg-burgundy-500 text-white hover:bg-burgundy-600'
-          : pressed ? 'bg-gold-400 text-white hover:bg-gold-500'
+          : pressed ? 'bg-gold-400 text-navy-900 hover:bg-gold-300'
           : on ? 'text-white hover:bg-white/10' : 'bg-burgundy-500 text-white hover:bg-burgundy-600',
         busy && 'cursor-wait opacity-70',
         className,

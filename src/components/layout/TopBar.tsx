@@ -24,11 +24,11 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
 
   // Real notifications: new bookings and form submissions, loaded when the bell opens.
   useEffect(() => {
-    if (!notifOpen || !workspace) return;
+    if (!workspace) return;
     let alive = true;
     recentActivity(workspace.id, 6).then((items) => { if (alive) setActivity(items); }).catch(() => { if (alive) setActivity([]); });
     return () => { alive = false; };
-  }, [notifOpen, workspace]);
+  }, [notifOpen, workspace]); // reloads each time the bell opens
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -44,17 +44,17 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
   }, []);
 
   return (
-    <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl backdrop-saturate-150 border-b border-navy-100/70 h-14 flex items-center pl-16 pr-4 lg:px-8 gap-4">
+    <header className="sticky top-0 z-30 bg-white/85 backdrop-blur-xl backdrop-saturate-150 border-b border-navy-100 h-[68px] flex items-center pl-16 pr-4 lg:px-8 gap-4">
       {/* Search */}
       <div className="flex-1 max-w-xl relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ivory-600 pointer-events-none" />
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-ivory-600 pointer-events-none" />
         <input
           type="text"
           value={searchQuery ?? ''}
           onChange={(e) => onSearchChange?.(e.target.value)}
-          placeholder="Search"
+          placeholder="Search contacts, appointments, forms..."
           aria-label="Search contacts, appointments and forms"
-          className="w-full h-9 pl-9 pr-4 bg-ivory-100 text-sm text-navy-800 rounded-[10px] border border-transparent transition-all placeholder:text-ivory-600 focus:bg-white focus:border-gold-400 focus:ring-4 focus:ring-gold-400/15 outline-none"
+          className="w-full h-11 pl-11 pr-4 bg-white text-sm text-navy-700 rounded-xl border border-navy-100 transition-all placeholder:text-ivory-600 focus:border-gold-400 focus:ring-4 focus:ring-gold-400/20 outline-none"
         />
         {searchQuery && searchQuery.length > 0 && searchResults && (
           <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl border border-navy-100/80 shadow-popover max-h-96 overflow-y-auto animate-scale-in">
@@ -77,7 +77,7 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
         )}
 
         {/* Help */}
-        <button aria-label="Help" className="w-9 h-9 rounded-full text-navy-600 hover:bg-ivory-100 hover:text-navy-800 transition-colors items-center justify-center hidden md:flex">
+        <button aria-label="Help" className="w-9 h-9 rounded-full text-navy-600 hover:bg-paper hover:text-navy-800 transition-colors items-center justify-center hidden md:flex">
           <HelpCircle className="w-[18px] h-[18px]" />
         </button>
 
@@ -87,9 +87,10 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
             onClick={() => setNotifOpen(!notifOpen)}
             aria-label="Notifications"
             aria-expanded={notifOpen}
-            className="w-9 h-9 rounded-full text-navy-600 hover:bg-ivory-100 hover:text-navy-800 transition-colors flex items-center justify-center relative"
+            className="w-9 h-9 rounded-full text-navy-600 hover:bg-paper hover:text-navy-800 transition-colors flex items-center justify-center relative"
           >
             <Bell className="w-[18px] h-[18px]" />
+            {activity && activity.length > 0 && <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-gold-400" />}
           </button>
           {notifOpen && (
             <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-2xl border border-navy-100/80 shadow-popover animate-scale-in overflow-hidden">
@@ -116,7 +117,7 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
               <div className="px-4 py-2.5 border-t border-navy-100 text-center">
                 <button
                   onClick={() => { navigate('/conversations'); setNotifOpen(false); }}
-                  className="text-sm text-gold-400 hover:underline"
+                  className="text-sm font-medium text-gold-700 hover:underline"
                 >
                   View all notifications
                 </button>
@@ -129,7 +130,7 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setDropdownOpen(!dropdownOpen)}
-            className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full hover:bg-ivory-100 transition-colors"
+            className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full hover:bg-paper transition-colors"
           >
             <Avatar
               firstName={profile?.first_name}
@@ -201,7 +202,7 @@ function DropdownItem({
       onClick={onClick}
       className={cn(
         'w-full px-4 py-2 text-left text-sm font-medium transition-colors',
-        danger ? 'text-burgundy-600 hover:bg-burgundy-400/10' : 'text-navy-600 hover:bg-ivory-100'
+        danger ? 'text-burgundy-600 hover:bg-burgundy-400/10' : 'text-navy-600 hover:bg-paper'
       )}
     >
       {label}
