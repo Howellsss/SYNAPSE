@@ -78,16 +78,16 @@ export function WorkspacesPage() {
   const comingNext = (what: string) => toast(`${what} is coming next.`, 'info');
 
   return (
-    <div className="mx-auto max-w-[1180px] pb-6">
+    <div className="w-full pb-6">
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="font-display text-[34px] font-bold tracking-[-0.032em] text-navy-800 sm:text-[44px]">Workspaces</h1>
-          <p className="mt-1 text-[17px] text-ivory-700">Walk up to someone to talk. Step into a room for privacy.</p>
+          <h1 className="font-display text-[24px] font-bold tracking-[-0.02em] text-navy-800 sm:text-[24px]">Workspaces</h1>
+          <p className="mt-1 text-[14px] text-ivory-700">Walk up to someone to talk. Step into a room for privacy.</p>
         </div>
         {spaces && spaces.length > 0 && (
           <div className="flex flex-wrap gap-2">
-            <button onClick={() => setJoinOpen(true)} className="flex h-11 items-center gap-1.5 rounded-full bg-white ring-1 ring-inset ring-navy-100 px-5 text-[15px] font-semibold text-navy-800 transition hover:bg-navy-50"><Link2 className="h-4 w-4" /> Join with link</button>
-            {canManageTeam && <button onClick={createNew} className="flex h-11 items-center gap-1.5 rounded-full bg-navy-800 px-5 text-[15px] font-semibold text-white transition hover:bg-navy-700"><Plus className="h-4 w-4" /> New workspace</button>}
+            <button onClick={() => setJoinOpen(true)} className="flex h-[38px] items-center gap-1.5 rounded-lg bg-white ring-1 ring-inset ring-navy-100 px-4 text-sm font-semibold text-navy-800 transition hover:bg-navy-50"><Link2 className="h-4 w-4" /> Join with link</button>
+            {canManageTeam && <button onClick={createNew} className="flex h-[38px] items-center gap-1.5 rounded-lg bg-navy-800 px-4 text-sm font-semibold text-white transition hover:bg-navy-700"><Plus className="h-4 w-4" /> New workspace</button>}
           </div>
         )}
       </div>
@@ -128,7 +128,7 @@ export function WorkspacesPage() {
           {canManageTeam && (
             <button
               onClick={createNew}
-              className="flex min-h-[300px] flex-col items-center justify-center gap-3 rounded-[22px] border-2 border-dashed border-sand p-6 text-center transition hover:border-gold-400 hover:bg-navy-50"
+              className="flex min-h-[300px] flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-sand p-6 text-center transition hover:border-gold-400 hover:bg-navy-50"
             >
               <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gold-50 text-gold-600"><Plus className="h-6 w-6" /></span>
               <span className="font-semibold text-navy-800">Create another workspace</span>
@@ -139,7 +139,7 @@ export function WorkspacesPage() {
       )}
 
       {spaces && spaces.length > 0 && (
-        <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[20px] bg-white ring-1 ring-inset ring-navy-100 px-5 py-4">
+        <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl bg-white ring-1 ring-inset ring-navy-100 px-5 py-4">
           <Avatar firstName={profile?.first_name} lastName={profile?.last_name} src={profile?.avatar_url} size="sm" />
           <p className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-navy-700">
             <span>Joining as <strong className="text-navy-800">{displayName}</strong></span>
@@ -181,21 +181,21 @@ function FirstVisit({ canCreate, onCreate, onJoin }: { canCreate: boolean; onCre
   ];
   return (
     <>
-      <section className="overflow-hidden rounded-[30px] bg-white ring-1 ring-inset ring-navy-100 text-navy-800">
+      <section className="overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-navy-100 text-navy-800">
         <div className="grid items-center gap-8 p-6 sm:p-10 lg:grid-cols-[1fr_1.15fr]">
           <div className="min-w-0">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-gold-50 px-3 py-1 text-xs font-semibold text-gold-700">New</span>
+            <span className="inline-flex items-center gap-1.5 rounded-md bg-gold-50 px-3 py-1 text-xs font-semibold text-gold-700">New</span>
             <h2 className="mt-4 font-display text-[32px] font-bold leading-[1.08] tracking-[-0.03em] sm:text-[44px]">Your team's office, <span className="text-gold-700">online</span></h2>
             <p className="mt-3 max-w-md text-[17px] leading-relaxed text-ivory-700">
               See who's around, walk over for a quick chat, and meet in rooms. It feels like being together, wherever you are.
             </p>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               {canCreate && (
-                <button onClick={onCreate} className="inline-flex h-12 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-navy-800 px-6 text-base font-semibold text-white transition hover:bg-navy-700">
+                <button onClick={onCreate} className="inline-flex h-[38px] items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-navy-800 px-4 text-sm font-semibold text-white transition hover:bg-navy-700">
                   <Plus className="h-5 w-5" /> Create a workspace
                 </button>
               )}
-              <button onClick={onJoin} className="inline-flex h-12 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-white px-6 text-base font-semibold text-navy-800 transition hover:bg-navy-50">
+              <button onClick={onJoin} className="inline-flex h-[38px] items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-white px-4 text-sm font-semibold text-navy-800 transition hover:bg-navy-50">
                 <Link2 className="h-5 w-5" /> Join with invite link
               </button>
             </div>
@@ -241,7 +241,7 @@ function SpaceCard({ space, online, people, canManage, onEnter, onSettings, onEx
   // Outside opening hours only admins can go in.
   const blocked = !!opens && !canManage;
   return (
-    <div className="card card-hover flex flex-col overflow-hidden !rounded-[22px]">
+    <div className="card card-hover flex flex-col overflow-hidden !rounded-xl">
       <div className="relative p-3 pb-0">
         <button onClick={onEnter} disabled={blocked} className="block w-full text-left disabled:cursor-not-allowed" aria-label={`Enter ${space.name}`}>
           <SpacePreview title={template?.name ?? type.name} subtitle={type.name} icon={type.icon} size="sm" />
@@ -255,11 +255,11 @@ function SpaceCard({ space, online, people, canManage, onEnter, onSettings, onEx
             <p className="mt-0.5 flex items-center gap-1.5 text-xs text-ivory-700"><type.icon className="h-3.5 w-3.5" /> {type.name}</p>
           </div>
           {opens ? (
-            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-gold-50 px-2 py-0.5 text-xs font-semibold text-gold-800">
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-gold-50 px-2 py-0.5 text-xs font-semibold text-gold-800">
               <Clock className="h-3 w-3" /> {opens}
             </span>
           ) : (
-            <span className={cn('inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium', online ? 'bg-green-50 text-green-800' : 'bg-ivory-200/60 text-ivory-800')}>
+            <span className={cn('inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium', online ? 'bg-green-50 text-green-800' : 'bg-ivory-200/60 text-ivory-800')}>
               <span className={cn('h-1.5 w-1.5 rounded-full', online ? 'bg-green-500' : 'bg-ivory-600')} /> {online} online
             </span>
           )}
@@ -270,13 +270,13 @@ function SpaceCard({ space, online, people, canManage, onEnter, onSettings, onEx
               <Avatar key={p.user_id} firstName={p.first_name} lastName={p.last_name} src={p.avatar_url} size="sm" className={cn('ring-2 ring-white', i > 0 && '-ml-2')} />
             ))}
             {extra > 0 && (
-              <span className={cn('flex h-7 min-w-7 items-center justify-center rounded-full bg-navy-50 px-1.5 text-[11px] font-semibold text-navy-700 ring-2 ring-white', shown.length > 0 && '-ml-2')}>
+              <span className={cn('flex h-7 min-w-7 items-center justify-center rounded-md bg-navy-50 px-1.5 text-[11px] font-semibold text-navy-700 ring-2 ring-white', shown.length > 0 && '-ml-2')}>
                 +{extra}
               </span>
             )}
             <span className="ml-2 truncate text-xs text-ivory-700">{space.memberIds.length} {space.memberIds.length === 1 ? 'member' : 'members'}</span>
           </div>
-          <button onClick={onEnter} disabled={blocked} className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-navy-800 px-5 text-sm font-semibold text-white transition hover:bg-navy-700 disabled:opacity-50" title={blocked ? opens ?? undefined : undefined}>
+          <button onClick={onEnter} disabled={blocked} className="inline-flex h-[38px] shrink-0 items-center gap-1.5 rounded-lg bg-navy-800 px-4 text-sm font-semibold text-white transition hover:bg-navy-700 disabled:opacity-50" title={blocked ? opens ?? undefined : undefined}>
             {blocked ? <><Lock className="h-4 w-4" /> Closed</> : <>Enter <ArrowRight className="h-4 w-4" /></>}
           </button>
         </div>

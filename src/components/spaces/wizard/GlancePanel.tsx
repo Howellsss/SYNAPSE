@@ -13,14 +13,14 @@ export function GlancePanel({ info, className, compact }: { info: SpaceTypeInfo;
       </div>
       <p className="mt-5 flex items-center gap-2.5 text-xl font-bold">
         <info.icon className="h-6 w-6 text-gold-400" /> {info.name}
-        {info.comingSoon && <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs font-semibold text-ivory-200">Coming soon</span>}
+        {info.comingSoon && <span className="rounded-md bg-white/10 px-2 py-0.5 text-xs font-semibold text-ivory-200">Coming soon</span>}
       </p>
       <p className="mt-1.5 text-sm leading-relaxed text-ivory-500">{info.description}</p>
 
       <p className="mt-5 text-sm font-semibold">Best for</p>
       <div className="mt-2 flex flex-wrap gap-2">
         {info.bestFor.map((b) => (
-          <span key={b.label} className="inline-flex items-center gap-1.5 rounded-full border border-gold-400/70 px-3 py-1 text-xs font-medium text-ivory-100">
+          <span key={b.label} className="inline-flex items-center gap-1.5 rounded-md border border-gold-400/70 px-3 py-1 text-xs font-medium text-ivory-100">
             <b.icon className="h-3.5 w-3.5 text-gold-400" /> {b.label}
           </span>
         ))}

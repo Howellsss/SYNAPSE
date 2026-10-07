@@ -239,7 +239,7 @@ export function FormsPage() {
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-[30px] leading-tight font-bold tracking-[-0.02em] text-navy-800">
+          <h1 className="text-[24px] leading-tight font-bold tracking-[-0.02em] text-navy-800">
             Submissions
           </h1>
           <p className="mt-1 text-sm text-ivory-700">
@@ -651,7 +651,7 @@ function FormList({ forms, isSurvey, onEdit, onShare, onDuplicate, onSubmissions
         </thead>
         <tbody>
           {forms.map(form => (
-            <tr key={form.id} className="border-b border-navy-50 last:border-0 hover:bg-ivory-50/50 transition-colors">
+            <tr key={form.id} className="border-b border-sand last:border-0 hover:bg-ivory-50/50 transition-colors">
               <td className="px-4 py-3">
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 rounded-lg bg-ivory-100 flex items-center justify-center shrink-0">
@@ -746,7 +746,7 @@ function ActionMenu({ form, onRename, onDuplicate, onArchive, onUnarchive, onTog
         const url = `${window.location.origin}/forms/${form.id}`;
         navigator.clipboard.writeText(url);
       }} />
-      <div className="my-1 border-t border-navy-50" />
+      <div className="my-1 border-t border-sand" />
       {form.status === 'archived' ? (
         <MenuItem icon={Archive} label="Restore" onClick={onUnarchive} />
       ) : (
@@ -759,7 +759,7 @@ function ActionMenu({ form, onRename, onDuplicate, onArchive, onUnarchive, onTog
           <MenuItem icon={Archive} label="Archive" onClick={onArchive} />
         </>
       )}
-      <div className="my-1 border-t border-navy-50" />
+      <div className="my-1 border-t border-sand" />
       <MenuItem icon={Trash2} label="Delete" onClick={onDelete} danger />
     </div>
   );

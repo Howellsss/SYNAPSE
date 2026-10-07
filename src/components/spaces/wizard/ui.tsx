@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 export function StepTitle({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <div className="mb-6">
-      <h1 className="text-2xl font-bold leading-tight text-navy-800 sm:text-[28px]">{title}</h1>
+      <h1 className="text-2xl font-bold leading-tight text-navy-800 sm:text-[24px]">{title}</h1>
       {subtitle && <p className="mt-2 text-sm leading-relaxed text-ivory-700 sm:text-base">{subtitle}</p>}
     </div>
   );

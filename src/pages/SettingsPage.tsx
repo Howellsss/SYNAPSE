@@ -122,7 +122,7 @@ export function SettingsPage() {
               onClick={() => setSection(s.id)}
               className={cn(
                 'flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm font-medium transition-all',
-                section === s.id ? 'bg-navy-800 text-ivory-100' : 'text-ivory-600 hover:bg-ivory-100 hover:text-navy-700'
+                section === s.id ? 'bg-navy-800 text-white' : 'text-navy-800 hover:bg-navy-50'
               )}
             >
               <s.icon className="w-4 h-4 shrink-0" />
@@ -1044,10 +1044,10 @@ function ConnectedEmailAccounts() {
               No email connected yet. Emails you send are only saved in SYNAPSE until you connect one.
             </div>
           ) : (
-            <ul className="divide-y divide-navy-50 rounded-xl border border-navy-100">
+            <ul className="divide-y divide-sand rounded-xl border border-navy-100">
               {accounts.map((a) => (
                 <li key={a.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ivory-50 ring-1 ring-navy-100"><GoogleMark className="h-4 w-4" /></span>
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ivory-50 ring-1 ring-navy-100"><GoogleMark className="h-4 w-4" /></span>
                   <div className="min-w-[11rem] flex-1">
                     <p className="truncate text-sm font-semibold text-navy-800">{a.email}</p>
                     <p className="truncate text-xs text-ivory-600">
@@ -1055,7 +1055,7 @@ function ConnectedEmailAccounts() {
                     </p>
                   </div>
                   <span className={cn(
-                    'rounded-full px-2 py-0.5 text-xs font-semibold',
+                    'rounded-md px-2 py-0.5 text-xs font-semibold',
                     a.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-burgundy-600',
                   )}>
                     {a.status === 'active' ? 'Active' : 'Reconnect'}
@@ -1110,7 +1110,7 @@ function SMSSettings() {
       <h3 className="text-lg font-semibold text-navy-800 mb-4">SMS Settings</h3>
       <p className="text-sm text-ivory-600 mb-4">Configure SMS messaging for appointment reminders and workflow notifications. SMS consent is tracked per contact.</p>
       <div className="space-y-4">
-        <div className="flex items-center justify-between p-3 rounded-xl bg-ivory-50 border border-navy-50">
+        <div className="flex items-center justify-between p-3 rounded-xl bg-ivory-50 border border-sand">
           <div>
             <p className="text-sm font-medium text-navy-700">Enable SMS</p>
             <p className="text-xs text-ivory-600">Turn on SMS notifications for reminders and workflows</p>
@@ -1186,7 +1186,7 @@ function NotificationSettings() {
       <p className="text-sm text-ivory-600 mb-4">Control which notifications are sent to you and your contacts.</p>
       <div className="space-y-3">
         {items.map(item => (
-          <div key={item.key} className="flex items-center justify-between p-3 rounded-xl bg-ivory-50 border border-navy-50">
+          <div key={item.key} className="flex items-center justify-between p-3 rounded-xl bg-ivory-50 border border-sand">
             <div>
               <p className="text-sm font-medium text-navy-700">{item.label}</p>
               <p className="text-xs text-ivory-600">{item.desc}</p>
@@ -1294,7 +1294,7 @@ function SecuritySettings() {
       <h3 className="text-lg font-semibold text-navy-800 mb-4">Security</h3>
       <p className="text-sm text-ivory-600 mb-4">Manage authentication and access controls for your workspace.</p>
       <div className="space-y-4">
-        <div className="flex items-center justify-between p-3 rounded-xl bg-ivory-50 border border-navy-50">
+        <div className="flex items-center justify-between p-3 rounded-xl bg-ivory-50 border border-sand">
           <div>
             <p className="text-sm font-medium text-navy-700">Require Two-Factor Authentication</p>
             <p className="text-xs text-ivory-600">All team members must enable 2FA to access the workspace</p>
@@ -1504,7 +1504,7 @@ function BillingSettings() {
   return (
     <div className="card p-6">
       <h3 className="text-lg font-semibold text-navy-800 mb-4">Billing</h3>
-      <div className="mb-6 p-4 rounded-xl bg-ivory-50 border border-navy-50">
+      <div className="mb-6 p-4 rounded-xl bg-ivory-50 border border-sand">
         <div className="flex items-center justify-between mb-3">
           <span className="text-sm font-medium text-navy-700">Current Plan</span>
           <span className="text-sm font-bold text-gold-700 capitalize">{plan}</span>

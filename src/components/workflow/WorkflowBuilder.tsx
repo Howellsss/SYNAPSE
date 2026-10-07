@@ -318,7 +318,7 @@ export function WorkflowBuilder({ workflowId, preset, onClose, onSaved }: Workfl
           <button onClick={() => setShowValidation(true)} className="btn-secondary btn-sm relative" title="Validation">
             <AlertTriangle className="h-3.5 w-3.5" /> Validate
             {issues.length > 0 && (
-              <span className={cn('ml-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold', hasErrors ? 'bg-burgundy-100 text-burgundy-700' : 'bg-gold-100 text-gold-700')}>
+              <span className={cn('ml-1 rounded-md px-1.5 py-0.5 text-[9px] font-bold', hasErrors ? 'bg-burgundy-100 text-burgundy-700' : 'bg-gold-100 text-gold-700')}>
                 {issues.length}
               </span>
             )}
@@ -413,11 +413,11 @@ export function WorkflowBuilder({ workflowId, preset, onClose, onSaved }: Workfl
                 {(node.node_type === 'condition' || node.action_type === 'if_else') && (
                   <div className="mt-4 flex gap-8">
                     <div className="flex flex-col items-center">
-                      <span className="mb-2 rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700">Yes</span>
+                      <span className="mb-2 rounded-md bg-green-50 px-3 py-1 text-xs font-bold text-green-700">Yes</span>
                       <div className="h-6 w-px bg-navy-300" />
                     </div>
                     <div className="flex flex-col items-center">
-                      <span className="mb-2 rounded-full bg-burgundy-50 px-3 py-1 text-xs font-bold text-burgundy-700">No</span>
+                      <span className="mb-2 rounded-md bg-burgundy-50 px-3 py-1 text-xs font-bold text-burgundy-700">No</span>
                       <div className="h-6 w-px bg-navy-300" />
                     </div>
                   </div>
@@ -428,7 +428,7 @@ export function WorkflowBuilder({ workflowId, preset, onClose, onSaved }: Workfl
                   <div className="mt-4 flex gap-4">
                     {(((node.config.branches as Array<{ label: string; percentage: number }>) ?? []).map((b, bidx) => (
                       <div key={bidx} className="flex flex-col items-center">
-                        <span className="mb-2 rounded-full bg-gold-50 px-3 py-1 text-xs font-bold text-gold-700">{b.label} ({b.percentage}%)</span>
+                        <span className="mb-2 rounded-md bg-gold-50 px-3 py-1 text-xs font-bold text-gold-700">{b.label} ({b.percentage}%)</span>
                         <div className="h-6 w-px bg-navy-300" />
                       </div>
                     )))}
@@ -443,7 +443,7 @@ export function WorkflowBuilder({ workflowId, preset, onClose, onSaved }: Workfl
                 <div className="h-full w-px bg-navy-300" />
                 <button
                   onClick={() => setShowActionSelector('end')}
-                  className="absolute flex h-8 w-8 items-center justify-center rounded-full border border-navy-200 bg-white text-navy-500 shadow-sm transition-all hover:border-gold-400 hover:bg-gold-50 hover:text-gold-700"
+                  className="absolute flex h-8 w-8 items-center justify-center rounded-md border border-navy-200 bg-white text-navy-500 shadow-sm transition-all hover:border-gold-400 hover:bg-gold-50 hover:text-gold-700"
                 >
                   <Plus className="h-4 w-4" />
                 </button>
@@ -878,7 +878,7 @@ function AIAssistantPanel({ workflowName, trigger, nodes, onClose, onAddNode }: 
           <div className="mt-4 space-y-3">
             <div className="flex flex-wrap gap-1.5">
               {suggestions.map((s) => (
-                <button key={s} onClick={() => { setPrompt(s); processPrompt(s); }} className="rounded-full border border-navy-100 bg-ivory-50 px-3 py-1.5 text-xs text-navy-700 hover:border-gold-300">
+                <button key={s} onClick={() => { setPrompt(s); processPrompt(s); }} className="rounded-md border border-navy-100 bg-ivory-50 px-3 py-1.5 text-xs text-navy-700 hover:border-gold-300">
                   {s}
                 </button>
               ))}

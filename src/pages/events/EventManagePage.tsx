@@ -75,25 +75,25 @@ export function EventManagePage({ eventId }: { eventId: string }) {
   };
 
   return (
-    <div className="mx-auto max-w-[1180px] pb-6">
-      <button type="button" onClick={() => navigate('/events')} className="mb-4 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-navy-700 hover:bg-navy-50"><ArrowLeft className="h-4 w-4" /> Events</button>
+    <div className="w-full pb-6">
+      <button type="button" onClick={() => navigate('/events')} className="mb-4 inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold text-navy-700 hover:bg-navy-50"><ArrowLeft className="h-4 w-4" /> Events</button>
 
       <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
-        <img src={event.cover_url || DEFAULT_COVER} alt="" className="h-28 w-full shrink-0 rounded-[20px] object-cover sm:h-28 sm:w-40" />
+        <img src={event.cover_url || DEFAULT_COVER} alt="" className="h-28 w-full shrink-0 rounded-xl object-cover sm:h-28 sm:w-40" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2"><StatusBadge e={event} /></div>
-          <h1 className="mt-2 font-display text-[28px] font-bold leading-tight tracking-[-0.03em] text-navy-800 sm:text-[36px]">{event.title}</h1>
+          <h1 className="mt-2 font-display text-[24px] font-bold leading-tight tracking-[-0.03em] text-navy-800 sm:text-[24px]">{event.title}</h1>
           <p className="mt-1 flex items-center gap-1.5 text-[15px] text-ivory-700"><CalendarDays className="h-4 w-4 shrink-0" />{eventDateLine(event.starts_at, event.ends_at, event.timezone)}</p>
           <p className="mt-0.5 flex items-center gap-1.5 text-[15px] text-ivory-700"><MapPin className="h-4 w-4 shrink-0" />{placeLine(event)}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {event.status === 'published' && <a href={url} target="_blank" rel="noreferrer" className="flex h-10 items-center gap-1.5 rounded-full bg-white px-4 text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50"><ExternalLink className="h-4 w-4" /> View page</a>}
-          <button type="button" onClick={() => navigate(`/events/${event.id}/edit`)} className="flex h-10 items-center gap-1.5 rounded-full bg-white px-4 text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50"><Pencil className="h-4 w-4" /> Edit</button>
-          {event.status === 'draft' && <button type="button" onClick={() => { void changeStatus('published'); }} className="flex h-10 items-center rounded-full bg-gold-400 px-5 text-sm font-semibold text-navy-900 hover:bg-gold-300">Publish</button>}
+          {event.status === 'published' && <a href={url} target="_blank" rel="noreferrer" className="flex h-[38px] items-center gap-1.5 rounded-lg bg-white px-4 text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50"><ExternalLink className="h-4 w-4" /> View page</a>}
+          <button type="button" onClick={() => navigate(`/events/${event.id}/edit`)} className="flex h-[38px] items-center gap-1.5 rounded-lg bg-white px-4 text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50"><Pencil className="h-4 w-4" /> Edit</button>
+          {event.status === 'draft' && <button type="button" onClick={() => { void changeStatus('published'); }} className="flex h-[38px] items-center rounded-lg bg-gold-400 px-4 text-sm font-semibold text-navy-900 hover:bg-gold-300">Publish</button>}
           <Popover
             label="Event actions"
             panelClassName="right-0 top-full mt-2 w-56"
-            trigger={({ open, toggle }) => <button type="button" onClick={toggle} aria-expanded={open} aria-label="More actions" className="flex h-10 w-10 items-center justify-center rounded-full ring-1 ring-inset ring-navy-100 hover:bg-navy-50"><MoreHorizontal className="h-4 w-4" /></button>}
+            trigger={({ open, toggle }) => <button type="button" onClick={toggle} aria-expanded={open} aria-label="More actions" className="flex h-10 w-10 items-center justify-center rounded-lg ring-1 ring-inset ring-navy-100 hover:bg-navy-50"><MoreHorizontal className="h-4 w-4" /></button>}
           >
             {(close) => (
               <>
@@ -115,7 +115,7 @@ export function EventManagePage({ eventId }: { eventId: string }) {
 
       <div className="mt-6 inline-flex rounded-full bg-white p-1 ring-1 ring-inset ring-navy-100" role="tablist" aria-label="Sections">
         {([['overview', 'Overview'], ['attendees', `Attendees ${confirmed.length}`], ['checkin', 'Check-in']] as const).map(([id, label]) => (
-          <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={cn('rounded-full px-4 py-1.5 text-sm transition', tab === id ? 'bg-navy-800 font-semibold text-white' : 'font-medium text-navy-700 hover:bg-navy-50')}>{label}</button>
+          <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={cn('rounded-md px-4 py-1.5 text-sm transition', tab === id ? 'bg-navy-800 font-semibold text-white' : 'font-medium text-navy-700 hover:bg-navy-50')}>{label}</button>
         ))}
       </div>
 
@@ -174,7 +174,7 @@ function Overview({ tickets, regs, capacity, checkedIn, unpaidTotal, unpaidCount
 }) {
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-[20px] border border-navy-100 bg-sand lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-navy-100 bg-sand lg:grid-cols-4">
         <Metric label="Registered" value={regs.length.toLocaleString()} />
         <Metric label="Checked in" value={`${checkedIn.toLocaleString()}${regs.length ? ` (${Math.round((checkedIn / regs.length) * 100)}%)` : ''}`} />
         <Metric label="Places left" value={capacity === null ? 'No limit' : Math.max(0, capacity - regs.length).toLocaleString()} />
@@ -251,14 +251,14 @@ function Attendees({ regs, tickets, onPatch, onExport }: {
   return (
     <section className="card overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-navy-100 p-4 sm:flex-row sm:items-center">
-        <label className="flex flex-1 items-center gap-2 rounded-full px-4 ring-1 ring-inset ring-navy-100 focus-within:ring-gold-400">
+        <label className="flex flex-1 items-center gap-2 rounded-lg px-4 ring-1 ring-inset ring-navy-100 focus-within:ring-gold-400">
           <Search className="h-4 w-4 text-ivory-600" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, email, phone or PIN" aria-label="Search attendees" className="h-10 w-full bg-transparent text-sm outline-none" />
         </label>
-        <select value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)} aria-label="Filter" className="h-10 rounded-full bg-white px-4 text-sm font-medium text-navy-800 ring-1 ring-inset ring-navy-100">
+        <select value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)} aria-label="Filter" className="h-[38px] rounded-lg bg-white px-4 text-sm font-medium text-navy-800 ring-1 ring-inset ring-navy-100">
           <option value="all">Everyone</option><option value="in">Checked in</option><option value="out">Not checked in</option><option value="unpaid">Pay at door</option><option value="cancelled">Cancelled</option>
         </select>
-        <button type="button" onClick={onExport} disabled={!regs.length} className="flex h-10 items-center justify-center gap-1.5 rounded-full bg-navy-800 px-4 text-sm font-semibold text-white hover:bg-navy-700 disabled:opacity-50"><Download className="h-4 w-4" /> Export CSV</button>
+        <button type="button" onClick={onExport} disabled={!regs.length} className="flex h-[38px] items-center justify-center gap-1.5 rounded-lg bg-navy-800 px-4 text-sm font-semibold text-white hover:bg-navy-700 disabled:opacity-50"><Download className="h-4 w-4" /> Export CSV</button>
       </div>
       {shown.length === 0 ? (
         <p className="px-6 py-12 text-center text-sm text-ivory-700">{regs.length ? 'Nobody matches.' : 'No registrations yet.'}</p>
@@ -383,7 +383,7 @@ function CheckIn({ regs, tickets, checkedIn, total, onPatch }: {
       <section className="card p-5 sm:p-6">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-navy-800">Check guests in</h2>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-navy-50 px-3 py-1 text-sm font-semibold text-navy-800" aria-live="polite"><Users className="h-4 w-4" />{checkedIn} / {total} in</span>
+          <span className="inline-flex items-center gap-1.5 rounded-md bg-navy-50 px-3 py-1 text-sm font-semibold text-navy-800" aria-live="polite"><Users className="h-4 w-4" />{checkedIn} / {total} in</span>
         </div>
 
         <label className="mt-5 block">
@@ -405,9 +405,9 @@ function CheckIn({ regs, tickets, checkedIn, total, onPatch }: {
             <>
               <div className={cn('relative mt-3 overflow-hidden rounded-2xl bg-navy-900', scanning ? 'aspect-square sm:aspect-video' : 'hidden')}>
                 <video ref={videoRef} muted playsInline className="h-full w-full object-cover" />
-                <span className="pointer-events-none absolute inset-[18%] rounded-3xl border-2 border-gold-400/90" aria-hidden="true" />
+                <span className="pointer-events-none absolute inset-[18%] rounded-xl border-2 border-gold-400/90" aria-hidden="true" />
               </div>
-              <button type="button" onClick={() => { if (scanning) stop(); else void start(); }} className={cn('mt-3 flex h-11 items-center gap-2 rounded-full px-5 text-sm font-semibold', scanning ? 'text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50' : 'bg-navy-800 text-white hover:bg-navy-700')}>
+              <button type="button" onClick={() => { if (scanning) stop(); else void start(); }} className={cn('mt-3 flex h-11 items-center gap-2 rounded-lg px-5 text-sm font-semibold', scanning ? 'text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50' : 'bg-navy-800 text-white hover:bg-navy-700')}>
                 {scanning ? <><CameraOff className="h-4 w-4" /> Stop camera</> : <><Camera className="h-4 w-4" /> Scan with camera</>}
               </button>
             </>
@@ -449,7 +449,7 @@ function CheckIn({ regs, tickets, checkedIn, total, onPatch }: {
             <p className="mt-3 text-xl font-semibold text-navy-800">{r.first_name} {r.last_name}</p>
             <p className="mt-1 text-sm text-ivory-700">{ticketName(r.ticket_id)}</p>
             <p className="mt-3 font-semibold text-gold-800">Collect {formatPrice(r.amount_minor, tickets.find((t) => t.id === r.ticket_id)?.currency)} before entry</p>
-            <button type="button" onClick={() => { onPatch(r.id, { payment_status: 'paid', checked_in_at: new Date().toISOString() }); setFound({ reg: { ...r, payment_status: 'paid' }, how: found.how, already: null }); }} className="mt-4 h-11 rounded-full bg-gold-400 px-6 text-sm font-semibold text-navy-900 hover:bg-gold-300">Paid · check in</button>
+            <button type="button" onClick={() => { onPatch(r.id, { payment_status: 'paid', checked_in_at: new Date().toISOString() }); setFound({ reg: { ...r, payment_status: 'paid' }, how: found.how, already: null }); }} className="mt-4 h-[38px] rounded-lg bg-gold-400 px-4 text-sm font-semibold text-navy-900 hover:bg-gold-300">Paid · check in</button>
           </>
         ) : (
           <>

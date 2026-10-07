@@ -44,15 +44,15 @@ export function EventsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-[1180px] pb-6">
+    <div className="w-full pb-6">
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="font-display text-[34px] font-bold tracking-[-0.032em] text-navy-800 sm:text-[44px]">Events</h1>
-          <p className="mt-1 text-[17px] text-ivory-700">Publish an event page, take registrations, and check people in with a QR code.</p>
+          <h1 className="font-display text-[24px] font-bold tracking-[-0.02em] text-navy-800 sm:text-[24px]">Events</h1>
+          <p className="mt-1 text-[14px] text-ivory-700">Publish an event page, take registrations, and check people in with a QR code.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <a href="/e" target="_blank" rel="noreferrer" className="flex h-11 items-center gap-1.5 rounded-full bg-white px-5 text-[15px] font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 transition hover:bg-navy-50"><ExternalLink className="h-4 w-4" /> Public events page</a>
-          <button type="button" onClick={() => navigate('/events/new')} className="flex h-11 items-center gap-1.5 rounded-full bg-navy-800 px-5 text-[15px] font-semibold text-white transition hover:bg-navy-700"><Plus className="h-4 w-4" /> New event</button>
+          <a href="/e" target="_blank" rel="noreferrer" className="flex h-[38px] items-center gap-1.5 rounded-lg bg-white px-4 text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 transition hover:bg-navy-50"><ExternalLink className="h-4 w-4" /> Public events page</a>
+          <button type="button" onClick={() => navigate('/events/new')} className="flex h-[38px] items-center gap-1.5 rounded-lg bg-navy-800 px-4 text-sm font-semibold text-white transition hover:bg-navy-700"><Plus className="h-4 w-4" /> New event</button>
         </div>
       </div>
 
@@ -66,7 +66,7 @@ export function EventsPage() {
         <ErrorState message={error} onRetry={load} />
       ) : (
         <>
-          <div className="mb-8 grid grid-cols-2 gap-px overflow-hidden rounded-[20px] border border-navy-100 bg-sand lg:grid-cols-4">
+          <div className="mb-8 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-navy-100 bg-sand lg:grid-cols-4">
             <Metric label="Upcoming events" value={totals.upcoming} />
             <Metric label="Registered (upcoming)" value={totals.registered} />
             <Metric label="Checked in (all time)" value={totals.checkedIn} />
@@ -81,7 +81,7 @@ export function EventsPage() {
                 role="tab"
                 aria-selected={tab === t}
                 onClick={() => setTab(t)}
-                className={cn('rounded-full px-4 py-1.5 text-sm capitalize transition', tab === t ? 'bg-navy-800 font-semibold text-white' : 'font-medium text-navy-700 hover:bg-navy-50')}
+                className={cn('rounded-md px-4 py-1.5 text-sm capitalize transition', tab === t ? 'bg-navy-800 font-semibold text-white' : 'font-medium text-navy-700 hover:bg-navy-50')}
               >
                 {t} <span className={cn('ml-0.5 text-xs', tab === t ? 'text-white/70' : 'text-ivory-600')}>{groups[t].length}</span>
               </button>
@@ -89,7 +89,7 @@ export function EventsPage() {
           </div>
 
           {events === null ? (
-            <div className="space-y-3">{[0, 1, 2].map((i) => <div key={i} className="h-28 animate-pulse rounded-[20px] bg-navy-50" />)}</div>
+            <div className="space-y-3">{[0, 1, 2].map((i) => <div key={i} className="h-28 animate-pulse rounded-xl bg-navy-50" />)}</div>
           ) : shown.length === 0 ? (
             <div className="card">
               <EmptyState

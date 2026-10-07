@@ -124,7 +124,7 @@ export function Dashboard() {
       <section className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ivory-600">{longDate}</p>
-          <h1 className="mt-2 text-[34px] font-bold tracking-[-0.035em] text-navy-800 sm:text-[44px]">
+          <h1 className="mt-2 text-[24px] font-bold tracking-[-0.02em] text-navy-800 sm:text-[24px]">
             {greeting}, <span className="text-blue-600">{firstName}</span>
           </h1>
           <p className="mt-1.5 text-[15px] text-ivory-700">Here&apos;s what&apos;s happening in your collaboration hub today.</p>
@@ -137,7 +137,7 @@ export function Dashboard() {
           <button onClick={() => navigate('/meetings')} className="btn-primary h-12 px-6 text-[15px]"><Plus className="h-5 w-5" />Create</button>
           <button
             onClick={() => document.getElementById('dash-notifications')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
-            className="relative flex h-12 w-12 items-center justify-center rounded-full border border-navy-100 bg-white text-ivory-700 transition hover:border-blue-300 hover:text-blue-700"
+            className="relative flex h-12 w-12 items-center justify-center rounded-lg border border-navy-100 bg-white text-ivory-700 transition hover:border-blue-300 hover:text-blue-700"
             aria-label="Notifications"
           >
             <Bell className="h-5 w-5" />
@@ -186,7 +186,7 @@ export function Dashboard() {
                   <p className="font-display text-[34px] font-bold leading-none tracking-[-0.03em] text-navy-800">{weekTotal + (data?.completedCount ?? 0)}</p>
                   <p className="mt-1.5 text-sm text-ivory-700">Completed actions</p>
                 </div>
-                <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600">This week</span>
+                <span className="rounded-md bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600">This week</span>
               </div>
               <ActivityChart days={week} />
             </div>
@@ -298,7 +298,7 @@ function MeetingRow({ appointment, onClick }: { appointment: DashboardAppointmen
         <span className="block truncate text-[15px] font-semibold text-navy-700">{appointment.title || appointment.calendars?.name || 'Focus room'}</span>
         <span className="mt-0.5 block text-[13px] text-ivory-700">{formatDate(appointment.start_time, { weekday: 'short', month: 'short', day: 'numeric' })} · {formatTime(appointment.start_time)}{contact ? ` · ${getFullName(contact)}` : ''}</span>
       </span>
-      <span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600">Join</span>
+      <span className="rounded-md bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600">Join</span>
     </button>
   );
 }

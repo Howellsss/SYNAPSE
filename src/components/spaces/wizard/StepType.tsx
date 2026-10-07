@@ -43,7 +43,7 @@ export function StepType({ state, dispatch }: { state: WizardState; dispatch: (a
                   </span>
                 )}
                 {disabled && (
-                  <span className="absolute right-2 top-2 rounded-full bg-ivory-200 px-2 py-0.5 text-[11px] font-semibold text-ivory-800">Coming soon</span>
+                  <span className="absolute right-2 top-2 rounded-md bg-ivory-200 px-2 py-0.5 text-[11px] font-semibold text-ivory-800">Coming soon</span>
                 )}
               </button>
               {/* On phones the details sit right under the chosen card. */}

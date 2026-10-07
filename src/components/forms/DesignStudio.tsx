@@ -156,13 +156,13 @@ function Section({ id, label, icon: Icon, open, onToggle, children }: {
   id: string; label: string; icon: typeof Palette; open: boolean; onToggle: (id: string) => void; children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg overflow-hidden border border-navy-50">
+    <div className="rounded-lg overflow-hidden border border-sand">
       <button onClick={() => onToggle(id)} className="w-full flex items-center gap-2.5 px-3 py-2.5 bg-white hover:bg-ivory-50/50 transition-colors">
         <Icon className="w-4 h-4 text-navy-600 shrink-0" />
         <span className="text-sm font-semibold text-navy-700 flex-1 text-left">{label}</span>
         {open ? <ChevronDown className="w-4 h-4 text-ivory-400" /> : <ChevronRight className="w-4 h-4 text-ivory-400" />}
       </button>
-      {open && <div className="px-3 pb-4 pt-1 space-y-3 bg-white border-t border-navy-50">{children}</div>}
+      {open && <div className="px-3 pb-4 pt-1 space-y-3 bg-white border-t border-sand">{children}</div>}
     </div>
   );
 }
@@ -293,7 +293,7 @@ function TypographyPanel({ typography, onUpdate }: { typography: ThemeTypography
         <Label>Primary font</Label>
         <FontSelect value={typography.primaryFont} onChange={v => onUpdate({ primaryFont: v, headingFont: v, bodyFont: v })} />
       </div>
-      <div className="border-t border-navy-50 pt-3">
+      <div className="border-t border-sand pt-3">
         <p className="text-[10px] font-bold uppercase tracking-wider text-ivory-500 mb-2">Headings</p>
         <div className="grid grid-cols-2 gap-2">
           <div><Label>Size</Label><input className="input-field text-xs py-1.5" value={typography.headingSize} onChange={e => onUpdate({ headingSize: e.target.value })} /></div>
@@ -302,7 +302,7 @@ function TypographyPanel({ typography, onUpdate }: { typography: ThemeTypography
           <div><Label>Letter spacing</Label><input className="input-field text-xs py-1.5" value={typography.headingLetterSpacing} onChange={e => onUpdate({ headingLetterSpacing: e.target.value })} /></div>
         </div>
       </div>
-      <div className="border-t border-navy-50 pt-3">
+      <div className="border-t border-sand pt-3">
         <p className="text-[10px] font-bold uppercase tracking-wider text-ivory-500 mb-2">Body</p>
         <div className="grid grid-cols-2 gap-2">
           <div><Label>Size</Label><input className="input-field text-xs py-1.5" value={typography.bodySize} onChange={e => onUpdate({ bodySize: e.target.value })} /></div>
@@ -310,14 +310,14 @@ function TypographyPanel({ typography, onUpdate }: { typography: ThemeTypography
           <div><Label>Line height</Label><input className="input-field text-xs py-1.5" value={typography.bodyLineHeight} onChange={e => onUpdate({ bodyLineHeight: e.target.value })} /></div>
         </div>
       </div>
-      <div className="border-t border-navy-50 pt-3">
+      <div className="border-t border-sand pt-3">
         <p className="text-[10px] font-bold uppercase tracking-wider text-ivory-500 mb-2">Labels</p>
         <div className="grid grid-cols-2 gap-2">
           <div><Label>Size</Label><input className="input-field text-xs py-1.5" value={typography.labelSize} onChange={e => onUpdate({ labelSize: e.target.value })} /></div>
           <div><Label>Weight</Label><WeightSelect value={typography.labelWeight} onChange={v => onUpdate({ labelWeight: v })} /></div>
         </div>
       </div>
-      <div className="border-t border-navy-50 pt-3">
+      <div className="border-t border-sand pt-3">
         <p className="text-[10px] font-bold uppercase tracking-wider text-ivory-500 mb-2">Buttons</p>
         <div className="grid grid-cols-2 gap-2">
           <div><Label>Size</Label><input className="input-field text-xs py-1.5" value={typography.buttonSize} onChange={e => onUpdate({ buttonSize: e.target.value })} /></div>
@@ -384,7 +384,7 @@ function FieldsPanel({ fieldStyle, onUpdate }: { fieldStyle: ThemeFieldStyle; ty
       <SliderRow label="Input padding" value={fieldStyle.padding} min={4} max={24} onChange={v => onUpdate({ padding: v })} />
       <SliderRow label="Label spacing" value={fieldStyle.labelSpacing} min={0} max={16} onChange={v => onUpdate({ labelSpacing: v })} />
       <div><Label>Border radius</Label><RadiusSelect value={fieldStyle.borderRadius} onChange={v => onUpdate({ borderRadius: v })} /></div>
-      <div className="border-t border-navy-50 pt-3">
+      <div className="border-t border-sand pt-3">
         <p className="text-[10px] font-bold uppercase tracking-wider text-ivory-500 mb-2">Help & Error Text</p>
         <div className="grid grid-cols-2 gap-2">
           <div><Label>Help text color</Label><MiniColor value={fieldStyle.helpTextColor} onChange={v => onUpdate({ helpTextColor: v })} /></div>
@@ -560,7 +560,7 @@ function ResponsivePanel({ viewport, onViewportChange }: { viewport: Viewport; o
           return <button key={vp} onClick={() => onViewportChange(vp)} className={cn('py-2 rounded-md border flex flex-col items-center gap-1 transition-all', viewport === vp ? 'bg-navy-800 text-ivory-100 border-navy-800' : 'border-navy-100 text-ivory-600 hover:bg-ivory-50')}><Icon className="w-4 h-4" /><span className="text-[10px] capitalize">{vp}</span></button>;
         })}
       </div>
-      <div className="p-2.5 rounded-lg bg-ivory-50 border border-navy-50">
+      <div className="p-2.5 rounded-lg bg-ivory-50 border border-sand">
         <p className="text-[11px] text-ivory-600 leading-relaxed">Responsive behavior is automatic. Columns stack on mobile, images resize, and spacing is reduced for smaller screens.</p>
       </div>
     </div>

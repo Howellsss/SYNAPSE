@@ -34,7 +34,7 @@ export function StepName({ state, dispatch, slugStatus }: { state: WizardState; 
             'flex items-center overflow-hidden rounded-xl border bg-white transition focus-within:ring-2',
             slugStatus === 'taken' || problem ? 'border-burgundy-500 focus-within:ring-burgundy-400/20' : 'border-navy-100 focus-within:border-gold-400 focus-within:ring-gold-400/20',
           )}>
-            <span className="shrink-0 select-none border-r border-navy-50 bg-ivory-200/40 px-3 py-2.5 text-sm text-ivory-700">synapse.app/</span>
+            <span className="shrink-0 select-none border-r border-sand bg-ivory-200/40 px-3 py-2.5 text-sm text-ivory-700">synapse.app/</span>
             <input
               id="space-slug"
               className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-sm text-navy-800 outline-none"

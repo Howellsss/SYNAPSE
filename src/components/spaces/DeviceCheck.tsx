@@ -215,7 +215,7 @@ export function DeviceControls({ check, prefs, onPrefs }: {
         {!shared && check.micProblem && <Problem problem={check.micProblem} device="microphone" ua={ua} kind={kind} onRetry={check.retry} />}
       </DeviceSelect>
 
-      <div className="divide-y divide-navy-50 rounded-2xl border border-navy-100 px-4">
+      <div className="divide-y divide-sand rounded-2xl border border-navy-100 px-4">
         <Switch label="Join with mic muted" checked={prefs.join_muted} onChange={(v) => onPrefs({ join_muted: v })} />
         <Switch label="Join with camera off" checked={prefs.join_camera_off} onChange={(v) => onPrefs({ join_camera_off: v })} />
         <Switch
@@ -265,7 +265,7 @@ export function DevicePreview({ check, name, firstName, lastName, avatarUrl }: {
             </p>
           </div>
         )}
-        <span className="absolute bottom-3 left-3 flex max-w-[70%] items-center gap-1.5 rounded-full bg-navy-900/75 px-3 py-1 text-xs font-semibold backdrop-blur">
+        <span className="absolute bottom-3 left-3 flex max-w-[70%] items-center gap-1.5 rounded-md bg-navy-900/75 px-3 py-1 text-xs font-semibold backdrop-blur">
           {micLive ? <Mic className="h-3.5 w-3.5 text-gold-300" aria-label="Mic on" /> : <MicOff className="h-3.5 w-3.5 text-red-300" aria-label="Mic off" />}
           <span className="truncate">{name}</span>
         </span>
@@ -291,7 +291,7 @@ function RoundButton({ on, onClick, labelOn, labelOff, iconOn: On, iconOff: Off 
       aria-label={on ? labelOn : labelOff}
       title={on ? labelOn : labelOff}
       className={cn(
-        'flex h-12 w-12 items-center justify-center rounded-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400',
+        'flex h-12 w-12 items-center justify-center rounded-lg transition focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400',
         on ? 'bg-white/10 text-white hover:bg-white/20' : 'bg-burgundy-500 text-white hover:bg-burgundy-600',
       )}
     >
@@ -316,7 +316,7 @@ export function DeviceCheck({ active = true }: { active?: boolean }) {
   return (
     <div className="flex flex-col-reverse gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-8">
       <DeviceControls check={check} prefs={prefs} onPrefs={setPrefs} />
-      <div className="rounded-3xl bg-navy-800 p-4 sm:p-6 lg:self-start">
+      <div className="rounded-xl bg-navy-800 p-4 sm:p-6 lg:self-start">
         <DevicePreview check={check} {...you} />
       </div>
     </div>
@@ -357,11 +357,11 @@ export function GetReadyScreen({ spaceName, onEnter, onBack }: { spaceName: stri
       </header>
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-6 pt-6 sm:px-8">
         <p className="text-xs font-semibold uppercase tracking-wider text-ivory-700">Get ready · Camera & mic</p>
-        <h1 className="mt-2 break-words text-2xl font-bold text-navy-800 sm:text-[28px]">Check your camera & mic</h1>
+        <h1 className="mt-2 break-words text-2xl font-bold text-navy-800 sm:text-[24px]">Check your camera & mic</h1>
         <p className="mb-6 mt-2 text-sm text-ivory-700 sm:text-base">Make sure people can see and hear you before you enter <strong className="text-navy-800">{spaceName}</strong>.</p>
         <DeviceCheck />
       </main>
-      <footer className="sticky bottom-0 border-t border-navy-50 bg-white/95 px-4 py-3 backdrop-blur sm:px-8">
+      <footer className="sticky bottom-0 border-t border-sand bg-white/95 px-4 py-3 backdrop-blur sm:px-8">
         <div className="mx-auto flex w-full max-w-5xl items-center gap-2">
           <div className="flex-1" />
           <button type="button" onClick={enter} disabled={entering} className="btn-ghost shrink-0 whitespace-nowrap !px-3">Skip for now</button>

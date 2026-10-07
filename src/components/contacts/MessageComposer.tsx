@@ -56,7 +56,7 @@ function AddressInput({ label, values, onChange, autoFocus }: { label: string; v
     setInvalid(bad.length > 0);
   };
   return (
-    <div className="flex min-h-[40px] flex-wrap items-center gap-1.5 border-b border-navy-50 px-3 py-1.5">
+    <div className="flex min-h-[40px] flex-wrap items-center gap-1.5 border-b border-sand px-3 py-1.5">
       <span className="w-12 shrink-0 text-sm text-ivory-600">{label}</span>
       {values.map((v) => (
         <Chip key={v} onRemove={() => onChange(values.filter((x) => x !== v))} removeLabel={`Remove ${v}`}>{v}</Chip>
@@ -309,12 +309,12 @@ export function MessageComposer({ contact, onSent }: { contact: Contact; onSent:
 
       {!collapsed && (
         <>
-          {blocker && <p className="border-b border-navy-50 bg-red-50 px-3 py-2 text-sm text-burgundy-600">{blocker}</p>}
+          {blocker && <p className="border-b border-sand bg-red-50 px-3 py-2 text-sm text-burgundy-600">{blocker}</p>}
 
           {/* EMAIL */}
           {mode === 'email' && (
             <div className={cn(blocker && 'pointer-events-none opacity-50')}>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-navy-50 px-3 py-1.5">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-sand px-3 py-1.5">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <span className="w-12 shrink-0 text-sm text-ivory-600">From</span>
                   {activeMailboxes.length > 0 && (
@@ -345,7 +345,7 @@ export function MessageComposer({ contact, onSent }: { contact: Contact; onSent:
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-2 border-b border-navy-50 px-3 py-1.5">
+              <div className="flex items-center gap-2 border-b border-sand px-3 py-1.5">
                 <span className="w-12 shrink-0 text-sm text-ivory-600">To</span>
                 {toOptions.length > 1 ? (
                   <select value={toEmail} onChange={(e) => setToEmail(e.target.value)} aria-label="To" className="rounded-lg border border-navy-100 bg-ivory-50 px-2 py-1 text-sm text-navy-800 outline-none">
@@ -360,12 +360,12 @@ export function MessageComposer({ contact, onSent }: { contact: Contact; onSent:
               </div>
               {showCc && <AddressInput label="CC" values={cc} onChange={setCc} autoFocus />}
               {showBcc && <AddressInput label="BCC" values={bcc} onChange={setBcc} autoFocus={!showCc} />}
-              <div className="flex items-center gap-2 border-b border-navy-50 px-3 py-1.5">
+              <div className="flex items-center gap-2 border-b border-sand px-3 py-1.5">
                 <label htmlFor="composer-subject" className="w-12 shrink-0 text-sm text-ivory-600">Subject</label>
                 <input id="composer-subject" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Enter subject" className="flex-1 bg-transparent py-1 text-sm text-navy-800 outline-none placeholder:text-ivory-400" />
               </div>
               {showFormatBar && (
-                <div className="flex items-center gap-0.5 border-b border-navy-50 px-2 py-1">
+                <div className="flex items-center gap-0.5 border-b border-sand px-2 py-1">
                   <ToolButton label="Bold" onClick={() => exec('bold')}><Bold className="h-4 w-4" /></ToolButton>
                   <ToolButton label="Italic" onClick={() => exec('italic')}><Italic className="h-4 w-4" /></ToolButton>
                   <ToolButton label="Underline" onClick={() => exec('underline')}><Underline className="h-4 w-4" /></ToolButton>
@@ -394,7 +394,7 @@ export function MessageComposer({ contact, onSent }: { contact: Contact; onSent:
           {mode !== 'email' && (
             <div className={cn(blocker && 'pointer-events-none opacity-50', mode === 'note' && 'bg-gold-50/40')}>
               {mode === 'sms' && (
-                <div className="flex items-center gap-2 border-b border-navy-50 px-3 py-1.5">
+                <div className="flex items-center gap-2 border-b border-sand px-3 py-1.5">
                   <span className="w-12 shrink-0 text-sm text-ivory-600">To</span>
                   <Chip avatar={initials}>{contact.phone || '—'}</Chip>
                 </div>
@@ -413,7 +413,7 @@ export function MessageComposer({ contact, onSent }: { contact: Contact; onSent:
           )}
 
           {/* Toolbar */}
-          <div className="relative flex items-center gap-0.5 border-t border-navy-50 px-2 py-1.5">
+          <div className="relative flex items-center gap-0.5 border-t border-sand px-2 py-1.5">
             {mode === 'email' && (
               <>
                 <ToolButton label="Text formatting" active={showFormatBar} onClick={() => setShowFormatBar((v) => !v)}><Type className="h-4 w-4" /></ToolButton>

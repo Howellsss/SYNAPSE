@@ -109,7 +109,7 @@ export function StepImport({ state, dispatch }: { state: WizardState; dispatch: 
           <p className="font-semibold text-ivory-800">Template gallery</p>
           <p className="text-sm text-ivory-700">Ready-made layouts shared by the SYNAPSE community.</p>
         </div>
-        <span className="shrink-0 rounded-full bg-ivory-200 px-2.5 py-1 text-xs font-semibold text-ivory-800">Coming soon</span>
+        <span className="shrink-0 rounded-md bg-ivory-200 px-2.5 py-1 text-xs font-semibold text-ivory-800">Coming soon</span>
       </div>
       <p className="mt-4 text-sm text-ivory-700">Tip: open a workspace's menu on the Workspaces page and choose <strong>Export layout</strong> to get a file.</p>
     </>
