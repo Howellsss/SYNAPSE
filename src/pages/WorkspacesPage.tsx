@@ -79,21 +79,16 @@ export function WorkspacesPage() {
 
   return (
     <div className="w-full pb-6">
-      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="font-display text-[24px] font-bold tracking-[-0.02em] text-navy-800 sm:text-[24px]">Workspaces</h1>
-          <p className="mt-1 text-[14px] text-ivory-700">Walk up to someone to talk. Step into a room for privacy.</p>
-        </div>
-        {spaces && spaces.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            <button onClick={() => setJoinOpen(true)} className="flex h-[38px] items-center gap-1.5 rounded-lg bg-white ring-1 ring-inset ring-navy-100 px-4 text-sm font-semibold text-navy-800 transition hover:bg-navy-50"><Link2 className="h-4 w-4" /> Join with link</button>
-            {canManageTeam && <button onClick={createNew} className="flex h-[38px] items-center gap-1.5 rounded-lg bg-navy-800 px-4 text-sm font-semibold text-white transition hover:bg-navy-700"><Plus className="h-4 w-4" /> New workspace</button>}
-          </div>
-        )}
+      <div className="mb-6 min-w-0">
+        <h1 className="font-display text-[24px] font-bold tracking-[-0.02em] text-navy-800">Workspaces</h1>
+        <p className="mt-1 text-[14px] text-ivory-700">Walk up to someone to talk. Step into a room for privacy.</p>
       </div>
 
+      {/* The office picture and how it works, every time: create and join start here. */}
+      <FirstVisit canCreate={canManageTeam} onCreate={createNew} onJoin={() => setJoinOpen(true)} />
+
       {draft && canManageTeam && (
-        <div className="mb-5 flex flex-wrap items-center gap-3 rounded-2xl border border-gold-200 bg-gold-50 px-4 py-3">
+        <div className="mt-8 flex flex-wrap items-center gap-3 rounded-xl border border-gold-200 bg-gold-50 px-4 py-3">
           <PencilLine className="h-5 w-5 shrink-0 text-gold-700" />
           <p className="min-w-0 flex-1 text-sm text-navy-800">
             You have an unfinished workspace{draft.name.trim() ? <> — <strong>{draft.name.trim()}</strong></> : ''}.
@@ -103,15 +98,22 @@ export function WorkspacesPage() {
         </div>
       )}
 
+      {spaces && spaces.length > 0 && (
+        <div className="mb-4 mt-10 flex items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-navy-800">Your workspaces</h2>
+            <p className="text-sm text-ivory-700">{spaces.length} {spaces.length === 1 ? 'workspace' : 'workspaces'} · enter one to see who's around</p>
+          </div>
+        </div>
+      )}
+
       {spaces === null ? (
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2].map((i) => <Skeleton key={i} className="h-72 rounded-2xl" />)}
         </div>
       ) : error ? (
         <ErrorState message={`Couldn't load workspaces. ${error}`} onRetry={() => { setSpaces(null); load(); }} />
-      ) : spaces.length === 0 ? (
-        <FirstVisit canCreate={canManageTeam} onCreate={createNew} onJoin={() => setJoinOpen(true)} />
-      ) : (
+      ) : spaces.length === 0 ? null : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {spaces.map((space) => (
             <SpaceCard
