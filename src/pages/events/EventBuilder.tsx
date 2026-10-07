@@ -151,10 +151,10 @@ export function EventBuilder({ eventId }: { eventId?: string }) {
   const isLive = status === 'published' && !!eventId;
 
   return (
-    <div className="mx-auto max-w-[1180px] pb-28">
-      <button type="button" onClick={() => navigate(eventId ? `/events/${eventId}` : '/events')} className="mb-4 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-navy-700 hover:bg-navy-50"><ArrowLeft className="h-4 w-4" /> {eventId ? 'Back to event' : 'Events'}</button>
-      <h1 className="font-display text-[34px] font-bold tracking-[-0.032em] text-navy-800 sm:text-[40px]">{eventId ? 'Edit event' : 'New event'}</h1>
-      <p className="mt-1 text-[17px] text-ivory-700">Fill in what people need to know. Save a draft anytime; publish when it's ready.</p>
+    <div className="w-full pb-28">
+      <button type="button" onClick={() => navigate(eventId ? `/events/${eventId}` : '/events')} className="mb-4 inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold text-navy-700 hover:bg-navy-50"><ArrowLeft className="h-4 w-4" /> {eventId ? 'Back to event' : 'Events'}</button>
+      <h1 className="font-display text-[24px] font-bold tracking-[-0.02em] text-navy-800 sm:text-[24px]">{eventId ? 'Edit event' : 'New event'}</h1>
+      <p className="mt-1 text-[14px] text-ivory-700">Fill in what people need to know. Save a draft anytime; publish when it's ready.</p>
       {error && <p role="alert" className="mt-5 rounded-2xl bg-burgundy-50 px-4 py-3 text-sm font-medium text-burgundy-700">{error}</p>}
 
       <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_340px]">
@@ -181,7 +181,7 @@ export function EventBuilder({ eventId }: { eventId?: string }) {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
               <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-navy-50 sm:w-60">
                 <img src={cover || DEFAULT_COVER} alt="Event poster" className="h-full w-full object-cover" />
-                {!cover && <span className="absolute bottom-2 left-2 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-navy-800">Default image</span>}
+                {!cover && <span className="absolute bottom-2 left-2 rounded-md bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-navy-800">Default image</span>}
               </div>
               <div className="space-y-2">
                 <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={(e) => { void pickCover(e.target.files?.[0]); e.target.value = ''; }} />
@@ -203,7 +203,7 @@ export function EventBuilder({ eventId }: { eventId?: string }) {
           <Section title="Location">
             <div className="inline-flex rounded-full bg-white p-1 ring-1 ring-inset ring-navy-100" role="radiogroup" aria-label="Where">
               {([['in_person', 'In person'], ['online', 'Online'], ['hybrid', 'Both']] as const).map(([id, label]) => (
-                <button key={id} type="button" role="radio" aria-checked={mode === id} onClick={() => setMode(id)} className={cn('rounded-full px-4 py-1.5 text-sm transition', mode === id ? 'bg-navy-800 font-semibold text-white' : 'font-medium text-navy-700 hover:bg-navy-50')}>{label}</button>
+                <button key={id} type="button" role="radio" aria-checked={mode === id} onClick={() => setMode(id)} className={cn('rounded-md px-4 py-1.5 text-sm transition', mode === id ? 'bg-navy-800 font-semibold text-white' : 'font-medium text-navy-700 hover:bg-navy-50')}>{label}</button>
               ))}
             </div>
             {mode !== 'online' && (
@@ -233,7 +233,7 @@ export function EventBuilder({ eventId }: { eventId?: string }) {
                     </div>
                   </Field>
                   <Field label="Capacity"><input value={t.capacity} onChange={(e) => setTickets((all) => all.map((x, j) => (j === i ? { ...x, capacity: e.target.value.replace(/[^0-9]/g, '') } : x)))} inputMode="numeric" placeholder="No limit" className="input-field" /></Field>
-                  <button type="button" disabled={tickets.length === 1} onClick={() => setTickets((all) => all.filter((_, j) => j !== i))} aria-label={`Remove ticket ${t.name || i + 1}`} className="flex h-11 w-11 items-center justify-center rounded-full text-ivory-700 hover:bg-burgundy-50 hover:text-burgundy-600 disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
+                  <button type="button" disabled={tickets.length === 1} onClick={() => setTickets((all) => all.filter((_, j) => j !== i))} aria-label={`Remove ticket ${t.name || i + 1}`} className="flex h-11 w-11 items-center justify-center rounded-lg text-ivory-700 hover:bg-burgundy-50 hover:text-burgundy-600 disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
                 </div>
                 <input value={t.description} onChange={(e) => setTickets((all) => all.map((x, j) => (j === i ? { ...x, description: e.target.value.slice(0, 400) } : x)))} placeholder="What's included (optional)" aria-label="Ticket description" className="input-field mt-3" />
               </div>
@@ -249,7 +249,7 @@ export function EventBuilder({ eventId }: { eventId?: string }) {
                   <Field label="Answer type">
                     <select value={q.type} onChange={(e) => setQuestions((all) => all.map((x, j) => (j === i ? { ...x, type: e.target.value as QuestionType } : x)))} className="input-field">{QUESTION_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}</select>
                   </Field>
-                  <button type="button" onClick={() => setQuestions((all) => all.filter((_, j) => j !== i))} aria-label="Remove question" className="flex h-11 w-11 items-center justify-center rounded-full text-ivory-700 hover:bg-burgundy-50 hover:text-burgundy-600"><Trash2 className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setQuestions((all) => all.filter((_, j) => j !== i))} aria-label="Remove question" className="flex h-11 w-11 items-center justify-center rounded-lg text-ivory-700 hover:bg-burgundy-50 hover:text-burgundy-600"><Trash2 className="h-4 w-4" /></button>
                 </div>
                 {q.type === 'select' && (
                   <Field label="Choices (one per line)"><textarea value={(q.options ?? []).join('\n')} onChange={(e) => setQuestions((all) => all.map((x, j) => (j === i ? { ...x, options: e.target.value.split('\n') } : x)))} rows={3} className="input-field mt-1" /></Field>
@@ -281,8 +281,8 @@ export function EventBuilder({ eventId }: { eventId?: string }) {
 
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-navy-100 bg-white/90 backdrop-blur-xl lg:left-[240px]">
         <div className="mx-auto flex max-w-[1180px] items-center justify-end gap-2 px-4 py-3 lg:px-10">
-          {!isLive && <button type="button" onClick={() => { void save(false); }} disabled={!!saving} className="h-11 rounded-full px-5 text-[15px] font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50 disabled:opacity-60">{saving === 'draft' ? 'Saving…' : 'Save draft'}</button>}
-          <button type="button" onClick={() => { void save(true); }} disabled={!!saving} className="h-11 rounded-full bg-gold-400 px-6 text-[15px] font-semibold text-navy-900 hover:bg-gold-300 disabled:opacity-60">{saving === 'publish' ? 'Saving…' : isLive ? 'Save changes' : 'Publish'}</button>
+          {!isLive && <button type="button" onClick={() => { void save(false); }} disabled={!!saving} className="h-[38px] rounded-lg px-4 text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50 disabled:opacity-60">{saving === 'draft' ? 'Saving…' : 'Save draft'}</button>}
+          <button type="button" onClick={() => { void save(true); }} disabled={!!saving} className="h-[38px] rounded-lg bg-gold-400 px-4 text-sm font-semibold text-navy-900 hover:bg-gold-300 disabled:opacity-60">{saving === 'publish' ? 'Saving…' : isLive ? 'Save changes' : 'Publish'}</button>
         </div>
       </div>
     </div>

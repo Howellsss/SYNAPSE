@@ -701,7 +701,7 @@ function AICreation({ isSurvey, onBack, onCreated }: {
               {generated.fields.map((field, idx) => {
                 const meta = FIELD_TYPE_METADATA[field.field_type as FormFieldType];
                 return (
-                  <div key={idx} className="flex items-center gap-3 p-2.5 rounded-lg border border-navy-50 bg-ivory-50/30">
+                  <div key={idx} className="flex items-center gap-3 p-2.5 rounded-lg border border-sand bg-ivory-50/30">
                     <span className="w-5 h-5 rounded-md bg-navy-50 text-navy-600 text-[10px] font-bold flex items-center justify-center shrink-0">
                       {idx + 1}
                     </span>

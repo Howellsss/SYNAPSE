@@ -259,7 +259,7 @@ function RecordingDetailDrawer({
         {tab === 'transcript' && (
           <div>
             {recording.transcript ? (
-              <div className="p-4 rounded-xl bg-ivory-50 border border-navy-50 max-h-96 overflow-y-auto">
+              <div className="p-4 rounded-xl bg-ivory-50 border border-sand max-h-96 overflow-y-auto">
                 <p className="text-sm text-navy-700 leading-relaxed whitespace-pre-wrap">{recording.transcript}</p>
               </div>
             ) : (

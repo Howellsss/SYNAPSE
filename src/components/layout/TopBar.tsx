@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, type ReactNode } from 'react';
-import { Search, Bell, ChevronDown, Plus, HelpCircle } from 'lucide-react';
+import { Search, Bell, ChevronDown, Plus } from 'lucide-react';
+import { BellIcon, QuestionMarkCircleIcon } from '@heroicons/react/24/solid';
 import { useAuth } from '@/context/AuthContext';
 import { Avatar } from '@/components/ui/Avatar';
 import { useRouter } from '@/lib/router';
@@ -54,10 +55,10 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
   }, []);
 
   return (
-    <header className="sticky top-0 z-30 bg-white/85 backdrop-blur-xl backdrop-saturate-150 border-b border-sand h-[68px] flex items-center pl-16 pr-4 lg:px-10 gap-4">
+    <header className="sticky top-0 z-30 bg-white border-b border-navy-100 h-16 flex items-center pl-16 pr-4 lg:px-6 gap-4">
       {/* Search */}
       <div className="flex-1 max-w-xl relative">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-ivory-700 pointer-events-none" />
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-navy-500 pointer-events-none" />
         <input
           ref={searchRef}
           type="text"
@@ -65,11 +66,11 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
           onChange={(e) => onSearchChange?.(e.target.value)}
           placeholder="Search contacts, appointments, forms..."
           aria-label="Search contacts, appointments and forms"
-          className="w-full h-10 pl-10 pr-12 bg-white text-sm text-navy-800 rounded-[10px] border border-navy-100 transition-all placeholder:text-ivory-700 focus:bg-white focus:border-gold-400 focus:ring-4 focus:ring-gold-400/20 outline-none"
+          className="w-full h-10 pl-10 pr-12 bg-white text-sm text-navy-800 rounded-lg border border-navy-100 transition-all placeholder:text-ivory-700 focus:bg-white focus:border-gold-400 focus:ring-4 focus:ring-gold-400/20 outline-none"
         />
         <kbd className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 hidden text-xs text-ivory-700 sm:block">⌘K</kbd>
         {searchQuery && searchQuery.length > 0 && searchResults && (
-          <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl border border-navy-100/80 shadow-popover max-h-96 overflow-y-auto animate-scale-in">
+          <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl border border-navy-100 shadow-popover max-h-96 overflow-y-auto animate-scale-in">
             {searchResults}
           </div>
         )}
@@ -81,7 +82,7 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
         {onQuickCreate && (
           <button
             onClick={onQuickCreate}
-            className="hidden sm:inline-flex items-center gap-1.5 h-10 px-5 rounded-full bg-navy-800 text-white text-sm font-semibold transition-colors hover:bg-navy-700"
+            className="hidden sm:inline-flex items-center gap-1.5 h-10 px-4 rounded-lg bg-navy-800 text-white text-sm font-semibold transition-colors hover:bg-navy-700"
           >
             <Plus className="w-4 h-4" />
             Create
@@ -89,8 +90,8 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
         )}
 
         {/* Help */}
-        <button aria-label="Help" className="w-9 h-9 rounded-full text-navy-600 hover:bg-navy-50 hover:text-navy-800 transition-colors items-center justify-center hidden md:flex">
-          <HelpCircle className="w-[18px] h-[18px]" />
+        <button aria-label="Help" className="w-9 h-9 rounded-lg text-navy-700 hover:bg-navy-50 hover:text-navy-800 transition-colors items-center justify-center hidden md:flex">
+          <QuestionMarkCircleIcon className="w-5 h-5" />
         </button>
 
         {/* Notifications */}
@@ -99,13 +100,13 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
             onClick={() => setNotifOpen(!notifOpen)}
             aria-label="Notifications"
             aria-expanded={notifOpen}
-            className="w-9 h-9 rounded-full text-navy-600 hover:bg-navy-50 hover:text-navy-800 transition-colors flex items-center justify-center relative"
+            className="w-9 h-9 rounded-lg text-navy-700 hover:bg-navy-50 hover:text-navy-800 transition-colors flex items-center justify-center relative"
           >
-            <Bell className="w-[18px] h-[18px]" />
+            <BellIcon className="w-5 h-5" />
             {activity && activity.length > 0 && <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-gold-400" />}
           </button>
           {notifOpen && (
-            <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-2xl border border-navy-100/80 shadow-popover animate-scale-in overflow-hidden">
+            <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-xl border border-navy-100 shadow-popover animate-scale-in overflow-hidden">
               <div className="px-4 py-3 border-b border-navy-100">
                 <h3 className="text-sm font-semibold text-navy-800">Notifications</h3>
               </div>
@@ -142,7 +143,7 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setDropdownOpen(!dropdownOpen)}
-            className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full hover:bg-navy-50 transition-colors"
+            className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-lg hover:bg-navy-50 transition-colors"
           >
             <Avatar
               firstName={profile?.first_name}
@@ -159,7 +160,7 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
             <ChevronDown className="w-4 h-4 text-ivory-600 hidden md:block" />
           </button>
           {dropdownOpen && (
-            <div className="absolute top-full right-0 mt-2 w-56 bg-white rounded-2xl border border-navy-100/80 shadow-popover animate-scale-in overflow-hidden">
+            <div className="absolute top-full right-0 mt-2 w-56 bg-white rounded-xl border border-navy-100 shadow-popover animate-scale-in overflow-hidden">
               <div className="px-4 py-3 border-b border-navy-100">
                 <p className="text-sm font-semibold text-navy-800">
                   {profile?.first_name} {profile?.last_name}

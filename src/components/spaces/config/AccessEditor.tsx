@@ -79,7 +79,7 @@ export function AccessEditor({ mode, token, permissions, onMode, onNewToken, onP
             </thead>
             <tbody>
               {PERMISSION_ROWS.map((row) => (
-                <tr key={row.key} className="border-t border-navy-50">
+                <tr key={row.key} className="border-t border-sand">
                   <td className="px-3 py-2 text-navy-700">{row.label}</td>
                   {ROLES.map((role: UserRole) => {
                     const checked = role === 'owner' || permissions[row.key]?.includes(role);

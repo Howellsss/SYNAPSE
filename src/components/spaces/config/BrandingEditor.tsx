@@ -63,7 +63,7 @@ export function BrandingEditor({ branding, onChange, upload }: {
               aria-label={a.label}
               title={a.label}
               onClick={() => onChange({ ...branding, accent: a.value })}
-              className={cn('flex h-9 w-9 items-center justify-center rounded-full ring-2 ring-offset-2 transition', accent === a.value ? 'ring-navy-800' : 'ring-transparent hover:ring-navy-100')}
+              className={cn('flex h-9 w-9 items-center justify-center rounded-lg ring-2 ring-offset-2 transition', accent === a.value ? 'ring-navy-800' : 'ring-transparent hover:ring-navy-100')}
               style={{ backgroundColor: a.value }}
             >
               {accent === a.value && <Check className={cn('h-4 w-4', ['#E4A93C', '#B07A1B'].includes(a.value) ? 'text-navy-900' : 'text-white')} />}

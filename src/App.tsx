@@ -160,7 +160,7 @@ function AppContent() {
           onQuickCreate={() => navigate('/calendars')}
         />
         {/* Each section fades in with a slight rise when you move to it. */}
-        <main key={path.split(/[/?]/)[1] || 'dashboard'} className="flex-1 px-4 lg:px-10 py-6 lg:py-8 animate-page-in">{renderPage()}</main>
+        <main key={path.split(/[/?]/)[1] || 'dashboard'} className="flex-1 px-4 lg:px-6 py-5 lg:py-6 animate-page-in">{renderPage()}</main>
       </div>
     </div>
   );

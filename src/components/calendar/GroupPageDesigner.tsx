@@ -686,7 +686,7 @@ function CollapsibleSection({
         <span className="text-sm font-semibold text-navy-800">{title}</span>
         {isOpen ? <ChevronDown className="w-4 h-4 text-ivory-400" /> : <ChevronRight className="w-4 h-4 text-ivory-400" />}
       </button>
-      {isOpen && <div className="px-3.5 pb-3.5 pt-1 space-y-3 border-t border-navy-50">{children}</div>}
+      {isOpen && <div className="px-3.5 pb-3.5 pt-1 space-y-3 border-t border-sand">{children}</div>}
     </div>
   );
 }

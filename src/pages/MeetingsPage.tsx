@@ -110,17 +110,17 @@ export function MeetingsPage() {
   );
 
   return (
-    <div className="mx-auto max-w-7xl pb-8">
+    <div className="w-full pb-8">
       {/* Top row */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-navy-50 pb-5">
-        <div role="tablist" aria-label="Meetings or calls" className="flex rounded-xl bg-ivory-200/50 p-1">
+      <div className="flex flex-wrap items-center gap-3 border-b border-sand pb-5">
+        <div role="tablist" aria-label="Meetings or calls" className="flex rounded-lg bg-white p-1 ring-1 ring-inset ring-navy-100">
           {(['meetings', 'calls'] as const).map((t) => (
             <button
               key={t}
               role="tab"
               aria-selected={tab === t}
               onClick={() => setTab(t)}
-              className={cn('rounded-lg px-4 py-2 text-sm font-semibold transition', tab === t ? 'bg-white text-navy-800 shadow-card' : 'text-navy-500 hover:text-navy-800')}
+              className={cn('rounded-md px-4 py-1.5 text-sm font-semibold transition', tab === t ? 'bg-navy-800 text-white' : 'text-navy-700 hover:bg-navy-50')}
             >
               {t === 'meetings' ? 'Meetings' : 'Calls'}
             </button>
@@ -153,7 +153,7 @@ export function MeetingsPage() {
       ) : (
         <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
           {/* Main card */}
-          <section className="min-h-[420px] rounded-3xl border border-navy-50 bg-white p-6 shadow-card sm:min-h-[500px] sm:p-8" aria-label={tab === 'meetings' ? "Today's meetings" : 'Calls'}>
+          <section className="min-h-[420px] rounded-xl border border-sand bg-white p-6 shadow-card sm:min-h-[500px] sm:p-8" aria-label={tab === 'meetings' ? "Today's meetings" : 'Calls'}>
             {meetings === null ? (
               <div className="space-y-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-16 rounded-2xl" />)}</div>
             ) : tab === 'meetings' ? (
@@ -176,8 +176,8 @@ export function MeetingsPage() {
 
           {/* Right column */}
           <div className="space-y-6">
-            <section className="rounded-3xl border border-navy-50 bg-white p-6 shadow-card" aria-label="Upcoming rooms">
-              <div className="border-b border-navy-50 pb-4">
+            <section className="rounded-xl border border-sand bg-white p-6 shadow-card" aria-label="Upcoming rooms">
+              <div className="border-b border-sand pb-4">
                 <h2 className="text-base font-bold text-navy-800">Upcoming rooms</h2>
                 <p className="mt-1 text-sm text-ivory-700">Encrypted HD video</p>
               </div>
@@ -186,7 +186,7 @@ export function MeetingsPage() {
               ) : upcoming.length ? (
                 <ul className="mt-4 space-y-3">
                   {upcoming.map((m) => (
-                    <li key={m.id} className="flex items-center gap-3 rounded-2xl border border-navy-50 bg-white p-4 shadow-sm">
+                    <li key={m.id} className="flex items-center gap-3 rounded-2xl border border-sand bg-white p-4 shadow-sm">
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-semibold text-navy-800">{m.title}</p>
                         <p className="mt-1 truncate text-xs text-ivory-700">{roomWhen(m, now)} · Room {m.code}</p>
@@ -202,8 +202,8 @@ export function MeetingsPage() {
               )}
             </section>
 
-            <section className="rounded-3xl border border-navy-50 bg-white p-6 shadow-card" aria-label="Meeting intelligence">
-              <div className="flex items-start justify-between gap-3 border-b border-navy-50 pb-4">
+            <section className="rounded-xl border border-sand bg-white p-6 shadow-card" aria-label="Meeting intelligence">
+              <div className="flex items-start justify-between gap-3 border-b border-sand pb-4">
                 <div>
                   <h2 className="text-base font-bold text-navy-800">Meeting intelligence</h2>
                   <p className="mt-1 text-sm text-ivory-700">AI brief & transcript memory</p>
@@ -237,7 +237,7 @@ function roomWhen(m: Meeting, now: Date): string {
 function Empty({ icon, title, text, action }: { icon: React.ReactNode; title: string; text: React.ReactNode; action?: React.ReactNode }) {
   return (
     <div className="flex h-full min-h-[360px] flex-col items-center justify-center text-center">
-      <span className="flex h-28 w-36 items-center justify-center rounded-3xl bg-gradient-to-br from-navy-50 to-ivory-100 text-navy-600 shadow-sm">{icon}</span>
+      <span className="flex h-28 w-36 items-center justify-center rounded-xl bg-gradient-to-br from-navy-50 to-ivory-100 text-navy-600 shadow-sm">{icon}</span>
       <h2 className="mt-8 text-2xl font-bold text-navy-800">{title}</h2>
       <p className="mt-3 max-w-md text-[15px] leading-relaxed text-ivory-700">{text}</p>
       {action && <div className="mt-8">{action}</div>}
@@ -253,7 +253,7 @@ function TodayList({ meetings, appointments, now, onEnter }: { meetings: Meeting
   return (
     <div>
       <h2 className="text-lg font-bold text-navy-800">Today</h2>
-      <ul className="mt-4 divide-y divide-navy-50">{rows.map((r) => <li key={r.key}>{r.node}</li>)}</ul>
+      <ul className="mt-4 divide-y divide-sand">{rows.map((r) => <li key={r.key}>{r.node}</li>)}</ul>
     </div>
   );
 }
@@ -268,8 +268,8 @@ function MeetingRow({ m, now, onEnter }: { m: Meeting; now: Date; onEnter: (code
       <div className="min-w-0 flex-1">
         <p className="flex items-center gap-2 truncate font-semibold text-navy-800">
           {m.title}
-          {live && <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-green-700"><Radio className="h-3 w-3" /> Live</span>}
-          {m.ended_at && <span className="rounded-full bg-ivory-200/60 px-2 py-0.5 text-[11px] font-semibold text-ivory-800">Ended</span>}
+          {live && <span className="inline-flex items-center gap-1 rounded-md bg-green-50 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-green-700"><Radio className="h-3 w-3" /> Live</span>}
+          {m.ended_at && <span className="rounded-md bg-ivory-200/60 px-2 py-0.5 text-[11px] font-semibold text-ivory-800">Ended</span>}
         </p>
         <p className="mt-0.5 truncate text-xs text-ivory-700">Room {m.code}{m.nickname ? ` · ${m.nickname}` : ''}{m.kind === 'scheduled' ? ` · ${m.duration_min} min` : ''}</p>
       </div>
@@ -296,7 +296,7 @@ function CallsList({ meetings, onEnter }: { meetings: Meeting[]; onEnter: (code:
   return (
     <div>
       <h2 className="text-lg font-bold text-navy-800">Recent calls</h2>
-      <ul className="mt-4 divide-y divide-navy-50">
+      <ul className="mt-4 divide-y divide-sand">
         {meetings.map((m) => {
           const at = startOf(m);
           return (

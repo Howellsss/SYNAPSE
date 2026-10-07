@@ -85,7 +85,7 @@ export function TimezoneSelect({
       </button>
       {open && (
         <div className="absolute z-50 mt-1 w-full rounded-xl border border-navy-100 bg-white shadow-lg max-h-64 overflow-hidden flex flex-col">
-          <div className="p-2 border-b border-navy-50">
+          <div className="p-2 border-b border-sand">
             <div className="flex items-center gap-2 rounded-lg bg-ivory-50 px-2.5 py-1.5">
               <Search className="w-3.5 h-3.5 text-ivory-400" />
               <input

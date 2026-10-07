@@ -34,16 +34,16 @@ export default {
           100: '#FFFFFF',
           200: '#EDEFF3',
           300: '#DDE1E8',
-          400: '#C3C9D4',
-          500: '#B5BDCC',
-          600: '#8E97A8',
-          700: '#6B7588',
-          800: '#4A526A',
+          400: '#A3ABBA',
+          500: '#8E97A8',
+          600: '#6B7588',
+          700: '#4F596B',
+          800: '#3A4357',
           900: '#2E3548',
         },
         // White surfaces and neutral hairlines (no off-white anywhere); navy & gold stay the brand.
         paper: '#FFFFFF',
-        sand: '#E3E7EE',
+        sand: '#D5DAE3',
         burgundy: {
           50: '#FBEFF0',
           100: '#F5DCDF',
@@ -56,20 +56,22 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['-apple-system', 'BlinkMacSystemFont', '"SF Pro Text"', 'Geist', '"Helvetica Neue"', 'system-ui', 'sans-serif'],
-        display: ['-apple-system', 'BlinkMacSystemFont', '"SF Pro Display"', 'Geist', '"Helvetica Neue"', 'system-ui', 'sans-serif'],
+        // Inter everywhere in the app: a sturdy, even sans that reads solid at small sizes.
+        sans: ['"Inter Variable"', 'Inter', '-apple-system', 'BlinkMacSystemFont', '"Helvetica Neue"', 'system-ui', 'sans-serif'],
+        display: ['"Inter Variable"', 'Inter', '-apple-system', 'BlinkMacSystemFont', '"Helvetica Neue"', 'system-ui', 'sans-serif'],
         // Events pages only: a wide geometric display face with a clean body, loaded on demand.
         'event-display': ['Unbounded', '"SF Pro Display"', '-apple-system', 'system-ui', 'sans-serif'],
         event: ['Raleway', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
-        xl: '14px',
-        '2xl': '18px',
-        '3xl': '24px',
+        // Firm corners: 8px controls (rounded-lg), 10px cards, 12px dialogs.
+        xl: '10px',
+        '2xl': '12px',
+        '3xl': '14px',
       },
       boxShadow: {
-        card: '0 1px 3px 0 rgba(13, 28, 59, 0.06), 0 1px 2px -1px rgba(13, 28, 59, 0.04)',
-        'card-hover': '0 8px 24px -6px rgba(13, 28, 59, 0.12), 0 2px 4px -2px rgba(13, 28, 59, 0.04)',
+        card: '0 1px 2px 0 rgba(13, 28, 59, 0.05)',
+        'card-hover': '0 4px 12px -2px rgba(13, 28, 59, 0.10)',
         sidebar: '4px 0 24px -4px rgba(0,0,0,0.10)',
         drawer: '-8px 0 40px -8px rgba(0,0,0,0.18)',
         popover: '0 12px 40px -8px rgba(13, 28, 59, 0.18), 0 0 0 1px rgba(13, 28, 59, 0.04)',

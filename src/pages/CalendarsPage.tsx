@@ -225,7 +225,7 @@ export function CalendarsPage() {
       {/* Header: the redesign's large title, segmented controls and pill buttons */}
       <div className="bg-white">
         <div className="flex flex-wrap items-center gap-4 px-1 pb-4 pt-1">
-          <h1 className="font-display text-[34px] font-bold tracking-[-0.032em] text-navy-800 sm:text-[40px]">
+          <h1 className="font-display text-[24px] font-bold tracking-[-0.02em] text-navy-800 sm:text-[24px]">
             {tab === 'calendar' ? (
               <>{MONTHS[currentDate.getMonth()]} <span className="font-medium text-ivory-700">{currentDate.getFullYear()}</span></>
             ) : tab === 'list' ? 'Appointments' : 'Calendar settings'}
@@ -255,14 +255,14 @@ export function CalendarsPage() {
             <>
               <button
                 onClick={() => setShowManage(true)}
-                className="flex h-10 items-center gap-1.5 rounded-full bg-white ring-1 ring-inset ring-navy-100 px-4 text-sm font-semibold text-navy-800 transition hover:bg-navy-50"
+                className="flex h-[38px] items-center gap-1.5 rounded-lg bg-white ring-1 ring-inset ring-navy-100 px-4 text-sm font-semibold text-navy-800 transition hover:bg-navy-50"
               >
                 <SlidersHorizontal className="h-4 w-4" />
                 Manage view
               </button>
               <button
                 onClick={() => setShowCreate(true)}
-                className="flex h-10 items-center gap-1.5 rounded-full bg-navy-800 px-5 text-sm font-semibold text-white transition hover:bg-navy-700"
+                className="flex h-[38px] items-center gap-1.5 rounded-lg bg-navy-800 px-4 text-sm font-semibold text-white transition hover:bg-navy-700"
               >
                 <Plus className="h-4 w-4" />
                 New
@@ -276,13 +276,13 @@ export function CalendarsPage() {
             {/* Controls row */}
             <div className="flex flex-wrap items-center gap-3 px-1 pb-4">
               <div className="flex items-center gap-1">
-                <button onClick={goPrev} className="flex h-9 w-9 items-center justify-center rounded-full text-navy-700 transition hover:bg-navy-50" aria-label="Previous">
+                <button onClick={goPrev} className="flex h-9 w-9 items-center justify-center rounded-lg text-navy-700 transition hover:bg-navy-50" aria-label="Previous">
                   <ChevronLeft className="h-[18px] w-[18px]" />
                 </button>
-                <button onClick={goToday} className="h-9 rounded-full bg-white ring-1 ring-inset ring-navy-100 px-4 text-sm font-semibold text-navy-800 transition hover:bg-navy-50">
+                <button onClick={goToday} className="h-9 rounded-lg bg-white ring-1 ring-inset ring-navy-100 px-4 text-sm font-semibold text-navy-800 transition hover:bg-navy-50">
                   Today
                 </button>
-                <button onClick={goNext} className="flex h-9 w-9 items-center justify-center rounded-full text-navy-700 transition hover:bg-navy-50" aria-label="Next">
+                <button onClick={goNext} className="flex h-9 w-9 items-center justify-center rounded-lg text-navy-700 transition hover:bg-navy-50" aria-label="Next">
                   <ChevronRight className="h-[18px] w-[18px]" />
                 </button>
               </div>
@@ -290,7 +290,7 @@ export function CalendarsPage() {
               <div className="relative">
                 <button
                   onClick={() => setShowDatePicker(!showDatePicker)}
-                  className="flex h-9 items-center gap-1.5 rounded-full px-3 text-[15px] font-semibold text-navy-800 transition hover:bg-navy-50"
+                  className="flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold text-navy-800 transition hover:bg-navy-50"
                 >
                   {headerLabel}
                   <CalendarDays className="h-4 w-4 text-ivory-700" />
@@ -340,7 +340,7 @@ export function CalendarsPage() {
                 onClick={() => setShowFilters(!showFilters)}
                 aria-expanded={showFilters}
                 className={cn(
-                  'flex h-9 items-center gap-1.5 rounded-full px-4 text-sm font-semibold transition',
+                  'flex h-9 items-center gap-1.5 rounded-lg px-4 text-sm font-semibold transition',
                   showFilters || statusFilter.size > 0 ? 'bg-gold-50 text-gold-700 ring-1 ring-gold-300' : 'bg-white ring-1 ring-inset ring-navy-100 text-navy-800 hover:bg-navy-50'
                 )}
               >
@@ -362,7 +362,7 @@ export function CalendarsPage() {
                         onClick={() => toggleCalendarVisible(cal.id)}
                         aria-pressed={visibleCalendars.has(cal.id)}
                         className={cn(
-                          'flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium transition',
+                          'flex h-8 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium transition',
                           visibleCalendars.has(cal.id) ? 'bg-white text-navy-800 ring-1 ring-navy-200' : 'bg-transparent text-ivory-600 line-through'
                         )}
                       >
@@ -383,7 +383,7 @@ export function CalendarsPage() {
                         onClick={() => toggleStatusFilter(status)}
                         aria-pressed={statusFilter.has(status)}
                         className={cn(
-                          'flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium transition',
+                          'flex h-8 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium transition',
                           statusFilter.has(status) ? `${STATUS_CONFIG[status].bg} ${STATUS_CONFIG[status].text} ring-1 ring-current` : 'bg-white text-navy-700 hover:text-navy-900'
                         )}
                       >
@@ -409,7 +409,7 @@ export function CalendarsPage() {
       </div>
 
       {/* Main Content */}
-      <div className={cn('overflow-hidden', tab === 'calendar' ? 'rounded-[20px] border border-sand bg-white md:h-[calc(100dvh-250px)] md:min-h-[520px]' : 'flex-1')}>
+      <div className={cn('overflow-hidden', tab === 'calendar' ? 'rounded-xl border border-sand bg-white md:h-[calc(100dvh-250px)] md:min-h-[520px]' : 'flex-1')}>
         {tab === 'calendar' && (
           <>
             {loading ? (
@@ -735,7 +735,7 @@ function AppointmentListView({
               <span>Status</span>
             </div>
             {/* Rows */}
-            <div className="divide-y divide-navy-50">
+            <div className="divide-y divide-sand">
               {filtered.map(appt => {
                 const cal = appt.calendars;
                 const statusCfg = STATUS_CONFIG[appt.status];
@@ -1092,7 +1092,7 @@ function ManageViewDrawer({
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-navy-50">
+                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-sand">
                       <button
                         onClick={() => toggleCalendarVisible(cal.id)}
                         className={cn(
@@ -1222,7 +1222,7 @@ function WeekView({
           {/* Time axis */}
           <div className="w-16 shrink-0 border-r border-sand">
             {HOURS.map(hour => (
-              <div key={hour} style={{ height: HOUR_HEIGHT }} className="relative border-b border-navy-50">
+              <div key={hour} style={{ height: HOUR_HEIGHT }} className="relative border-b border-sand">
                 <span className="absolute -top-2 right-2 text-[11px] text-ivory-700">
                   {hour === 0 ? '' : formatHourLabel(hour)}
                 </span>
@@ -1240,7 +1240,7 @@ function WeekView({
             return (
               <div key={dayIdx} className="relative flex-1 border-r border-sand last:border-r-0">
                 {HOURS.map(hour => (
-                  <div key={hour} style={{ height: HOUR_HEIGHT }} className="border-b border-navy-50" />
+                  <div key={hour} style={{ height: HOUR_HEIGHT }} className="border-b border-sand" />
                 ))}
                 {/* Appointments */}
                 {dayAppts.map(appt => {
@@ -1325,7 +1325,7 @@ function DayView({
           {/* Time axis */}
           <div className="w-16 shrink-0 border-r border-sand">
             {HOURS.map(hour => (
-              <div key={hour} style={{ height: HOUR_HEIGHT }} className="relative border-b border-navy-50">
+              <div key={hour} style={{ height: HOUR_HEIGHT }} className="relative border-b border-sand">
                 <span className="absolute -top-2 right-2 text-[11px] text-ivory-700">
                   {hour === 0 ? '' : formatHourLabel(hour)}
                 </span>
@@ -1336,7 +1336,7 @@ function DayView({
           {/* Day column */}
           <div className="relative flex-1">
             {HOURS.map(hour => (
-              <div key={hour} style={{ height: HOUR_HEIGHT }} className="border-b border-navy-50" />
+              <div key={hour} style={{ height: HOUR_HEIGHT }} className="border-b border-sand" />
             ))}
             {dayAppts.map(appt => {
               const top = getAppointmentTopOffset(appt.start_time, displayTimezone);
@@ -2073,7 +2073,7 @@ function EditCalendarDrawer({ calendar, onClose, onUpdated }: { calendar: Calend
                     <p className="text-sm font-medium text-navy-700">{h.profiles?.first_name} {h.profiles?.last_name}</p>
                     <p className="text-xs text-ivory-600">{h.profiles?.email}</p>
                   </div>
-                  {h.is_primary && <span className="text-xs font-medium text-gold-700 bg-gold-50 px-2 py-0.5 rounded-full">Primary</span>}
+                  {h.is_primary && <span className="text-xs font-medium text-gold-700 bg-gold-50 px-2 py-0.5 rounded-md">Primary</span>}
                   <button onClick={async () => { await supabase.from('calendar_hosts').delete().eq('calendar_id', calendar.id).eq('user_id', h.user_id); setHosts(hosts.filter(x => x.user_id !== h.user_id)); toast('Host removed'); }} className="text-ivory-400 hover:text-burgundy-600"><X className="w-4 h-4" /></button>
                 </div>
               ))}

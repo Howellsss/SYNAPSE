@@ -612,7 +612,7 @@ function CalendarCard({
       </div>
 
       {/* Footer: updated + actions */}
-      <div className="flex items-center justify-between pt-3 border-t border-navy-50">
+      <div className="flex items-center justify-between pt-3 border-t border-sand">
         <span className="text-[10px] text-ivory-400">Updated {formatDate(calendar.updated_at, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
         <div className="flex items-center gap-1">
           <button onClick={onOpen} className="rounded-lg p-1.5 text-ivory-600 transition hover:bg-ivory-50 hover:text-navy-700" title="Open">
@@ -705,12 +705,12 @@ function GroupCalendarCard({
         {memberCals.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {memberCals.slice(0, 3).map(cal => (
-              <span key={cal.id} className="rounded-full bg-ivory-100 px-2 py-0.5 text-[10px] font-medium text-ivory-700 truncate max-w-[120px]">
+              <span key={cal.id} className="rounded-md bg-ivory-100 px-2 py-0.5 text-[10px] font-medium text-ivory-700 truncate max-w-[120px]">
                 {cal.name}
               </span>
             ))}
             {memberCals.length > 3 && (
-              <span className="rounded-full bg-ivory-100 px-2 py-0.5 text-[10px] font-medium text-ivory-500">
+              <span className="rounded-md bg-ivory-100 px-2 py-0.5 text-[10px] font-medium text-ivory-500">
                 +{memberCals.length - 3} more
               </span>
             )}
@@ -718,7 +718,7 @@ function GroupCalendarCard({
         )}
       </div>
 
-      <div className="flex items-center justify-between pt-3 border-t border-navy-50">
+      <div className="flex items-center justify-between pt-3 border-t border-sand">
         <span className="text-[10px] text-ivory-400">Updated {formatDate(group.updated_at ?? group.created_at, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
         <div className="flex items-center gap-1">
           <button onClick={onOpen} className="rounded-lg p-1.5 text-ivory-600 transition hover:bg-ivory-50 hover:text-navy-700" title="Settings">
@@ -1049,7 +1049,7 @@ function AvailabilityTab({ calendarId }: { calendarId: string }) {
             const intervals = availability[dayIdx] || [];
             const isActive = intervals.length > 0;
             return (
-              <div key={dayIdx} className="flex items-center gap-3 py-2 border-b border-navy-50 last:border-b-0">
+              <div key={dayIdx} className="flex items-center gap-3 py-2 border-b border-sand last:border-b-0">
                 <div className="w-28 shrink-0">
                   <button onClick={() => {
                     const na = { ...availability };
@@ -1419,7 +1419,7 @@ function HostsTab({ calendarId }: { calendarId: string }) {
                 <p className="text-sm font-medium text-navy-700">{getFullName(h.profiles ?? { first_name: null, last_name: null })}</p>
                 <p className="text-xs text-ivory-600">{(h.profiles as { email?: string | null } | null)?.email ?? ''}</p>
               </div>
-              {h.is_primary && <span className="text-xs font-medium text-gold-700 bg-gold-50 px-2 py-0.5 rounded-full">Primary</span>}
+              {h.is_primary && <span className="text-xs font-medium text-gold-700 bg-gold-50 px-2 py-0.5 rounded-md">Primary</span>}
               <button onClick={() => removeHost(h.user_id)} className="text-ivory-400 hover:text-burgundy-600"><X className="w-4 h-4" /></button>
             </div>
           ))}

@@ -210,7 +210,7 @@ function Wizard({ workspaceId, userId, userEmail, userName }: { workspaceId: str
             {state.step === 'media' ? (
               <>
                 <StepTitle title="Check your camera & mic" subtitle="Make sure people can see and hear you when you walk over." />
-                <div className="mb-5 rounded-3xl bg-navy-800 p-4 sm:p-6 lg:hidden"><DevicePreview check={media} {...you} /></div>
+                <div className="mb-5 rounded-xl bg-navy-800 p-4 sm:p-6 lg:hidden"><DevicePreview check={media} {...you} /></div>
                 <DeviceControls check={media} prefs={mediaPrefs} onPrefs={setMediaPrefs} />
               </>
             ) : (
@@ -221,12 +221,12 @@ function Wizard({ workspaceId, userId, userEmail, userName }: { workspaceId: str
 
         {/* Live preview stacks under the content on small screens */}
         {/* On the Type step the details show under the chosen card instead. */}
-        <aside className={cn('mx-4 mb-4 rounded-3xl bg-navy-800 p-5 sm:mx-8 lg:hidden', (state.step === 'type' || state.step === 'media') && 'hidden')} aria-label="Live preview">
+        <aside className={cn('mx-4 mb-4 rounded-xl bg-navy-800 p-5 sm:mx-8 lg:hidden', (state.step === 'type' || state.step === 'media') && 'hidden')} aria-label="Live preview">
           <LivePreview state={state} userName={userName} />
         </aside>
 
         {/* Footer */}
-        <footer className="sticky bottom-0 z-10 border-t border-navy-50 bg-white/95 px-4 py-3 backdrop-blur sm:px-8 lg:px-12">
+        <footer className="sticky bottom-0 z-10 border-t border-sand bg-white/95 px-4 py-3 backdrop-blur sm:px-8 lg:px-12">
           {createError && (
             <div role="alert" className={cn('mx-auto mb-3 flex w-full flex-wrap items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-sm text-burgundy-600 lg:mx-0', column)}>
               <AlertTriangle className="h-4 w-4 shrink-0" />
@@ -261,7 +261,7 @@ function Wizard({ workspaceId, userId, userEmail, userName }: { workspaceId: str
 
       {/* Live preview panel (desktop) */}
       <aside className={cn('hidden shrink-0 p-4 lg:block', wide ? 'w-[380px] xl:w-[430px]' : 'w-[44%] max-w-[640px]')} aria-label={state.step === 'type' ? 'Workspace at a glance' : 'Live preview'}>
-        <div className={cn('h-full overflow-y-auto rounded-3xl bg-navy-800', wide ? 'p-7' : 'p-10')}>
+        <div className={cn('h-full overflow-y-auto rounded-xl bg-navy-800', wide ? 'p-7' : 'p-10')}>
           {state.step === 'media' ? <MediaPanel check={media} you={you} /> : <LivePreview state={state} userName={userName} />}
         </div>
       </aside>

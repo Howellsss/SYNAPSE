@@ -194,13 +194,13 @@ export function ContactsPage() {
     <div className="space-y-6 pb-8">
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="font-display text-[34px] leading-tight font-bold tracking-[-0.032em] text-navy-800 sm:text-[40px]">Contacts</h1>
+          <h1 className="font-display text-[24px] leading-tight font-bold tracking-[-0.02em] text-navy-800 sm:text-[24px]">Contacts</h1>
           <p className="mt-1 text-[15px] text-ivory-700">Manage your contacts, clients, and relationships.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button onClick={() => setShowAddModal(true)} className="flex h-10 items-center gap-1.5 rounded-full bg-navy-800 px-5 text-sm font-semibold text-white transition hover:bg-navy-700"><Plus className="h-4 w-4" /> Add Contact</button>
-          <button onClick={() => setShowImportModal(true)} className="flex h-10 items-center gap-1.5 rounded-full bg-white ring-1 ring-inset ring-navy-100 px-4 text-sm font-semibold text-navy-800 transition hover:bg-navy-50"><Upload className="h-4 w-4" /> Import</button>
-          <button onClick={() => handleExport('all')} className="flex h-10 items-center gap-1.5 rounded-full bg-white ring-1 ring-inset ring-navy-100 px-4 text-sm font-semibold text-navy-800 transition hover:bg-navy-50"><Download className="h-4 w-4" /> Export</button>
+          <button onClick={() => setShowAddModal(true)} className="flex h-[38px] items-center gap-1.5 rounded-lg bg-navy-800 px-4 text-sm font-semibold text-white transition hover:bg-navy-700"><Plus className="h-4 w-4" /> Add Contact</button>
+          <button onClick={() => setShowImportModal(true)} className="flex h-[38px] items-center gap-1.5 rounded-lg bg-white ring-1 ring-inset ring-navy-100 px-4 text-sm font-semibold text-navy-800 transition hover:bg-navy-50"><Upload className="h-4 w-4" /> Import</button>
+          <button onClick={() => handleExport('all')} className="flex h-[38px] items-center gap-1.5 rounded-lg bg-white ring-1 ring-inset ring-navy-100 px-4 text-sm font-semibold text-navy-800 transition hover:bg-navy-50"><Download className="h-4 w-4" /> Export</button>
         </div>
       </section>
 
@@ -212,7 +212,7 @@ export function ContactsPage() {
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-[196px_minmax(0,1fr)]">
-        <aside className="flex h-fit flex-col rounded-[20px] bg-white ring-1 ring-inset ring-navy-100 p-3">
+        <aside className="flex h-fit flex-col rounded-xl bg-white ring-1 ring-inset ring-navy-100 p-3">
           <div className="flex items-center justify-between px-2 pb-2 pt-1">
             <p className="text-[13px] font-semibold text-ivory-700">Smart Lists</p>
             <button onClick={() => toast('Smart list creation is coming soon')} aria-label="New smart list" className="flex h-7 w-7 items-center justify-center rounded-full text-navy-700 hover:bg-navy-50"><Plus className="h-4 w-4" /></button>
@@ -241,7 +241,7 @@ export function ContactsPage() {
                 </button>
               ))}
             </div>
-            <button aria-label="Table settings" className="hidden h-9 w-9 items-center justify-center rounded-full text-navy-700 hover:bg-navy-50 sm:flex"><SlidersHorizontal className="h-4 w-4" /></button>
+            <button aria-label="Table settings" className="hidden h-9 w-9 items-center justify-center rounded-lg text-navy-700 hover:bg-navy-50 sm:flex"><SlidersHorizontal className="h-4 w-4" /></button>
           </div>
           <div className="flex flex-wrap items-center gap-2 border-b border-sand px-4 py-3">
             <label className="relative min-w-[220px] flex-1 sm:flex-none">
@@ -252,9 +252,9 @@ export function ContactsPage() {
               [Filter, 'Filter'], [Tag, 'Tags'], [Globe2, 'Source'], [CheckCircle2, 'Status'], [Calendar, 'Appointments'], [ListFilter, 'More filters'],
             ].map(([Icon, label]) => {
               const I = Icon as typeof Filter;
-              return <button key={label as string} className="flex h-9 items-center gap-1.5 rounded-full bg-white ring-1 ring-inset ring-navy-100 px-3.5 text-[13px] font-medium text-navy-800 transition hover:bg-navy-50"><I className="h-3.5 w-3.5" /> {label as string}</button>;
+              return <button key={label as string} className="flex h-9 items-center gap-1.5 rounded-lg bg-white ring-1 ring-inset ring-navy-100 px-3.5 text-[13px] font-medium text-navy-800 transition hover:bg-navy-50"><I className="h-3.5 w-3.5" /> {label as string}</button>;
             })}
-            <button onClick={() => handleExport('all')} className="flex h-9 items-center gap-1.5 rounded-full bg-white ring-1 ring-inset ring-navy-100 px-3.5 text-[13px] font-medium text-navy-800 transition hover:bg-navy-50 sm:ml-auto"><Upload className="h-3.5 w-3.5" /> Export</button>
+            <button onClick={() => handleExport('all')} className="flex h-9 items-center gap-1.5 rounded-lg bg-white ring-1 ring-inset ring-navy-100 px-3.5 text-[13px] font-medium text-navy-800 transition hover:bg-navy-50 sm:ml-auto"><Upload className="h-3.5 w-3.5" /> Export</button>
           </div>
           {selectedIds.size > 0 && (
             <div className="flex flex-wrap items-center gap-2 border-b border-gold-100 bg-gold-50/60 px-4 py-2.5">
@@ -319,7 +319,7 @@ export function ContactsPage() {
                   {contacts.map((contact) => (
                     <tr
                       key={contact.id}
-                      className="border-b border-navy-50 last:border-0 hover:bg-navy-50 transition-colors cursor-pointer"
+                      className="border-b border-sand last:border-0 hover:bg-navy-50 transition-colors cursor-pointer"
                       onClick={() => openContact(contact.id)}
                     >
                       <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
@@ -359,7 +359,7 @@ export function ContactsPage() {
             </div>
 
             {/* Mobile cards */}
-            <div className="md:hidden divide-y divide-navy-50">
+            <div className="md:hidden divide-y divide-sand">
               {contacts.map((contact) => (
                 <div
                   key={contact.id}
@@ -672,7 +672,7 @@ function ImportModal({ onClose, onImported }: { tags: TagType[]; onClose: () => 
               </thead>
               <tbody>
                 {csvData.slice(1, 6).map((row, i) => (
-                  <tr key={i} className="border-t border-navy-50">
+                  <tr key={i} className="border-t border-sand">
                     {csvData[0].map((header, j) => mappings[header] ? (
                       <td key={j} className="px-3 py-2 text-navy-700">{row[j]}</td>
                     ) : null)}
@@ -714,7 +714,7 @@ function ImportModal({ onClose, onImported }: { tags: TagType[]; onClose: () => 
 
 function ResultStat({ label, value, color }: { label: string; value: number; color: string }) {
   return (
-    <div className="p-3 rounded-xl bg-ivory-50 border border-navy-50 text-center">
+    <div className="p-3 rounded-xl bg-ivory-50 border border-sand text-center">
       <p className={`text-2xl font-bold ${color}`}>{value}</p>
       <p className="text-xs text-ivory-600 mt-0.5">{label}</p>
     </div>

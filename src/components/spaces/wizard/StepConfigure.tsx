@@ -11,7 +11,7 @@ import { effectiveRooms, type WizardAction, type WizardState } from './state';
 
 export function Section({ icon: Icon, title, hint, children }: { icon: typeof LayoutGrid; title: string; hint?: string; children: ReactNode }) {
   return (
-    <section className="border-t border-navy-50 pt-5 first:border-t-0 first:pt-0">
+    <section className="border-t border-sand pt-5 first:border-t-0 first:pt-0">
       <h2 className="flex items-center gap-2 text-base font-bold text-navy-800"><Icon className="h-4 w-4 text-gold-600" /> {title}</h2>
       {hint && <p className="mt-0.5 text-sm text-ivory-700">{hint}</p>}
       <div className="mt-3">{children}</div>

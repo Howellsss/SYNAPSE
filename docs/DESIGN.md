@@ -1,7 +1,8 @@
-# SYNAPSE design: Apple-style layouts in navy & gold
+# SYNAPSE design: solid, in navy & gold
 
-SYNAPSE keeps its brand colours, navy and gold, and uses Apple's discipline for layout: generous
-space, large titles, quiet surfaces, one bright accent where you can act, and gentle motion.
+SYNAPSE keeps its brand colours (navy, gold, white) and looks **solid**: firm shapes, visible
+structure, strong text and compact layouts, like a serious work tool. The public pages (home, events)
+keep big photos and headlines but use the same firm buttons and type.
 
 ## Colour
 
@@ -20,8 +21,18 @@ The dashboard also uses its soft blue, green, amber, cyan and rose icon tints, a
 
 ## Type and shapes
 
-- The system font (SF Pro on Apple devices, Geist elsewhere); titles get tighter tracking.
-- Buttons are pills; cards are 20 px rounded with a hairline and a soft navy shadow.
+- **Inter** everywhere in the app (bundled with `@fontsource-variable/inter`), medium and semibold
+  weights, near-black navy text. Secondary text is `ivory-700` (#4F596B), never paler for content.
+- **Corners:** 8px for buttons, inputs, tabs and menu items (`rounded-lg`), 6px for small tags
+  (`rounded-md`), 10px for cards (`rounded-xl`), 12px for dialogs. No pill-shaped buttons in the app.
+- **Controls** share one height: 38px (`.btn-*`, `.input-field`, toolbar buttons).
+- **Buttons:** gold with navy text for the main action, solid navy for Create/New, white with a
+  visible border for everything else.
+- **Lines:** borders `navy-100` (#C5CCDB), dividers and grid lines `sand` (#D5DAE3). Cards are
+  attached to the page with a border and almost no shadow; real shadows only on menus and dialogs.
+- **Page titles** are 24px semibold/bold in the same row as the page's buttons.
+- **Sidebar:** white, solid (filled) Heroicons in navy, 14.5px medium labels, groups separated by
+  lines, the active item a navy block with a gold icon. The top bar is 64px to line up with it.
 
 ## Motion
 

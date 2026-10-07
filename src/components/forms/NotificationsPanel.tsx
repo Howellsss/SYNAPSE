@@ -122,7 +122,7 @@ function CollapsibleSection({
         </div>
         {isOpen ? <ChevronDown className="w-4 h-4 text-ivory-400" /> : <ChevronRight className="w-4 h-4 text-ivory-400" />}
       </button>
-      {isOpen && <div className="px-4 pb-4 pt-2 space-y-4 border-t border-navy-50">{children}</div>}
+      {isOpen && <div className="px-4 pb-4 pt-2 space-y-4 border-t border-sand">{children}</div>}
     </div>
   );
 }
@@ -199,7 +199,7 @@ function InternalNotificationEditor({
             {config.recipients.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-2">
                 {config.recipients.map(email => (
-                  <span key={email} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-ivory-100 text-xs text-navy-700">
+                  <span key={email} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-ivory-100 text-xs text-navy-700">
                     {email}
                     <button onClick={() => removeRecipient(email)} className="text-ivory-400 hover:text-red-500">
                       <X className="w-3 h-3" />
@@ -571,7 +571,7 @@ function WorkflowInfo() {
       </p>
       <div className="space-y-2">
         {events.map(evt => (
-          <div key={evt.name} className="flex items-start gap-3 p-3 rounded-lg bg-ivory-50 border border-navy-50">
+          <div key={evt.name} className="flex items-start gap-3 p-3 rounded-lg bg-ivory-50 border border-sand">
             <div className="w-8 h-8 rounded-lg bg-navy-100 flex items-center justify-center shrink-0">
               <Send className="w-3.5 h-3.5 text-navy-600" />
             </div>
@@ -677,7 +677,7 @@ function TestEmailButton({
   };
 
   return (
-    <div className="pt-2 border-t border-navy-50">
+    <div className="pt-2 border-t border-sand">
       <label className="block text-sm font-medium text-navy-700 mb-1.5">Send test email</label>
       <div className="flex gap-2">
         <input

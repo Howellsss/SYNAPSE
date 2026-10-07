@@ -1,8 +1,9 @@
 import { useState } from 'react';
+import { ChevronRight, Menu, X } from 'lucide-react';
 import {
-  Calendar, ChevronRight, FileText, FolderOpen, Home, Inbox, LayoutGrid, LogOut, Menu, Mic, MonitorPlay,
-  SlidersHorizontal, Sparkles, Ticket, User, Video, Workflow, X,
-} from 'lucide-react';
+  ArrowRightStartOnRectangleIcon, BoltIcon, CalendarDaysIcon, ChatBubbleLeftRightIcon, Cog6ToothIcon, DocumentTextIcon,
+  FolderIcon, HomeIcon, MicrophoneIcon, PresentationChartBarIcon, SparklesIcon, Squares2X2Icon, TicketIcon, UserIcon, VideoCameraIcon,
+} from '@heroicons/react/24/solid';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { Avatar } from '@/components/ui/Avatar';
@@ -15,21 +16,21 @@ interface SidebarProps {
 // Everyday places first, then tools: the arrangement from the redesign.
 const navGroups = [
   [
-    { label: 'Dashboard', icon: Home, path: '/dashboard' },
-    { label: 'Conversations', icon: Inbox, path: '/conversations' },
-    { label: 'Contacts', icon: User, path: '/contacts' },
-    { label: 'Calendars', icon: Calendar, path: '/calendars' },
-    { label: 'Meetings', icon: Video, path: '/meetings' },
-    { label: 'Workspaces', icon: LayoutGrid, path: '/workspace' },
-    { label: 'Events', icon: Ticket, path: '/events' },
+    { label: 'Dashboard', icon: HomeIcon, path: '/dashboard' },
+    { label: 'Conversations', icon: ChatBubbleLeftRightIcon, path: '/conversations' },
+    { label: 'Contacts', icon: UserIcon, path: '/contacts' },
+    { label: 'Calendars', icon: CalendarDaysIcon, path: '/calendars' },
+    { label: 'Meetings', icon: VideoCameraIcon, path: '/meetings' },
+    { label: 'Workspaces', icon: Squares2X2Icon, path: '/workspace' },
+    { label: 'Events', icon: TicketIcon, path: '/events' },
   ],
   [
-    { label: 'Webinars', icon: MonitorPlay, path: '/webinars' },
-    { label: 'Submissions', icon: FileText, path: '/forms' },
-    { label: 'Workflows', icon: Workflow, path: '/workflows' },
-    { label: 'Recordings', icon: Mic, path: '/recordings' },
-    { label: 'Media Library', icon: FolderOpen, path: '/media-library' },
-    { label: 'AI Hub', icon: Sparkles, path: '/ai-hub' },
+    { label: 'Webinars', icon: PresentationChartBarIcon, path: '/webinars' },
+    { label: 'Submissions', icon: DocumentTextIcon, path: '/forms' },
+    { label: 'Workflows', icon: BoltIcon, path: '/workflows' },
+    { label: 'Recordings', icon: MicrophoneIcon, path: '/recordings' },
+    { label: 'Media Library', icon: FolderIcon, path: '/media-library' },
+    { label: 'AI Hub', icon: SparklesIcon, path: '/ai-hub' },
   ],
 ];
 
@@ -45,7 +46,7 @@ export function Sidebar({ currentPath, onNavigate }: SidebarProps) {
   const isActive = (path: string) =>
     currentPath === path || currentPath.startsWith(path + '/') || (path === '/dashboard' && currentPath === '/') || (path === '/workspace' && currentPath.startsWith('/workspaces'));
 
-  const item = (label: string, Icon: typeof Home, path: string) => {
+  const item = (label: string, Icon: typeof HomeIcon, path: string) => {
     const active = isActive(path);
     return (
       <button
@@ -54,7 +55,7 @@ export function Sidebar({ currentPath, onNavigate }: SidebarProps) {
         aria-current={active ? 'page' : undefined}
         className={cn('nav-item w-full', active && 'nav-item-active')}
       >
-        <Icon className={cn('h-[18px] w-[18px] shrink-0 stroke-[1.8]', active ? 'text-gold-400' : 'text-ivory-700')} />
+        <Icon aria-hidden="true" className={cn('h-5 w-5 shrink-0', active ? 'text-gold-400' : 'text-navy-700')} />
         <span>{label}</span>
       </button>
     );
@@ -65,7 +66,7 @@ export function Sidebar({ currentPath, onNavigate }: SidebarProps) {
       {/* Mobile toggle */}
       <button
         onClick={() => setMobileOpen(true)}
-        className="lg:hidden fixed top-3.5 left-3 z-50 w-10 h-10 rounded-full bg-white/90 text-navy-800 border border-sand flex items-center justify-center backdrop-blur"
+        className="lg:hidden fixed top-3 left-3 z-50 w-10 h-10 rounded-lg bg-white text-navy-800 border border-navy-100 flex items-center justify-center"
         aria-label="Open menu"
       >
         <Menu className="w-5 h-5" />
@@ -84,47 +85,47 @@ export function Sidebar({ currentPath, onNavigate }: SidebarProps) {
         )}
       >
         {/* Logo */}
-        <div className="flex items-center justify-between px-6 pt-6 pb-6">
+        <div className="flex h-16 shrink-0 items-center justify-between border-b border-navy-100 px-5">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-[9px] bg-navy-800 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-navy-800 flex items-center justify-center">
               <HowellsLogo className="w-[18px] h-[18px]" />
             </div>
-            <span className="text-[13px] font-semibold tracking-[0.14em] text-navy-800">SYNAPSE</span>
+            <span className="text-[14px] font-bold tracking-[0.12em] text-navy-800">SYNAPSE</span>
           </div>
           <button
             onClick={() => setMobileOpen(false)}
             aria-label="Close menu"
-            className="lg:hidden w-8 h-8 rounded-full flex items-center justify-center text-ivory-700 hover:bg-navy-50"
+            className="lg:hidden w-8 h-8 rounded-lg flex items-center justify-center text-navy-700 hover:bg-navy-50"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Navigation */}
-        <nav className="px-3 flex-1 space-y-6">
+        <nav className="flex-1 px-3 pt-3">
           {navGroups.map((group, i) => (
-            <div key={i} className="space-y-1">
+            <div key={i} className={cn('space-y-0.5', i > 0 && 'mt-3 border-t border-navy-100 pt-3')}>
               {group.map((n) => item(n.label, n.icon, n.path))}
             </div>
           ))}
         </nav>
 
         {/* Settings, then you */}
-        <div className="px-3 pt-6 pb-4 space-y-1">
-          {item('Settings', SlidersHorizontal, '/settings')}
-          <div className="mt-3 flex items-center gap-3 border-t border-sand px-3 pt-4">
+        <div className="px-3 pt-3 pb-3 space-y-0.5 border-t border-navy-100">
+          {item('Settings', Cog6ToothIcon, '/settings')}
+          <div className="mt-2 flex items-center gap-3 border-t border-navy-100 px-2 pt-3">
             <Avatar firstName={profile?.first_name} lastName={profile?.last_name} src={profile?.avatar_url} size="sm" />
             <div className="min-w-0 flex-1 leading-tight">
               <p className="text-[13px] font-semibold text-navy-800 truncate">{profile?.first_name || 'User'} {profile?.last_name || ''}</p>
-              <p className="text-xs text-ivory-700 capitalize">{role || 'Member'}</p>
+              <p className="text-xs font-medium text-ivory-700 capitalize">{role || 'Member'}</p>
             </div>
             <button
               onClick={() => signOut()}
               aria-label="Sign out"
               title="Sign out"
-              className="w-8 h-8 rounded-full flex items-center justify-center text-ivory-700 hover:bg-navy-50 hover:text-burgundy-500"
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-navy-700 hover:bg-navy-50 hover:text-burgundy-500"
             >
-              <LogOut className="w-4 h-4" />
+              <ArrowRightStartOnRectangleIcon className="w-[18px] h-[18px]" />
             </button>
           </div>
         </div>

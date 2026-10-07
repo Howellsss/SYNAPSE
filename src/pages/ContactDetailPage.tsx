@@ -145,7 +145,7 @@ export function ContactDetailPage({ contactId }: { contactId: string }) {
     <div className="-mx-4 -my-6 flex min-h-[calc(100vh-4rem)] flex-col bg-white lg:-mx-10 lg:-my-8">
       {/* Top bar */}
       <div className="flex items-center gap-3 border-b border-sand bg-white/85 px-4 py-3 backdrop-blur lg:px-10">
-        <button onClick={() => navigate('/contacts')} className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-gold-700 hover:bg-navy-50">
+        <button onClick={() => navigate('/contacts')} className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold text-gold-700 hover:bg-navy-50">
           <ArrowLeft className="h-4 w-4" /> Contacts
         </button>
         <ChevronRight className="h-4 w-4 text-ivory-400" />
@@ -154,10 +154,10 @@ export function ContactDetailPage({ contactId }: { contactId: string }) {
         {nav && navIndex >= 0 && (
           <div className="flex items-center gap-1 text-sm text-ivory-600">
             <span className="mr-1 whitespace-nowrap tabular-nums">{(nav.offset + navIndex + 1).toLocaleString()} / {nav.total.toLocaleString()}</span>
-            <button aria-label="Previous contact" disabled={navIndex === 0} onClick={() => goTo(navIndex - 1)} className="flex h-9 w-9 items-center justify-center rounded-full text-navy-700 hover:bg-navy-50 disabled:opacity-40">
+            <button aria-label="Previous contact" disabled={navIndex === 0} onClick={() => goTo(navIndex - 1)} className="flex h-9 w-9 items-center justify-center rounded-lg text-navy-700 hover:bg-navy-50 disabled:opacity-40">
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <button aria-label="Next contact" disabled={navIndex === nav.ids.length - 1} onClick={() => goTo(navIndex + 1)} className="flex h-9 w-9 items-center justify-center rounded-full text-navy-700 hover:bg-navy-50 disabled:opacity-40">
+            <button aria-label="Next contact" disabled={navIndex === nav.ids.length - 1} onClick={() => goTo(navIndex + 1)} className="flex h-9 w-9 items-center justify-center rounded-lg text-navy-700 hover:bg-navy-50 disabled:opacity-40">
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
@@ -207,7 +207,7 @@ export function ContactDetailPage({ contactId }: { contactId: string }) {
 // ============================================================
 
 function Card({ children, className }: { children: ReactNode; className?: string }) {
-  return <section className={cn('rounded-[20px] border border-sand bg-white', className)}>{children}</section>;
+  return <section className={cn('rounded-xl border border-sand bg-white', className)}>{children}</section>;
 }
 
 function ProfileCard({ contact, tags, allTags, members, onUpdate, onDelete, onTagsChanged }: {
@@ -253,13 +253,13 @@ function ProfileCard({ contact, tags, allTags, members, onUpdate, onDelete, onTa
   return (
     <Card className="overflow-hidden">
       <div className="relative px-5 pb-5 pt-7 text-center">
-        <button onClick={onDelete} aria-label="Delete contact" title="Delete contact" className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-ivory-700 hover:bg-navy-50 hover:text-burgundy-600">
+        <button onClick={onDelete} aria-label="Delete contact" title="Delete contact" className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-md text-ivory-700 hover:bg-navy-50 hover:text-burgundy-600">
           <Trash2 className="h-4 w-4" />
         </button>
         <Avatar firstName={contact.first_name} lastName={contact.last_name} src={contact.avatar_url} size="xl" className="mx-auto !h-24 !w-24 !text-3xl" />
         <h1 className="mt-3 font-display text-[26px] font-bold leading-tight tracking-[-0.025em] text-navy-800">{getFullName(contact)}</h1>
         <p className="mt-1 truncate text-[15px] text-ivory-700">{[contact.job_title, contact.company].filter(Boolean).join(' · ') || 'No company'}</p>
-        {typeLabel && <span className="mt-2 inline-block rounded-full bg-gold-50 px-2.5 py-0.5 text-xs font-semibold text-gold-700">{typeLabel}</span>}
+        {typeLabel && <span className="mt-2 inline-block rounded-md bg-gold-50 px-2.5 py-0.5 text-xs font-semibold text-gold-700">{typeLabel}</span>}
         <div className="mx-auto mt-5 grid max-w-[300px] grid-cols-3 gap-2">
           <QuickAction href={contact.phone ? `tel:${contact.phone.replace(/\s/g, '')}` : undefined} icon={Phone} label="Call" />
           <QuickAction href={contact.email ? `mailto:${contact.email}` : undefined} icon={Mail} label="Email" />
@@ -435,7 +435,7 @@ function FieldsPanel({ contact, onUpdate }: { contact: ContactRow; onUpdate: (pa
             </label>
             {!editing && <button onClick={startEdit} className="btn-secondary btn-sm">Edit</button>}
           </div>
-          <dl className="mt-3 divide-y divide-navy-50">
+          <dl className="mt-3 divide-y divide-sand">
             {shown.map((f) => (
               <div key={f.key} className="py-2.5">
                 <dt className="text-xs font-medium text-ivory-600">{f.label}</dt>

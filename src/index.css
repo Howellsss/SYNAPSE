@@ -19,13 +19,14 @@
     color: #0D1C3B;
     margin: 0;
     padding: 0;
-    letter-spacing: -0.003em;
+    letter-spacing: -0.006em;
+    font-feature-settings: 'cv11', 'ss01';
   }
 
-  /* Titles: Apple-style display face with tighter tracking. */
+  /* Titles: same face, a touch tighter. */
   h1, h2, h3 {
     font-family: theme('fontFamily.display');
-    letter-spacing: -0.02em;
+    letter-spacing: -0.015em;
   }
 
   ::selection {
@@ -69,43 +70,43 @@
 
 @layer components {
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-gold-400 text-navy-800 text-sm font-semibold rounded-full transition-all duration-200 hover:bg-gold-300 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center gap-2 h-[38px] px-4 bg-gold-400 text-navy-900 text-sm font-semibold rounded-lg border border-gold-500 transition-colors duration-150 hover:bg-gold-300 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-white text-navy-700 text-sm font-semibold rounded-full border border-navy-100 transition-all duration-200 hover:bg-navy-50 hover:border-navy-200 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center gap-2 h-[38px] px-4 bg-white text-navy-800 text-sm font-semibold rounded-lg border border-navy-100 transition-colors duration-150 hover:bg-navy-50 hover:border-navy-200 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
   }
 
   .btn-danger {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-burgundy-600 text-white text-sm font-semibold rounded-full transition-all duration-200 hover:bg-burgundy-500 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center gap-2 h-[38px] px-4 bg-burgundy-600 text-white text-sm font-semibold rounded-lg transition-colors duration-150 hover:bg-burgundy-500 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 text-navy-500 text-sm font-medium rounded-full transition-all duration-200 hover:bg-navy-50 hover:text-navy-700 active:scale-[0.98];
+    @apply inline-flex items-center justify-center gap-2 h-[38px] px-3 text-navy-700 text-sm font-semibold rounded-lg transition-colors duration-150 hover:bg-navy-50 hover:text-navy-900 active:scale-[0.98];
   }
 
   .btn-sm {
-    @apply px-3 py-1.5 text-xs;
+    @apply h-8 px-3 text-xs;
   }
 
   .input-field {
-    @apply w-full px-3.5 py-2.5 bg-white text-navy-700 text-sm rounded-xl border border-navy-100 transition-all outline-none placeholder:text-ivory-600 focus:border-gold-400 focus:ring-4 focus:ring-gold-400/20;
+    @apply w-full px-3 py-2 min-h-[38px] bg-white text-navy-800 text-sm rounded-lg border border-navy-100 transition-colors outline-none placeholder:text-ivory-600 focus:border-navy-500 focus:ring-2 focus:ring-gold-400/30;
   }
 
   .card {
-    @apply bg-white rounded-[20px] border border-navy-100 shadow-card;
+    @apply bg-white rounded-xl border border-navy-100 shadow-card;
   }
 
   .card-hover {
-    @apply transition-all duration-200 hover:shadow-card-hover;
+    @apply transition-all duration-150 hover:shadow-card-hover hover:border-navy-200;
   }
 
   .status-pill {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full whitespace-nowrap;
+    @apply inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-semibold rounded-md whitespace-nowrap;
   }
 
   .nav-item {
-    @apply flex items-center gap-3 px-3 h-10 rounded-[10px] text-[14px] font-medium text-navy-800 transition-colors duration-200 relative;
+    @apply flex items-center gap-3 px-3 h-10 rounded-lg text-[14.5px] font-medium text-navy-800 transition-colors duration-150 relative;
   }
 
   .nav-item-active {
