@@ -1,13 +1,26 @@
 import { useState } from 'react';
-import type { SpaceTypeInfo } from '@/spatial/data/spaceTypes';
+import { typePicture, type SpaceTypeInfo } from '@/spatial/data/spaceTypes';
 import { cn } from '@/lib/utils';
 
 /**
  * Picture for a workspace type: the art-target image (until live 3D previews replace it),
  * or a drawn placeholder for Custom Space and Import Template.
  */
-export function TypeArt({ info, className, eager }: { info: SpaceTypeInfo; className?: string; eager?: boolean }) {
+export function TypeArt({ info, className, eager, light }: { info: SpaceTypeInfo; className?: string; eager?: boolean; light?: boolean }) {
   const [failed, setFailed] = useState(false);
+  // The light set: a bright cut-away room on white, shown whole.
+  if (light && !failed) {
+    return (
+      <img
+        src={typePicture(info.key)}
+        alt=""
+        loading={eager ? 'eager' : 'lazy'}
+        decoding="async"
+        onError={() => setFailed(true)}
+        className={cn('h-full w-full object-contain', info.comingSoon && 'opacity-70 saturate-[0.6]', className)}
+      />
+    );
+  }
   if (info.image && !failed) {
     return (
       <img

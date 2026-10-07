@@ -44,6 +44,13 @@ const BASE_PERMISSIONS: SpacePermissions = { edit_office: STAFF, lock_rooms: STA
 
 const IMG = (file: string) => `/assets/spatial/type-cards/${file}.webp`;
 
+/** Bright cut-away pictures on white, used on the wizard's type cards and the "at a glance" panel. */
+const PICTURE_FILES: Record<TypeChoice, string> = {
+  office: 'office', coworking: 'coworking', classroom: 'classroom', event_hall: 'event-space',
+  coaching_studio: 'coaching-studio', town_square: 'town-square', campus: 'campus', custom: 'custom', import: 'import',
+};
+export const typePicture = (key: TypeChoice) => `/assets/spatial/type-cards/light/${PICTURE_FILES[key]}.webp`;
+
 export const SPACE_TYPE_CHOICES: SpaceTypeInfo[] = [
   {
     key: 'office',

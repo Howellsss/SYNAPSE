@@ -181,90 +181,94 @@ function Wizard({ workspaceId, userId, userEmail, userName }: { workspaceId: str
       : 'Continue';
 
   return (
-    <div className="flex min-h-screen flex-col bg-white lg:h-screen lg:flex-row lg:overflow-hidden">
-      <form onSubmit={onContinue} onKeyDown={onKeyDown} className="flex min-w-0 flex-1 flex-col lg:h-full" noValidate>
-        {/* Top: logo, save & exit, progress */}
-        <header className="px-4 pt-5 sm:px-8 lg:px-12">
-          <div className={cn('mx-auto w-full lg:mx-0', column)}>
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-navy-800 text-white"><HowellsLogo className="h-5 w-5" /></span>
-                <span className="text-lg font-bold tracking-wide text-navy-800">SYNAPSE</span>
+    <div className="flex min-h-screen flex-col bg-white lg:h-screen lg:overflow-hidden">
+      {/* Top bar across the whole page: logo and save & exit */}
+      <div className="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-navy-100 px-4 sm:px-8">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-navy-800 text-white"><HowellsLogo className="h-[18px] w-[18px]" /></span>
+          <span className="text-[15px] font-bold tracking-[0.12em] text-navy-800">SYNAPSE</span>
+        </div>
+        <button type="button" onClick={saveAndExit} className="btn-ghost !px-3">Save & exit</button>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+        <form id="space-wizard" onSubmit={onContinue} onKeyDown={onKeyDown} className="flex min-w-0 flex-1 flex-col lg:overflow-y-auto" noValidate>
+          {/* Progress, with the step name on the same line */}
+          <header className="px-4 pt-6 sm:px-8 lg:px-10">
+            <div className={cn('mx-auto flex w-full items-center gap-4 lg:mx-0', column)}>
+              <div className="flex flex-1 gap-1.5" aria-hidden="true">
+                {Array.from({ length: position.total }, (_, i) => (
+                  <span key={i} className={cn('h-1.5 flex-1 rounded-full transition-colors', i < position.index ? 'bg-gold-400' : 'bg-sand')} />
+                ))}
               </div>
-              <button type="button" onClick={saveAndExit} className="btn-ghost !px-3 !py-2">Save & exit</button>
+              <p className="shrink-0 text-sm font-medium text-navy-700" aria-live="polite">
+                Step {position.index} of {position.total} · {position.label}
+              </p>
             </div>
-            <div className="mt-6 flex gap-1.5" aria-hidden="true">
-              {Array.from({ length: position.total }, (_, i) => (
-                <span key={i} className={cn('h-1.5 flex-1 rounded-full transition-colors', i < position.index ? 'bg-gold-400' : 'bg-navy-50')} />
-              ))}
+          </header>
+
+          {/* Step content */}
+          <div ref={mainRef} className="flex-1 px-4 pb-6 pt-7 sm:px-8 lg:px-10">
+            <div className={cn('mx-auto w-full lg:mx-0', column)}>
+              {state.step === 'media' ? (
+                <>
+                  <StepTitle title="Check your camera & mic" subtitle="Make sure people can see and hear you when you walk over." />
+                  <div className="mb-5 rounded-xl bg-navy-800 p-4 sm:p-6 lg:hidden"><DevicePreview check={media} {...you} /></div>
+                  <DeviceControls check={media} prefs={mediaPrefs} onPrefs={setMediaPrefs} />
+                </>
+              ) : (
+                <StepContent state={state} dispatch={dispatch} slugStatus={slugStatus} userEmail={userEmail} workspaceId={workspaceId} userId={userId} />
+              )}
             </div>
-            <p className="mt-3 text-xs font-semibold uppercase tracking-wider text-ivory-700" aria-live="polite">
-              Step {position.index} of {position.total} · {position.label}
-            </p>
           </div>
-        </header>
 
-        {/* Step content */}
-        <div ref={mainRef} className="flex-1 px-4 pb-6 pt-5 sm:px-8 lg:overflow-y-auto lg:px-12">
-          <div className={cn('mx-auto w-full lg:mx-0', column)}>
-            {state.step === 'media' ? (
-              <>
-                <StepTitle title="Check your camera & mic" subtitle="Make sure people can see and hear you when you walk over." />
-                <div className="mb-5 rounded-xl bg-navy-800 p-4 sm:p-6 lg:hidden"><DevicePreview check={media} {...you} /></div>
-                <DeviceControls check={media} prefs={mediaPrefs} onPrefs={setMediaPrefs} />
-              </>
-            ) : (
-              <StepContent state={state} dispatch={dispatch} slugStatus={slugStatus} userEmail={userEmail} workspaceId={workspaceId} userId={userId} />
-            )}
+          {/* Live preview stacks under the content on small screens */}
+          {/* On the Type step the details show under the chosen card instead. */}
+          <aside className={cn('mx-4 mb-4 rounded-xl bg-navy-800 p-5 sm:mx-8 lg:hidden', (state.step === 'type' || state.step === 'media') && 'hidden')} aria-label="Live preview">
+            <LivePreview state={state} userName={userName} />
+          </aside>
+        </form>
+
+        {/* "At a glance" / live preview panel (desktop), floating between the top bar and the footer */}
+        <aside className={cn('hidden shrink-0 py-6 pr-6 lg:block', wide ? 'w-[380px] xl:w-[410px]' : 'w-[44%] max-w-[640px]')} aria-label={state.step === 'type' ? 'Workspace at a glance' : 'Live preview'}>
+          <div className={cn('h-full overflow-y-auto rounded-2xl bg-navy-800', wide ? 'p-7' : 'p-10')}>
+            {state.step === 'media' ? <MediaPanel check={media} you={you} /> : <LivePreview state={state} userName={userName} />}
           </div>
-        </div>
-
-        {/* Live preview stacks under the content on small screens */}
-        {/* On the Type step the details show under the chosen card instead. */}
-        <aside className={cn('mx-4 mb-4 rounded-xl bg-navy-800 p-5 sm:mx-8 lg:hidden', (state.step === 'type' || state.step === 'media') && 'hidden')} aria-label="Live preview">
-          <LivePreview state={state} userName={userName} />
         </aside>
+      </div>
 
-        {/* Footer */}
-        <footer className="sticky bottom-0 z-10 border-t border-sand bg-white/95 px-4 py-3 backdrop-blur sm:px-8 lg:px-12">
-          {createError && (
-            <div role="alert" className={cn('mx-auto mb-3 flex w-full flex-wrap items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-sm text-burgundy-600 lg:mx-0', column)}>
-              <AlertTriangle className="h-4 w-4 shrink-0" />
-              <span className="min-w-0 flex-1">{createError}</span>
-              <button type="button" onClick={finish} disabled={creating} className="inline-flex items-center gap-1 font-semibold underline-offset-2 hover:underline">
-                <RotateCw className="h-3.5 w-3.5" /> Retry
-              </button>
-            </div>
-          )}
-          <div className={cn('mx-auto flex w-full items-center gap-2 lg:mx-0', column)}>
-            <button
-              type="button"
-              onClick={() => dispatch({ type: 'back' })}
-              disabled={state.step === 'name' || creating}
-              className={cn('btn-secondary', state.step === 'name' && 'invisible')}
-            >
-              <ArrowLeft className="h-4 w-4" /> <span className="hidden sm:inline">Back</span>
-            </button>
-            <div className="flex-1" />
-            {state.step === 'invite' && (
-              <button type="button" onClick={skipInvites} className="btn-ghost !px-3">Skip for now</button>
-            )}
-            {state.step === 'media' && (
-              <button type="button" onClick={finish} disabled={creating} className="btn-ghost !px-3">Skip for now</button>
-            )}
-            <button type="submit" disabled={!ready || creating} className="btn-primary min-w-0 !px-5">
-              {creating ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating…</> : <><span className="truncate">{continueLabel}</span> <ArrowRight className="h-4 w-4 shrink-0" /></>}
+      {/* Footer across the whole page: Back on the left, Continue on the right */}
+      <footer className="sticky bottom-0 z-10 shrink-0 border-t border-navy-100 bg-white px-4 py-3 sm:px-8">
+        {createError && (
+          <div role="alert" className="mb-3 flex w-full flex-wrap items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-sm text-burgundy-600">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 flex-1">{createError}</span>
+            <button type="button" onClick={finish} disabled={creating} className="inline-flex items-center gap-1 font-semibold underline-offset-2 hover:underline">
+              <RotateCw className="h-3.5 w-3.5" /> Retry
             </button>
           </div>
-        </footer>
-      </form>
-
-      {/* Live preview panel (desktop) */}
-      <aside className={cn('hidden shrink-0 p-4 lg:block', wide ? 'w-[380px] xl:w-[430px]' : 'w-[44%] max-w-[640px]')} aria-label={state.step === 'type' ? 'Workspace at a glance' : 'Live preview'}>
-        <div className={cn('h-full overflow-y-auto rounded-xl bg-navy-800', wide ? 'p-7' : 'p-10')}>
-          {state.step === 'media' ? <MediaPanel check={media} you={you} /> : <LivePreview state={state} userName={userName} />}
+        )}
+        <div className="flex w-full items-center gap-2">
+          <button
+            type="button"
+            onClick={() => dispatch({ type: 'back' })}
+            disabled={state.step === 'name' || creating}
+            className={cn('btn-secondary !h-11 !px-6 !border-navy-800', state.step === 'name' && 'invisible')}
+          >
+            <ArrowLeft className="h-4 w-4" /> <span className="hidden sm:inline">Back</span>
+          </button>
+          <div className="flex-1" />
+          {state.step === 'invite' && (
+            <button type="button" onClick={skipInvites} className="btn-ghost !px-3">Skip for now</button>
+          )}
+          {state.step === 'media' && (
+            <button type="button" onClick={finish} disabled={creating} className="btn-ghost !px-3">Skip for now</button>
+          )}
+          <button type="submit" form="space-wizard" disabled={!ready || creating} className="btn-primary min-w-0 !h-11 !px-7">
+            {creating ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating…</> : <><span className="truncate">{continueLabel}</span> <ArrowRight className="h-4 w-4 shrink-0" /></>}
+          </button>
         </div>
-      </aside>
+      </footer>
     </div>
   );
 }
