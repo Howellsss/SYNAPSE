@@ -37,3 +37,17 @@ sign-up logic is unchanged). The Workspaces section uses `public/landing/office.
 ## Rule
 
 Redesigns change how things look, never what's there: every feature on a page stays.
+
+## Events
+
+Public pages live at `/e` (explore), `/e/<slug>` (event) and `/e/ticket/<token>` (an attendee's
+pass). They open for everyone, signed in or not. Hosts manage events at `/events` inside the app.
+
+- Type: **Unbounded** for titles and **Raleway** for text, loaded only on events pages
+  (`font-event-display`, `font-event`). The rest of SYNAPSE keeps the system font.
+- The hero and the default poster use `public/events/hero.webp`.
+- Only real numbers are shown (upcoming events, people registered, cities); with no events the page
+  says so.
+- Registration gives a QR code and a 6-digit PIN; the door checks people in by scanning or typing
+  the PIN. Paid tickets are held and paid at the venue until online payment is connected.
+- Database: `supabase/migrations/20261005100000_add_events.sql`.
