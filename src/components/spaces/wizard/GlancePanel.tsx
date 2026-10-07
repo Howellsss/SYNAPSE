@@ -8,14 +8,14 @@ export function GlancePanel({ info, className, compact }: { info: SpaceTypeInfo;
   return (
     <div className={cn('text-white', className)}>
       <p className={cn('font-bold', compact ? 'text-base' : 'text-xl')}>Workspace at a glance</p>
-      <div className="mt-4 aspect-[4/3] overflow-hidden rounded-2xl ring-1 ring-white/10">
-        <TypeArt info={info} eager />
+      <div className="mt-4 aspect-[16/10] overflow-hidden rounded-xl bg-white p-2">
+        <TypeArt info={info} eager light />
       </div>
       <p className="mt-5 flex items-center gap-2.5 text-xl font-bold">
         <info.icon className="h-6 w-6 text-gold-400" /> {info.name}
         {info.comingSoon && <span className="rounded-md bg-white/10 px-2 py-0.5 text-xs font-semibold text-ivory-200">Coming soon</span>}
       </p>
-      <p className="mt-1.5 text-sm leading-relaxed text-ivory-500">{info.description}</p>
+      <p className="mt-1.5 text-sm leading-relaxed text-ivory-300">{info.description}</p>
 
       <p className="mt-5 text-sm font-semibold">Best for</p>
       <div className="mt-2 flex flex-wrap gap-2">
