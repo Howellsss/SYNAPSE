@@ -1,18 +1,21 @@
 import { useState } from 'react';
 import { ChevronDown, RefreshCw, Smartphone } from 'lucide-react';
-import type { IphoneStatus } from '@/spatial/media/continuity';
+import { browserName, type IphoneStatus } from '@/spatial/media/continuity';
 import { cn } from '@/lib/utils';
 
 /**
  * Help for using an iPhone as the camera on a Mac, shown when its camera isn't listed.
  * "mic-only" is the common case: macOS offers the iPhone's microphone but not its camera.
  */
-export function IphoneCameraHelp({ status, onLookAgain, className }: {
+export function IphoneCameraHelp({ status, onLookAgain, cameras, className }: {
   status: Exclude<IphoneStatus, 'camera'>;
   onLookAgain: () => Promise<void> | void;
+  /** What the browser currently reports, shown so problems can be pinned down exactly. */
+  cameras?: { label: string }[];
   className?: string;
 }) {
-  const [open, setOpen] = useState(status === 'mic-only');
+  // A one-line hint; the steps open on request so the camera list stays the main thing.
+  const [open, setOpen] = useState(false);
   const [looking, setLooking] = useState(false);
   const [looked, setLooked] = useState(false);
 
@@ -36,7 +39,7 @@ export function IphoneCameraHelp({ status, onLookAgain, className }: {
       >
         <Smartphone className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <span className="flex-1">
-          {status === 'mic-only' ? "Your iPhone's microphone is connected, but not its camera." : 'Use your iPhone as the camera'}
+          {status === 'mic-only' ? "Your iPhone's microphone is connected, but not its camera." : "Don't see your iPhone camera?"}
         </span>
         <ChevronDown className={cn('mt-0.5 h-3.5 w-3.5 shrink-0 transition', open && 'rotate-180')} />
       </button>
@@ -57,6 +60,13 @@ export function IphoneCameraHelp({ status, onLookAgain, className }: {
           >
             <RefreshCw className={cn('h-3.5 w-3.5', looking && 'animate-spin')} /> {looking ? 'Looking…' : 'Look again'}
           </button>
+          {cameras && (
+            <p className="text-ivory-400" data-camera-report>
+              {browserName()} reports {cameras.length === 0 ? 'no cameras' : cameras.length === 1 ? '1 camera' : `${cameras.length} cameras`}
+              {cameras.length > 0 && <>: <span className="text-ivory-200">{cameras.map((c, i) => c.label || `Camera ${i + 1} (name hidden)`).join(', ')}</span></>}.
+              {' '}If Google Meet lists your iPhone in this same browser and this doesn't after “Look again”, send us this line.
+            </p>
+          )}
           {looked && !looking && <p role="status" className="text-ivory-400">Still not showing. Work through the steps above, then look again. The list also updates by itself every few seconds.</p>}
         </div>
       )}

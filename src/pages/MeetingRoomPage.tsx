@@ -138,6 +138,13 @@ function PreJoin({ meeting, isHost, onJoin, onBack }: { meeting: Meeting; isHost
   const problem = (check.cameraOn && check.cameraProblem && problemText(check.cameraProblem, 'camera'))
     || (check.micOn && check.micProblem && problemText(check.micProblem, 'microphone'));
   const iphone = iphoneStatus(check.devices.cameras, check.devices.microphones);
+  // On a Mac, look for an iPhone camera straight away (once), the way Google Meet finds it.
+  const autoScanned = useRef(false);
+  useEffect(() => {
+    if (!check.ready || autoScanned.current || iphone === 'camera' || !isMacDesktop()) return;
+    autoScanned.current = true;
+    void check.rescanDevices();
+  }, [check.ready, iphone, check]);
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-[#081226] text-white">
@@ -205,7 +212,7 @@ function PreJoin({ meeting, isHost, onJoin, onBack }: { meeting: Meeting; isHost
           </button>
         </div>
         {check.ready && iphone !== 'camera' && (iphone === 'mic-only' || isMacDesktop()) && (
-          <IphoneCameraHelp key={iphone} status={iphone} onLookAgain={check.rescanDevices} className="mt-3" />
+          <IphoneCameraHelp key={iphone} status={iphone} onLookAgain={check.rescanDevices} cameras={check.devices.cameras} className="mt-3" />
         )}
       </main>
     </div>
