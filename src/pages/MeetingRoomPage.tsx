@@ -159,6 +159,8 @@ function PreJoin({ meeting, isHost, onJoin, onBack }: { meeting: Meeting; isHost
   const { profile } = useAuth();
   const guest = useContext(GuestContext);
   const needsName = guest.isGuest && !guest.name.trim();
+  const nameRef = useRef<HTMLInputElement>(null);
+  const [nameMissing, setNameMissing] = useState(false);
   // The camera preview starts on; the mic follows "join muted" so nobody is heard by surprise.
   const check = useMediaCheck(true, { mic: !normalizeMediaPrefs(profile?.media_prefs).join_muted });
   const you = useYou();
@@ -229,9 +231,13 @@ function PreJoin({ meeting, isHost, onJoin, onBack }: { meeting: Meeting; isHost
               onChange={(e) => guest.setName(e.target.value.slice(0, 60))}
               placeholder="How should people see you?"
               autoComplete="name"
+              ref={nameRef}
+              aria-invalid={nameMissing && needsName}
+              aria-describedby={nameMissing && needsName ? 'guest-name-hint' : undefined}
               aria-label="Your name"
-              className="h-12 w-full rounded-lg bg-[#13244A] px-4 text-sm text-white ring-1 ring-inset ring-white/10 placeholder:text-ivory-500 focus:outline-none focus:ring-2 focus:ring-gold-400"
+              className={cn('h-12 w-full rounded-lg bg-[#13244A] px-4 text-sm text-white ring-1 ring-inset placeholder:text-ivory-500 focus:outline-none focus:ring-2 focus:ring-gold-400', nameMissing && needsName ? 'ring-2 ring-[#FF6B60]' : 'ring-white/10')}
             />
+            {nameMissing && needsName && <span id="guest-name-hint" role="alert" className="mt-1.5 block text-sm font-medium text-[#FF8A80]">Type your name to join.</span>}
           </label>
         )}
 
@@ -260,9 +266,11 @@ function PreJoin({ meeting, isHost, onJoin, onBack }: { meeting: Meeting; isHost
           />
           <button
             type="button"
-            onClick={() => onJoin({ mic: micLive, cam: camLive })}
-            disabled={needsName}
-            title={needsName ? 'Type your name to join' : undefined}
+            onClick={() => {
+              // Never a silent button: without a name, say so and put the cursor in the box.
+              if (needsName) { setNameMissing(true); nameRef.current?.focus(); return; }
+              onJoin({ mic: micLive, cam: camLive });
+            }}
             className="h-12 shrink-0 rounded-full bg-gold-400 px-9 text-[15px] font-semibold text-navy-900 hover:bg-gold-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-200"
           >
             {isHost ? 'Start' : guest.isGuest ? 'Join as guest' : 'Join'}

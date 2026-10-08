@@ -64,8 +64,13 @@ interface Options {
 const RETRY_DELAYS = [2000, 5000, 10000];
 
 /** Error text from the livekit-token function, or a plain explanation. */
-async function tokenError(err: unknown): Promise<string> {
+async function tokenError(err: unknown, guest = false): Promise<string> {
   const ctx = (err as { context?: Response } | null)?.context;
+  if (ctx && typeof ctx.status === 'number' && guest) {
+    // A guest from an invite link: no login to fix, so say what's actually wrong.
+    if (ctx.status === 401) return "Guest joining isn't switched on for this meeting service yet. Ask the host to finish updating SYNAPSE's meeting service, then try again.";
+    if (ctx.status === 403) return "This invite link isn't valid any more. Ask the host for a new one.";
+  }
   if (ctx && typeof ctx.status === 'number') {
     if (ctx.status === 404) return "Audio and video aren't set up for this SYNAPSE yet.";
     try {
@@ -115,7 +120,7 @@ export function useLiveKitRoom(spaceId: string | null, { prefs, onNotice, tokenB
       const { data, error: fnError } = await supabase.functions.invoke<{ token: string; url: string }>('livekit-token', { body: JSON.parse(bodyKey) });
       if (!alive) return;
       if (fnError || !data?.token || !data?.url) {
-        setError(await tokenError(fnError));
+        setError(await tokenError(fnError, /"guestName"/.test(bodyKey)));
         setState('unavailable');
         return;
       }
