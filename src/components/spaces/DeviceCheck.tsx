@@ -8,6 +8,9 @@ import { Modal } from '@/components/ui/Modal';
 import { HowellsLogo } from '@/components/layout/Sidebar';
 import { useMediaCheck, type MediaCheck } from '@/spatial/media/useMediaCheck';
 import { useMediaPrefs } from '@/spatial/media/useMediaPrefs';
+import { deviceLabel } from '@/spatial/media/useDevices';
+import { iphoneStatus, isMacDesktop } from '@/spatial/media/continuity';
+import { IphoneCameraHelp } from '@/components/meetings/IphoneCameraHelp';
 import {
   HEAR_THRESHOLD, METER_SEGMENTS, chimeWav, detectBrowser, levelFromSamples, litSegments,
   permissionHelp, permissionHint, problemText, supportsSpeakerChoice, systemPermissionHelp, type DeviceProblem,
@@ -93,7 +96,7 @@ function DeviceSelect({ id, label, icon: Icon, devices, value, onChange, disable
       </label>
       <select id={id} className="input-field" value={current} disabled={disabled || !options} onChange={(e) => onChange(e.target.value)}>
         {options
-          ? options.map((d, i) => <option key={d.deviceId} value={d.deviceId}>{d.label || `${label} ${i + 1}`}</option>)
+          ? options.map((d, i) => <option key={d.deviceId} value={d.deviceId}>{deviceLabel(d, i, label)}</option>)
           : <option value="">{fallback}</option>}
       </select>
       {children}
@@ -144,6 +147,27 @@ function Switch({ checked, onChange, label, description }: { checked: boolean; o
 
 // ---------------------------------------------------------------- left: controls
 
+/** "Look for cameras", and on a Mac the iPhone hint with exactly what the browser reports. */
+function LookForCameras({ check }: { check: MediaCheck }) {
+  const [looking, setLooking] = useState(false);
+  const iphone = iphoneStatus(check.devices.cameras, check.devices.microphones);
+  return (
+    <div className="mt-2 space-y-2">
+      <button
+        type="button"
+        disabled={looking}
+        onClick={async () => { setLooking(true); try { await check.rescanDevices(); } finally { setLooking(false); } }}
+        className="inline-flex items-center gap-1.5 text-sm font-semibold text-gold-700 hover:text-gold-800 disabled:opacity-60"
+      >
+        <RotateCw className={cn('h-3.5 w-3.5', looking && 'animate-spin')} /> {looking ? 'Looking…' : 'Look for cameras'}
+      </button>
+      {check.ready && iphone !== 'camera' && (iphone === 'mic-only' || isMacDesktop()) && (
+        <IphoneCameraHelp status={iphone} onLookAgain={check.rescanDevices} cameras={check.devices.cameras} className="!bg-navy-800" />
+      )}
+    </div>
+  );
+}
+
 export function DeviceControls({ check, prefs, onPrefs }: {
   check: MediaCheck;
   prefs: MediaPrefs;
@@ -190,6 +214,7 @@ export function DeviceControls({ check, prefs, onPrefs }: {
         fallback={check.ready ? 'No camera found' : 'Looking for cameras…'}
       >
         {!shared && check.cameraProblem && <Problem problem={check.cameraProblem} device="camera" ua={ua} kind={kind} onRetry={check.retry} />}
+        <LookForCameras check={check} />
       </DeviceSelect>
 
       <DeviceSelect

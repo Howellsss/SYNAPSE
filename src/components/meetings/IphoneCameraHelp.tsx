@@ -64,7 +64,9 @@ export function IphoneCameraHelp({ status, onLookAgain, cameras, className }: {
             <p className="text-ivory-400" data-camera-report>
               {browserName()} reports {cameras.length === 0 ? 'no cameras' : cameras.length === 1 ? '1 camera' : `${cameras.length} cameras`}
               {cameras.length > 0 && <>: <span className="text-ivory-200">{cameras.map((c, i) => c.label || `Camera ${i + 1} (name hidden)`).join(', ')}</span></>}.
-              {' '}If Google Meet lists your iPhone in this same browser and this doesn't after “Look again”, send us this line.
+              {' '}{browserName() === 'Chrome'
+                ? 'If Google Meet shows your iPhone in Safari but not in Chrome, Chrome isn’t offering it: open SYNAPSE in Safari.'
+                : 'If Google Meet lists your iPhone in this same browser and this doesn’t after “Look again”, send us this line.'}
             </p>
           )}
           {looked && !looking && <p role="status" className="text-ivory-400">Still not showing. Work through the steps above, then look again. The list also updates by itself every few seconds.</p>}
