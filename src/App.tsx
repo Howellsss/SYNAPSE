@@ -20,6 +20,7 @@ import { AIAgentPage } from '@/pages/AIAgentPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { MeetingsPage } from '@/pages/MeetingsPage';
 import { MeetingRoomPage } from '@/pages/MeetingRoomPage';
+import { inviteFromLocation } from '@/meetings/codes';
 import { BookingPage } from '@/pages/BookingPage';
 import { GroupCalendarSettingsPage } from '@/pages/GroupCalendarSettingsPage';
 import { ComingSoonPage } from '@/pages/ComingSoonPage';
@@ -45,13 +46,17 @@ function AppContent() {
   const authPath = path === '/signin' || path === '/signup';
   // Public events pages: /e, /e/<slug>, /e/ticket/<token>. Open to everyone, signed in or not.
   const isPublicEvents = path === '/e' || path.startsWith('/e/') || path.startsWith('/e?');
+  // A meeting invite link (/meetings/CODE?invite=…) opens for everyone, signed in or not.
+  const meetingMatch = path.match(/^\/meetings\/([A-Za-z]{4}-?\d{3})(?:[/?]|$)/);
+  const meetingCode = meetingMatch ? meetingMatch[1].toUpperCase().replace(/^([A-Z]{4})(\d{3})$/, '$1-$2') : null;
+  const meetingInvite = meetingCode ? inviteFromLocation(path) : null;
   useEffect(() => {
     if (loading) return;
     if (user && authPath) { navigate('/dashboard'); return; }
-    if (!user && !authPath && path !== '/' && !path.startsWith('/book/') && !path.startsWith('/group/') && !path.startsWith('/reset-password') && !path.startsWith('/invite/') && !path.startsWith('/join/') && !isPublicEvents) {
+    if (!user && !authPath && path !== '/' && !path.startsWith('/book/') && !path.startsWith('/group/') && !path.startsWith('/reset-password') && !path.startsWith('/invite/') && !path.startsWith('/join/') && !isPublicEvents && !meetingInvite) {
       navigate('/');
     }
-  }, [user, loading, path, authPath, isPublicEvents, navigate]);
+  }, [user, loading, path, authPath, isPublicEvents, meetingInvite, navigate]);
 
   if (loading) {
     return (
@@ -74,6 +79,9 @@ function AppContent() {
     return <EventsHomePage />;
   }
 
+  // Meeting invite link without an account: join as a guest
+  if (!user && meetingCode && meetingInvite) return <MeetingRoomPage key={meetingCode} code={meetingCode} invite={meetingInvite} />;
+
   // Guest link for a workspace (no account needed)
   if (path.startsWith('/join/')) {
     const token = path.split('/')[2]?.split('?')[0] ?? '';
@@ -94,11 +102,7 @@ function AppContent() {
   }
 
   // A meeting room is full screen, without the sidebar and top bar
-  const meetingMatch = path.match(/^\/meetings\/([A-Za-z]{4}-?\d{3})(?:[/?]|$)/);
-  if (meetingMatch) {
-    const code = meetingMatch[1].toUpperCase().replace(/^([A-Z]{4})(\d{3})$/, '$1-$2');
-    return <MeetingRoomPage key={code} code={code} />;
-  }
+  if (meetingCode) return <MeetingRoomPage key={meetingCode} code={meetingCode} invite={meetingInvite} />;
 
   // Create-a-workspace wizard is full screen, without the sidebar and top bar
   if (path === '/workspace/new' || path.startsWith('/workspace/new?')) {

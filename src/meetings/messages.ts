@@ -33,6 +33,9 @@ export function parseControl(raw: unknown): ControlMsg | null {
   return isObj(raw) && raw.t === 'ended' ? { t: 'ended' } : null;
 }
 
+/** The host asking the person sharing their screen to stop. */
+export const isStopShare = (raw: unknown) => isObj(raw) && raw.t === 'stopShare';
+
 /** "0:42", "12:05", "1:02:09" */
 export function elapsed(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));

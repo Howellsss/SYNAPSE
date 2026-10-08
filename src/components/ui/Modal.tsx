@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect } from 'react';
+import { type ReactNode, useEffect, useId } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -37,6 +37,7 @@ export function Modal({ open, onClose, title, description, children, size = 'md'
     return () => window.removeEventListener('keydown', handleEsc);
   }, [open, onClose]);
 
+  const titleId = useId();
   if (!open) return null;
 
   return (
@@ -46,6 +47,9 @@ export function Modal({ open, onClose, title, description, children, size = 'md'
         onClick={onClose}
       />
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={title ? titleId : undefined}
         className={cn(
           'relative bg-white rounded-2xl shadow-popover w-full animate-scale-in flex flex-col max-h-[90vh]',
           sizeClasses[size]
@@ -54,11 +58,13 @@ export function Modal({ open, onClose, title, description, children, size = 'md'
         {(title || description) && (
           <div className="flex items-start justify-between px-6 pt-5 pb-4 border-b border-navy-100">
             <div>
-              {title && <h2 className="text-lg font-semibold text-navy-800">{title}</h2>}
+              {title && <h2 id={titleId} className="text-lg font-semibold text-navy-800">{title}</h2>}
               {description && <p className="text-sm text-ivory-600 mt-1">{description}</p>}
             </div>
             <button
+              type="button"
               onClick={onClose}
+              aria-label="Close"
               className="text-ivory-600 hover:text-navy-700 transition-colors p-1 -mr-1 -mt-1"
             >
               <X className="w-5 h-5" />

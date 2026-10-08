@@ -33,6 +33,22 @@ export function meetingUrl(code: string, origin = typeof window !== 'undefined' 
   return `${origin}/meetings/${code}`;
 }
 
+/**
+ * The link to share: with the meeting's invite token, anyone who opens it can join (people outside
+ * the account join as guests with their name). Without a token it only works for account members.
+ */
+export function inviteUrl(m: { code: string; invite_token?: string | null }, origin?: string): string {
+  const base = meetingUrl(m.code, origin);
+  return m.invite_token ? `${base}?invite=${encodeURIComponent(m.invite_token)}` : base;
+}
+
+/** The invite token in the current address (…/meetings/CODE?invite=… or #/meetings/CODE?invite=…). */
+export function inviteFromLocation(path: string, search = typeof window !== 'undefined' ? window.location.search : ''): string | null {
+  const q = new URLSearchParams(search).get('invite') ?? new URLSearchParams(path.split('?')[1] ?? '').get('invite');
+  const t = (q ?? '').trim();
+  return /^[0-9a-f]{32}$/i.test(t) ? t : null;
+}
+
 /** "in 5 min", "in 2 h", "now", "started 10 min ago", "tomorrow 09:00". */
 export function startsLabel(at: Date | null, now = new Date()): string {
   if (!at) return 'Ready now';
@@ -53,10 +69,10 @@ export function isSameDay(a: Date, b: Date): boolean {
 }
 
 /** Google Calendar "add event" link and an .ics file for a scheduled meeting. */
-export function calendarLinks(m: { title: string; code: string; start: Date; durationMin: number }, origin?: string) {
+export function calendarLinks(m: { title: string; code: string; start: Date; durationMin: number; invite_token?: string | null }, origin?: string) {
   const end = new Date(m.start.getTime() + m.durationMin * 60000);
   const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-  const url = meetingUrl(m.code, origin);
+  const url = inviteUrl(m, origin);
   const details = `Join on SYNAPSE: ${url}\nMeeting code: ${m.code}`;
   const google = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(m.title)}&dates=${fmt(m.start)}/${fmt(end)}&details=${encodeURIComponent(details)}&location=${encodeURIComponent(url)}`;
   const esc = (s: string) => s.replace(/[\\,;]/g, (c) => `\\${c}`).replace(/\n/g, '\\n');

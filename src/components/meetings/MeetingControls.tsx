@@ -9,11 +9,14 @@ import type { DeviceKind } from '@/meetings/useActiveDevices';
 import { cn } from '@/lib/utils';
 
 /** Dark menu panel and rows for the meeting toolbar. */
-export const darkPanel = '!border-white/10 !bg-[#102041] !rounded-2xl text-white shadow-[0_20px_60px_rgba(0,0,0,0.45)]';
+export const darkPanel = '!border-white/10 !bg-[#14223F] !rounded-xl text-white shadow-[0_20px_60px_rgba(0,0,0,0.5)]';
 export const darkItem = 'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-ivory-100 hover:bg-white/10 focus:bg-white/10 focus:outline-none disabled:opacity-50';
 const heading = 'px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-ivory-500';
 
-/** A round toolbar button (the redesign's floating control bar); the label is its tooltip. */
+/**
+ * A toolbar button laid out like Zoom's: icon with its name underneath (names hide on phones).
+ * The visible name and the accessible name are the same text.
+ */
 export function ToolButton({ label, icon, onClick, pressed, off, badge, busy, title, className, ...rest }: {
   label: string; icon: ReactNode; onClick: () => void; pressed?: boolean; off?: boolean; badge?: number | string; busy?: boolean; title?: string; className?: string;
   'aria-expanded'?: boolean; 'aria-haspopup'?: 'menu' | 'dialog';
@@ -28,16 +31,19 @@ export function ToolButton({ label, icon, onClick, pressed, off, badge, busy, ti
       aria-busy={busy || undefined}
       {...rest}
       className={cn(
-        'relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400 sm:h-[52px] sm:w-[52px]',
-        pressed ? 'bg-white/15 text-gold-300' : 'text-white hover:bg-white/10',
+        'relative flex h-11 min-w-[44px] shrink-0 flex-col items-center justify-center gap-1 rounded-lg px-1.5 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400 sm:h-[58px] sm:min-w-[64px] sm:px-2',
+        pressed ? 'bg-white/10 text-gold-300' : 'text-white hover:bg-white/[0.08]',
         busy && 'cursor-wait opacity-70',
         className,
       )}
     >
-      <span className={cn('flex items-center', off && 'text-[#FF8A80]')}>{icon}</span>
-      {badge !== undefined && badge !== 0 && (
-        <span className="absolute right-0.5 top-1 min-w-[18px] rounded-full bg-gold-400 px-1 text-center text-[11px] font-bold leading-[18px] text-navy-900 sm:right-1 sm:top-2">{badge}</span>
-      )}
+      <span className={cn('relative flex items-center', off && 'text-[#FF6B60]')}>
+        {icon}
+        {badge !== undefined && badge !== 0 && (
+          <span className="absolute -right-3 -top-1.5 min-w-[16px] rounded-full bg-gold-400 px-1 text-center text-[10px] font-bold leading-4 text-navy-900">{badge}</span>
+        )}
+      </span>
+      <span aria-hidden="true" className="hidden whitespace-nowrap text-[11.5px] font-medium leading-none text-[#D5DBE7] sm:block">{label}</span>
     </button>
   );
 }
@@ -57,10 +63,10 @@ function LookAgainRow({ onLookAgain }: { onLookAgain: () => Promise<void> }) {
   );
 }
 
-/** Audio ^ and Video ^: a pill with the toggle and a caret that opens the device list. */
+/** Audio ^ and Video ^: the button, with a small caret beside it that opens the device list. */
 function SplitButton({ main, menuLabel, children }: { main: ReactNode; menuLabel: string; children: (close: () => void) => ReactNode }) {
   return (
-    <div className="flex items-center rounded-full bg-[#1D3363] pr-1">
+    <div className="flex items-start">
       {main}
       <Popover
         label={menuLabel}
@@ -73,9 +79,9 @@ function SplitButton({ main, menuLabel, children }: { main: ReactNode; menuLabel
             title={menuLabel}
             aria-haspopup="menu"
             aria-expanded={open}
-            className={cn('flex h-9 w-7 items-center justify-center rounded-full text-ivory-300 hover:bg-white/10 hover:text-white', open && 'bg-white/10 text-white')}
+            className={cn('mt-0.5 flex h-6 w-5 items-center justify-center rounded text-[#AEB8CC] hover:bg-white/10 hover:text-white sm:mt-1.5', open && 'bg-white/10 text-white')}
           >
-            <ChevronUp className="h-4 w-4" />
+            <ChevronUp className="h-3.5 w-3.5" />
           </button>
         )}
       >

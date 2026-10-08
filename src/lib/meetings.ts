@@ -15,6 +15,10 @@ export interface Meeting {
   duration_min: number;
   ended_at: string | null;
   created_at: string;
+  /** Private token for the shareable invite link (after the guest-links database update). */
+  invite_token?: string | null;
+  /** Only from meeting_by_invite: who is hosting, for the guest's join screen. */
+  host_name?: string;
 }
 
 /** A calendar appointment today that has a video link (shown alongside meetings). */
@@ -26,7 +30,8 @@ export interface VideoAppointment {
   link: string;
 }
 
-const MEETING_COLS = 'id, workspace_id, host_id, title, code, nickname, kind, scheduled_at, duration_min, ended_at, created_at';
+// All columns: includes invite_token once the guest-links database update is applied, and still works before it.
+const MEETING_COLS = '*';
 
 /** Meetings from the last 30 days and everything scheduled ahead. */
 export async function listMeetings(workspaceId: string): Promise<{ data: Meeting[]; error: string | null }> {
@@ -111,6 +116,14 @@ export async function findMeeting(workspaceId: string, q: { code: string } | { n
 export async function getMeetingByCode(code: string): Promise<{ data: Meeting | null; error: string | null }> {
   const { data, error } = await supabase.from('meetings').select(MEETING_COLS).eq('code', code).maybeSingle();
   return { data: (data as Meeting | null) ?? null, error: error?.message ?? null };
+}
+
+/** A meeting as seen through its invite link (works without an account). */
+export async function getMeetingByInvite(code: string, invite: string): Promise<Meeting | null> {
+  const { data, error } = await supabase.rpc('meeting_by_invite', { p_code: code, p_token: invite });
+  const m = (Array.isArray(data) ? data[0] : data) as Meeting | null | undefined;
+  if (error || !m || typeof m !== 'object' || m.code !== code || !m.host_id) return null;
+  return m;
 }
 
 export async function endMeeting(id: string): Promise<string | null> {
