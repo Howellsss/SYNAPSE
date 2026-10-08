@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { elapsed, parseChat, parseControl, parseReact, MAX_CHAT } from './messages';
+import { elapsed, parseChat, parseControl, parseHostRequest, parseReact, MAX_CHAT } from './messages';
 
 describe('meeting messages', () => {
   it('accepts chat and trims it', () => {
@@ -25,5 +25,15 @@ describe('meeting messages', () => {
     expect(elapsed(42_000)).toBe('0:42');
     expect(elapsed(725_000)).toBe('12:05');
     expect(elapsed(3_729_000)).toBe('1:02:09');
+  });
+});
+
+describe('host requests', () => {
+  it('reads mute, mute all and remove; ignores anything else', () => {
+    expect(parseHostRequest({ t: 'mute' })).toBe('mute');
+    expect(parseHostRequest({ t: 'muteAll' })).toBe('muteAll');
+    expect(parseHostRequest({ t: 'remove' })).toBe('remove');
+    expect(parseHostRequest({ t: 'ended' })).toBeNull();
+    expect(parseHostRequest('mute')).toBeNull();
   });
 });

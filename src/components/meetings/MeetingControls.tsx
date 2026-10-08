@@ -9,9 +9,9 @@ import type { DeviceKind } from '@/meetings/useActiveDevices';
 import { cn } from '@/lib/utils';
 
 /** Dark menu panel and rows for the meeting toolbar. */
-export const darkPanel = '!border-white/10 !bg-[#14223F] !rounded-xl text-white shadow-[0_20px_60px_rgba(0,0,0,0.5)]';
-export const darkItem = 'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-ivory-100 hover:bg-white/10 focus:bg-white/10 focus:outline-none disabled:opacity-50';
-const heading = 'px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-ivory-500';
+export const darkPanel = '!border-navy-100 !bg-white !rounded-xl text-navy-900 shadow-popover';
+export const darkItem = 'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-navy-800 hover:bg-navy-50 focus:bg-navy-50 focus:outline-none disabled:opacity-50';
+const heading = 'px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-ivory-700';
 
 /**
  * A toolbar button laid out like Zoom's: icon with its name underneath (names hide on phones).
@@ -32,18 +32,18 @@ export function ToolButton({ label, icon, onClick, pressed, off, badge, busy, ti
       {...rest}
       className={cn(
         'relative flex h-11 min-w-[44px] shrink-0 flex-col items-center justify-center gap-1 rounded-lg px-1.5 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400 sm:h-[58px] sm:min-w-[64px] sm:px-2',
-        pressed ? 'bg-white/10 text-gold-300' : 'text-white hover:bg-white/[0.08]',
+        pressed ? 'bg-navy-50 text-gold-700' : 'text-navy-800 hover:bg-navy-50',
         busy && 'cursor-wait opacity-70',
         className,
       )}
     >
-      <span className={cn('relative flex items-center', off && 'text-[#FF6B60]')}>
+      <span className={cn('relative flex items-center', off && 'text-burgundy-500')}>
         {icon}
         {badge !== undefined && badge !== 0 && (
           <span className="absolute -right-3 -top-1.5 min-w-[16px] rounded-full bg-gold-400 px-1 text-center text-[10px] font-bold leading-4 text-navy-900">{badge}</span>
         )}
       </span>
-      <span aria-hidden="true" className="hidden whitespace-nowrap text-[11.5px] font-medium leading-none text-[#D5DBE7] sm:block">{label}</span>
+      <span aria-hidden="true" className="hidden whitespace-nowrap text-[11.5px] font-medium leading-none text-navy-700 sm:block">{label}</span>
     </button>
   );
 }
@@ -79,7 +79,7 @@ function SplitButton({ main, menuLabel, children }: { main: ReactNode; menuLabel
             title={menuLabel}
             aria-haspopup="menu"
             aria-expanded={open}
-            className={cn('mt-0.5 flex h-6 w-5 items-center justify-center rounded text-[#AEB8CC] hover:bg-white/10 hover:text-white sm:mt-1.5', open && 'bg-white/10 text-white')}
+            className={cn('mt-0.5 flex h-6 w-5 items-center justify-center rounded text-navy-500 hover:bg-navy-50 hover:text-navy-900 sm:mt-1.5', open && 'bg-navy-50 text-navy-900')}
           >
             <ChevronUp className="h-3.5 w-3.5" />
           </button>
@@ -94,7 +94,7 @@ function SplitButton({ main, menuLabel, children }: { main: ReactNode; menuLabel
 function DeviceRows({ kind, devices, active, fallback, onChoose, close }: {
   kind: DeviceKind; devices: MediaDeviceInfo[]; active?: string; fallback: string; onChoose: (kind: DeviceKind, d: MediaDeviceInfo) => void; close: () => void;
 }) {
-  if (!devices.length) return <p className="px-3 py-2 text-sm text-ivory-500">None found</p>;
+  if (!devices.length) return <p className="px-3 py-2 text-sm text-ivory-700">None found</p>;
   // Before the browser reports the active one, the first entry (the system default) is in use.
   const current = active && devices.some((d) => d.deviceId === active) ? active : devices[0].deviceId;
   return (
@@ -107,9 +107,9 @@ function DeviceRows({ kind, devices, active, fallback, onChoose, close }: {
           className={darkItem}
           onClick={() => { close(); if (d.deviceId !== current) onChoose(kind, d); }}
         >
-          <Check className={cn('h-4 w-4 shrink-0', d.deviceId === current ? 'text-gold-300' : 'invisible')} />
+          <Check className={cn('h-4 w-4 shrink-0', d.deviceId === current ? 'text-gold-600' : 'invisible')} />
           <span className="min-w-0 flex-1 truncate">{deviceLabel(d, i, fallback)}</span>
-          {kind === 'videoinput' && isIphoneCamera(d) && <Smartphone className="h-4 w-4 shrink-0 text-ivory-400" aria-label="iPhone" />}
+          {kind === 'videoinput' && isIphoneCamera(d) && <Smartphone className="h-4 w-4 shrink-0 text-navy-500" aria-label="iPhone" />}
         </button>
       ))}
     </>
@@ -145,7 +145,7 @@ export function AudioButton({ micOn, busy, onToggle, devices, active, onChoose, 
               <DeviceRows kind="audiooutput" devices={speakers} active={active.audiooutput} fallback="Speaker" onChoose={onChoose} close={close} />
             </>
           )}
-          <div className="my-1 h-px bg-white/10" />
+          <div className="my-1 h-px bg-sand" />
           <button role="menuitem" className={darkItem} onClick={() => { close(); onSettings(); }}><Settings2 className="h-4 w-4" /> Audio settings…</button>
         </>
       )}
@@ -180,7 +180,7 @@ export function VideoButton({ camOn, busy, onToggle, devices, active, onChoose, 
           {iphone !== 'camera' && (iphone === 'mic-only' || isMacDesktop()) && (
             <IphoneCameraHelp status={iphone} onLookAgain={onRefresh} cameras={devices.cameras} className="mx-2 my-1" />
           )}
-          <div className="my-1 h-px bg-white/10" />
+          <div className="my-1 h-px bg-sand" />
           <button role="menuitem" className={darkItem} onClick={() => { close(); onSettings(); }}><Settings2 className="h-4 w-4" /> Video settings…</button>
         </>
       )}

@@ -36,6 +36,12 @@ export function parseControl(raw: unknown): ControlMsg | null {
 /** The host asking the person sharing their screen to stop. */
 export const isStopShare = (raw: unknown) => isObj(raw) && raw.t === 'stopShare';
 
+/** Host requests, obeyed only when they come from the host (checked by the receiver). */
+export type HostRequest = 'mute' | 'muteAll' | 'remove';
+export function parseHostRequest(raw: unknown): HostRequest | null {
+  return isObj(raw) && (raw.t === 'mute' || raw.t === 'muteAll' || raw.t === 'remove') ? raw.t : null;
+}
+
 /** "0:42", "12:05", "1:02:09" */
 export function elapsed(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));

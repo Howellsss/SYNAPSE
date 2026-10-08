@@ -162,7 +162,7 @@ function LookForCameras({ check }: { check: MediaCheck }) {
         <RotateCw className={cn('h-3.5 w-3.5', looking && 'animate-spin')} /> {looking ? 'Looking…' : 'Look for cameras'}
       </button>
       {check.ready && iphone !== 'camera' && (iphone === 'mic-only' || isMacDesktop()) && (
-        <IphoneCameraHelp status={iphone} onLookAgain={check.rescanDevices} cameras={check.devices.cameras} className="!bg-navy-800" />
+        <IphoneCameraHelp status={iphone} onLookAgain={check.rescanDevices} cameras={check.devices.cameras} />
       )}
     </div>
   );
