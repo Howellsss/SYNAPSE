@@ -1,15 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft, Check, ChevronDown, Copy, RefreshCw, Smartphone, Hand, Info, LayoutGrid, MessageSquare, Mic, MicOff, MonitorUp, MoreHorizontal, PenLine, PhoneOff,
-  Lock, SearchX, Settings2, SmilePlus, Square, Users, Video, VideoOff, Camera, X,
+  SearchX, Settings2, SmilePlus, Users, Video, VideoOff, Camera, X, Clock, LogOut, PictureInPicture2, Shield, ShieldCheck, XCircle,
 } from 'lucide-react';
 import type { LocalTrack, RemoteTrack, Room, Track } from 'livekit-client';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useRouter } from '@/lib/router';
-import { endMeeting, getMeetingByCode, type Meeting } from '@/lib/meetings';
-import { meetingUrl } from '@/meetings/codes';
-import { REACTIONS, elapsed, newChatId, parseChat, parseControl, parseReact, type Reaction } from '@/meetings/messages';
+import { endMeeting, getMeetingByCode, getMeetingByInvite, type Meeting } from '@/lib/meetings';
+import { inviteUrl } from '@/meetings/codes';
+import { REACTIONS, elapsed, isStopShare, newChatId, parseChat, parseControl, parseReact, type Reaction } from '@/meetings/messages';
 import { TOPICS, useMeetingBus } from '@/meetings/useMeetingBus';
 import { useActiveDevices, type DeviceKind } from '@/meetings/useActiveDevices';
 import { normalizeMediaPrefs, problemText } from '@/spatial/media/devices';
@@ -33,10 +33,34 @@ import { cn } from '@/lib/utils';
 type Stage = 'prejoin' | 'call' | 'left' | 'ended';
 interface JoinChoice { mic: boolean; cam: boolean }
 
-/** /meetings/<code>: preview camera & mic, then the video call. Full screen. */
-export function MeetingRoomPage({ code }: { code: string }) {
+/** Someone joining through an invite link without signing in: their typed name and the invite. */
+interface GuestInfo { invite: string | null; name: string; setName: (n: string) => void; isGuest: boolean }
+const GuestContext = createContext<GuestInfo>({ invite: null, name: '', setName: () => {}, isGuest: false });
+const GUEST_NAME_KEY = 'synapse.guestName';
+const readGuestName = () => { try { return localStorage.getItem(GUEST_NAME_KEY) ?? ''; } catch { return ''; } };
+
+/**
+ * /meetings/<code>: preview camera & mic, then the video call. Full screen.
+ * With ?invite=<token> anyone can join: people without an account type their name and join as guests.
+ */
+export function MeetingRoomPage({ code, invite = null }: { code: string; invite?: string | null }) {
+  const { user } = useAuth();
+  const [guestName, setGuestNameState] = useState(readGuestName);
+  const setGuestName = useCallback((n: string) => {
+    setGuestNameState(n);
+    try { localStorage.setItem(GUEST_NAME_KEY, n); } catch { /* private mode */ }
+  }, []);
+  return (
+    <GuestContext.Provider value={{ invite, name: guestName, setName: setGuestName, isGuest: !user }}>
+      <MeetingRoom code={code} invite={invite} />
+    </GuestContext.Provider>
+  );
+}
+
+function MeetingRoom({ code, invite }: { code: string; invite: string | null }) {
   const [, navigate] = useRouter();
   const { user } = useAuth();
+  const guest = useContext(GuestContext);
   const [meeting, setMeeting] = useState<Meeting | null | undefined>(undefined);
   const [stage, setStage] = useState<Stage>('prejoin');
   const [endedBy, setEndedBy] = useState<'you' | 'host' | null>(null);
@@ -44,13 +68,18 @@ export function MeetingRoomPage({ code }: { code: string }) {
 
   useEffect(() => {
     let active = true;
-    getMeetingByCode(code.toUpperCase()).then(({ data }) => {
+    (async () => {
+      // Members see their account's meetings; anyone else needs the invite link.
+      let data = user ? (await getMeetingByCode(code.toUpperCase())).data : null;
+      if (!data && invite) data = await getMeetingByInvite(code.toUpperCase(), invite);
       if (!active) return;
       setMeeting(data);
       if (data?.ended_at) setStage('ended');
-    });
+    })();
     return () => { active = false; };
-  }, [code]);
+  }, [code, invite, user]);
+
+  const home = () => navigate(user ? '/meetings' : '/');
 
   if (meeting === undefined) return <div className="flex min-h-screen items-center justify-center bg-navy-950"><LoadingSpinner className="h-10 w-10" /></div>;
 
@@ -59,8 +88,8 @@ export function MeetingRoomPage({ code }: { code: string }) {
       <Center>
         <SearchX className="mx-auto h-10 w-10 text-ivory-400" />
         <h1 className="mt-4 text-xl font-bold">Meeting not found</h1>
-        <p className="mt-2 text-sm text-ivory-400">Check the code, or ask the host for a new link. Meetings are open to people in the same SYNAPSE account.</p>
-        <button onClick={() => navigate('/meetings')} className="btn-primary mt-6"><ArrowLeft className="h-4 w-4" /> Back to meetings</button>
+        <p className="mt-2 text-sm text-ivory-400">{invite ? 'This invite link isn\'t valid any more. Ask the host to send it again.' : 'Check the code, or ask the host for an invite link.'}</p>
+        <button onClick={home} className="btn-primary mt-6"><ArrowLeft className="h-4 w-4" /> {user ? 'Back to meetings' : 'Go to SYNAPSE'}</button>
       </Center>
     );
   }
@@ -72,15 +101,18 @@ export function MeetingRoomPage({ code }: { code: string }) {
         <p className="mt-2 text-sm text-ivory-400">{meeting.title} · Room {meeting.code}</p>
         <div className="mt-6 flex justify-center gap-3">
           {stage === 'left' && <button onClick={() => setStage('call')} className="btn-secondary">Rejoin</button>}
-          <button onClick={() => navigate('/meetings')} className="btn-primary">Back to meetings</button>
+          {user
+            ? <button onClick={() => navigate('/meetings')} className="btn-primary">Back to meetings</button>
+            : <button onClick={() => navigate('/signup')} className="btn-primary">Create your free SYNAPSE account</button>}
         </div>
+        {!user && guest.isGuest && <p className="mt-4 text-sm text-ivory-400">Host your own meetings, calendars and contacts in one place.</p>}
       </Center>
     );
   }
 
-  const isHost = user?.id === meeting.host_id;
+  const isHost = !!user && user.id === meeting.host_id;
   if (stage === 'prejoin') {
-    return <PreJoin meeting={meeting} isHost={isHost} onJoin={(c) => { setJoin(c); setStage('call'); }} onBack={() => navigate('/meetings')} />;
+    return <PreJoin meeting={meeting} isHost={isHost} onJoin={(c) => { setJoin(c); setStage('call'); }} onBack={home} />;
   }
 
   return (
@@ -101,17 +133,23 @@ function Center({ children }: { children: React.ReactNode }) {
   );
 }
 
-function useCopyLink(code: string) {
+function useCopyLink(meeting: Meeting) {
   const { toast } = useToast();
+  const { code, invite_token: token } = meeting;
   return useCallback(async () => {
-    try { await navigator.clipboard.writeText(meetingUrl(code)); toast('Meeting link copied'); }
-    catch { toast('Could not copy the link', 'error'); }
-  }, [code, toast]);
+    try {
+      await navigator.clipboard.writeText(inviteUrl({ code, invite_token: token }));
+      toast(token ? 'Invite link copied. Anyone with it can join.' : 'Meeting link copied');
+    } catch { toast('Could not copy the link', 'error'); }
+  }, [code, token, toast]);
 }
 
 function useYou() {
   const { user, profile } = useAuth();
-  const name = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || user?.email?.split('@')[0] || 'You';
+  const guest = useContext(GuestContext);
+  const name = user
+    ? [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || user.email?.split('@')[0] || 'You'
+    : `${guest.name.trim() || 'Guest'} (Guest)`;
   return { id: user?.id ?? 'me', name, firstName: profile?.first_name, lastName: profile?.last_name, avatarUrl: profile?.avatar_url ?? null };
 }
 
@@ -119,10 +157,12 @@ function useYou() {
 
 function PreJoin({ meeting, isHost, onJoin, onBack }: { meeting: Meeting; isHost: boolean; onJoin: (c: JoinChoice) => void; onBack: () => void }) {
   const { profile } = useAuth();
+  const guest = useContext(GuestContext);
+  const needsName = guest.isGuest && !guest.name.trim();
   // The camera preview starts on; the mic follows "join muted" so nobody is heard by surprise.
   const check = useMediaCheck(true, { mic: !normalizeMediaPrefs(profile?.media_prefs).join_muted });
   const you = useYou();
-  const copy = useCopyLink(meeting.code);
+  const copy = useCopyLink(meeting);
   const videoRef = useRef<HTMLVideoElement>(null);
   const showVideo = check.cameraOn && !!check.video;
 
@@ -153,7 +193,7 @@ function PreJoin({ meeting, isHost, onJoin, onBack }: { meeting: Meeting; isHost
           <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-[#1D3363]"><HowellsLogo className="h-[18px] w-[18px]" /></span>
           <span className="text-[13px] font-semibold tracking-[0.14em]">SYNAPSE</span>
         </div>
-        <button type="button" onClick={onBack} className="rounded-full px-4 py-2 text-sm font-semibold text-ivory-300 ring-1 ring-inset ring-white/15 hover:bg-white/10 hover:text-white">Back to meetings</button>
+        <button type="button" onClick={onBack} className="rounded-lg px-4 py-2 text-sm font-semibold text-ivory-300 ring-1 ring-inset ring-white/15 hover:bg-white/10 hover:text-white">{guest.isGuest ? 'Go to SYNAPSE' : 'Back to meetings'}</button>
       </header>
 
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-4 py-6 sm:px-8">
@@ -161,6 +201,7 @@ function PreJoin({ meeting, isHost, onJoin, onBack }: { meeting: Meeting; isHost
         <h1 className="mt-1 break-words font-display text-[28px] font-semibold tracking-tight sm:text-[34px]">{meeting.title}</h1>
         <div className="mb-5 mt-1 flex flex-wrap items-center gap-3 text-sm text-ivory-400">
           <span>Room <strong className="font-mono text-white">{meeting.code}</strong></span>
+          {meeting.host_name && <span>Hosted by <strong className="text-white">{meeting.host_name}</strong></span>}
           <button type="button" onClick={copy} className="inline-flex items-center gap-1 font-semibold text-gold-300 hover:text-gold-200"><Copy className="h-4 w-4" /> Copy link</button>
         </div>
 
@@ -179,6 +220,20 @@ function PreJoin({ meeting, isHost, onJoin, onBack }: { meeting: Meeting; isHost
             <PillToggle on={check.cameraOn} onClick={() => check.setCameraOn(!check.cameraOn)} label="Video" iconOn={Video} iconOff={VideoOff} />
           </div>
         </div>
+
+        {guest.isGuest && (
+          <label className="mt-4 block">
+            <span className="mb-1.5 block text-xs font-semibold text-ivory-400">Your name</span>
+            <input
+              value={guest.name}
+              onChange={(e) => guest.setName(e.target.value.slice(0, 60))}
+              placeholder="How should people see you?"
+              autoComplete="name"
+              aria-label="Your name"
+              className="h-12 w-full rounded-lg bg-[#13244A] px-4 text-sm text-white ring-1 ring-inset ring-white/10 placeholder:text-ivory-500 focus:outline-none focus:ring-2 focus:ring-gold-400"
+            />
+          </label>
+        )}
 
         {problem && <p role="alert" className="mt-3 rounded-lg bg-burgundy-500/20 px-3 py-2 text-sm text-red-200">{problem} <button type="button" onClick={check.retry} className="font-semibold underline">Try again</button></p>}
 
@@ -206,9 +261,11 @@ function PreJoin({ meeting, isHost, onJoin, onBack }: { meeting: Meeting; isHost
           <button
             type="button"
             onClick={() => onJoin({ mic: micLive, cam: camLive })}
+            disabled={needsName}
+            title={needsName ? 'Type your name to join' : undefined}
             className="h-12 shrink-0 rounded-full bg-gold-400 px-9 text-[15px] font-semibold text-navy-900 hover:bg-gold-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-200"
           >
-            {isHost ? 'Start' : 'Join'}
+            {isHost ? 'Start' : guest.isGuest ? 'Join as guest' : 'Join'}
           </button>
         </div>
         {check.ready && iphone !== 'camera' && (iphone === 'mic-only' || isMacDesktop()) && (
@@ -355,7 +412,8 @@ function useNow(on: boolean) {
 function InCall({ meeting, join, onLeave, onEnded }: { meeting: Meeting; join: JoinChoice; onLeave: () => void; onEnded: (by: 'you' | 'host') => void }) {
   const { profile } = useAuth();
   const { toast } = useToast();
-  const you = useYou();
+  const guestCtx = useContext(GuestContext);
+  const account = useYou();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [panel, setPanel] = useState<SidePanel>(null);
   const [layout, setLayout] = useState<Layout>('gallery');
@@ -368,21 +426,26 @@ function InCall({ meeting, join, onLeave, onEnded }: { meeting: Meeting; join: J
   const [hands, setHands] = useState<Record<string, boolean>>({});
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [lastSpeaker, setLastSpeaker] = useState<string | null>(null);
+  const [shareZoom, setShareZoom] = useState<'fit' | 1 | 1.5 | 2>('fit');
+  // Started from "Share screen" on the Meetings page: offer to share once connected (needs a click).
+  const [wantsShare, setWantsShare] = useState(() => new URLSearchParams(window.location.search || window.location.hash.split('?')[1] || '').get('share') === '1');
 
   const prefs = { ...normalizeMediaPrefs(profile?.media_prefs), join_muted: !join.mic, join_camera_off: !join.cam };
   const call = useLiveKitRoom(meeting.id, {
     prefs,
-    tokenBody: { meetingCode: meeting.code },
+    tokenBody: guestCtx.isGuest ? { meetingCode: meeting.code, invite: guestCtx.invite ?? '', guestName: guestCtx.name.trim() } : guestCtx.invite ? { meetingCode: meeting.code, invite: guestCtx.invite } : { meetingCode: meeting.code },
     autoSubscribe: true,
     onNotice: (m, tone) => toast(m, tone ?? 'info'),
   });
   const room = call.room;
+  // Guests get their identity from the server (guest_…), so "you" is whoever this room says we are.
+  const you = { ...account, id: room?.localParticipant?.identity || account.id };
   const bus = useMeetingBus(room);
   const devices = useDevices(true);
   const { active, choose } = useActiveDevices(room);
   useCallShortcuts({ mic: () => { void call.toggleMic(); }, cam: () => { void call.toggleCam(); } });
   useMeetingAudio(room);
-  const copy = useCopyLink(meeting.code);
+  const copy = useCopyLink(meeting);
   const isHost = you.id === meeting.host_id;
   const now = useNow(startedAt !== null);
   const panelRef = useRef(panel);
@@ -403,10 +466,14 @@ function InCall({ meeting, join, onLeave, onEnded }: { meeting: Meeting; join: J
   const sharer = tiles.find((t) => t.screen);
   const count = tiles.length;
 
-  // Only the host can end the meeting for everyone.
+  // Only the host can end the meeting for everyone, or stop someone's screen share.
+  const stopShareRef = useRef(call.stopScreenShare);
+  stopShareRef.current = call.stopScreenShare;
   useEffect(() => bus.on(TOPICS.control, (raw, from) => {
-    if (parseControl(raw) && from === meeting.host_id) { room?.disconnect(); onEnded('host'); }
-  }), [bus, room, meeting.host_id, onEnded]);
+    if (from !== meeting.host_id) return;
+    if (isStopShare(raw)) { void stopShareRef.current(); toast('The host stopped your screen share.', 'info'); return; }
+    if (parseControl(raw)) { room?.disconnect(); onEnded('host'); }
+  }), [bus, room, meeting.host_id, onEnded, toast]);
 
   const seenChat = useRef(new Set<string>());
   useEffect(() => bus.on(TOPICS.chat, (raw, from) => {
@@ -478,22 +545,29 @@ function InCall({ meeting, join, onLeave, onEnded }: { meeting: Meeting; join: J
 
   let stage: React.ReactNode;
   if (sharer) {
+    const fit = shareZoom === 'fit';
     stage = (
-      <div className="flex h-full flex-col gap-2 lg:flex-row">
-        <div className="relative min-h-0 flex-1 overflow-hidden rounded-[22px] bg-black" data-share-stage>
-          <TrackVideo track={sharer.screen} onVideo={setShareVideo} className="h-full w-full object-contain" />
-          <AnnotationLayer
-            bus={bus}
-            me={you.id}
-            roles={{ presenter: sharer.id, host: meeting.host_id }}
-            video={shareVideo}
-            open={annotating}
-            onClose={() => setAnnotating(false)}
-            names={names}
+      <div className="flex h-full flex-col gap-1.5 lg:flex-row">
+        <div className={cn('relative min-h-0 flex-1 bg-black', fit ? 'overflow-hidden' : 'overflow-auto')} data-share-stage>
+          <TrackVideo
+            track={sharer.screen}
+            onVideo={setShareVideo}
+            className={fit ? 'h-full w-full object-contain' : 'max-w-none'}
+            style={fit || !shareVideo?.videoWidth ? undefined : { width: shareVideo.videoWidth * (shareZoom as number), height: 'auto' }}
           />
-          <span className="pointer-events-none absolute bottom-3 left-3 rounded-md bg-black/60 px-2 py-1 text-xs font-semibold">{sharer.local ? 'You are sharing your screen' : `${sharer.name} is sharing`}</span>
+          {fit && (
+            <AnnotationLayer
+              bus={bus}
+              me={you.id}
+              roles={{ presenter: sharer.id, host: meeting.host_id }}
+              video={shareVideo}
+              open={annotating}
+              onClose={() => setAnnotating(false)}
+              names={names}
+            />
+          )}
         </div>
-        <div className="flex shrink-0 gap-2 overflow-auto lg:w-56 lg:flex-col">
+        <div className="flex shrink-0 gap-1.5 overflow-auto lg:w-60 lg:flex-col">
           {tiles.map((t) => <ParticipantTile key={t.id} {...tileProps(t)} className="aspect-video w-40 shrink-0 lg:w-full" />)}
         </div>
       </div>
@@ -501,8 +575,8 @@ function InCall({ meeting, join, onLeave, onEnded }: { meeting: Meeting; join: J
   } else if (layout === 'speaker' && count > 1) {
     const main = tiles.find((t) => t.id === lastSpeaker) ?? tiles.find((t) => !t.local) ?? tiles[0];
     stage = (
-      <div className="flex h-full flex-col gap-2">
-        <div className="flex h-20 shrink-0 justify-center gap-2 overflow-x-auto sm:h-28">
+      <div className="flex h-full flex-col gap-1.5">
+        <div className="flex h-20 shrink-0 justify-center gap-1.5 overflow-x-auto sm:h-28">
           {tiles.filter((t) => t !== main).map((t) => <ParticipantTile key={t.id} {...tileProps(t)} className="aspect-video h-full shrink-0" />)}
         </div>
         <ParticipantTile {...tileProps(main)} className="min-h-0 flex-1" big />
@@ -510,25 +584,63 @@ function InCall({ meeting, join, onLeave, onEnded }: { meeting: Meeting; join: J
     );
   } else {
     stage = (
-      <div className={cn('grid h-full auto-rows-fr gap-3', count === 1 ? 'grid-cols-1' : count <= 4 ? 'grid-cols-1 sm:grid-cols-2' : count <= 9 ? 'grid-cols-2 lg:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4')}>
+      <div className={cn('grid h-full auto-rows-fr gap-1.5', count === 1 ? 'grid-cols-1' : count <= 4 ? 'grid-cols-1 sm:grid-cols-2' : count <= 9 ? 'grid-cols-2 lg:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4')}>
         {tiles.map((t) => <ParticipantTile key={t.id} {...tileProps(t)} big={count === 1} />)}
       </div>
     );
   }
 
+  const popOut = async () => {
+    try { await shareVideo?.requestPictureInPicture(); } catch { toast('Pop out isn’t available in this browser.', 'info'); }
+  };
+  const stopTheirShare = () => {
+    if (!sharer) return;
+    void bus.send(TOPICS.control, { t: 'stopShare' }, { to: [sharer.id] });
+    toast(`Asked ${sharer.name} to stop sharing`, 'info');
+  };
+
   return (
-    <div className="flex h-[100dvh] flex-col bg-[#081226] text-white">
-      <header className="flex flex-wrap items-center gap-3 px-4 pb-3 pt-4 sm:px-6">
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate font-display text-[17px] font-semibold tracking-[-0.015em] sm:text-[19px]">{meeting.title}</h1>
-          <p className="text-[13px] text-[#AEB8CC]">Room {meeting.code} · {count} {count === 1 ? 'person' : 'people'}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span title="Audio, video and chat are encrypted in transit" aria-label="Encrypted" className="hidden h-8 items-center gap-1.5 rounded-full bg-[#13244A] px-3 text-[13px] text-[#AEB8CC] sm:inline-flex"><Lock className="h-3.5 w-3.5" /> Encrypted</span>
-          {startedAt !== null && <span className="inline-flex h-8 items-center rounded-full bg-[#13244A] px-3 text-[13px] tabular-nums" aria-label="Time in meeting">{elapsed(now - startedAt)}</span>}
+    <div className="flex h-[100dvh] flex-col bg-[#0B1730] text-white">
+      {/* Top bar: meeting info on the left, what's on screen in the middle, time and view on the right */}
+      <header className="relative z-20 flex h-12 shrink-0 items-center gap-2 bg-[#081226] px-2 sm:px-3">
+        <button type="button" onClick={() => setInfoOpen((v) => !v)} aria-label="Meeting information" title="Meeting information" className="flex h-8 w-8 items-center justify-center rounded-md text-[#D5DBE7] hover:bg-white/10"><Info className="h-[18px] w-[18px]" /></button>
+        <span className="flex h-8 w-8 items-center justify-center text-green-400" title="Audio, video and chat are encrypted in transit" aria-label="Encrypted"><ShieldCheck className="h-[18px] w-[18px]" /></span>
+        <h1 className="min-w-0 truncate text-sm font-semibold">{meeting.title}</h1>
+        <span className="hidden shrink-0 text-xs text-[#AEB8CC] md:inline">· Room {meeting.code} · {count} {count === 1 ? 'person' : 'people'}</span>
+
+        {sharer && (
+          <div className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-lg bg-[#1A2B4F] py-1 pl-3 pr-1 text-sm font-semibold md:flex">
+            <MonitorUp className="h-4 w-4 text-green-400" />
+            <span className="max-w-[16rem] truncate">{sharer.local ? 'You are sharing your screen' : `${sharer.name}'s screen`}</span>
+            <Popover
+              label="Shared screen options"
+              panelClassName={cn('left-0 top-full mt-2 w-64', darkPanel)}
+              trigger={({ open, toggle }) => <button type="button" onClick={toggle} aria-label="Shared screen options" aria-haspopup="menu" aria-expanded={open} className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-white/10"><MoreHorizontal className="h-4 w-4" /></button>}
+            >
+              {(close) => (
+                <>
+                  {([['fit', 'Fit to window'], [1, '100% (Original size)'], [1.5, '150%'], [2, '200%']] as const).map(([z, label]) => (
+                    <button key={String(z)} role="menuitemradio" aria-checked={shareZoom === z} className={darkItem} onClick={() => { close(); setShareZoom(z); if (z !== 'fit') setAnnotating(false); }}>
+                      <Check className={cn('h-4 w-4', shareZoom === z ? 'text-gold-300' : 'invisible')} /> {label}
+                    </button>
+                  ))}
+                  <div className="my-1 h-px bg-white/10" />
+                  <button role="menuitem" className={darkItem} onClick={() => { close(); setShareZoom('fit'); setAnnotating(true); }}><PenLine className="h-4 w-4" /> Annotate</button>
+                  {isHost && !sharer.local && <button role="menuitem" className={cn(darkItem, '!text-[#FF8A80]')} onClick={() => { close(); stopTheirShare(); }}><X className="h-4 w-4" /> Stop participant’s sharing</button>}
+                  {sharer.local && <button role="menuitem" className={cn(darkItem, '!text-[#FF8A80]')} onClick={() => { close(); void call.stopScreenShare(); }}><X className="h-4 w-4" /> Stop sharing</button>}
+                  <div className="my-1 h-px bg-white/10" />
+                  <button role="menuitem" className={darkItem} onClick={() => { close(); void popOut(); }}><PictureInPicture2 className="h-4 w-4" /> Pop out</button>
+                </>
+              )}
+            </Popover>
+          </div>
+        )}
+
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          {startedAt !== null && <span className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] tabular-nums text-[#D5DBE7]" aria-label="Time in meeting"><Clock className="h-4 w-4" />{elapsed(now - startedAt)}</span>}
           {sharer && (
-            <button type="button" onClick={() => setAnnotating((v) => !v)} aria-pressed={annotating} aria-label="Annotate" title="Annotate the shared screen" className={cn('flex h-10 w-10 items-center justify-center rounded-full', annotating ? 'bg-gold-400 text-navy-900' : 'bg-[#13244A] text-white hover:bg-[#1D3363]')}>
-              <PenLine className="h-[18px] w-[18px]" />
+            <button type="button" onClick={() => setAnnotating((v) => !v)} aria-pressed={annotating} aria-label="Annotate" title="Annotate the shared screen" className={cn('flex h-8 w-8 items-center justify-center rounded-md', annotating ? 'bg-gold-400 text-navy-900' : 'text-[#D5DBE7] hover:bg-white/10')}>
+              <PenLine className="h-4 w-4" />
             </button>
           )}
           <button
@@ -537,19 +649,29 @@ function InCall({ meeting, join, onLeave, onEnded }: { meeting: Meeting; join: J
             disabled={!!sharer}
             aria-label={layout === 'gallery' ? 'Switch to speaker view' : 'Switch to gallery view'}
             title={layout === 'gallery' ? 'Speaker view' : 'Gallery view'}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-[#13244A] text-white hover:bg-[#1D3363] disabled:opacity-40"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] font-semibold text-[#D5DBE7] hover:bg-white/10 disabled:opacity-40"
           >
-            {layout === 'gallery' ? <Square className="h-[18px] w-[18px]" /> : <LayoutGrid className="h-[18px] w-[18px]" />}
+            <LayoutGrid className="h-4 w-4" />
+            <span className="hidden sm:inline">View: {layout === 'gallery' ? 'Gallery' : 'Speaker'}</span>
           </button>
         </div>
       </header>
 
-      <div className="relative flex min-h-0 flex-1 gap-3 px-3 pb-2 sm:px-6">
+      <div className="relative flex min-h-0 flex-1 gap-1.5 p-1.5">
         <main className="relative min-h-0 min-w-0 flex-1">
           {stage}
           {count === 1 && call.state === 'connected' && (
             <div className="pointer-events-none absolute inset-x-0 top-4 flex justify-center px-3">
-              <p className="pointer-events-auto rounded-full bg-[#102041]/95 px-4 py-2 text-center text-sm shadow-[0_10px_30px_rgba(0,0,0,0.35)]">You're the only one here. <button type="button" onClick={copy} className="font-semibold text-gold-300 hover:text-gold-200">Copy the link</button> to invite people.</p>
+              <p className="pointer-events-auto rounded-lg bg-[#14223F]/95 px-4 py-2 text-center text-sm shadow-[0_10px_30px_rgba(0,0,0,0.35)]">You're the only one here. <button type="button" onClick={copy} className="font-semibold text-gold-300 hover:text-gold-200">Copy the invite link</button> to bring people in.</p>
+            </div>
+          )}
+          {wantsShare && !call.screenOn && call.state === 'connected' && (
+            <div className="absolute inset-x-0 bottom-4 flex justify-center px-3">
+              <div className="flex items-center gap-3 rounded-lg bg-[#14223F]/95 px-4 py-2.5 text-sm shadow-[0_10px_30px_rgba(0,0,0,0.35)]">
+                <MonitorUp className="h-4 w-4 text-green-400" /> Ready to share your screen?
+                <button type="button" onClick={() => { setWantsShare(false); void call.startScreenShare(); }} className="rounded-md bg-green-600 px-3 py-1.5 font-semibold hover:bg-green-500">Share screen</button>
+                <button type="button" onClick={() => setWantsShare(false)} aria-label="Not now" className="rounded-md p-1 text-[#AEB8CC] hover:bg-white/10"><X className="h-4 w-4" /></button>
+              </div>
             </div>
           )}
           {infoOpen && <MeetingInfo meeting={meeting} hostName={names[meeting.host_id] ?? (isHost ? you.name : null)} onCopy={copy} onClose={() => setInfoOpen(false)} />}
@@ -565,38 +687,54 @@ function InCall({ meeting, join, onLeave, onEnded }: { meeting: Meeting; join: J
         {panel === 'chat' && <ChatPanel lines={chat} onSend={sendChat} onClose={() => setPanel(null)} />}
       </div>
 
-      <div className="flex justify-center px-2 pb-4 pt-2 sm:pb-6">
-      <footer role="toolbar" aria-label="Meeting controls" className="flex max-w-full items-center gap-1 rounded-[32px] bg-[rgba(16,32,65,0.94)] p-1.5 shadow-[0_10px_40px_rgba(0,0,0,0.35)] backdrop-blur sm:gap-1.5 sm:p-2">
-        <div className="flex items-center gap-1 sm:gap-1.5">
+      {/* Bottom bar, as in Zoom: your audio & video left, meeting tools centre, End right */}
+      <footer role="toolbar" aria-label="Meeting controls" className="relative z-20 grid shrink-0 grid-cols-[auto_1fr_auto] items-center gap-1 bg-[#081226] px-1.5 py-1 sm:px-3 sm:py-1.5">
+        <div className="flex items-center gap-0.5 sm:gap-1">
           <AudioButton micOn={call.micOn} busy={call.pending.microphone} onToggle={() => { void call.toggleMic(); }} devices={devices} active={active} onChoose={onChoose} onSettings={() => setSettingsOpen(true)} shortcut={SHORTCUTS.mic} />
           <VideoButton onRefresh={devices.rescan} camOn={call.camOn} busy={call.pending.camera} onToggle={() => { void call.toggleCam(); }} devices={devices} active={active} onChoose={onChoose} onSettings={() => setSettingsOpen(true)} shortcut={SHORTCUTS.cam} />
         </div>
-        <span aria-hidden="true" className="mx-0.5 hidden h-7 w-px bg-white/15 sm:block" />
 
-        <div className="flex items-center">
-          <ToolButton label="Participants" icon={<Users className="h-5 w-5" />} badge={count} pressed={panel === 'people'} onClick={() => openPanel('people')} />
-          <ToolButton label="Chat" icon={<MessageSquare className="h-5 w-5" />} badge={unread || undefined} pressed={panel === 'chat'} onClick={() => openPanel('chat')} />
+        <div className="flex min-w-0 items-center justify-center gap-0.5 sm:gap-1">
+          <ToolButton label="Participants" icon={<Users className="h-[22px] w-[22px]" />} badge={count} pressed={panel === 'people'} onClick={() => openPanel('people')} />
+          <ToolButton label="Chat" icon={<MessageSquare className="h-[22px] w-[22px]" />} badge={unread || undefined} pressed={panel === 'chat'} onClick={() => openPanel('chat')} />
           <Popover
             className="hidden sm:block"
             label="Reactions"
             panelClassName={cn('bottom-full left-1/2 mb-3 -translate-x-1/2 p-2', darkPanel)}
-            trigger={({ open, toggle }) => <ToolButton label="React" icon={<SmilePlus className="h-5 w-5" />} pressed={open} aria-expanded={open} aria-haspopup="menu" onClick={toggle} />}
+            trigger={({ open, toggle }) => <ToolButton label="React" icon={<SmilePlus className="h-[22px] w-[22px]" />} pressed={open} aria-expanded={open} aria-haspopup="menu" onClick={toggle} />}
           >
             {(close) => <ReactionPicker handUp={!!hands[you.id]} onReact={(e) => { react(e); close(); }} onHand={() => { toggleHand(); close(); }} />}
           </Popover>
           <ToolButton
             className="hidden sm:flex"
             label={call.screenOn ? 'Stop share' : 'Share'}
-            icon={<MonitorUp className={cn('h-5 w-5', !call.screenOn && 'text-green-400')} />}
+            icon={<MonitorUp className={cn('h-[22px] w-[22px]', !call.screenOn && 'text-green-400')} />}
             pressed={call.screenOn}
             busy={call.pending.screen}
             onClick={() => { void (call.screenOn ? call.stopScreenShare() : call.startScreenShare()); }}
           />
-          {sharer && <ToolButton label="Annotate" icon={<PenLine className="h-5 w-5" />} pressed={annotating} onClick={() => setAnnotating((v) => !v)} />}
+          {isHost && (
+            <Popover
+              className="hidden sm:block"
+              label="Host tools"
+              panelClassName={cn('bottom-full left-1/2 mb-3 w-60 -translate-x-1/2', darkPanel)}
+              trigger={({ open, toggle }) => <ToolButton label="Host tools" icon={<Shield className="h-[22px] w-[22px]" />} pressed={open} aria-expanded={open} aria-haspopup="menu" onClick={toggle} />}
+            >
+              {(close) => (
+                <>
+                  <button role="menuitem" className={darkItem} onClick={() => { close(); void copy(); }}><Copy className="h-4 w-4" /> Copy invite link</button>
+                  <button role="menuitem" className={darkItem} onClick={() => { close(); setInfoOpen(true); }}><Info className="h-4 w-4" /> Meeting info</button>
+                  {sharer && !sharer.local && <button role="menuitem" className={darkItem} onClick={() => { close(); stopTheirShare(); }}><X className="h-4 w-4" /> Stop participant’s sharing</button>}
+                  <div className="my-1 h-px bg-white/10" />
+                  <button role="menuitem" className={cn(darkItem, '!text-[#FF8A80]')} onClick={() => { close(); void endForAll(); }}><XCircle className="h-4 w-4" /> End meeting for all</button>
+                </>
+              )}
+            </Popover>
+          )}
           <Popover
             label="More"
-            panelClassName={cn('bottom-full right-0 mb-3 w-60', darkPanel)}
-            trigger={({ open, toggle }) => <ToolButton label="More" icon={<MoreHorizontal className="h-5 w-5" />} pressed={open} aria-expanded={open} aria-haspopup="menu" onClick={toggle} />}
+            panelClassName={cn('bottom-full right-0 mb-3 w-60 sm:left-1/2 sm:right-auto sm:-translate-x-1/2', darkPanel)}
+            trigger={({ open, toggle }) => <ToolButton label="More" icon={<MoreHorizontal className="h-[22px] w-[22px]" />} pressed={open} aria-expanded={open} aria-haspopup="menu" onClick={toggle} />}
           >
             {(close) => (
               <>
@@ -611,14 +749,16 @@ function InCall({ meeting, join, onLeave, onEnded }: { meeting: Meeting; join: J
             )}
           </Popover>
         </div>
-        <span aria-hidden="true" className="mx-0.5 hidden h-7 w-px bg-white/15 sm:block" />
 
         <Popover
           label="Leave options"
           panelClassName={cn('bottom-full right-0 mb-3 w-60 p-2', darkPanel)}
           trigger={({ open, toggle }) => (
-            <button type="button" onClick={toggle} aria-haspopup="menu" aria-expanded={open} aria-label="Leave" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#C42B1C] text-[15px] font-semibold text-white hover:bg-[#A82316] sm:h-[52px] sm:w-auto sm:px-6">
-              <PhoneOff className="h-5 w-5 sm:hidden" aria-hidden="true" /><span className="hidden sm:inline">Leave</span>
+            <button type="button" onClick={toggle} aria-haspopup="menu" aria-expanded={open} aria-label={isHost ? 'End' : 'Leave'} className="flex h-11 min-w-[44px] flex-col items-center justify-center gap-1 rounded-lg px-1.5 text-white hover:bg-white/[0.08] sm:h-[58px] sm:min-w-[64px] sm:px-2">
+              {isHost
+                ? <span className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-[#C42B1C]"><X className="h-3.5 w-3.5" strokeWidth={3} /></span>
+                : <LogOut className="h-[22px] w-[22px] text-[#FF6B60]" />}
+              <span aria-hidden="true" className="hidden text-[11.5px] font-medium leading-none text-[#D5DBE7] sm:block">{isHost ? 'End' : 'Leave'}</span>
             </button>
           )}
         >
@@ -630,7 +770,6 @@ function InCall({ meeting, join, onLeave, onEnded }: { meeting: Meeting; join: J
           )}
         </Popover>
       </footer>
-      </div>
       <DeviceCheckModal open={settingsOpen} onClose={() => { setSettingsOpen(false); void call.applySavedDevices(); }} />
     </div>
   );
@@ -661,7 +800,7 @@ function MeetingInfo({ meeting, hostName, onCopy, onClose }: { meeting: Meeting;
       <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-ivory-300">
         <dt>Room</dt><dd className="font-mono text-white">{meeting.code}</dd>
         {hostName && <><dt>Host</dt><dd className="text-white">{hostName}</dd></>}
-        <dt>Link</dt><dd className="break-all text-white">{meetingUrl(meeting.code)}</dd>
+        <dt>Invite link</dt><dd className="break-all text-white">{inviteUrl(meeting)}</dd>
         <dt>Security</dt><dd className="text-white">Encrypted in transit. Only people in this SYNAPSE account can join.</dd>
       </dl>
       <button type="button" onClick={onCopy} className="mt-4 inline-flex items-center gap-1.5 font-semibold text-gold-300 hover:text-gold-200"><Copy className="h-4 w-4" /> Copy link</button>
@@ -687,7 +826,7 @@ function useMeetingAudio(room: Room | null) {
   }, [room]);
 }
 
-function TrackVideo({ track, mirror, className, onVideo }: { track: Track | null; mirror?: boolean; className?: string; onVideo?: (el: HTMLVideoElement | null) => void }) {
+function TrackVideo({ track, mirror, className, style, onVideo }: { track: Track | null; mirror?: boolean; className?: string; style?: React.CSSProperties; onVideo?: (el: HTMLVideoElement | null) => void }) {
   const ref = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     const el = ref.current;
@@ -697,7 +836,7 @@ function TrackVideo({ track, mirror, className, onVideo }: { track: Track | null
     return () => { (track as LocalTrack | RemoteTrack).detach(el); onVideo?.(null); };
   }, [track, onVideo]);
   if (!track) return null;
-  return <video ref={ref} autoPlay playsInline muted className={cn(className, mirror && '-scale-x-100')} />;
+  return <video ref={ref} autoPlay playsInline muted style={style} className={cn(className, mirror && '-scale-x-100')} />;
 }
 
 function ParticipantTile({ tile, hand, reaction, host, big, className }: { tile: TileInfo; hand: boolean; reaction?: Reaction; host: boolean; big?: boolean; className?: string }) {
@@ -705,7 +844,7 @@ function ParticipantTile({ tile, hand, reaction, host, big, className }: { tile:
   const label = `${tile.name}${tile.local ? ' (you)' : ''}`;
   return (
     <div
-      className={cn('relative min-h-0 overflow-hidden rounded-[22px] bg-[#13244A] transition', className)}
+      className={cn('relative min-h-0 overflow-hidden rounded-md bg-[#152647] transition', className)}
       data-speaking={tile.speaking || undefined}
       aria-label={`${label}${host ? ', host' : ''}${tile.muted ? ', muted' : ''}${tile.speaking ? ', speaking' : ''}${hand ? ', hand raised' : ''}`}
       role="group"
@@ -719,14 +858,14 @@ function ParticipantTile({ tile, hand, reaction, host, big, className }: { tile:
             : <span className={cn('flex items-center justify-center rounded-full bg-[#2A4377] font-display font-semibold tracking-[-0.02em]', big ? 'h-28 w-28 text-[38px]' : 'h-20 w-20 text-[28px]')}>{(first?.[0] ?? '') + (rest[rest.length - 1]?.[0] ?? '')}</span>}
         </div>
       )}
-      {tile.speaking && <span aria-hidden="true" className="pointer-events-none absolute inset-0 rounded-[22px] shadow-[inset_0_0_0_3px_#E4A93C]" />}
+      {tile.speaking && <span aria-hidden="true" className="pointer-events-none absolute inset-0 rounded-md shadow-[inset_0_0_0_3px_#E4A93C]" />}
       {(hand || reaction) && (
         <span className="absolute left-3.5 top-3.5 flex items-center gap-1">
           {hand && <span className="inline-flex h-[30px] items-center gap-1.5 rounded-full bg-gold-400 px-2.5 text-[13px] font-semibold text-navy-900" aria-hidden="true"><Hand className="h-3.5 w-3.5" /> Hand raised</span>}
           {reaction && <span className="animate-bounce text-3xl drop-shadow" aria-label={`Reacted ${reaction}`}>{reaction}</span>}
         </span>
       )}
-      <span className="absolute bottom-3.5 left-3.5 flex h-7 max-w-[90%] items-center gap-1.5 truncate rounded-full bg-black/45 px-2.5 text-[13px] font-medium">
+      <span className="absolute bottom-1.5 left-1.5 flex h-6 max-w-[90%] items-center gap-1.5 truncate rounded bg-black/55 px-2 text-[12.5px] font-medium">
         {tile.muted ? <MicOff className="h-3.5 w-3.5 shrink-0 text-[#FF8A80]" /> : <Mic className="h-3.5 w-3.5 shrink-0" />}
         <span className="truncate">{label}</span>
       </span>
