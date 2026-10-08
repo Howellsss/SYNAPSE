@@ -162,7 +162,7 @@ export function MessageComposer({ contact, onSent }: { contact: Contact; onSent:
 
   const dnd = (ch: 'email' | 'sms') => !!contact.dnd_all || (contact.dnd_channels ?? []).includes(ch);
   const blocker =
-    mode === 'email' ? (!contact.email ? 'This contact has no email address.' : dnd('email') ? 'Email is turned off for this contact (Do not disturb).' : null)
+    mode === 'email' ? (dnd('email') ? 'Email is turned off for this contact (Do not disturb).' : null)
     : mode === 'sms' ? (!contact.phone ? 'This contact has no phone number.' : dnd('sms') ? 'Text messages are turned off for this contact (Do not disturb).' : null)
     : null;
 
@@ -347,14 +347,18 @@ export function MessageComposer({ contact, onSent }: { contact: Contact; onSent:
               </div>
               <div className="flex items-center gap-2 border-b border-sand px-3 py-1.5">
                 <span className="w-12 shrink-0 text-sm text-ivory-600">To</span>
-                {toOptions.length > 1 ? (
-                  <select value={toEmail} onChange={(e) => setToEmail(e.target.value)} aria-label="To" className="rounded-lg border border-navy-100 bg-ivory-50 px-2 py-1 text-sm text-navy-800 outline-none">
-                    {toOptions.map((e) => <option key={e} value={e}>{e}</option>)}
-                  </select>
-                ) : (
-                  <Chip avatar={initials}>{toEmail || '—'}</Chip>
-                )}
-                <div className="flex-1" />
+                {/* Any address can be typed; the contact's own addresses are suggested. */}
+                <input
+                  type="email"
+                  value={toEmail}
+                  onChange={(e) => setToEmail(e.target.value.trim())}
+                  list={`to-options-${contact.id}`}
+                  placeholder="name@example.com"
+                  aria-label="To"
+                  aria-invalid={toEmail !== '' && !EMAIL_RE.test(toEmail)}
+                  className={cn('min-w-0 flex-1 rounded-md border px-2 py-1 text-sm text-navy-800 outline-none', toEmail === '' || EMAIL_RE.test(toEmail) ? 'border-transparent hover:border-navy-100 focus:border-gold-400' : 'border-burgundy-500')}
+                />
+                <datalist id={`to-options-${contact.id}`}>{toOptions.map((e) => <option key={e} value={e} />)}</datalist>
                 {!showCc && <button type="button" onClick={() => setShowCc(true)} className="text-sm font-medium text-ivory-600 hover:text-navy-800">CC</button>}
                 {!showBcc && <button type="button" onClick={() => setShowBcc(true)} className="text-sm font-medium text-ivory-600 hover:text-navy-800">BCC</button>}
               </div>

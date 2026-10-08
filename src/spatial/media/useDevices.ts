@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { isIphoneDevice } from './continuity';
+import { isIphoneDevice, keepFullerList } from './continuity';
 
 export interface DeviceLists {
   microphones: MediaDeviceInfo[];
@@ -8,6 +8,16 @@ export interface DeviceLists {
 }
 
 const EMPTY: DeviceLists = { microphones: [], cameras: [], speakers: [] };
+
+/** Split a device list by kind, keeping the fuller earlier list where the browser answered with less. */
+export function listsFrom(all: MediaDeviceInfo[], prev: DeviceLists = EMPTY): DeviceLists {
+  const real = all.filter((d) => d.deviceId);
+  return {
+    microphones: keepFullerList(prev.microphones, real.filter((d) => d.kind === 'audioinput')),
+    cameras: keepFullerList(prev.cameras, real.filter((d) => d.kind === 'videoinput')),
+    speakers: keepFullerList(prev.speakers, real.filter((d) => d.kind === 'audiooutput')),
+  };
+}
 
 /**
  * Cameras, microphones and speakers, kept up to date as devices come and go
@@ -20,13 +30,9 @@ export function useDevices(enabled = true): DeviceLists & { refresh: () => Promi
   const load = useCallback(async () => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
     try {
-      const all = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.deviceId);
+      const all = await navigator.mediaDevices.enumerateDevices();
       if (!alive.current) return;
-      setLists({
-        microphones: all.filter((d) => d.kind === 'audioinput'),
-        cameras: all.filter((d) => d.kind === 'videoinput'),
-        speakers: all.filter((d) => d.kind === 'audiooutput'),
-      });
+      setLists((prev) => listsFrom(all, prev));
     } catch { /* keep what we had */ }
   }, []);
   useEffect(() => {
@@ -48,8 +54,9 @@ export function useDevices(enabled = true): DeviceLists & { refresh: () => Promi
     };
   }, [enabled, load]);
   const rescan = useCallback(async () => {
-    await probeDevices({ video: true });
-    await load();
+    const seen = await probeDevices({ video: true });
+    if (seen && alive.current) setLists((prev) => listsFrom(seen, prev));
+    else await load();
   }, [load]);
   return { ...lists, refresh: load, rescan };
 }
@@ -62,15 +69,23 @@ export function deviceLabel(d: MediaDeviceInfo, index: number, fallback: string)
 }
 
 /**
- * Ask the browser for the camera (and mic) for a moment, then let go. Some browsers only report
- * a camera that connected after the page loaded, like an iPhone, once a page asks for video again.
+ * Ask the browser for the camera for a moment and read the device list *while it is on*, the way
+ * Google Meet does: Safari and Chrome give the complete list (with names, including an iPhone used
+ * as a Continuity Camera) only while a camera is in use. Returns that list, or null if it couldn't ask.
  */
-export async function probeDevices(kinds: { video?: boolean; audio?: boolean } = { video: true }): Promise<void> {
-  if (!navigator.mediaDevices?.getUserMedia) return;
+export async function probeDevices(kinds: { video?: boolean; audio?: boolean } = { video: true }): Promise<MediaDeviceInfo[] | null> {
+  if (!navigator.mediaDevices?.getUserMedia || !navigator.mediaDevices.enumerateDevices) return null;
+  let stream: MediaStream | null = null;
   try {
-    const s = await navigator.mediaDevices.getUserMedia({ video: !!kinds.video, audio: !!kinds.audio });
-    s.getTracks().forEach((t) => t.stop());
-  } catch { /* denied or busy: the plain list is the best we can do */ }
+    stream = await navigator.mediaDevices.getUserMedia({ video: !!kinds.video, audio: !!kinds.audio });
+    // A moment for the system to publish newly woken cameras (an iPhone wakes when a camera is requested).
+    await new Promise((r) => setTimeout(r, 600));
+    return await navigator.mediaDevices.enumerateDevices();
+  } catch {
+    return null; // denied or busy: the plain list is the best we can do
+  } finally {
+    stream?.getTracks().forEach((t) => t.stop());
+  }
 }
 
 export const isIphoneCamera = (d: MediaDeviceInfo) => isIphoneDevice(d);

@@ -3,7 +3,7 @@ import {
   classifyMediaError, loadDeviceIds, mediaSupport, pickDevice, saveDeviceIds,
   type DeviceIds, type DeviceProblem,
 } from './devices';
-import { probeDevices } from './useDevices';
+import { listsFrom, probeDevices } from './useDevices';
 
 export interface DeviceLists {
   cameras: MediaDeviceInfo[];
@@ -84,19 +84,18 @@ export function useMediaCheck(active: boolean, initial: { cam?: boolean; mic?: b
     try {
       const all = await navigator.mediaDevices.enumerateDevices();
       if (!aliveRef.current) return;
-      // Before permission, browsers return devices without ids or labels; they're no use in a select.
-      const real = all.filter((d) => d.deviceId);
-      setDevices({
-        cameras: real.filter((d) => d.kind === 'videoinput'),
-        microphones: real.filter((d) => d.kind === 'audioinput'),
-        speakers: real.filter((d) => d.kind === 'audiooutput'),
-      });
+      // Before permission (or with no camera on, in Safari) browsers return a reduced list; keep the fuller one.
+      setDevices((prev) => listsFrom(all, prev));
     } catch { /* keep the old list */ }
   }, []);
 
+  /** Find cameras the browser hasn't listed yet: read the list while a camera is on, like Google Meet. */
   const rescanDevices = useCallback(async () => {
-    await probeDevices({ video: true });
-    await refreshDevices();
+    // A preview already on means the browser is giving its full list; asking again isn't needed.
+    if (videoRef.current) { await refreshDevices(); return; }
+    const seen = await probeDevices({ video: true });
+    if (seen && aliveRef.current) setDevices((prev) => listsFrom(seen, prev));
+    else await refreshDevices();
   }, [refreshDevices]);
 
   const releaseVideo = useCallback(() => {

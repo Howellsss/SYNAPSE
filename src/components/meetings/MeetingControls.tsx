@@ -172,7 +172,7 @@ export function VideoButton({ camOn, busy, onToggle, devices, active, onChoose, 
           <DeviceRows kind="videoinput" devices={devices.cameras} active={active.videoinput} fallback="Camera" onChoose={onChoose} close={close} />
           <LookAgainRow onLookAgain={onRefresh} />
           {iphone !== 'camera' && (iphone === 'mic-only' || isMacDesktop()) && (
-            <IphoneCameraHelp status={iphone} onLookAgain={onRefresh} className="mx-2 my-1" />
+            <IphoneCameraHelp status={iphone} onLookAgain={onRefresh} cameras={devices.cameras} className="mx-2 my-1" />
           )}
           <div className="my-1 h-px bg-white/10" />
           <button role="menuitem" className={darkItem} onClick={() => { close(); onSettings(); }}><Settings2 className="h-4 w-4" /> Video settings…</button>
