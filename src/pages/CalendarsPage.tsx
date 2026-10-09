@@ -21,6 +21,7 @@ import type {
   Calendar as CalendarType, Appointment, Contact, AvailabilityRule,
   CalendarType as CalType, LocationType, AppointmentStatus, FormSubmission,
 } from '@/types';
+import { publicOrigin } from '@/lib/publicUrl';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -1112,7 +1113,7 @@ function ManageViewDrawer({
                           Edit
                         </button>
                         <button
-                          onClick={() => window.open(`${window.location.origin}/book/${cal.slug}`, '_blank')}
+                          onClick={() => window.open(`${publicOrigin()}/book/${cal.slug}`, '_blank')}
                           className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-ivory-600 transition hover:bg-ivory-50 hover:text-navy-700"
                         >
                           <Eye className="h-3 w-3" />

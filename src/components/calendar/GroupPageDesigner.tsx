@@ -16,6 +16,7 @@ import {
   type ChildCalendarPresentation,
   DEFAULT_GROUP_PAGE_CONFIG,
 } from '@/lib/group-page-config';
+import { publicOrigin } from '@/lib/publicUrl';
 
 interface Props {
   config: GroupPageConfig;
@@ -83,7 +84,7 @@ export function GroupPageDesigner({ config, groupName, groupDescription, calenda
           <div className="px-4 py-2 bg-ivory-50 border-b border-navy-100 flex items-center gap-2">
             <span className="text-xs font-medium text-ivory-500">Live Preview</span>
             <span className="text-xs text-ivory-400">·</span>
-            <span className="text-xs text-ivory-400">{window.location.origin}/group/...</span>
+            <span className="text-xs text-ivory-400">{publicOrigin()}/group/...</span>
           </div>
           <div className="max-h-[500px] overflow-y-auto">
             <PublicGroupCalendarPage

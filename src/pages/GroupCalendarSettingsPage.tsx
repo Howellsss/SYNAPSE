@@ -11,6 +11,7 @@ import { useToast } from '@/context/ToastContext';
 import { GroupPageDesigner } from '@/components/calendar/GroupPageDesigner';
 import { mergeGroupPageConfig, type GroupPageConfig } from '@/lib/group-page-config';
 import type { Calendar as CalendarType, CalendarGroup } from '@/types';
+import { publicOrigin } from '@/lib/publicUrl';
 
 const CALENDAR_TYPE_LABELS: Record<string, string> = {
   one_on_one: 'Personal',
@@ -218,13 +219,13 @@ export function GroupCalendarSettingsPage({ groupId, onBack }: { groupId: string
   }
 
   function copyEmbedCode() {
-    const embedCode = `<iframe src="${window.location.origin}/group/${slug}" width="100%" height="600" frameborder="0" style="border-radius:16px"></iframe>`;
+    const embedCode = `<iframe src="${publicOrigin()}/group/${slug}" width="100%" height="600" frameborder="0" style="border-radius:16px"></iframe>`;
     navigator.clipboard.writeText(embedCode);
     toast('Embed code copied to clipboard.', 'success');
   }
 
   function copyLink() {
-    navigator.clipboard.writeText(`${window.location.origin}/group/${slug}`);
+    navigator.clipboard.writeText(`${publicOrigin()}/group/${slug}`);
     toast('Group link copied.', 'success');
   }
 
@@ -420,7 +421,7 @@ export function GroupCalendarSettingsPage({ groupId, onBack }: { groupId: string
             <p className="text-sm text-ivory-500 mb-3">Share this link with clients. They'll see all calendars in this group.</p>
             <div className="flex items-center gap-2 rounded-xl border border-navy-200 bg-ivory-50 p-3">
               <Link2 className="w-4 h-4 text-ivory-400 shrink-0" />
-              <span className="flex-1 truncate text-sm text-navy-700">{window.location.origin}/group/{slug}</span>
+              <span className="flex-1 truncate text-sm text-navy-700">{publicOrigin()}/group/{slug}</span>
               <button onClick={copyLink} className="flex items-center gap-1.5 rounded-lg bg-navy-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-navy-900">
                 <Copy className="w-3.5 h-3.5" /> Copy
               </button>
@@ -431,7 +432,7 @@ export function GroupCalendarSettingsPage({ groupId, onBack }: { groupId: string
             <h3 className="text-base font-semibold text-navy-800 mb-1">Embed code</h3>
             <p className="text-sm text-ivory-500 mb-3">Embed the group booking page on your website.</p>
             <div className="rounded-xl border border-navy-200 bg-navy-50 p-4 overflow-x-auto">
-              <code className="text-xs text-navy-700 whitespace-pre">{`<iframe src="${window.location.origin}/group/${slug}" width="100%" height="600" frameborder="0" style="border-radius:16px"></iframe>`}</code>
+              <code className="text-xs text-navy-700 whitespace-pre">{`<iframe src="${publicOrigin()}/group/${slug}" width="100%" height="600" frameborder="0" style="border-radius:16px"></iframe>`}</code>
             </div>
             <button onClick={copyEmbedCode} className="mt-3 flex items-center gap-1.5 rounded-lg border border-navy-200 px-3 py-2 text-xs font-semibold text-navy-700 hover:bg-ivory-50">
               <Copy className="w-3.5 h-3.5" /> Copy embed code

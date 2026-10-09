@@ -1,10 +1,12 @@
+import { publicOrigin } from '@/lib/publicUrl';
+
 /** Public-facing form of a workspace link, as shown in the wizard. */
 export function displaySpaceLink(slug: string): string {
   return `synapse.app/${slug}`;
 }
 
 /** Link that opens the workspace in this deployment of the app. */
-export function spaceUrl(slug: string, origin = window.location.origin): string {
+export function spaceUrl(slug: string, origin = publicOrigin()): string {
   return `${origin}/#/workspace/${slug}`;
 }
 

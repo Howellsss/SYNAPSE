@@ -1,4 +1,5 @@
 import type { SpacePermissionKey, SpacePermissions, UserRole } from '@/types';
+import { publicOrigin } from '@/lib/publicUrl';
 
 export const PERMISSION_ROWS: { key: SpacePermissionKey; label: string }[] = [
   { key: 'edit_office', label: 'Edit the office' },
@@ -39,6 +40,6 @@ export function generateGuestToken(): string {
   return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-export function guestLinkUrl(token: string, origin = window.location.origin): string {
+export function guestLinkUrl(token: string, origin = publicOrigin()): string {
   return `${origin}/join/${token}`;
 }

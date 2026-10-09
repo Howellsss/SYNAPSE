@@ -12,6 +12,7 @@ import { LoadingSpinner } from '@/components/ui/States';
 import { EventCard } from '@/components/events/EventKit';
 import { useEventFonts } from '@/components/events/hooks';
 import { cn } from '@/lib/utils';
+import { publicOrigin } from '@/lib/publicUrl';
 
 const CURRENCIES = ['NGN', 'GHS', 'KES', 'ZAR', 'USD', 'GBP', 'EUR'];
 const QUESTION_TYPES: { id: QuestionType; label: string }[] = [
@@ -161,7 +162,7 @@ export function EventBuilder({ eventId }: { eventId?: string }) {
         <div className="space-y-6">
           <Section title="Basics">
             <Field label="Title" required><input value={title} onChange={(e) => onTitle(e.target.value)} maxLength={140} placeholder="e.g. Lagos Jazz & Wine Night" className="input-field" /></Field>
-            <Field label="Web address" hint={`${window.location.origin}/e/${slug || 'your-event'}`}>
+            <Field label="Web address" hint={`${publicOrigin()}/e/${slug || 'your-event'}`}>
               <div className="flex items-center overflow-hidden rounded-xl border border-navy-100 focus-within:border-gold-400 focus-within:ring-4 focus-within:ring-gold-400/20">
                 <span className="shrink-0 border-r border-navy-100 bg-white px-3 py-2.5 text-sm text-ivory-700">/e/</span>
                 <input value={slug} onChange={(e) => { setSlugTouched(true); setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 80)); }} aria-label="Web address" className="min-w-0 flex-1 px-3 py-2.5 text-sm text-navy-700 outline-none" />

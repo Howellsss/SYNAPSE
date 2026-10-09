@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { publicOrigin } from '@/lib/publicUrl';
 
 // ---------------------------------------------------------------- types
 
@@ -244,11 +245,11 @@ export function countdown(startsAt: string, now = Date.now()) {
   };
 }
 
-export function eventUrl(slug: string, origin = typeof window !== 'undefined' ? window.location.origin : '') {
+export function eventUrl(slug: string, origin = publicOrigin()) {
   return `${origin}/e/${slug}`;
 }
 
-export function ticketUrl(token: string, origin = typeof window !== 'undefined' ? window.location.origin : '') {
+export function ticketUrl(token: string, origin = publicOrigin()) {
   return `${origin}/e/ticket/${token}`;
 }
 

@@ -1,3 +1,5 @@
+import { publicOrigin } from '@/lib/publicUrl';
+
 /** Meeting codes look like FOCU-358: four letters from the title, three digits. */
 export const CODE_RE = /^[A-Z]{4}-[0-9]{3}$/;
 export const NICKNAME_RE = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
@@ -29,7 +31,7 @@ export function parseJoinInput(input: string): { code: string } | { nickname: st
   return nickname ? { nickname } : null;
 }
 
-export function meetingUrl(code: string, origin = typeof window !== 'undefined' ? window.location.origin : ''): string {
+export function meetingUrl(code: string, origin = publicOrigin()): string {
   return `${origin}/meetings/${code}`;
 }
 

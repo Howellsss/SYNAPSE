@@ -28,6 +28,7 @@ import {
   HistoryManager,
 } from '@/lib/form-definition';
 import type { Form } from '@/types';
+import { publicOrigin } from '@/lib/publicUrl';
 
 type BuilderTab = 'build' | 'design' | 'logic' | 'settings' | 'notifications' | 'submissions';
 type Viewport = 'desktop' | 'tablet' | 'mobile';
@@ -91,7 +92,7 @@ export function FormBuilder({ formId, onBack }: FormBuilderProps) {
       setDefinition(def);
       definitionRef.current = def;
       setLoading(false);
-      setShareUrl(`${window.location.origin}/forms/${formId}`);
+      setShareUrl(`${publicOrigin()}/forms/${formId}`);
     }
     load();
     return () => { cancelled = true; };

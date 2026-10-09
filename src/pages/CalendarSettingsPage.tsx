@@ -55,6 +55,7 @@ import type {
   AvailabilityRule, CalendarHost, Profile, Form,
 } from '@/types';
 import { FileText } from 'lucide-react';
+import { publicOrigin } from '@/lib/publicUrl';
 
 // ============================================================
 // TYPES
@@ -474,9 +475,9 @@ export function CalendarSettingsPage() {
                       key={grp.id}
                       group={grp}
                       onOpen={() => navigate(`/calendars/groups/${grp.id}`)}
-                      onPreview={() => window.open(`${window.location.origin}/group/${grp.slug}`, '_blank')}
+                      onPreview={() => window.open(`${publicOrigin()}/group/${grp.slug}`, '_blank')}
                       onCopyLink={() => {
-                        navigator.clipboard.writeText(`${window.location.origin}/group/${grp.slug}`);
+                        navigator.clipboard.writeText(`${publicOrigin()}/group/${grp.slug}`);
                         toast('Group link copied');
                       }}
                     />
@@ -562,7 +563,7 @@ function CalendarCard({
   const [showMenu, setShowMenu] = useState(false);
   const typeInfo = CALENDAR_TYPES.find(t => t.value === calendar.calendar_type);
   const statusCfg = STATUS_CONFIG[calendar.status] ?? STATUS_CONFIG.inactive;
-  const bookingUrl = `${window.location.origin}/book/${calendar.slug}`;
+  const bookingUrl = `${publicOrigin()}/book/${calendar.slug}`;
   const TypeIcon = typeInfo?.icon ?? Calendar;
   const hosts = calendar.calendar_hosts ?? [];
 
@@ -838,7 +839,7 @@ function CalendarDetailView({
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <button onClick={() => window.open(`${window.location.origin}/book/${calendar.slug}`, '_blank')} className="btn-secondary btn-sm">
+            <button onClick={() => window.open(`${publicOrigin()}/book/${calendar.slug}`, '_blank')} className="btn-secondary btn-sm">
               <Eye className="w-4 h-4" />
               Preview
             </button>
@@ -1100,7 +1101,7 @@ function AvailabilityTab({ calendarId }: { calendarId: string }) {
 // BOOKING PAGE TAB
 // ============================================================
 function BookingPageTab({ calendar, form, setForm, saving, onSave }: { calendar: CalendarType; form: SettingsForm; setForm: (f: SettingsForm) => void; saving: boolean; onSave: () => void }) {
-  const bookingUrl = `${window.location.origin}/book/${calendar.slug}`;
+  const bookingUrl = `${publicOrigin()}/book/${calendar.slug}`;
   const { toast } = useToast();
   const [embedType, setEmbedType] = useState<'inline' | 'popup' | 'button'>('inline');
   const [buttonText, setButtonText] = useState('Book Now');
@@ -1651,7 +1652,7 @@ function ShareCalendarModal({ calendar, onClose }: { calendar: CalendarType; onC
   const [generating, setGenerating] = useState(false);
   const [expiryHours, setExpiryHours] = useState('24');
   const [linkToDelete, setLinkToDelete] = useState<string | null>(null);
-  const bookingUrl = `${window.location.origin}/book/${calendar.slug}`;
+  const bookingUrl = `${publicOrigin()}/book/${calendar.slug}`;
 
   useEffect(() => {
     supabase.from('booking_links').select('id, token, created_at, used_at, expires_at').eq('calendar_id', calendar.id).eq('link_type', 'one_time').order('created_at', { ascending: false }).then(({ data }) => {
@@ -1788,7 +1789,7 @@ function ShareCalendarModal({ calendar, onClose }: { calendar: CalendarType; onC
           ) : (
             <div className="space-y-2">
               {oneTimeLinks.map(link => {
-                const url = `${window.location.origin}/book/${calendar.slug}?token=${link.token}`;
+                const url = `${publicOrigin()}/book/${calendar.slug}?token=${link.token}`;
                 const isUsed = !!link.used_at;
                 const isExpired = link.expires_at && new Date(link.expires_at) < new Date();
                 const isDead = isUsed || isExpired;
