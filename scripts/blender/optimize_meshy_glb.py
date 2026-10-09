@@ -1,25 +1,37 @@
 """
-SYNAPSE: shrink a Meshy character GLB so it fits under the upload limit.
+SYNAPSE: shrink Meshy character GLBs so they fit under the upload limit.
 
 Run it from Blender's Text Editor (Text > Open..., then Text > Run Script).
-A file browser opens: pick your Meshy .glb, adjust the options in the
-browser's side panel if you like, then press "Optimize GLB".
+A small menu offers two jobs:
 
-What it does
-  1. Imports the GLB into a brand-new, empty scene, so the objects already in
-     your .blend are never read, changed or exported.
+  Merge all animations in a folder
+      Meshy exports one complete GLB per animation (same mesh, skeleton and
+      textures, one clip each). This makes ONE character file with every
+      clip, named after its file ("Walking", "Running", ...). It first checks
+      that every file has the same bones, hierarchy, rest pose, bind pose and
+      mesh, and stops if any differ. The mesh, skeleton and textures come from
+      the file you click (or the first one, if you pick the folder); the other
+      files only contribute their animation clips.
+
+  Optimize one GLB
+      Makes a smaller copy of a single GLB.
+
+Either way it:
+  1. Imports into a brand-new, empty scene, so the objects already in your
+     .blend are never read, changed or exported.
   2. Reports the file size and what the bytes are spent on (textures,
      geometry, skinning, animation), read straight from the GLB.
   3. Inspects the imported meshes, materials, textures, armature and actions.
   4. Tries progressively stronger texture settings, lightest first, and stops
      at the first one under the target. Each step starts again from the
      original pixels, so quality is never lost twice.
-  5. Never touches meshes, bones, skin weights or animation actions. If the
-     target can't be reached by textures alone, it stops and says why.
-  6. Writes "<name>_optimized.glb" next to the original (or "_optimized_2"
-     and so on, if that name is taken). The original is never overwritten.
-  7. Re-reads the new GLB and checks that triangles, bones, skins,
-     morph targets and animation clips all match the original.
+  5. Never edits meshes, bones, skin weights or animation keys. If the target
+     can't be reached by textures alone, it stops and says why.
+  6. Writes "<name>_optimized.glb" (or "<character>_all_animations.glb")
+     next to the originals, adding "_2" and so on if the name is taken.
+     The originals are never overwritten.
+  7. Re-reads the new GLB and checks that triangles, bones, skins, morph
+     targets and every animation clip match the originals.
 
 The full report is printed to the console, saved to a .txt file next to the
 new GLB, and put in a Text Editor block called "SYNAPSE_GLB_Report".
@@ -247,7 +259,55 @@ def analyze_glb(path):
         "skin_bytes": skin_bytes,
         "animations": anims,
         "animation_bytes": anim_bytes,
+        "skeleton": skeleton_signature(gltf, binary),
+        "mesh_signature": mesh_signature(gltf),
     }
+
+
+def read_floats(gltf, binary, index):
+    """Float values of an accessor (float accessors only, no sparse)."""
+    acc = gltf["accessors"][index]
+    if acc.get("componentType") != 5126 or "bufferView" not in acc:
+        return None
+    view = gltf["bufferViews"][acc["bufferView"]]
+    n = acc["count"] * TYPE_COMPONENTS[acc["type"]]
+    start = view.get("byteOffset", 0) + acc.get("byteOffset", 0)
+    stride = view.get("byteStride")
+    width = TYPE_COMPONENTS[acc["type"]] * 4
+    if stride and stride != width:
+        return None
+    return struct.unpack_from(f"<{n}f", binary, start)
+
+
+def skeleton_signature(gltf, binary):
+    """Per bone: parent, rest transform and inverse bind matrix, keyed by bone name."""
+    nodes = gltf.get("nodes", [])
+    parent = {c: i for i, n in enumerate(nodes) for c in n.get("children", [])}
+    bones = {}
+    for skin in gltf.get("skins", []):
+        joints = skin.get("joints", [])
+        ibm = (read_floats(gltf, binary, skin["inverseBindMatrices"])
+               if "inverseBindMatrices" in skin else None)
+        for k, j in enumerate(joints):
+            node = nodes[j]
+            p = parent.get(j)
+            bones[node.get("name", f"node_{j}")] = {
+                "parent": nodes[p].get("name", f"node_{p}") if p is not None else None,
+                "rest": tuple(node.get("translation", [0, 0, 0]) + node.get("rotation", [0, 0, 0, 1])
+                              + node.get("scale", [1, 1, 1]) + node.get("matrix", [])),
+                "ibm": tuple(ibm[k * 16:(k + 1) * 16]) if ibm else None,
+            }
+    return bones
+
+
+def mesh_signature(gltf):
+    """Vertex count and bounding box of each mesh primitive, in order."""
+    sig = []
+    for mesh in gltf.get("meshes", []):
+        for prim in mesh.get("primitives", []):
+            acc = gltf["accessors"][prim["attributes"]["POSITION"]]
+            sig.append((acc["count"], tuple(acc.get("min", [])), tuple(acc.get("max", []))))
+    return sig
 
 
 def fmt_mb(n):
@@ -531,7 +591,7 @@ def undo_swaps(swaps):
         orig.name = name
 
 
-def export_glb(path, quality, original):
+def export_glb(path, quality, original, merged=False):
     op = bpy.ops.export_scene.gltf
     kwargs = dict(
         filepath=path,
@@ -554,7 +614,8 @@ def export_glb(path, quality, original):
         export_morph=True,
         export_morph_normal=True,
         export_animations=True,
-        export_animation_mode="ACTIONS",
+        # A merged character has one NLA track per clip; export exactly those.
+        export_animation_mode="NLA_TRACKS" if merged else "ACTIONS",
         export_force_sampling=True,
         export_frame_step=1,
         export_def_bones=False,
@@ -663,28 +724,174 @@ def resolve_glb(path, log):
                         "file-name box at the bottom of the file browser, then press Optimize GLB.")
 
 
-def run(context, src, target_mb, min_size, log):
-    src = resolve_glb(os.path.abspath(bpy.path.abspath(src)), log)
+OUTPUT_MARKERS = ("_optimized", "_all_animations")
+
+
+def folder_glbs(folder):
+    """GLBs in a folder, leaving out files this script wrote."""
+    return sorted(os.path.join(folder, n) for n in os.listdir(folder)
+                  if n.lower().endswith(".glb") and not any(m in n.lower() for m in OUTPUT_MARKERS)
+                  and is_glb(os.path.join(folder, n)))
+
+
+def resolve_merge_sources(path):
+    """The GLBs to merge. A picked file becomes the character the clips are added to."""
+    if os.path.isfile(path):
+        folder, first = os.path.dirname(path), path
+        if not is_glb(path):
+            raise OptimizeError(f"'{os.path.basename(path)}' is not a GLB file.")
+    elif os.path.isdir(path):
+        folder, first = path, None
+    else:
+        raise OptimizeError(f"Couldn't find '{path}'. Pick the folder with your animation GLBs, "
+                            "or any GLB inside it.")
+    found = folder_glbs(folder)
+    if first and first not in found:
+        raise OptimizeError("That file looks like one this script made. Pick one of the original GLBs.")
+    if len(found) < 2:
+        raise OptimizeError(f"The folder '{os.path.basename(folder)}' has {len(found)} GLB file(s); "
+                            "merging needs at least two. Use 'Optimize one GLB' instead.")
+    if first:
+        found.remove(first)
+        found.insert(0, first)
+    return found
+
+
+def common_stem(paths):
+    stems = [os.path.splitext(os.path.basename(p))[0] for p in paths]
+    prefix = os.path.commonprefix(stems)
+    for marker in ("_Animation_", "_Animation", "Animation_"):
+        if marker in prefix:
+            prefix = prefix[:prefix.index(marker)]
+    return prefix.rstrip("_- ") or os.path.basename(os.path.dirname(paths[0])) or "character"
+
+
+def clip_labels(paths):
+    """A short clip name per file: 'Meshy_..._Animation_Walking_withSkin.glb' -> 'Walking'."""
+    stems = [os.path.splitext(os.path.basename(p))[0] for p in paths]
+    prefix = os.path.commonprefix(stems) if len(stems) > 1 else ""
+    labels = {}
+    for path, stem in zip(paths, stems):
+        label = stem[len(prefix):]
+        if "_Animation_" in stem:
+            label = stem.split("_Animation_", 1)[1]
+        for suffix in ("_withSkin", "_with_skin", "_withskin"):
+            if label.endswith(suffix):
+                label = label[: -len(suffix)]
+        label = label.strip("_- ") or stem
+        n, base = 2, label
+        while label in labels.values():
+            label, n = f"{base}_{n}", n + 1
+        labels[path] = label
+    return labels
+
+
+def merge_output_path(paths):
+    folder = os.path.dirname(paths[0])
+    stem = common_stem(paths)
+    n = 1
+    while True:
+        suffix = "_all_animations" if n == 1 else f"_all_animations_{n}"
+        candidate = os.path.join(folder, stem + suffix + ".glb")
+        if not os.path.exists(candidate):
+            return candidate
+        n += 1
+
+
+def close(a, b, tol=1e-3):
+    if a is None or b is None:
+        return a is b
+    return len(a) == len(b) and all(abs(x - y) <= tol * max(1.0, abs(x), abs(y)) for x, y in zip(a, b))
+
+
+def check_same_character(infos):
+    """Every file must have the same skeleton and mesh, or clips won't fit the character."""
+    base = infos[0]
+    problems = []
+    if len(base["skins"]) != 1:
+        problems.append(f"{os.path.basename(base['path'])} has {len(base['skins'])} skeletons; "
+                        "merging needs exactly one.")
+    for info in infos[1:]:
+        name = os.path.basename(info["path"])
+        if not info["animations"]:
+            problems.append(f"{name} has no animation clip.")
+        a, b = base["skeleton"], info["skeleton"]
+        if set(a) != set(b):
+            diff = sorted(set(a) ^ set(b))
+            problems.append(f"{name} has different bones ({len(diff)} differ, e.g. {', '.join(diff[:5])}).")
+            continue
+        moved = [bone for bone in a if a[bone]["parent"] != b[bone]["parent"]
+                 or not close(a[bone]["rest"], b[bone]["rest"]) or not close(a[bone]["ibm"], b[bone]["ibm"])]
+        if moved:
+            problems.append(f"{name} has the same bone names but a different skeleton pose or "
+                            f"proportions ({len(moved)} bones differ, e.g. {', '.join(moved[:5])}).")
+        sa, sb = base["mesh_signature"], info["mesh_signature"]
+        if len(sa) != len(sb) or any(x[0] != y[0] or not close(x[1], y[1]) or not close(x[2], y[2])
+                                     for x, y in zip(sa, sb)):
+            problems.append(f"{name} has a different mesh, so it may be a different character.")
+    if problems:
+        raise OptimizeError("These files can't be merged safely, so nothing was saved:\n  - "
+                            + "\n  - ".join(problems))
+
+
+def expected_clips(paths, infos, labels):
+    """The clip names and lengths the merged file should contain."""
+    clips = []
+    for path, info in zip(paths, infos):
+        for anim in info["animations"]:
+            name = labels[path] if len(info["animations"]) == 1 else f"{labels[path]}_{anim['name']}"
+            clips.append(dict(anim, name=name, source=os.path.basename(path)))
+    return clips
+
+
+def run(context, src, target_mb, min_size, log, merge=False):
+    path = os.path.abspath(bpy.path.abspath(src))
+    sources = resolve_merge_sources(path) if merge else [resolve_glb(path, log)]
+    src = sources[0]
     target = int(target_mb * MB)
 
     log(f"SYNAPSE GLB optimizer  ({time.strftime('%Y-%m-%d %H:%M')}, Blender {bpy.app.version_string})")
+    log("Mode: merge all animation GLBs into one character" if merge else "Mode: optimize one GLB")
     log(f"Target: under {target_mb:g} MB")
 
-    original = analyze_glb(src)
-    report_size_breakdown(log, original, "Original file")
+    infos = [analyze_glb(p) for p in sources]
+    original = infos[0]
+    report_size_breakdown(log, original, "Character file (mesh, skeleton and textures come from this one)"
+                          if merge else "Original file")
 
-    for ext, what in UNSUPPORTED_EXTENSIONS.items():
-        if ext in original["extensions"]:
-            raise OptimizeError(f"The GLB uses {ext} ({what}). Blender can't round-trip that "
-                                "without losing data, so the file was left alone.")
-    if original["external_images"]:
-        raise OptimizeError("The GLB points at external texture files instead of embedding them: "
-                            + ", ".join(original["external_images"]))
-    if original["unskinned_when_skinned"]:
-        raise OptimizeError("Some skinned meshes in the GLB have no skin weights; the file "
-                            "looks malformed, so it was left alone.")
+    for info in infos:
+        name = os.path.basename(info["path"])
+        for ext, what in UNSUPPORTED_EXTENSIONS.items():
+            if ext in info["extensions"]:
+                raise OptimizeError(f"{name} uses {ext} ({what}). Blender can't round-trip that "
+                                    "without losing data, so the file was left alone.")
+        if info["external_images"]:
+            raise OptimizeError(f"{name} points at external texture files instead of embedding them: "
+                                + ", ".join(info["external_images"]))
+        if info["unskinned_when_skinned"]:
+            raise OptimizeError(f"Some skinned meshes in {name} have no skin weights; the file "
+                                "looks malformed, so it was left alone.")
 
-    non_texture = original["total"] - original["image_bytes"]
+    extras = []
+    expected = original
+    if merge:
+        labels = clip_labels(sources)
+        log.section(f"Animation files to merge ({len(sources)})")
+        for p, info in zip(sources, infos):
+            clips = ", ".join(f"{a['name']} {a['duration']:.2f}s" for a in info["animations"]) or "no clips"
+            log(f"  {labels[p]:<30} {fmt_mb(info['total']):>10}  {os.path.basename(p)}  ({clips})")
+        check_same_character(infos)
+        log("All files share the same skeleton (bone names, hierarchy, rest pose, bind pose) and mesh.")
+        textures_differ = [os.path.basename(i["path"]) for i in infos[1:]
+                           if [x["bytes"] for x in i["images"]] != [x["bytes"] for x in original["images"]]]
+        if textures_differ:
+            log("  note: textures differ slightly in " + ", ".join(textures_differ)
+                + f"; the merged file uses the textures from {os.path.basename(src)}.")
+        expected = dict(original, animations=expected_clips(sources, infos, labels))
+        extras = [(p, labels[p], len(i["animations"])) for p, i in zip(sources, infos)]
+
+    non_texture = (original["total"] - original["image_bytes"]
+                   + sum(i["animation_bytes"] for i in infos[1:]))
     if non_texture >= target:
         raise OptimizeError(
             f"Everything except the textures already takes {fmt_mb(non_texture)}, which is over the "
@@ -708,11 +915,11 @@ def run(context, src, target_mb, min_size, log):
             if bpy.context.scene != work_scene:
                 raise OptimizeError("Couldn't switch to a separate work scene, so nothing was imported.")
             candidate, level = optimize_in_scene(work_scene, view_layer, src, original,
-                                                 target, target_mb, min_size, workdir, log)
-            result_info = verify_candidate(candidate, original, log)
+                                                 target, target_mb, min_size, workdir, log, extras)
+            result_info = verify_candidate(candidate, expected, log)
 
-            out_path = unique_output_path(src)
-            if os.path.abspath(out_path) == src:
+            out_path = merge_output_path(sources) if merge else unique_output_path(src)
+            if os.path.abspath(out_path) in sources:
                 raise OptimizeError("Refusing to write over the original file.")
             copy_no_overwrite(candidate, out_path)
     finally:
@@ -725,28 +932,127 @@ def run(context, src, target_mb, min_size, log):
     report_size_breakdown(log, result_info, "Optimized file")
     log.section("Done")
     log(f"Settings used: {level['label']}")
-    log(f"Original:  {fmt_mb(original['total'])}  (unchanged) {src}")
-    log(f"Optimized: {fmt_mb(final_size)}  {out_path}")
-    log(f"Saved {100.0 * (1 - final_size / original['total']):.1f}%")
+    if merge:
+        total_in = sum(i["total"] for i in infos)
+        log(f"Originals: {len(sources)} files, {fmt_mb(total_in)} in total (all unchanged)")
+        log(f"Merged:    {fmt_mb(final_size)}  {out_path}")
+        log("Clips in the merged file: " + ", ".join(a["name"] for a in result_info["animations"]))
+    else:
+        log(f"Original:  {fmt_mb(original['total'])}  (unchanged) {src}")
+        log(f"Optimized: {fmt_mb(final_size)}  {out_path}")
+        log(f"Saved {100.0 * (1 - final_size / original['total']):.1f}%")
     log(f"The imported copy is in the scene '{work_scene.name}' if you want to look at it. "
         "You don't need to save this .blend.")
     return out_path
 
 
-def optimize_in_scene(work_scene, view_layer, src, original, target, target_mb, min_size, workdir, log):
-    """Import the GLB into work_scene and export the lightest setting under target."""
+def import_glb(path, work_scene):
     before = snapshot()
     op = bpy.ops.import_scene.gltf
-    result = op(**filtered(op, filepath=src, bone_heuristic="BLENDER",
+    result = op(**filtered(op, filepath=path, bone_heuristic="BLENDER",
                             guess_original_bind_pose=True, merge_vertices=False,
                             import_pack_images=True))
     if "FINISHED" not in result:
-        raise OptimizeError("Blender's glTF importer failed on this file.")
+        raise OptimizeError(f"Blender's glTF importer failed on {os.path.basename(path)}.")
     new = new_since(before)
     if any(work_scene not in o.users_scene for o in new["objects"]):
         raise OptimizeError("The importer put objects outside the work scene; stopping to be safe.")
+    return new
 
+
+def armature_actions(arm):
+    """Actions on an armature: the active one plus those in its NLA tracks."""
+    acts = []
+    ad = arm.animation_data
+    if ad:
+        if ad.action:
+            acts.append(ad.action)
+        for track in ad.nla_tracks:
+            for strip in track.strips:
+                if strip.action and strip.action not in acts:
+                    acts.append(strip.action)
+    return acts
+
+
+def clip_actions(new, path, label, n_anims):
+    """The skeleton's clips from one import, as [(clip name, action)]."""
+    name = os.path.basename(path)
+    arms = [o for o in new["objects"] if o.type == "ARMATURE" and not is_helper(o)]
+    if len(arms) != 1:
+        raise OptimizeError(f"{name} imported {len(arms)} armatures; merging needs exactly one.")
+    acts = armature_actions(arms[0])
+    stray = new["actions"] - set(acts)
+    if stray:
+        raise OptimizeError(f"{name} animates something other than the skeleton "
+                            f"({', '.join(a.name for a in stray)}); merging would lose that, so it stopped.")
+    if len(acts) != n_anims:
+        raise OptimizeError(f"{name} has {n_anims} clip(s) but Blender imported {len(acts)}; "
+                            "merging could lose a clip, so it stopped.")
+    if n_anims == 1:
+        return arms[0], [(label, acts[0])]
+    return arms[0], [(f"{label}_{a.name}", a) for a in acts]
+
+
+def remove_duplicate(new):
+    """Delete a second copy of the character, keeping only its animation actions."""
+    for act in new["actions"]:
+        act.use_fake_user = True  # keep the clip while its armature is deleted
+    for obj in list(new["objects"]):
+        bpy.data.objects.remove(obj)
+    for coll, items in ((bpy.data.meshes, new["meshes"]), (bpy.data.armatures, new["armatures"]),
+                        (bpy.data.materials, new["materials"]), (bpy.data.images, new["images"])):
+        for item in items:
+            if item.users == 0:
+                coll.remove(item)
+
+
+def assign_clip(ad, name, action):
+    track = ad.nla_tracks.new()
+    track.name = name  # the exporter names the glTF animation after the track
+    strip = track.strips.new(name, int(action.frame_range[0]), action)
+    if hasattr(strip, "action_slot") and len(getattr(action, "slots", [])):
+        slots = [sl for sl in action.slots if getattr(sl, "target_id_type", "OBJECT") == "OBJECT"]
+        strip.action_slot = (slots or list(action.slots))[0]
+        if strip.action_slot is None:
+            raise OptimizeError(f"Couldn't attach clip '{name}' to the character's skeleton.")
+    action.use_fake_user = False
+
+
+def merge_clips(work_scene, base_new, base_arm, extras, log):
+    """Put every file's clip on base_arm as its own NLA track."""
+    base_path, base_label, base_n = extras[0]
+    _, clips = clip_actions(base_new, base_path, base_label, base_n)
+    bones = set(base_arm.data.bones.keys())
+    for path, label, n_anims in extras[1:]:
+        new = import_glb(path, work_scene)
+        arm, file_clips = clip_actions(new, path, label, n_anims)
+        if set(arm.data.bones.keys()) != bones:
+            raise OptimizeError(f"{os.path.basename(path)} has different bones once imported, so "
+                                "its clip can't be moved onto the character.")
+        clips.extend(file_clips)
+        remove_duplicate(new)
+        log(f"  added clip '{file_clips[0][0]}'" if len(file_clips) == 1 else
+            f"  added clips {', '.join(c for c, _ in file_clips)}")
+
+    ad = base_arm.animation_data or base_arm.animation_data_create()
+    ad.action = None
+    for track in list(ad.nla_tracks):
+        ad.nla_tracks.remove(track)
+    for name, action in clips:
+        action.name = name
+        assign_clip(ad, name, action)
+    log(f"The character now has {len(clips)} clips: {', '.join(n for n, _ in clips)}")
+
+
+def optimize_in_scene(work_scene, view_layer, src, original, target, target_mb, min_size, workdir, log,
+                      extras=None):
+    """Import the GLB into work_scene and export the lightest setting under target."""
+    new = import_glb(src, work_scene)
     meshes, armatures, uses = inspect_import(log, new, original)
+
+    if extras:
+        log.section("Merging animation clips")
+        merge_clips(work_scene, new, armatures[0], extras, log)
 
     # Select exactly the imported character, nothing else.
     for obj in work_scene.objects:
@@ -771,7 +1077,7 @@ def optimize_in_scene(work_scene, view_layer, src, original, target, target_mb, 
         candidate = os.path.join(workdir, f"candidate_{n}.glb")
         swaps = apply_level(level, images, uses, alpha_images, workdir, min_size)
         try:
-            export_glb(candidate, level["q"], original)
+            export_glb(candidate, level["q"], original, merged=bool(extras))
         finally:
             undo_swaps(swaps)
         size = os.path.getsize(candidate)
@@ -818,12 +1124,8 @@ def write_report(log, out_path=None):
             pass
 
 
-class SYNAPSE_OT_optimize_glb(bpy.types.Operator, ImportHelper):
-    """Pick a Meshy GLB and write a smaller copy next to it"""
-
-    bl_idname = "synapse.optimize_meshy_glb"
-    bl_label = "Optimize GLB"
-    bl_options = {"REGISTER"}
+class GlbPicker(ImportHelper):
+    """Shared file browser and options for both operators."""
 
     filename_ext = ".glb"
     filter_glob: StringProperty(default="*.glb", options={"HIDDEN"})
@@ -831,16 +1133,17 @@ class SYNAPSE_OT_optimize_glb(bpy.types.Operator, ImportHelper):
                              description="Stop at the first setting that makes the file smaller than this")
     min_texture_size: IntProperty(name="Smallest texture (px)", default=1024, min=256, max=8192,
                                   description="Never shrink textures below this many pixels on the long side")
+    merge = False
 
     def execute(self, context):
         log = Report()
         out_path = None
         try:
-            out_path = run(context, self.filepath, self.target_mb, self.min_texture_size, log)
+            out_path = run(context, self.filepath, self.target_mb, self.min_texture_size, log, self.merge)
         except OptimizeError as e:
             log.section("Stopped, nothing was saved")
             log(str(e))
-            log("Your original GLB was not changed.")
+            log("Your original GLB files were not changed.")
             write_report(log)
             self.report({"ERROR"}, f"Stopped: {str(e).splitlines()[0]} (see '{REPORT_TEXT_NAME}' in the Text Editor)")
             return {"CANCELLED"}
@@ -850,22 +1153,64 @@ class SYNAPSE_OT_optimize_glb(bpy.types.Operator, ImportHelper):
         return {"FINISHED"}
 
 
+class SYNAPSE_OT_optimize_glb(GlbPicker, bpy.types.Operator):
+    """Pick a Meshy GLB and write a smaller copy next to it"""
+
+    bl_idname = "synapse.optimize_meshy_glb"
+    bl_label = "Optimize GLB"
+    bl_options = {"REGISTER"}
+
+
+class SYNAPSE_OT_merge_glbs(GlbPicker, bpy.types.Operator):
+    """Pick the folder of Meshy animation GLBs (or any GLB in it) and write one character with every clip"""
+
+    bl_idname = "synapse.merge_meshy_animations"
+    bl_label = "Merge Animations"
+    bl_options = {"REGISTER"}
+    merge = True
+
+
+class SYNAPSE_MT_glb_tools(bpy.types.Menu):
+    bl_idname = "SYNAPSE_MT_glb_tools"
+    bl_label = "SYNAPSE: Meshy GLB"
+
+    def draw(self, context):
+        layout = self.layout
+        layout.operator_context = "INVOKE_DEFAULT"
+        layout.operator(SYNAPSE_OT_merge_glbs.bl_idname, text="Merge all animations in a folder",
+                        icon="ACTION")
+        layout.operator(SYNAPSE_OT_optimize_glb.bl_idname, text="Optimize one GLB", icon="FILE_3D")
+
+
+CLASSES = (SYNAPSE_OT_optimize_glb, SYNAPSE_OT_merge_glbs, SYNAPSE_MT_glb_tools)
+
+
 def register():
-    try:
-        bpy.utils.unregister_class(SYNAPSE_OT_optimize_glb)
-    except RuntimeError:
-        pass
-    bpy.utils.register_class(SYNAPSE_OT_optimize_glb)
+    for cls in CLASSES:
+        old = getattr(bpy.types, cls.__name__, None)
+        if old is not None:
+            try:
+                bpy.utils.unregister_class(old)
+            except RuntimeError:
+                pass
+        bpy.utils.register_class(cls)
 
 
 if __name__ == "__main__":
     register()
     if bpy.app.background:
-        # Command-line use: blender -b -P optimize_meshy_glb.py -- /path/to/file.glb
+        # Command-line use:
+        #   blender -b -P optimize_meshy_glb.py -- /path/to/file.glb
+        #   blender -b -P optimize_meshy_glb.py -- --merge /path/to/folder
         import sys
         args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+        merge = "--merge" in args
+        args = [a for a in args if a != "--merge"]
         if not args:
-            raise SystemExit("Pass the GLB path after --")
-        bpy.ops.synapse.optimize_meshy_glb(filepath=args[0])
+            raise SystemExit("Pass the GLB (or, with --merge, the folder) after --")
+        if merge:
+            bpy.ops.synapse.merge_meshy_animations(filepath=args[0])
+        else:
+            bpy.ops.synapse.optimize_meshy_glb(filepath=args[0])
     else:
-        bpy.ops.synapse.optimize_meshy_glb("INVOKE_DEFAULT")
+        bpy.ops.wm.call_menu(name=SYNAPSE_MT_glb_tools.bl_idname)
