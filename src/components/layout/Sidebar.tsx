@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ChevronRight, Menu, X } from 'lucide-react';
 import {
-  ArrowRightStartOnRectangleIcon, BoltIcon, CalendarDaysIcon, ChatBubbleLeftRightIcon, Cog6ToothIcon, DocumentTextIcon,
+  ArrowRightStartOnRectangleIcon, BoltIcon, CubeIcon, CalendarDaysIcon, ChatBubbleLeftRightIcon, Cog6ToothIcon, DocumentTextIcon,
   FolderIcon, HomeIcon, MicrophoneIcon, PresentationChartBarIcon, SparklesIcon, Squares2X2Icon, TicketIcon, UserIcon, VideoCameraIcon,
 } from '@heroicons/react/24/solid';
 import { cn } from '@/lib/utils';
@@ -29,6 +29,7 @@ const navGroups = [
     { label: 'Submissions', icon: DocumentTextIcon, path: '/forms' },
     { label: 'Workflows', icon: BoltIcon, path: '/workflows' },
     { label: 'Recordings', icon: MicrophoneIcon, path: '/recordings' },
+    { label: 'Characters', icon: CubeIcon, path: '/characters' },
     { label: 'Media Library', icon: FolderIcon, path: '/media-library' },
     { label: 'AI Hub', icon: SparklesIcon, path: '/ai-hub' },
   ],

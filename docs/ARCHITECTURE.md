@@ -27,11 +27,17 @@ src/
     spaces.ts            Spaces (virtual offices): list, get by slug, slug check, createSpace,
                          updateSpace, logo upload, joinSpaceAsGuest (guest link RPC)
     invitations.ts       Team invitations (used by Settings → Team and the space wizard)
+    glb.ts               Reads a character .glb in the browser: size check (30 MB), clip names and
+                         lengths, bones, triangles (+ glb.test.ts)
+    characters.ts        Characters: list, upload (checks the GLB first), signed file URL, set the
+                         default clip, delete
   pages/                 One component per screen (see Routing)
   components/
     layout/              Sidebar, TopBar
     ui/                  Modal, Drawer, ConfirmDialog, Avatar, States, StatusPills, TimezoneSelect
     contacts/ calendar/ forms/ workflow/   Feature components used by the pages
+    characters/          CharacterViewer: three.js preview of a .glb (orbit, zoom, play a clip).
+                         Loaded lazily, so three.js only downloads on the Characters page
     spaces/              room/ is the in-space screen (people panel, toolbar, control bar, invite);
                          space preview tile, settings drawer, DeviceCheck (camera & mic: wizard last
                          step, "Get ready" before a first visit, modal from Workspaces and in a space); wizard/ holds the create-workspace
@@ -75,7 +81,7 @@ docs/                    This file, GMAIL_SETUP.md, ART-BRIEF.md (3D art commiss
 6. Otherwise the shell (`Sidebar` + `TopBar`) around `renderPage()`, which matches `path` with
    `startsWith`/regex: `/contacts/:id` → `ContactDetailPage`, `/contacts` → `ContactsPage`,
    `/calendars/groups/:id` → `GroupCalendarSettingsPage`, `/calendars` → `CalendarsPage`,
-   `/forms/:id/edit` → `FormBuilder`, `/forms` → `FormsPage`, `/workflows`, `/recordings`,
+   `/forms/:id/edit` → `FormBuilder`, `/forms` → `FormsPage`, `/workflows`, `/recordings`, `/characters`,
    `/workspace/:slug` → `SpacePage` (rendered full height next to the sidebar, without the top bar), `/workspace` → `WorkspacesPage`,
    `/ai-hub`, `/settings`, and the placeholder routes below. Unknown paths show the Dashboard.
 
@@ -123,11 +129,13 @@ is the fallback. New work should still scope by `workspace_id`.
 | Spaces (virtual offices) | `spaces` (owned by a workspace; slug unique across all tenants; also `access_mode`, `guest_link_token`, `permissions`, `persistence` + `schedule`, `branding`, `config.rooms`), `space_members` (per-person state in a space) |
 | Messaging | `messages` (email/SMS log per contact), `email_accounts`, `email_account_secrets` (encrypted OAuth tokens, no client access) |
 | Recordings | `recordings` |
+| Characters | `characters` (an uploaded .glb per row: clips, default clip, size; file in the `characters` bucket) |
 | Integrations | `integrations`, `integration_sync_logs`, `webhooks` |
 
 Child tables (`form_fields`, `workflow_nodes`, `calendar_hosts`, `availability_rules`, …) have no
 `workspace_id`; their RLS goes through the parent row. Storage buckets: `avatars`,
-`workspace-logos` (both public).
+`workspace-logos` (both public); `characters` (private, 30 MB per file, files under
+`<workspace id>/`, members only).
 
 ## Sidebar items
 
@@ -144,6 +152,7 @@ Child tables (`form_fields`, `workflow_nodes`, `calendar_hosts`, `availability_r
 | Submissions | `/forms` | Real: forms and surveys, builder, submissions |
 | Workflows | `/workflows` | Real builder and storage; runs in the browser (`workflow-engine.ts`), triggered only by public-page bookings and cancellations |
 | Recordings | `/recordings` | Real list/detail over `recordings`; nothing creates recordings yet |
+| Characters | `/characters` | Real: upload a 3D character (.glb, up to 30 MB), preview it in 3D, play each animation clip and save one as the default. Not used in spaces yet. Make Meshy files fit with `scripts/blender/optimize_meshy_glb.py` |
 | Media Library | `/media-library` | **Placeholder** (`ComingSoonPage`) |
 | AI Hub | `/ai-hub` | Partial: keyword-matched database queries, no AI model behind it |
 | Settings | `/settings` | Real: profile, workspace, team, email (Gmail); some tabs only save preferences |

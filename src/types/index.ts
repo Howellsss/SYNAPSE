@@ -715,6 +715,21 @@ export interface Recording {
   created_at: string;
 }
 
+/** An uploaded 3D character (.glb) and the animation clips inside it. */
+export interface Character {
+  id: string;
+  workspace_id: string;
+  name: string;
+  storage_path: string;
+  size_bytes: number;
+  clips: { name: string; duration: number }[];
+  default_clip: string | null;
+  bones: number;
+  triangles: number;
+  created_by: string | null;
+  created_at: string;
+}
+
 export interface Integration {
   id: string;
   workspace_id: string;
