@@ -6,6 +6,9 @@ import { Avatar } from '@/components/ui/Avatar';
 import { useRouter } from '@/lib/router';
 import { cn, timeAgo } from '@/lib/utils';
 import { recentActivity, type ActivityItem } from '@/lib/activity';
+import { supabase } from '@/lib/supabase';
+
+interface TeamNote { id: string; title: string; body: string | null; link: string | null; created_at: string; read_at: string | null }
 
 interface TopBarProps {
   onQuickCreate?: () => void;
@@ -15,7 +18,7 @@ interface TopBarProps {
 }
 
 export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResults }: TopBarProps) {
-  const { profile, signOut, workspace } = useAuth();
+  const { profile, signOut, workspace, user } = useAuth();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -40,6 +43,27 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
     recentActivity(workspace.id, 6).then((items) => { if (alive) setActivity(items); }).catch(() => { if (alive) setActivity([]); });
     return () => { alive = false; };
   }, [notifOpen, workspace]); // reloads each time the bell opens
+
+  // Alerts sent to me by workflows ("Send internal notification"). Missing table = nothing to show.
+  const [notes, setNotes] = useState<TeamNote[]>([]);
+  useEffect(() => {
+    if (!workspace || !user) return;
+    let alive = true;
+    void supabase.from('team_notifications').select('id, title, body, link, created_at, read_at')
+      .eq('workspace_id', workspace.id).eq('user_id', user.id).order('created_at', { ascending: false }).limit(10)
+      .then(({ data, error }) => { if (alive) setNotes(error ? [] : ((data ?? []) as TeamNote[])); });
+    return () => { alive = false; };
+  }, [notifOpen, workspace, user]);
+  const unread = notes.filter((n) => !n.read_at);
+  const openNote = (n: TeamNote) => {
+    if (!n.read_at) {
+      const read_at = new Date().toISOString();
+      setNotes((all) => all.map((x) => (x.id === n.id ? { ...x, read_at } : x)));
+      void supabase.from('team_notifications').update({ read_at }).eq('id', n.id);
+    }
+    if (n.link) navigate(n.link);
+    setNotifOpen(false);
+  };
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -103,13 +127,29 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
             className="w-9 h-9 rounded-lg text-navy-700 hover:bg-navy-50 hover:text-navy-800 transition-colors flex items-center justify-center relative"
           >
             <BellIcon className="w-5 h-5" />
-            {activity && activity.length > 0 && <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-gold-400" />}
+            {(unread.length > 0 || (activity && activity.length > 0)) && <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-gold-400" />}
           </button>
           {notifOpen && (
             <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-xl border border-navy-100 shadow-popover animate-scale-in overflow-hidden">
               <div className="px-4 py-3 border-b border-navy-100">
                 <h3 className="text-sm font-semibold text-navy-800">Notifications</h3>
               </div>
+              {notes.length > 0 && (
+                <ul aria-label="Workflow alerts" className="max-h-60 overflow-y-auto divide-y divide-navy-100 border-b border-navy-100">
+                  {notes.map((n) => (
+                    <li key={n.id}>
+                      <button type="button" onClick={() => openNote(n)} className="flex w-full gap-2.5 px-4 py-3 text-left hover:bg-navy-50">
+                        <span className={cn('mt-1.5 h-2 w-2 shrink-0 rounded-full', n.read_at ? 'bg-transparent' : 'bg-[#5B5BD6]')} />
+                        <span className="min-w-0 flex-1">
+                          <span className={cn('block text-sm text-navy-800', !n.read_at && 'font-semibold')}>{n.title}</span>
+                          {n.body && <span className="mt-0.5 block text-xs text-ivory-600 line-clamp-2">{n.body}</span>}
+                          <span className="mt-1 block text-xs text-ivory-500">Workflow · {timeAgo(n.created_at)}</span>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
               {activity && activity.length > 0 ? (
                 <ul className="max-h-80 overflow-y-auto divide-y divide-navy-100">
                   {activity.map((n) => (
@@ -120,11 +160,11 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
                     </li>
                   ))}
                 </ul>
-              ) : (
+              ) : notes.length > 0 ? null : (
                 <div className="px-4 py-10 text-center">
                   <Bell className="mx-auto h-6 w-6 text-ivory-400" />
                   <p className="mt-2 text-sm font-medium text-navy-800">{activity ? "You're all caught up" : 'Loading…'}</p>
-                  <p className="mt-0.5 text-xs text-ivory-600">New bookings and form submissions show here.</p>
+                  <p className="mt-0.5 text-xs text-ivory-600">New bookings, form submissions and workflow alerts show here.</p>
                 </div>
               )}
               <div className="px-4 py-2.5 border-t border-navy-100 text-center">

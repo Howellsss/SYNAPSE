@@ -12,6 +12,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { TagPill } from '@/components/ui/StatusPills';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { TimezoneSelect } from '@/components/ui/TimezoneSelect';
+import { TasksCard } from '@/components/contacts/TasksCard';
 import { MessageComposer } from '@/components/contacts/MessageComposer';
 import { cn, formatDate, formatTime, getFullName, timeAgo } from '@/lib/utils';
 import { readContactNav, type ContactNav } from '@/lib/contact-nav';
@@ -177,6 +178,7 @@ export function ContactDetailPage({ contactId }: { contactId: string }) {
             onTagsChanged={async () => { await loadContact(); if (workspace) { const { data } = await supabase.from('tags').select('*').eq('workspace_id', workspace.id).order('name'); setAllTags((data ?? []) as Tag[]); } }}
           />
           <FieldsPanel contact={contact} onUpdate={updateContact} />
+          <TasksCard contactId={contact.id} members={members} />
         </div>
 
         {/* CENTER: snapshot + one thread */}
@@ -339,7 +341,7 @@ function QuickAction({ href, onClick, icon: Icon, label }: { href?: string; onCl
   );
 }
 
-const DETAIL_KEYS = ['contact_type', 'timezone', 'phone_type'];
+const DETAIL_KEYS = ['contact_type', 'timezone', 'phone_type', 'date_of_birth'];
 
 function FieldsPanel({ contact, onUpdate }: { contact: ContactRow; onUpdate: (patch: Record<string, unknown>, detailKeys?: string[]) => Promise<boolean> }) {
   const [tab, setTab] = useState<'details' | 'dnd'>('details');
@@ -355,6 +357,7 @@ function FieldsPanel({ contact, onUpdate }: { contact: ContactRow; onUpdate: (pa
     job_title: contact.job_title ?? '',
     contact_type: contact.contact_type ?? '',
     timezone: contact.timezone ?? '',
+    date_of_birth: contact.date_of_birth ?? '',
   });
   const [form, setForm] = useState(blank);
 
@@ -370,6 +373,7 @@ function FieldsPanel({ contact, onUpdate }: { contact: ContactRow; onUpdate: (pa
       job_title: form.job_title.trim() || null,
       contact_type: form.contact_type || null,
       timezone: form.timezone || null,
+      date_of_birth: form.date_of_birth || null,
     }, DETAIL_KEYS);
     setSaving(false);
     if (ok) setEditing(false);
@@ -410,6 +414,11 @@ function FieldsPanel({ contact, onUpdate }: { contact: ContactRow; onUpdate: (pa
       ),
     },
     { key: 'timezone', label: 'Time zone', value: contact.timezone, edit: <TimezoneSelect value={form.timezone} onChange={(tz) => setForm({ ...form, timezone: tz })} /> },
+    {
+      key: 'date_of_birth', label: 'Date of birth',
+      value: contact.date_of_birth ? new Date(`${contact.date_of_birth}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) : null,
+      edit: <input type="date" className="input-field" value={form.date_of_birth} onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })} aria-label="Date of birth" />,
+    },
     { key: 'source', label: 'Contact source', value: contact.source },
     { key: 'created', label: 'Created', value: `${formatDate(contact.created_at)} · ${formatTime(contact.created_at)}` },
   ];

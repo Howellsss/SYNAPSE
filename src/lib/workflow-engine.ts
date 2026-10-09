@@ -32,7 +32,8 @@ export class WorkflowEngine {
 
     if (!workflows || workflows.length === 0) return;
 
-    for (const workflow of workflows) {
+    // Workflows built in the new builder run on the server (wf_tick); only older ones run here.
+    for (const workflow of workflows.filter((w) => !(w as { definition?: unknown }).definition)) {
       await this.executeWorkflow(workflow as unknown as Workflow, workspaceId, context);
     }
   }

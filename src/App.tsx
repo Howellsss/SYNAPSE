@@ -14,7 +14,8 @@ import { ContactDetailPage } from '@/pages/ContactDetailPage';
 import { CalendarsPage } from '@/pages/CalendarsPage';
 import { FormsPage } from '@/pages/FormsPage';
 import { FormBuilder } from '@/pages/FormBuilder';
-import { WorkflowsPage } from '@/pages/WorkflowsPage';
+import { WorkflowsHome } from '@/components/workflows/WorkflowsHome';
+import { Builder } from '@/components/workflows/Builder';
 import { RecordingsPage } from '@/pages/RecordingsPage';
 import { AIAgentPage } from '@/pages/AIAgentPage';
 import { SettingsPage } from '@/pages/SettingsPage';
@@ -125,7 +126,11 @@ function AppContent() {
       return <FormBuilder formId={formId} onBack={() => navigate('/forms')} />;
     }
     if (path.startsWith('/forms')) return <FormsPage />;
-    if (path.startsWith('/workflows')) return <WorkflowsPage />;
+    if (path.startsWith('/workflows/')) {
+      const wfId = path.split('/')[2]?.split('?')[0] ?? '';
+      return <Builder key={wfId} id={wfId && wfId !== 'new' ? wfId : null} />;
+    }
+    if (path.startsWith('/workflows')) return <WorkflowsHome />;
     if (path.startsWith('/recordings')) return <RecordingsPage />;
     if (path.startsWith('/ai-hub')) return <AIAgentPage />;
     if (path.startsWith('/settings')) return <SettingsPage />;
