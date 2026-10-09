@@ -26,6 +26,8 @@ interface PeoplePanelProps {
   /** My conversation group from proximity (falls back to my presence). */
   conversation?: string[];
   onWave: (userId: string) => void;
+  /** Walk to someone in the 3D world. */
+  onWalkTo?: (userId: string) => void;
   className?: string;
 }
 
@@ -36,7 +38,7 @@ const splitName = (name: string) => {
 
 /** Left panel inside a space: switcher, search, your status, and who's where. */
 export function PeoplePanel({
-  space, otherSpaces, people, meId, status, onStatus, onOpenSpace, onAllSpaces, canInvite, onInvite, raisedHands, onWave, conversation, className,
+  space, otherSpaces, people, meId, status, onStatus, onOpenSpace, onAllSpaces, canInvite, onInvite, raisedHands, onWave, onWalkTo, conversation, className,
 }: PeoplePanelProps) {
   const [query, setQuery] = useState('');
   const rooms = useMemo(() => new Map((space.config?.rooms ?? []).map((r) => [r.id, r])), [space.config]);
@@ -78,14 +80,14 @@ export function PeoplePanel({
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
         {inConversation.length > 0 && (
           <Section title="In your conversation" count={inConversation.length} icon={<MessageCircle className="h-3.5 w-3.5 text-gold-600" />}>
-            {inConversation.map((p) => <PersonRow key={p.userId} person={p} me={p.userId === meId} hand={raisedHands.has(p.userId)} onWave={onWave} />)}
+            {inConversation.map((p) => <PersonRow key={p.userId} person={p} me={p.userId === meId} hand={raisedHands.has(p.userId)} onWave={onWave} onWalkTo={onWalkTo} />)}
           </Section>
         )}
         {[...zoneGroups.entries()].map(([zoneId, list]) => {
           const room = rooms.get(zoneId) as SpaceRoom;
           return (
             <Section key={zoneId} title={room.name} count={list.length} icon={room.lockable ? <Lock className="h-3.5 w-3.5 text-ivory-700" aria-label="Lockable room" /> : null}>
-              {list.map((p) => <PersonRow key={p.userId} person={p} me={p.userId === meId} hand={raisedHands.has(p.userId)} onWave={onWave} />)}
+              {list.map((p) => <PersonRow key={p.userId} person={p} me={p.userId === meId} hand={raisedHands.has(p.userId)} onWave={onWave} onWalkTo={onWalkTo} />)}
             </Section>
           );
         })}
@@ -93,7 +95,7 @@ export function PeoplePanel({
           {around.length === 0 ? (
             <p className="px-2 py-1 text-xs text-ivory-700">{query ? 'No one matches that name.' : 'No one else is here right now.'}</p>
           ) : (
-            around.map((p) => <PersonRow key={p.userId} person={p} me={p.userId === meId} hand={raisedHands.has(p.userId)} onWave={onWave} where={p.zoneId ? 'Elsewhere' : 'Main floor'} />)
+            around.map((p) => <PersonRow key={p.userId} person={p} me={p.userId === meId} hand={raisedHands.has(p.userId)} onWave={onWave} onWalkTo={onWalkTo} where={p.zoneId ? 'Elsewhere' : 'Main floor'} />)
           )}
         </Section>
         {/* AI agents appear here once they can join a space. */}
@@ -205,7 +207,7 @@ function Section({ title, count, icon, children }: { title: string; count: numbe
   );
 }
 
-function PersonRow({ person, me, where, hand, onWave }: { person: PresenceMeta; me: boolean; where?: string; hand: boolean; onWave: (userId: string) => void }) {
+function PersonRow({ person, me, where, hand, onWave, onWalkTo }: { person: PresenceMeta; me: boolean; where?: string; hand: boolean; onWave: (userId: string) => void; onWalkTo?: (userId: string) => void }) {
   const { first, last } = splitName(person.name);
   const st = shownStatus(person);
   const row = (
@@ -241,7 +243,11 @@ function PersonRow({ person, me, where, hand, onWave }: { person: PresenceMeta; 
       >
         {(close) => (
           <>
-            <button role="menuitem" className={menuItem} disabled title="Available with the 3D office"><Footprints className="h-4 w-4 text-ivory-600" /> <span className="flex-1 text-ivory-600">Walk to</span><span className="text-[11px] text-ivory-600">Soon</span></button>
+            {onWalkTo ? (
+              <button role="menuitem" className={menuItem} onClick={() => { onWalkTo(person.userId); close(); }}><Footprints className="h-4 w-4 text-gold-600" /> Walk to</button>
+            ) : (
+              <button role="menuitem" className={menuItem} disabled title="Available with the 3D office"><Footprints className="h-4 w-4 text-ivory-600" /> <span className="flex-1 text-ivory-600">Walk to</span><span className="text-[11px] text-ivory-600">Soon</span></button>
+            )}
             <button role="menuitem" className={menuItem} onClick={() => { onWave(person.userId); close(); }}><span aria-hidden="true">👋</span> Wave</button>
             <button role="menuitem" className={menuItem} disabled title="Available with the 3D office"><Route className="h-4 w-4 text-ivory-600" /> <span className="flex-1 text-ivory-600">Follow</span><span className="text-[11px] text-ivory-600">Soon</span></button>
           </>

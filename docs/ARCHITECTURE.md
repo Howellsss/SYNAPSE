@@ -42,12 +42,14 @@ src/
                          space preview tile, settings drawer, DeviceCheck (camera & mic: wizard last
                          step, "Get ready" before a first visit, modal from Workspaces and in a space); wizard/ holds the create-workspace
                          steps and state (branching by type); config/ holds the Rooms, Access,
-                         Availability and Branding editors shared by the wizard and the drawer
+                         Availability and Branding editors shared by the wizard and the drawer;
+                         scene/SpaceScene is the 3D world (lazy-loaded three.js, see "The 3D space")
   types/index.ts         Shared TypeScript types mirroring the database tables
   spatial/               Spatial workspace data: media/useLiveKitRoom (audio & video, see docs/LIVEKIT.md),
                          net/ (realtime multiplayer: channel, presence, moves,
                          emotes, interpolation), quality (graphics
-                         setting), scene/pathfinding (A* on the nav grid), media/ (camera & mic check: devices, useMediaCheck,
+                         setting), scene/ (pathfinding: A* on the nav grid; floor: floor size, spawning, keys → walking
+                         direction; avatarClips: which character and clips people appear as), media/ (camera & mic check: devices, useMediaCheck,
                          useMediaPrefs), slug rules, links, schedule (open hours), access
                          (permissions, guest tokens), layoutFile (.synapse-space.json import/export),
                          data/ (types, sizing, templates, rooms, branding)
@@ -143,7 +145,7 @@ Child tables (`form_fields`, `workflow_nodes`, `calendar_hosts`, `availability_r
 | --- | --- | --- |
 | Dashboard | `/dashboard` | Real (reads workspace data) |
 | Meetings | `/meetings` | Real: today's meetings, upcoming rooms, join by code/nickname, New (later / instant / scheduled with calendar links), Calls history; rooms at `/meetings/:code` (LiveKit: switch camera/mic/speaker mid-call incl. iPhone Continuity Camera, chat, reactions, raise hand, screen share with live annotation and laser pointer) |
-| Workspaces | `/workspace` | Real: spaces grid and create wizard (`/workspace/new`, full screen); `/workspace/:slug` is the in-space screen (people, status, controls); the 3D world itself waits for the art kit |
+| Workspaces | `/workspace` | Real: spaces grid and create wizard (`/workspace/new`, full screen); `/workspace/:slug` is the in-space screen (people, status, controls) with the walkable 3D floor; rooms and furniture wait for the art kit |
 | Contacts | `/contacts` | Real: list, add, detail page with composer (email via Gmail) |
 | Conversations | `/conversations` | **Placeholder** (`ComingSoonPage`) |
 | Events | `/events` | **Placeholder** (`ComingSoonPage`) |
@@ -152,7 +154,7 @@ Child tables (`form_fields`, `workflow_nodes`, `calendar_hosts`, `availability_r
 | Submissions | `/forms` | Real: forms and surveys, builder, submissions |
 | Workflows | `/workflows` | Real builder and storage; runs in the browser (`workflow-engine.ts`), triggered only by public-page bookings and cancellations |
 | Recordings | `/recordings` | Real list/detail over `recordings`; nothing creates recordings yet |
-| Characters | `/characters` | Real: upload a 3D character (.glb, up to 30 MB), preview it in 3D, play each animation clip and save one as the default. Not used in spaces yet. Make Meshy files fit with `scripts/blender/optimize_meshy_glb.py` |
+| Characters | `/characters` | Real: upload a 3D character (.glb, up to 30 MB), preview it in 3D, play each animation clip and save one as the default; choose the character everyone appears as in spaces and which clip plays for standing, walking, wave and cheer. Make Meshy files fit with `scripts/blender/optimize_meshy_glb.py` |
 | Media Library | `/media-library` | **Placeholder** (`ComingSoonPage`) |
 | AI Hub | `/ai-hub` | Partial: keyword-matched database queries, no AI model behind it |
 | Settings | `/settings` | Real: profile, workspace, team, email (Gmail); some tabs only save preferences |
@@ -253,10 +255,33 @@ while speaking, muted icon, click to enlarge, "+N" when they don't fit. **Data s
 from everyone in range, video from the nearest 2 only, at low quality; it's suggested
 automatically after 8 s of a poor connection.
 
-Your position comes from the 3D scene, which isn't built yet. Until then you're "nowhere": only
-stage speakers reach you. In development, `window.__synapse.setPose(x, z, zoneId?)` places you
-for testing. Note: proximity decides what the client subscribes to; it isn't a privacy boundary
+Your position comes from the 3D scene (below). Everyone is on the open floor for now (no zone),
+because rooms don't exist on the floor until the art kit arrives. Note: proximity decides what the client subscribes to; it isn't a privacy boundary
 (see the privacy note in docs/LIVEKIT.md).
+
+## The 3D space (`src/components/spaces/scene/SpaceScene.tsx`)
+
+What you see inside a space, until the art kit brings rooms and furniture:
+
+- **Floor:** an open floor sized by team size (`spatial/scene/floor.ts`: 12×10 m for one person up
+  to 44×34 m for 50+), from (0, 0) to (width, depth) in metres, the same units the network and
+  proximity use. You appear near the middle.
+- **Camera:** orthographic, looking down at about 35° from the +x/+z corner, following you.
+  The world toolbar's centre and zoom buttons and the mouse wheel control it.
+- **Walking:** click or tap the floor (A* route on a 1 m grid, smoothed, sent once as a `path`
+  broadcast and walked by the clock on everyone's screen), or hold the arrow keys / WASD (move
+  messages, rate-limited by `MoveSender`). **Walk to** in the people panel walks to about a metre
+  from someone.
+- **People:** everyone appears as the workspace's character: the one chosen with **Use in
+  workspaces** on the Characters page, else the newest upload. It's scaled to 1.7 m and its clips
+  are kept in place (root motion removed). Which clip plays for standing, walking, wave and cheer
+  is chosen on the Characters page (`characters.space_clips`), guessed from clip names until then
+  (`spatial/scene/avatarClips.ts`). Without a character, or if it can't load (guests who aren't
+  members can't read the private file), people appear as simple coloured figures.
+- **Labels and rings:** a name label over each head (status dot, ✋ for a raised hand, the latest
+  reaction for 3 s), and a gold ring on the floor around each conversation group.
+- **Graphics quality:** Low renders at 1× pixel ratio without antialiasing. Changing it rebuilds
+  the scene but keeps your place and zoom.
 
 ## Checks
 

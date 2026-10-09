@@ -44,8 +44,19 @@ Do these in **Workspaces → (a workspace) → Enter**, with everyone in the sam
 | A turns Wi-Fi off for ~10 s, then on | A sees "You're offline…" then **Reconnecting…**, then the banner disappears and A is back in B's list. |
 | Close A's window without pressing Leave | A drops out of B's list within a few seconds. If A's computer lost its connection instead (Wi-Fi off and window left open), it can take up to about a minute. |
 
-Movement (walking, following, sitting) needs the 3D office, which isn't built yet; "Walk to" and
-"Follow" show as **Soon** in the people panel until then.
+**Moving around** (each person needs to have entered; upload a character on the Characters page
+first, or everyone appears as a simple figure):
+
+| Step | Expected |
+| --- | --- |
+| A clicks a spot on the floor | A walks there. B sees A walk the same route at the same pace and stop in the same place. |
+| A holds W or the arrow keys | A walks; B sees A move smoothly a moment later. |
+| A walks next to B (within about 4 squares) | A gold ring appears around them on both screens, and their audio/video connects. Walking away (more than 5 squares) ends it. |
+| B clicks A in the people panel → **Walk to** | B walks to just beside A. |
+| A sends 🎉 or 👋 | Everyone sees the emoji over A's head, and A's character plays the Cheer or Wave clip if one is chosen. |
+| A raises their hand | ✋ appears in A's name label for everyone. |
+
+"Follow" still shows as **Soon** in the people panel.
 
 ## 4. If something doesn't show up
 

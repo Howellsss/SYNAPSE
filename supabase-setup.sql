@@ -5860,3 +5860,18 @@ DROP POLICY IF EXISTS "characters_delete" ON storage.objects;
 CREATE POLICY "characters_delete" ON storage.objects FOR DELETE TO authenticated
   USING (bucket_id = 'characters' AND is_workspace_member(CASE WHEN (storage.foldername(name))[1] ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN ((storage.foldername(name))[1])::uuid END));
 
+
+-- ============ 20261012090000_characters_in_spaces.sql ============
+/*
+  # Characters in spaces
+
+  The character people appear as when they walk around a workspace's spaces, and which of its
+  animation clips plays for standing, walking, wave and cheer. Safe to run more than once.
+
+  - characters.use_in_spaces   at most one per workspace (when none is chosen, the newest is used)
+  - characters.space_clips     { "idle": "...", "walk": "...", "wave": "...", "cheer": "..." }
+*/
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS use_in_spaces boolean NOT NULL DEFAULT false;
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS space_clips jsonb NOT NULL DEFAULT '{}'::jsonb;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_characters_one_in_spaces ON characters(workspace_id) WHERE use_in_spaces;
+
