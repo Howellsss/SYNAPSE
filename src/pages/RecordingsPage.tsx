@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Mic, Search, Play, Pause, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Mic, Search, Play, Pause, Sparkles, CheckCircle2, Download } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { supabase } from '@/lib/supabase';
@@ -7,6 +7,30 @@ import { Drawer } from '@/components/ui/Drawer';
 import { EmptyState, Skeleton } from '@/components/ui/States';
 import { formatDate, formatDuration, timeAgo, getFullName, cn } from '@/lib/utils';
 import type { Recording, Appointment, Contact, ActionItem } from '@/types';
+import { RECORDINGS_BUCKET } from '@/meetings/recording';
+
+/** A meeting recording from the private bucket, played through a short-lived link. */
+function MeetingVideo({ path, title }: { path: string; title: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    supabase.storage.from(RECORDINGS_BUCKET).createSignedUrl(path, 3600).then(({ data, error: err }) => {
+      if (!alive) return;
+      if (err || !data?.signedUrl) setError(err?.message ?? 'Could not open the recording.');
+      else setUrl(data.signedUrl);
+    });
+    return () => { alive = false; };
+  }, [path]);
+  if (error) return <div className="rounded-xl bg-navy-800 p-6 text-center text-sm text-ivory-400">{error}</div>;
+  if (!url) return <div className="aspect-video animate-pulse rounded-xl bg-navy-50" />;
+  return (
+    <div className="space-y-2">
+      <video src={url} controls playsInline aria-label={`Recording: ${title}`} className="aspect-video w-full rounded-xl bg-navy-900" />
+      <a href={url} download className="inline-flex items-center gap-1.5 text-sm font-semibold text-gold-700 hover:text-gold-800"><Download className="h-4 w-4" /> Download</a>
+    </div>
+  );
+}
 
 export function RecordingsPage() {
   const { workspace } = useAuth();
@@ -164,8 +188,11 @@ function RecordingDetailDrawer({
   return (
     <Drawer open onClose={onClose} title={recording.title} width="xl">
       <div className="p-6 space-y-4">
+        {/* Meeting recordings (video, saved from a SYNAPSE meeting) */}
+        {recording.media_url?.startsWith(`${RECORDINGS_BUCKET}/`) && <MeetingVideo path={recording.media_url.slice(RECORDINGS_BUCKET.length + 1)} title={recording.title} />}
+
         {/* Audio player */}
-        {recording.audio_url ? (
+        {recording.media_url?.startsWith(`${RECORDINGS_BUCKET}/`) && !recording.audio_url ? null : recording.audio_url ? (
           <div className="bg-navy-800 rounded-xl p-6">
             <div className="flex items-center gap-4">
               <button
