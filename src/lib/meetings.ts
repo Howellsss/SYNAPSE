@@ -197,3 +197,9 @@ export async function decideAdmissions(meetingId: string, tickets: string[] | 'a
 export async function markRemoved(meetingId: string, identity: string): Promise<void> {
   await supabase.from('meeting_admissions').update({ status: 'removed', decided_at: new Date().toISOString() }).eq('meeting_id', meetingId).eq('identity', identity);
 }
+
+/** Open an ended meeting again (the same room and link), e.g. your personal room. */
+export async function reopenMeeting(id: string): Promise<string | null> {
+  const { error } = await supabase.from('meetings').update({ ended_at: null, updated_at: new Date().toISOString() }).eq('id', id);
+  return error?.message ?? null;
+}

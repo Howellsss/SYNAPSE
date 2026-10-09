@@ -86,3 +86,10 @@ export function calendarLinks(m: { title: string; code: string; start: Date; dur
   ].join('\r\n');
   return { google, ics };
 }
+
+/** "pr-1a2b3c4d5e6f": the nickname that marks someone's personal room (same link every time). */
+export function personalNickname(userId: string): string {
+  return `pr-${userId.replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 12)}`;
+}
+
+export const isPersonalRoom = (m: { nickname: string | null; host_id: string }) => !!m.nickname && m.nickname === personalNickname(m.host_id);

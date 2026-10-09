@@ -8,7 +8,7 @@ import type { LocalTrack, RemoteTrack, Room, Track } from 'livekit-client';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useRouter } from '@/lib/router';
-import { endMeeting, getMeetingByCode, getMeetingByInvite, markRemoved, updateMeetingSettings, type Meeting } from '@/lib/meetings';
+import { endMeeting, getMeetingByCode, getMeetingByInvite, markRemoved, reopenMeeting, updateMeetingSettings, type Meeting } from '@/lib/meetings';
 import { inviteUrl } from '@/meetings/codes';
 import { REACTIONS, elapsed, isRefresh, isStopShare, newChatId, parseChat, parseControl, parseHostRequest, parseReact, type Reaction } from '@/meetings/messages';
 import { TOPICS, useMeetingBus } from '@/meetings/useMeetingBus';
@@ -103,15 +103,23 @@ function MeetingRoom({ code, invite }: { code: string; invite: string | null }) 
   const hasEnded = useCallback(async () => !!(await refresh())?.ended_at, [refresh]);
 
   // After leaving, check before offering Rejoin: if the host has ended it, say so instead.
+  const hostUser = !!user && !!meeting && user.id === meeting.host_id;
   useEffect(() => {
-    if (stage !== 'left') return;
+    // The host can always come back (Rejoin opens the meeting again).
+    if (stage !== 'left' || hostUser) return;
     let alive = true;
     hasEnded().then((ended) => { if (alive && ended) { setEndedBy('host'); setStage('ended'); } });
     return () => { alive = false; };
-  }, [stage, hasEnded]);
+  }, [stage, hasEnded, hostUser]);
 
   const rejoin = async () => {
-    if (await hasEnded()) { setEndedBy('host'); setStage('ended'); return; }
+    if (await hasEnded()) {
+      if (hostUser && meeting) {
+        const err = await reopenMeeting(meeting.id);
+        if (!err) { setMeeting({ ...meeting, ended_at: null }); setStage('call'); return; }
+      }
+      setEndedBy('host'); setStage('ended'); return;
+    }
     setStage('call');
   };
 
@@ -642,7 +650,12 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
     toast(ok ? `Switched to ${label}` : `Couldn't switch to ${label}. Another app may be using it.`, ok ? 'info' : 'error');
   };
 
-  const leave = () => { room?.disconnect(); onLeave(); };
+  const leave = () => {
+    // The host leaving an instant meeting nobody else is in: it's over, so it stops showing as live.
+    if (isHost && meeting.kind === 'instant' && room && room.remoteParticipants.size === 0) void endMeeting(meeting.id);
+    room?.disconnect();
+    onLeave();
+  };
   const endForAll = async () => {
     const err = await endMeeting(meeting.id);
     if (err) { toast(`Couldn't end the meeting. ${err}`, 'error'); return; }
