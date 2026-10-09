@@ -1,18 +1,19 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
-  Video, Plus, ChevronDown, ChevronLeft, ChevronRight, Link2, CalendarDays, Play, Copy, ExternalLink, Download, Loader2, Radio, MonitorUp, NotebookPen,
+  Video, Plus, ChevronDown, ChevronLeft, ChevronRight, Link2, CalendarDays, Play, Copy, ExternalLink, Download, Loader2, Radio, MonitorUp,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useRouter } from '@/lib/router';
-import { createMeeting, findMeeting, listMeetings, listTodaysVideoAppointments, type Meeting, type MeetingKind, type VideoAppointment } from '@/lib/meetings';
-import { calendarLinks, inviteUrl, isSameDay, parseJoinInput, startsLabel, toNickname } from '@/meetings/codes';
+import { createMeeting, endMeeting, findMeeting, listMeetings, listTodaysVideoAppointments, reopenMeeting, type Meeting, type MeetingKind, type VideoAppointment } from '@/lib/meetings';
+import { supabase } from '@/lib/supabase';
+import { calendarLinks, inviteUrl, isPersonalRoom, isSameDay, parseJoinInput, personalNickname, startsLabel, toNickname } from '@/meetings/codes';
 import { startOf, upcomingRooms } from '@/meetings/lists';
 import { Popover } from '@/components/spaces/room/Popover';
 import { menuItem } from '@/components/spaces/room/styles';
 import { Modal } from '@/components/ui/Modal';
 import { ErrorState, Skeleton } from '@/components/ui/States';
-import { cn } from '@/lib/utils';
+import { cn, timeAgo } from '@/lib/utils';
 
 type Tab = 'meetings' | 'calls';
 
@@ -43,18 +44,16 @@ export function MeetingsPage() {
   }, [workspace]);
 
   useEffect(() => { load(); }, [load]);
-  // Keep "in 5 min" labels fresh.
+  // Keep the clock and "in 5 min" labels fresh.
   useEffect(() => { const t = window.setInterval(() => setNow(new Date()), 30000); return () => window.clearInterval(t); }, []);
 
   const [day, setDay] = useState(() => new Date());
   const isToday = isSameDay(day, now);
-  // The selected day's rooms: scheduled ones on that day, plus today's open instant/later rooms.
-  const dayList = useMemo(() => (meetings ?? []).filter((m) => isSameDay(startOf(m), day) && (m.kind === 'scheduled' || !m.ended_at))
-    .sort((a, b) => startOf(a).getTime() - startOf(b).getTime()), [meetings, day]);
-  const upcoming = useMemo(() => upcomingRooms(meetings ?? [], now).filter((m) => !isSameDay(startOf(m), day)).slice(0, 5), [meetings, now, day]);
-  const calls = useMemo(() => (meetings ?? []).filter((m) => m.ended_at || startOf(m).getTime() < now.getTime() - 12 * 3600000)
+  const groups = useMemo(() => groupDay(meetings ?? [], day, now), [meetings, day, now]);
+  const upcoming = useMemo(() => upcomingRooms(meetings ?? [], now).filter((m) => !isSameDay(startOf(m), day) && m.kind === 'scheduled').slice(0, 5), [meetings, now, day]);
+  const calls = useMemo(() => (meetings ?? []).filter((m) => !isPersonalRoom(m)).filter((m) => m.ended_at || startOf(m).getTime() < now.getTime() - STALE_MS)
     .sort((a, b) => startOf(b).getTime() - startOf(a).getTime()), [meetings, now]);
-  const [joinOpen, setJoinOpen] = useState(false);
+  const todayCount = useMemo(() => groupDay(meetings ?? [], now, now).all.length + appointments.length, [meetings, now, appointments]);
 
   if (!workspace || !user) return null;
 
@@ -84,129 +83,133 @@ export function MeetingsPage() {
     enter(m.code);
   };
 
+  const end = async (m: Meeting) => {
+    const err = await endMeeting(m.id);
+    if (err) { toast(`Couldn't end it. ${err}`, 'error'); return; }
+    setMeetings((list) => (list ?? []).map((x) => (x.id === m.id ? { ...x, ended_at: new Date().toISOString() } : x)));
+    toast(`Ended ${m.title}.`, 'info');
+  };
+
   const shiftDay = (n: number) => setDay((d) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; });
-  const dayTitle = `${isToday ? 'Today, ' : ''}${day.toLocaleDateString(undefined, isToday ? { month: 'short', day: 'numeric' } : { weekday: 'long', month: 'short', day: 'numeric' })}`;
+  const dayTitle = `${isToday ? 'Today, ' : ''}${day.toLocaleDateString(undefined, isToday ? { month: 'long', day: 'numeric' } : { weekday: 'long', month: 'long', day: 'numeric' })}`;
+  const dayAppointments = isToday ? appointments : [];
+  const rowProps = { now, onEnter: enter, onEnd: end, me: user.id };
 
   return (
     <div className="w-full pb-8">
-      {error ? (
-        <ErrorState message={`Couldn't load meetings. ${error}`} onRetry={() => { setMeetings(null); load(); }} />
-      ) : (
-        <div className="grid items-start gap-8 xl:grid-cols-[minmax(0,1fr)_420px]">
-          {/* Start: big tiles, like the Zoom home screen */}
-          <section aria-label="Start a meeting" className="flex min-h-[520px] items-center justify-center py-6">
-            <div className="grid grid-cols-2 gap-x-10 gap-y-9 sm:gap-x-16">
-              <div className="flex flex-col items-center">
-                <Tile tone="gold" label="New meeting" icon={startingInstant ? <Loader2 className="h-10 w-10 animate-spin" /> : <Video className="h-11 w-11" fill="currentColor" strokeWidth={1.5} />} onClick={() => { void startInstant(); }} disabled={startingInstant} hideLabel />
-                <Popover
-                  label="New meeting options"
-                  panelClassName="left-1/2 top-full mt-2 w-64 -translate-x-1/2"
-                  trigger={({ open, toggle }) => (
-                    <button type="button" onClick={toggle} aria-haspopup="menu" aria-expanded={open} aria-label="New meeting options" className="mt-3 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[15px] font-medium text-navy-800 hover:bg-navy-50">
-                      New meeting <ChevronDown className={cn('h-4 w-4 text-ivory-600 transition', open && 'rotate-180')} />
+      <div className="grid items-start gap-7 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <section aria-label="Meetings" className="min-w-0">
+          <h1 className="font-display text-[26px] font-bold tracking-[-0.02em] text-navy-800">Meetings</h1>
+          <p className="mt-1 text-[14px] text-ivory-700">Start, join or schedule a call. Guests join from a link, no account needed.</p>
+
+          {/* Everything you can start, in one row */}
+          <div className="mt-5 flex flex-wrap items-start gap-2.5">
+            <div className="flex h-11 overflow-hidden rounded-xl bg-gold-400 text-navy-900 shadow-[0_6px_16px_-8px_rgba(228,169,60,0.9)]">
+              <button type="button" onClick={() => { void startInstant(); }} disabled={startingInstant} aria-label="New meeting" className="inline-flex items-center gap-2 pl-4 pr-3 text-[15px] font-semibold hover:bg-gold-300 disabled:opacity-70">
+                {startingInstant ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <Video className="h-[18px] w-[18px]" />} New meeting
+              </button>
+              <Popover
+                label="New meeting options"
+                panelClassName="left-0 top-full mt-2 w-64"
+                trigger={({ open, toggle }) => (
+                  <button type="button" onClick={toggle} aria-haspopup="menu" aria-expanded={open} aria-label="New meeting options" className="flex h-full items-center border-l border-navy-900/15 px-2.5 hover:bg-gold-300">
+                    <ChevronDown className={cn('h-4 w-4 transition', open && 'rotate-180')} />
+                  </button>
+                )}
+              >
+                {(close) => (
+                  <>
+                    <button role="menuitem" className={cn(menuItem, 'py-2.5 font-medium')} disabled={startingInstant} onClick={() => { close(); void startInstant(); }}>
+                      <Video className="h-4 w-4 text-green-600" /> Start an instant meeting
                     </button>
-                  )}
-                >
-                  {(close) => (
-                    <>
-                      <button role="menuitem" className={cn(menuItem, 'py-2.5 font-medium')} disabled={startingInstant} onClick={() => { close(); void startInstant(); }}>
-                        <Video className="h-4 w-4 text-green-600" /> Start an instant meeting
-                      </button>
-                      <button role="menuitem" className={cn(menuItem, 'py-2.5 font-medium')} onClick={() => { close(); setCreating('later'); }}>
-                        <Link2 className="h-4 w-4 text-navy-500" /> Create a meeting for later
-                      </button>
-                      <button role="menuitem" className={cn(menuItem, 'py-2.5 font-medium')} onClick={() => { close(); setCreating('scheduled'); }}>
-                        <CalendarDays className="h-4 w-4 text-purple-600" /> Schedule in calendar
-                      </button>
-                    </>
-                  )}
-                </Popover>
-              </div>
-              <Tile label="Join" icon={<Plus className="h-11 w-11" strokeWidth={2.5} />} onClick={() => { setJoinError(null); setJoinOpen(true); }} />
-              <Tile label="Schedule" icon={<CalendarDays className="h-11 w-11" strokeWidth={2} />} onClick={() => setCreating('scheduled')} />
-              <Tile label="Share screen" icon={<MonitorUp className="h-11 w-11" strokeWidth={2} />} onClick={() => { void startInstant('share'); }} disabled={startingInstant} />
-              <div className="col-span-2 flex justify-center">
-                <Tile label="My notes" icon={<NotebookPen className="h-11 w-11" strokeWidth={2} />} onClick={() => navigate('/ai-hub')} />
-              </div>
+                    <button role="menuitem" className={cn(menuItem, 'py-2.5 font-medium')} onClick={() => { close(); setCreating('later'); }}>
+                      <Link2 className="h-4 w-4 text-navy-500" /> Create a meeting for later
+                    </button>
+                    <button role="menuitem" className={cn(menuItem, 'py-2.5 font-medium')} onClick={() => { close(); setCreating('scheduled'); }}>
+                      <CalendarDays className="h-4 w-4 text-purple-600" /> Schedule in calendar
+                    </button>
+                  </>
+                )}
+              </Popover>
             </div>
-          </section>
+            <button type="button" onClick={() => setCreating('scheduled')} className="inline-flex h-11 items-center gap-2 rounded-xl bg-white px-4 text-[15px] font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50"><CalendarDays className="h-[18px] w-[18px]" /> Schedule</button>
+            <button type="button" onClick={() => { void startInstant('share'); }} disabled={startingInstant} className="inline-flex h-11 items-center gap-2 rounded-xl bg-white px-4 text-[15px] font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50 disabled:opacity-70"><MonitorUp className="h-[18px] w-[18px]" /> Share screen</button>
+            <form onSubmit={join} noValidate className="w-full sm:w-auto" aria-label="Join a meeting">
+              <div className={cn('flex h-11 overflow-hidden rounded-xl bg-white ring-1 ring-inset focus-within:ring-2 focus-within:ring-gold-400', joinError ? 'ring-burgundy-500' : 'ring-navy-100')}>
+                <input
+                  value={joinText}
+                  onChange={(e) => { setJoinText(e.target.value); setJoinError(null); }}
+                  placeholder="Enter a code or link"
+                  aria-label="Meeting code or nickname"
+                  aria-invalid={!!joinError}
+                  className="min-w-0 flex-1 bg-transparent px-4 text-[15px] text-navy-900 placeholder:text-ivory-600 focus:outline-none sm:w-52"
+                />
+                <button type="submit" disabled={!joinText.trim() || joining} className="flex items-center bg-navy-800 px-4 text-[15px] font-semibold text-white hover:bg-navy-700 disabled:cursor-default disabled:hover:bg-navy-800">{joining ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Join'}</button>
+              </div>
+            </form>
+          </div>
+          {joinError && <p role="alert" className="mt-2 text-sm text-burgundy-600">{joinError}</p>}
 
-          {/* Clock and the day's meetings */}
-          <aside aria-label="Your meetings" className="overflow-hidden rounded-xl border border-navy-100 bg-white shadow-card">
-            <div className="relative overflow-hidden bg-navy-800 px-6 py-7 text-center text-white">
-              <span aria-hidden="true" className="pointer-events-none absolute -left-10 -top-12 h-40 w-40 rounded-full bg-gold-400/20 blur-2xl" />
-              <span aria-hidden="true" className="pointer-events-none absolute -bottom-16 right-0 h-40 w-40 rounded-full bg-[#2A4377] blur-2xl" />
-              <p className="relative text-[44px] font-bold leading-none tracking-tight tabular-nums">{fmtTime(now)}</p>
-              <p className="relative mt-2 text-[15px] text-ivory-300">{now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</p>
-            </div>
-
-            <div className="flex items-center gap-2 border-b border-sand px-3 py-2.5">
-              <button type="button" onClick={() => setCreating('scheduled')} aria-label="Schedule a meeting" title="Schedule a meeting" className="flex h-9 w-9 items-center justify-center rounded-lg text-navy-800 hover:bg-navy-50"><Plus className="h-5 w-5" /></button>
-              <label className="relative mx-auto inline-flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-[15px] font-semibold text-navy-900 hover:bg-navy-50">
+          {/* The day */}
+          <div className="mt-6 overflow-hidden rounded-[14px] border border-navy-100 bg-white">
+            <div className="flex flex-wrap items-center gap-2 border-b border-navy-100 px-4 py-3 sm:px-5">
+              <label className="relative inline-flex cursor-pointer items-center gap-1 rounded-lg px-1.5 py-1 text-[16px] font-bold text-navy-900 hover:bg-navy-50">
                 {dayTitle} <ChevronDown className="h-4 w-4 text-ivory-600" />
                 <input type="date" aria-label="Pick a day" value={localDate(day)} onChange={(e) => { if (e.target.value) setDay(new Date(`${e.target.value}T12:00:00`)); }} className="absolute inset-0 cursor-pointer opacity-0" />
               </label>
-              <span className="w-9" />
-            </div>
-
-            <div className="flex items-center gap-1 border-b border-sand px-3 py-2">
-              <button type="button" onClick={() => setDay(new Date())} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50"><CalendarDays className="h-3.5 w-3.5" /> Today</button>
-              <button type="button" onClick={() => shiftDay(-1)} aria-label="Previous day" className="flex h-8 w-8 items-center justify-center rounded-md text-navy-700 hover:bg-navy-50"><ChevronLeft className="h-4 w-4" /></button>
-              <button type="button" onClick={() => shiftDay(1)} aria-label="Next day" className="flex h-8 w-8 items-center justify-center rounded-md text-navy-700 hover:bg-navy-50"><ChevronRight className="h-4 w-4" /></button>
-              <div className="flex-1" />
-              <div role="tablist" aria-label="Meetings or calls" className="flex rounded-md bg-white p-0.5 ring-1 ring-inset ring-navy-100">
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={() => shiftDay(-1)} aria-label="Previous day" className="flex h-8 w-8 items-center justify-center rounded-lg text-navy-700 ring-1 ring-inset ring-navy-100 hover:bg-navy-50"><ChevronLeft className="h-4 w-4" /></button>
+                <button type="button" onClick={() => shiftDay(1)} aria-label="Next day" className="flex h-8 w-8 items-center justify-center rounded-lg text-navy-700 ring-1 ring-inset ring-navy-100 hover:bg-navy-50"><ChevronRight className="h-4 w-4" /></button>
+                {!isToday && <button type="button" onClick={() => setDay(new Date())} className="ml-1 inline-flex h-8 items-center rounded-lg px-2.5 text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50">Today</button>}
+              </div>
+              <div role="tablist" aria-label="Upcoming or past calls" className="ml-auto flex rounded-[9px] bg-navy-50 p-[3px]">
                 {(['meetings', 'calls'] as const).map((t) => (
-                  <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={cn('rounded px-2.5 py-1 text-xs font-semibold transition', tab === t ? 'bg-navy-800 text-white' : 'text-navy-700 hover:bg-navy-50')}>
-                    {t === 'meetings' ? 'Meetings' : 'Past calls'}
+                  <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={cn('rounded-md px-3 py-1.5 text-[13px] font-semibold transition', tab === t ? 'bg-white text-navy-900 shadow-[0_1px_2px_rgba(13,28,59,0.12)]' : 'text-navy-600 hover:text-navy-900')}>
+                    {t === 'meetings' ? 'Upcoming' : 'Past calls'}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div className="min-h-[300px] px-4 py-3" aria-label={tab === 'meetings' ? 'Meetings on this day' : 'Past calls'}>
-              {meetings === null ? (
-                <div className="space-y-2 py-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-14 rounded-lg" />)}</div>
+            <div className="min-h-[320px]" aria-label={tab === 'meetings' ? 'Meetings on this day' : 'Past calls'}>
+              {error ? (
+                <div className="p-5"><ErrorState message={`Couldn't load meetings. ${error}`} onRetry={() => { setMeetings(null); load(); }} /></div>
+              ) : meetings === null ? (
+                <div className="space-y-2 p-5">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-14 rounded-lg" />)}</div>
               ) : tab === 'calls' ? (
                 calls.length ? <CallsList meetings={calls} onEnter={enter} /> : <Empty title="No calls yet" text="Meetings you've finished show up here." />
-              ) : dayList.length || (isToday && appointments.length) ? (
-                <DayList meetings={dayList} appointments={isToday ? appointments : []} now={now} onEnter={enter} />
               ) : (
-                <Empty title="No meetings scheduled." action={<button type="button" onClick={() => setCreating('scheduled')} className="inline-flex items-center gap-1.5 text-[15px] font-semibold text-gold-700 hover:text-gold-800"><Plus className="h-4 w-4" /> Schedule a meeting</button>} />
-              )}
-              {tab === 'meetings' && upcoming.length > 0 && meetings !== null && (
-                <div className="mt-3 border-t border-sand pt-3">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-ivory-700">Coming up</p>
-                  <ul className="mt-1 divide-y divide-sand">{upcoming.map((m) => <li key={m.id}><MeetingRow m={m} now={now} onEnter={enter} showDay /></li>)}</ul>
-                </div>
+                <>
+                  {groups.live.length > 0 && <Group title="Live now">{groups.live.map((m) => <MeetingRow key={m.id} m={m} {...rowProps} />)}</Group>}
+                  {groups.rooms.length > 0 && <Group title="Rooms ready to use">{groups.rooms.map((m) => <MeetingRow key={m.id} m={m} {...rowProps} />)}</Group>}
+                  {(groups.scheduled.length > 0 || dayAppointments.length > 0) && (
+                    <Group title={isToday ? 'Later today' : 'Scheduled'}>
+                      <DayList meetings={groups.scheduled} appointments={dayAppointments} {...rowProps} />
+                    </Group>
+                  )}
+                  {groups.all.length === 0 && dayAppointments.length === 0 && (
+                    <Empty title="No meetings scheduled." action={<button type="button" onClick={() => setCreating('scheduled')} className="inline-flex items-center gap-1.5 text-[15px] font-semibold text-gold-700 hover:text-gold-800"><Plus className="h-4 w-4" /> Schedule a meeting</button>} />
+                  )}
+                  {upcoming.length > 0 && <Group title="Coming up">{upcoming.map((m) => <MeetingRow key={m.id} m={m} {...rowProps} showDay />)}</Group>}
+                </>
               )}
             </div>
+          </div>
+        </section>
 
-            <button type="button" onClick={() => navigate('/recordings')} className="flex w-full items-center gap-1 border-t border-sand px-5 py-3.5 text-left text-[15px] font-medium text-navy-700 hover:bg-navy-50">
-              Open recordings <ChevronRight className="h-4 w-4" />
-            </button>
-          </aside>
-        </div>
-      )}
-
-      {joinOpen && (
-        <Modal open onClose={() => setJoinOpen(false)} title="Join a meeting" description="Enter a meeting code, a nickname, or paste an invite link." size="sm">
-          <form onSubmit={join} className="space-y-3" noValidate>
-            <input
-              autoFocus
-              value={joinText}
-              onChange={(e) => { setJoinText(e.target.value); setJoinError(null); }}
-              placeholder="FOCU-358, weekly-sync, or a link"
-              aria-label="Meeting code or nickname"
-              className="input-field"
-            />
-            {joinError && <p role="alert" className="text-sm text-burgundy-600">{joinError}</p>}
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setJoinOpen(false)} className="btn-secondary">Cancel</button>
-              <button type="submit" disabled={!joinText.trim() || joining} className="btn-primary">{joining ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Join'}</button>
+        <aside aria-label="At a glance" className="space-y-4">
+          <div className="flex items-center gap-4 rounded-[14px] border border-navy-100 bg-white p-5">
+            <div className="min-w-0">
+              <p className="text-[32px] font-bold leading-none tracking-tight tabular-nums text-navy-900">{fmtTime(now)}</p>
+              <p className="mt-1.5 text-sm text-ivory-700">{now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</p>
             </div>
-          </form>
-        </Modal>
-      )}
+            <p className="ml-auto text-right text-xs text-ivory-700"><span className="block text-[22px] font-bold leading-tight text-navy-900">{meetings === null ? '–' : todayCount}</span>today</p>
+          </div>
+          <PersonalRoom onEnter={enter} />
+          <RecentRecordings workspaceId={workspace.id} onOpen={() => navigate('/recordings')} />
+          <MyNotes onOpen={() => navigate('/ai-hub')} />
+        </aside>
+      </div>
 
       {creating && (
         <CreateMeetingModal
@@ -220,24 +223,34 @@ export function MeetingsPage() {
   );
 }
 
-/** A big rounded-square start button with its label underneath. */
-function Tile({ label, icon, onClick, tone = 'navy', disabled, hideLabel }: { label: string; icon: React.ReactNode; onClick: () => void; tone?: 'gold' | 'navy'; disabled?: boolean; hideLabel?: boolean }) {
+/** Instant rooms nobody ended: after this long they're shown under Past calls, not as live. */
+const STALE_MS = 12 * 3600000;
+
+/** A day's meetings, split the way people think about them. */
+function groupDay(meetings: Meeting[], day: Date, now: Date) {
+  // Your personal room has its own card, so it isn't listed here.
+  const onDay = meetings.filter((m) => !isPersonalRoom(m) && isSameDay(startOf(m), day) && (m.kind === 'scheduled' || !m.ended_at));
+  const fresh = (m: Meeting) => now.getTime() - startOf(m).getTime() < STALE_MS;
+  const live = onDay.filter((m) => isLive(m, now) && (m.kind !== 'instant' || fresh(m)));
+  const rooms = onDay.filter((m) => m.kind === 'later' && !m.ended_at && fresh(m) && !live.includes(m));
+  const scheduled = onDay.filter((m) => m.kind === 'scheduled' && !live.includes(m)).sort((a, b) => startOf(a).getTime() - startOf(b).getTime());
+  return { live, rooms, scheduled, all: [...live, ...rooms, ...scheduled] };
+}
+
+function isLive(m: Meeting, now: Date): boolean {
+  if (m.ended_at) return false;
+  if (m.kind === 'instant') return true;
+  if (m.kind !== 'scheduled') return false;
+  const at = startOf(m).getTime();
+  return at <= now.getTime() && now.getTime() < at + m.duration_min * 60000;
+}
+
+function Group({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col items-center">
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={disabled}
-        aria-label={label}
-        className={cn(
-          'flex h-[100px] w-[100px] items-center justify-center rounded-[28px] text-white shadow-[0_8px_20px_-8px_rgba(13,28,59,0.45)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_28px_-10px_rgba(13,28,59,0.5)] focus:outline-none focus-visible:ring-4 focus-visible:ring-gold-400/40 disabled:opacity-70',
-          tone === 'gold' ? 'bg-gold-400 hover:bg-gold-500' : 'bg-navy-800 hover:bg-navy-700',
-        )}
-      >
-        {icon}
-      </button>
-      {!hideLabel && <span className="mt-3 text-[15px] font-medium text-navy-800">{label}</span>}
-    </div>
+    <section aria-label={title} className="border-b border-navy-50 last:border-b-0">
+      <h3 className="px-5 pb-1 pt-4 text-[11px] font-bold uppercase tracking-[0.08em] text-ivory-600">{title}</h3>
+      <ul className="divide-y divide-navy-50">{children}</ul>
+    </section>
   );
 }
 
@@ -248,75 +261,224 @@ function roomWhen(m: Meeting, now: Date): string {
 
 function Empty({ title, text, action }: { title: string; text?: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <div className="flex min-h-[280px] flex-col items-center justify-center text-center">
-      <span className="flex h-20 w-20 items-center justify-center rounded-full bg-navy-50 text-navy-500"><CalendarDays className="h-9 w-9" /></span>
-      <p className="mt-5 text-[15px] font-semibold text-navy-900">{title}</p>
+    <div className="flex min-h-[260px] flex-col items-center justify-center px-5 text-center">
+      <span className="flex h-16 w-16 items-center justify-center rounded-full bg-navy-50 text-navy-500"><CalendarDays className="h-7 w-7" /></span>
+      <p className="mt-4 text-[15px] font-semibold text-navy-900">{title}</p>
       {text && <p className="mt-1 max-w-xs text-sm text-ivory-700">{text}</p>}
       {action && <div className="mt-2">{action}</div>}
     </div>
   );
 }
 
-function DayList({ meetings, appointments, now, onEnter }: { meetings: Meeting[]; appointments: VideoAppointment[]; now: Date; onEnter: (code: string) => void }) {
+type RowProps = { now: Date; onEnter: (code: string) => void; onEnd: (m: Meeting) => void; me: string };
+
+function DayList({ meetings, appointments, ...rest }: RowProps & { meetings: Meeting[]; appointments: VideoAppointment[] }) {
   const rows = [
-    ...meetings.map((m) => ({ key: m.id, at: startOf(m), node: <MeetingRow m={m} now={now} onEnter={onEnter} /> })),
+    ...meetings.map((m) => ({ key: m.id, at: startOf(m), node: <MeetingRow m={m} {...rest} /> })),
     ...appointments.map((a) => ({ key: a.id, at: new Date(a.start_time), node: <AppointmentRow a={a} /> })),
   ].sort((a, b) => a.at.getTime() - b.at.getTime());
-  return <ul className="divide-y divide-sand">{rows.map((r) => <li key={r.key}>{r.node}</li>)}</ul>;
+  return <>{rows.map((r) => <Fragment key={r.key}>{r.node}</Fragment>)}</>;
 }
 
-function MeetingRow({ m, now, onEnter, showDay }: { m: Meeting; now: Date; onEnter: (code: string) => void; showDay?: boolean }) {
+function MeetingRow({ m, now, onEnter, onEnd, me, showDay }: RowProps & { m: Meeting; showDay?: boolean }) {
   const { toast } = useToast();
   const at = startOf(m);
   const copy = async () => {
     try { await navigator.clipboard.writeText(inviteUrl(m)); toast(m.invite_token ? 'Invite link copied. Anyone with it can join.' : 'Link copied'); } catch { toast('Could not copy the link', 'error'); }
   };
-  const live = !m.ended_at && (m.kind === 'instant' || (m.kind === 'scheduled' && at <= now && now.getTime() < at.getTime() + m.duration_min * 60000));
-  const when = m.kind === 'scheduled' ? (showDay ? `${at.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })} · ${fmtTime(at)}` : fmtTime(at)) : roomWhen(m, now);
+  const live = isLive(m, now);
+  const time = m.kind === 'scheduled'
+    ? (showDay ? at.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' }) : fmtTime(at))
+    : live ? fmtTime(at) : 'Ready';
+  const meta = m.kind === 'scheduled'
+    ? `${showDay ? `${fmtTime(at)} · ` : ''}${m.duration_min} min · Room ${m.code}${m.nickname ? ` · ${m.nickname}` : ''}`
+    : `${roomWhen(m, now)} · Room ${m.code}${m.nickname ? ` · ${m.nickname}` : ''}`;
   return (
-    <div className="flex items-center gap-3 py-3">
-      <div className="min-w-0 flex-1">
-        <p className="flex items-center gap-2 truncate text-[15px] font-semibold text-navy-900">
+    <li className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5">
+      <span aria-hidden="true" className={cn('h-10 w-1 shrink-0 rounded-full', live ? 'bg-green-600' : m.kind === 'scheduled' ? 'bg-gold-400' : 'bg-navy-800', m.ended_at && 'bg-navy-100')} />
+      <span className="w-[72px] shrink-0 whitespace-nowrap text-sm font-semibold tabular-nums text-navy-700">{live && m.kind === 'instant' ? <><span className="block text-[11px] font-medium text-ivory-600">Started</span>{time}</> : time}</span>
+      <div className="min-w-[170px] flex-1">
+        <p className="flex items-center gap-2 text-[15px] font-semibold text-navy-900">
           <span className="truncate">{m.title}</span>
-          {live && <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-green-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-green-700"><Radio className="h-3 w-3" /> Live</span>}
-          {m.ended_at && <span className="shrink-0 rounded-md bg-ivory-200/60 px-1.5 py-0.5 text-[10px] font-semibold text-ivory-800">Ended</span>}
+          {live && <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-green-700"><Radio className="h-3 w-3" /> Live</span>}
+          {m.ended_at && <span className="shrink-0 rounded-full bg-navy-50 px-2 py-0.5 text-[10px] font-semibold text-ivory-700">Ended</span>}
         </p>
-        <p className="mt-0.5 truncate text-xs text-ivory-700">{when} · Room {m.code}{m.nickname ? ` · ${m.nickname}` : ''}{m.kind === 'scheduled' ? ` · ${m.duration_min} min` : ''}</p>
+        <p className="mt-0.5 truncate text-[13px] text-ivory-700">{meta}</p>
       </div>
-      <button type="button" onClick={copy} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-navy-700 hover:bg-navy-50" aria-label={`Copy invite link for ${m.title}`} title="Copy invite link"><Copy className="h-4 w-4" /></button>
-      {!m.ended_at && <button type="button" onClick={() => onEnter(m.code)} aria-label={`Enter ${m.title}`} className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md bg-navy-800 px-3 text-sm font-semibold text-white hover:bg-navy-700"><Play className="h-3 w-3" /> Start</button>}
-    </div>
+      <div className="ml-auto flex shrink-0 items-center gap-2">
+        <button type="button" onClick={copy} className="inline-flex h-[34px] items-center gap-1.5 rounded-lg px-3 text-[13px] font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50" aria-label={`Copy invite link for ${m.title}`} title="Copy invite link"><Copy className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Copy invite</span></button>
+        {live && m.host_id === me && <button type="button" onClick={() => onEnd(m)} aria-label={`End ${m.title}`} className="inline-flex h-[34px] items-center rounded-lg px-3 text-[13px] font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-burgundy-50 hover:text-burgundy-700">End</button>}
+        {!m.ended_at && (
+          <button type="button" onClick={() => onEnter(m.code)} aria-label={`Enter ${m.title}`} className={cn('inline-flex h-[34px] items-center gap-1 rounded-lg px-3.5 text-[13px] font-semibold text-white', live ? 'bg-green-600 hover:bg-green-500' : 'bg-navy-800 hover:bg-navy-700')}>
+            <Play className="h-3 w-3" /> {live ? 'Rejoin' : 'Start'}
+          </button>
+        )}
+      </div>
+    </li>
   );
 }
 
 function AppointmentRow({ a }: { a: VideoAppointment }) {
   return (
-    <div className="flex items-center gap-3 py-3">
-      <div className="min-w-0 flex-1">
+    <li className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5">
+      <span aria-hidden="true" className="h-10 w-1 shrink-0 rounded-full bg-navy-800" />
+      <span className="w-[72px] shrink-0 whitespace-nowrap text-sm font-semibold tabular-nums text-navy-700">{fmtTime(new Date(a.start_time))}</span>
+      <div className="min-w-[170px] flex-1">
         <p className="truncate text-[15px] font-semibold text-navy-900">{a.title}</p>
-        <p className="mt-0.5 truncate text-xs text-ivory-700">{fmtTime(new Date(a.start_time))} · Calendar appointment</p>
+        <p className="mt-0.5 truncate text-[13px] text-ivory-700">Calendar appointment · {Math.round((new Date(a.end_time).getTime() - new Date(a.start_time).getTime()) / 60000)} min</p>
       </div>
-      <a href={a.link} target="_blank" rel="noopener noreferrer" className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md px-2.5 text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50"><ExternalLink className="h-3.5 w-3.5" /> Open</a>
-    </div>
+      <a href={a.link} target="_blank" rel="noopener noreferrer" className="ml-auto inline-flex h-[34px] shrink-0 items-center gap-1 rounded-lg bg-navy-800 px-3.5 text-[13px] font-semibold text-white hover:bg-navy-700"><ExternalLink className="h-3.5 w-3.5" /> Open link</a>
+    </li>
   );
 }
 
 function CallsList({ meetings, onEnter }: { meetings: Meeting[]; onEnter: (code: string) => void }) {
   return (
-    <ul className="divide-y divide-sand">
+    <ul className="divide-y divide-navy-50">
       {meetings.map((m) => {
         const at = startOf(m);
         return (
-          <li key={m.id} className="flex items-center gap-3 py-3">
+          <li key={m.id} className="flex items-center gap-4 px-5 py-3.5">
             <div className="min-w-0 flex-1">
               <p className="truncate text-[15px] font-semibold text-navy-900">{m.title}</p>
-              <p className="mt-0.5 truncate text-xs text-ivory-700">{at.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} · {fmtTime(at)} · Room {m.code} · {m.ended_at ? 'Ended' : 'Not ended'}</p>
+              <p className="mt-0.5 truncate text-[13px] text-ivory-700">{at.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} · {fmtTime(at)} · Room {m.code} · {m.ended_at ? 'Ended' : 'Not ended'}</p>
             </div>
-            {!m.ended_at && <button type="button" onClick={() => onEnter(m.code)} className="inline-flex h-8 shrink-0 items-center rounded-md px-3 text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50">Rejoin</button>}
+            {!m.ended_at && <button type="button" onClick={() => onEnter(m.code)} className="inline-flex h-[34px] shrink-0 items-center rounded-lg px-3 text-[13px] font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50">Rejoin</button>}
           </li>
         );
       })}
     </ul>
+  );
+}
+
+function SideCard({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section aria-label={title} className="rounded-[14px] border border-navy-100 bg-white p-5">
+      <div className="mb-3 flex items-center gap-2">
+        <h2 className="text-[14px] font-bold text-navy-900">{title}</h2>
+        {action && <div className="ml-auto">{action}</div>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+const cardLink = 'inline-flex items-center gap-0.5 text-[13px] font-semibold text-gold-700 hover:text-gold-800';
+
+/** Your own room: the same link every time (a "for later" room with your personal nickname). */
+function PersonalRoom({ onEnter }: { onEnter: (code: string) => void }) {
+  const { workspace, user, profile } = useAuth();
+  const { toast } = useToast();
+  const [room, setRoom] = useState<Meeting | null | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const nickname = user ? personalNickname(user.id) : '';
+  useEffect(() => {
+    if (!workspace || !user) return;
+    let alive = true;
+    findMeeting(workspace.id, { nickname }).then((m) => { if (alive) setRoom(m); });
+    return () => { alive = false; };
+  }, [workspace, user, nickname]);
+  if (!workspace || !user) return null;
+
+  const create = async () => {
+    setBusy(true);
+    const first = profile?.first_name?.trim();
+    const { data, error } = await createMeeting({ workspaceId: workspace.id, hostId: user.id, title: first ? `${first}'s personal room` : 'My personal room', kind: 'later', nickname });
+    setBusy(false);
+    if (error || !data) { toast(error ?? 'Could not create your room.', 'error'); return; }
+    setRoom(data);
+  };
+  const start = async () => {
+    if (!room) return;
+    // Ended last time? Open it again: it's the same room and link.
+    if (room.ended_at) {
+      const err = await reopenMeeting(room.id);
+      if (err) { toast(`Couldn't open your room. ${err}`, 'error'); return; }
+    }
+    onEnter(room.code);
+  };
+  const copy = async () => {
+    if (!room) return;
+    try { await navigator.clipboard.writeText(inviteUrl(room)); toast('Your room link is copied.'); } catch { toast('Could not copy the link', 'error'); }
+  };
+
+  return (
+    <SideCard title="Your personal room" action={room ? <button type="button" onClick={() => { void start(); }} className={cardLink}>Start <ChevronRight className="h-3.5 w-3.5" /></button> : undefined}>
+      {room === undefined ? <Skeleton className="h-11 rounded-lg" /> : room ? (
+        <>
+          <div className="flex items-center gap-2 rounded-lg px-3 py-2.5 ring-1 ring-inset ring-navy-100">
+            <span className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-navy-700" title={inviteUrl(room)}>…/meetings/{room.code}</span>
+            <button type="button" onClick={copy} aria-label="Copy your personal room link" className="inline-flex items-center gap-1 text-[13px] font-semibold text-navy-900 hover:text-gold-700"><Copy className="h-3.5 w-3.5" /> Copy</button>
+          </div>
+          <p className="mt-2 text-xs text-ivory-700">Same link every time. Good for your email signature.</p>
+        </>
+      ) : (
+        <>
+          <p className="text-sm text-ivory-700">One link that's always yours, for quick calls.</p>
+          <button type="button" onClick={() => { void create(); }} disabled={busy} className="btn-secondary mt-3 w-full">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />} Create my room</button>
+        </>
+      )}
+    </SideCard>
+  );
+}
+
+function RecentRecordings({ workspaceId, onOpen }: { workspaceId: string; onOpen: () => void }) {
+  const [items, setItems] = useState<{ id: string; title: string; duration_seconds: number | null; created_at: string; transcript: string | null }[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    supabase.from('recordings').select('id, title, duration_seconds, created_at, transcript').eq('workspace_id', workspaceId).order('created_at', { ascending: false }).limit(3)
+      .then(({ data }) => { if (alive) setItems((data ?? []) as NonNullable<typeof items>); });
+    return () => { alive = false; };
+  }, [workspaceId]);
+  return (
+    <SideCard title="Recent recordings" action={<button type="button" onClick={onOpen} className={cardLink}>Open recordings <ChevronRight className="h-3.5 w-3.5" /></button>}>
+      {items === null ? <Skeleton className="h-12 rounded-lg" /> : items.length === 0 ? (
+        <p className="text-sm text-ivory-700">Recordings you make in meetings appear here.</p>
+      ) : (
+        <ul className="divide-y divide-navy-50">
+          {items.map((r) => (
+            <li key={r.id}>
+              <button type="button" onClick={onOpen} className="flex w-full items-center gap-3 py-2 text-left">
+                <span className="flex h-9 w-14 shrink-0 items-center justify-center rounded-lg bg-navy-800 text-gold-400"><Play className="h-3.5 w-3.5" fill="currentColor" /></span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-navy-900">{r.title}</span>
+                  <span className="block truncate text-xs text-ivory-700">{timeAgo(r.created_at)}{r.duration_seconds ? ` · ${Math.max(1, Math.round(r.duration_seconds / 60))} min` : ''}{r.transcript ? ' · transcript' : ''}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </SideCard>
+  );
+}
+
+/** Notes you wrote lately (on contacts), with a way into AI Hub. */
+function MyNotes({ onOpen }: { onOpen: () => void }) {
+  const { workspace, user } = useAuth();
+  const [, navigate] = useRouter();
+  const [items, setItems] = useState<{ id: string; content: string; contact_id: string | null }[] | null>(null);
+  useEffect(() => {
+    if (!workspace || !user) return;
+    let alive = true;
+    supabase.from('notes').select('id, content, contact_id').eq('workspace_id', workspace.id).eq('author_id', user.id).order('created_at', { ascending: false }).limit(3)
+      .then(({ data }) => { if (alive) setItems((data ?? []) as NonNullable<typeof items>); });
+    return () => { alive = false; };
+  }, [workspace, user]);
+  return (
+    <SideCard title="My notes" action={<button type="button" onClick={onOpen} aria-label="My notes" className={cardLink}>Open <ChevronRight className="h-3.5 w-3.5" /></button>}>
+      {items === null ? <Skeleton className="h-10 rounded-lg" /> : items.length === 0 ? (
+        <p className="text-sm text-ivory-700">Notes you add to contacts show up here.</p>
+      ) : (
+        <ul className="divide-y divide-navy-50">
+          {items.map((n) => (
+            <li key={n.id}>
+              <button type="button" onClick={() => (n.contact_id ? navigate(`/contacts/${n.contact_id}`) : onOpen())} className="block w-full truncate py-2 text-left text-[13px] text-navy-700 hover:text-navy-900">{n.content}</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </SideCard>
   );
 }
 
