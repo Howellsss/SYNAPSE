@@ -4,6 +4,9 @@
 //   { account_id, contact_id?, to, cc?, bcc?, subject, text, html?, from_name? }
 //   -> { message }   the saved messages row (status "sent" or "failed")
 //
+//   POST with header x-synapse-mailer: <key>   (the workflow scheduler, every minute)
+//   -> sends queued workflow emails; the key lives in the database (wf_private.settings)
+//
 // Secrets: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, TOKEN_ENCRYPTION_KEY
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.45.0";
 
@@ -198,6 +201,9 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
+  // The workflow scheduler asking us to send queued workflow emails.
+  if (req.headers.get("x-synapse-mailer")) return await sendQueued(req.headers.get("x-synapse-mailer") ?? "");
+
   try {
     const jwt = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
     const userClient = createClient(env("SUPABASE_URL"), env("SUPABASE_ANON_KEY"), {
@@ -334,3 +340,81 @@ Deno.serve(async (req: Request) => {
     return json({ error: (e as Error).message }, 500);
   }
 });
+
+// ---------- workflow emails ----------
+// Workflows queue emails as messages rows (status "queued", wf_run_id set). Every minute the
+// database scheduler calls this function with its private key; we send up to 25 of them from the
+// connected Gmail account the workflow chose, and record the outcome on each message.
+const QUEUE_BATCH = 25;
+
+async function sendQueued(key: string): Promise<Response> {
+  try {
+    const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
+    const { data: secret } = await db.rpc("wf_mailer_secret");
+    if (!secret || typeof secret !== "string" || !sameKey(key, secret)) return json({ error: "Not allowed" }, 403);
+
+    const { data: queued, error } = await db
+      .from("messages")
+      .select("id, subject, body, body_html, to_address, from_name, email_account_id")
+      .eq("status", "queued")
+      .not("wf_run_id", "is", null)
+      .order("created_at")
+      .limit(QUEUE_BATCH);
+    if (error) throw new Error(error.message);
+
+    let sent = 0;
+    let failed = 0;
+    for (const m of queued ?? []) {
+      // Claim it first so two runs never send the same email twice.
+      const { data: claimed } = await db.from("messages").update({ status: "sending" }).eq("id", m.id).eq("status", "queued").select("id");
+      if (!claimed?.length) continue;
+      let status: "sent" | "failed" = "sent";
+      let providerId: string | null = null;
+      let errorText: string | null = null;
+      try {
+        const { data: account } = await db.from("email_accounts").select("id, email, display_name, status").eq("id", m.email_account_id).maybeSingle();
+        if (!account) throw new Error("The sending Gmail account was disconnected.");
+        if (!m.to_address || !EMAIL_RE.test(m.to_address)) throw new Error("The contact's email address isn't valid.");
+        const accessToken = await accessTokenFor(db, account.id);
+        const mime = buildMime({
+          from: account.email, fromName: m.from_name ?? account.display_name, to: [m.to_address], cc: [], bcc: [],
+          subject: m.subject ?? "", text: m.body ?? "", html: m.body_html,
+        });
+        const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ raw: b64url(utf8(mime)) }),
+        });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const msg = out?.error?.message ?? `Gmail returned ${res.status}`;
+          if (res.status === 401) throw new ReconnectNeeded(msg);
+          throw new Error(msg);
+        }
+        providerId = out.id ?? null;
+      } catch (e) {
+        status = "failed";
+        errorText = (e as Error).message;
+        if (e instanceof ReconnectNeeded && m.email_account_id) {
+          await db.from("email_accounts").update({ status: "revoked", last_error: errorText, updated_at: new Date().toISOString() }).eq("id", m.email_account_id);
+        }
+      }
+      await db.from("messages").update({
+        status, provider_message_id: providerId, error: errorText, sent_at: status === "sent" ? new Date().toISOString() : null,
+      }).eq("id", m.id);
+      if (status === "sent") sent++; else failed++;
+    }
+    return json({ sent, failed });
+  } catch (e) {
+    console.error("workflow mailer", e);
+    return json({ error: (e as Error).message }, 500);
+  }
+}
+
+/** Compare without stopping at the first different character. */
+function sameKey(a: string, b: string): boolean {
+  if (!a || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}

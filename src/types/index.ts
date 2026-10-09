@@ -319,6 +319,8 @@ export interface Contact {
   contact_type?: 'lead' | 'customer' | null;
   timezone?: string | null;
   dnd_all?: boolean;
+  /** After the workflows database update. */
+  date_of_birth?: string | null;
   dnd_channels?: DndChannel[];
   last_activity_at: string;
   created_at: string;
