@@ -15,6 +15,7 @@ import { EmptyState, Skeleton, ErrorState } from '@/components/ui/States';
 import { formatDate, timeAgo, cn } from '@/lib/utils';
 import { CreateFormFlow } from '@/components/forms/CreateFormFlow';
 import type { Form, FormSubmission, FormUsage, FormStatus, FormUsageModule } from '@/types';
+import { publicOrigin } from '@/lib/publicUrl';
 
 type Tab = 'forms' | 'surveys';
 type ViewMode = 'list' | 'grid';
@@ -151,7 +152,7 @@ export function FormsPage() {
   }), [forms, tab]);
 
   const copyLink = (form: Form) => {
-    const url = `${window.location.origin}/forms/${form.id}`;
+    const url = `${publicOrigin()}/forms/${form.id}`;
     navigator.clipboard.writeText(url);
     toast('Link copied to clipboard');
   };
@@ -743,7 +744,7 @@ function ActionMenu({ form, onRename, onDuplicate, onArchive, onUnarchive, onTog
       <MenuItem icon={Copy} label="Duplicate" onClick={onDuplicate} />
       <MenuItem icon={Eye} label="Preview" onClick={() => window.open(`/forms/${form.id}`, '_blank')} />
       <MenuItem icon={Link2} label="Share link" onClick={() => {
-        const url = `${window.location.origin}/forms/${form.id}`;
+        const url = `${publicOrigin()}/forms/${form.id}`;
         navigator.clipboard.writeText(url);
       }} />
       <div className="my-1 border-t border-sand" />
@@ -822,7 +823,7 @@ function ShareModal({ form, onClose, onCopy }: {
   onCopy: (form: Form) => void;
 }) {
   if (!form) return null;
-  const url = `${window.location.origin}/forms/${form.id}`;
+  const url = `${publicOrigin()}/forms/${form.id}`;
   return (
     <Modal open={!!form} onClose={onClose} title="Share form" size="md"
       footer={<button onClick={() => { onCopy(form); onClose(); }} className="btn-primary"><Link2 className="w-4 h-4" /> Copy link</button>}

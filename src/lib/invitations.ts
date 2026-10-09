@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { UserRole } from '@/types';
+import { publicOrigin } from '@/lib/publicUrl';
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -13,7 +14,7 @@ export function isValidEmail(email: string): boolean {
 
 /** Link an invitee opens to accept (handled by AcceptInvitePage). */
 export function invitationLink(token: string): string {
-  return `${window.location.origin}/invite/${token}`;
+  return `${publicOrigin()}/invite/${token}`;
 }
 
 export interface InviteOptions {

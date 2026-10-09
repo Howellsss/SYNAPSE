@@ -5,6 +5,7 @@ import { slugify } from '@/lib/utils';
 import { useToast } from '@/context/ToastContext';
 import { Modal } from '@/components/ui/Modal';
 import type { Calendar as CalendarType, CalendarGroup } from '@/types';
+import { publicOrigin } from '@/lib/publicUrl';
 
 interface FormInfo {
   id: string;
@@ -144,7 +145,7 @@ export function GroupCalendarManager({ workspaceId, ownerFallbackId, calendars, 
   }
 
   async function copyLink(group: GroupWithMembers) {
-    await navigator.clipboard.writeText(`${window.location.origin}/group/${group.slug}`);
+    await navigator.clipboard.writeText(`${publicOrigin()}/group/${group.slug}`);
     toast('Group booking link copied.', 'success');
   }
 

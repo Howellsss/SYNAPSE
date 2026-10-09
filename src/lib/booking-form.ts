@@ -4,6 +4,7 @@ import type {
   FormFieldType,
   Calendar,
 } from '@/types';
+import { publicOrigin } from '@/lib/publicUrl';
 
 // ============================================================
 // DEFAULT BOOKING FORM
@@ -368,7 +369,7 @@ export function generateEmbedCode(
   calendarSlug: string,
   config: { type: 'inline' | 'popup' | 'button'; buttonText?: string; width?: string; height?: string },
 ): string {
-  const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://your-domain.com';
+  const baseUrl = publicOrigin();
   const bookingUrl = `${baseUrl}/book/${calendarSlug}`;
 
   if (config.type === 'inline') {

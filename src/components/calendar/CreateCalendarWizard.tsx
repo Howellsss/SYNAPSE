@@ -13,6 +13,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { cn, slugify } from '@/lib/utils';
 import type { CalendarType as CalType, LocationType } from '@/types';
 import { TimezoneSelect } from '@/components/ui/TimezoneSelect';
+import { publicOrigin } from '@/lib/publicUrl';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -360,7 +361,7 @@ export function CreateCalendarWizard({ onClose, onCreated }: { onClose: () => vo
 
   // ---- Success screen ----
   if (createdCalendar) {
-    const bookingUrl = `${window.location.origin}/book/${createdCalendar.slug}`;
+    const bookingUrl = `${publicOrigin()}/book/${createdCalendar.slug}`;
     return (
       <Modal open onClose={onClose} size="md">
         <div className="flex flex-col items-center text-center py-6">
