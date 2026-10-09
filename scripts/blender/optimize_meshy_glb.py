@@ -630,10 +630,41 @@ def copy_no_overwrite(src, dst):
         shutil.copyfileobj(fin, fout)
 
 
+def is_glb(path):
+    try:
+        with open(path, "rb") as f:
+            return f.read(4) == b"glTF"
+    except OSError:
+        return False
+
+
+def resolve_glb(path, log):
+    """Accept a GLB file, or a folder (e.g. Meshy's download folder) holding exactly one."""
+    if os.path.isfile(path):
+        if is_glb(path):
+            return path
+        raise OptimizeError(f"'{os.path.basename(path)}' is not a GLB file. Please pick the .glb file.")
+    if os.path.isdir(path):
+        found = sorted(os.path.join(path, n) for n in os.listdir(path)
+                       if n.lower().endswith(".glb") and "_optimized" not in n.lower()
+                       and is_glb(os.path.join(path, n)))
+        if len(found) == 1:
+            log(f"You picked a folder; using the only GLB inside it: {os.path.basename(found[0])}")
+            return found[0]
+        if not found:
+            names = ", ".join(sorted(os.listdir(path))[:15]) or "nothing"
+            raise OptimizeError(f"The folder '{os.path.basename(path)}' has no .glb file in it "
+                                f"(it contains: {names}). Open the folder that has your .glb and pick the file.")
+        raise OptimizeError(f"The folder '{os.path.basename(path)}' has {len(found)} GLB files: "
+                            + ", ".join(os.path.basename(f) for f in found)
+                            + ". Double-click the folder, then click the one you want so its name "
+                              "appears in the file-name box.")
+    raise OptimizeError(f"Couldn't find '{path}'. Click the .glb file so its name appears in the "
+                        "file-name box at the bottom of the file browser, then press Optimize GLB.")
+
+
 def run(context, src, target_mb, min_size, log):
-    src = os.path.abspath(src)
-    if not src.lower().endswith(".glb") or not os.path.isfile(src):
-        raise OptimizeError(f"Please pick an existing .glb file (got: {src}).")
+    src = resolve_glb(os.path.abspath(bpy.path.abspath(src)), log)
     target = int(target_mb * MB)
 
     log(f"SYNAPSE GLB optimizer  ({time.strftime('%Y-%m-%d %H:%M')}, Blender {bpy.app.version_string})")
