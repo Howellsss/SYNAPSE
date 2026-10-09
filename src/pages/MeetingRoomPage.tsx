@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import {
   ArrowLeft, Check, ChevronDown, Copy, RefreshCw, Smartphone, Hand, Info, LayoutGrid, MessageSquare, Mic, MicOff, MonitorUp, MoreHorizontal, PenLine, PhoneOff,
   SearchX, Settings2, SmilePlus, Users, Video, VideoOff, Camera, X, Clock, LogOut, Maximize2, Minimize2, PictureInPicture2, Pin, PinOff, Shield, ShieldCheck, XCircle,
-  Lock, DoorOpen, BarChart3, Presentation, Sparkles, Captions as CaptionsIcon, FileText, EyeOff, Eye, Split,
+  Lock, DoorOpen, BarChart3, Presentation, Sparkles, Captions as CaptionsIcon, FileText, EyeOff, Eye, Split, Circle, Square, Download,
 } from 'lucide-react';
 import type { LocalTrack, RemoteTrack, Room, Track } from 'livekit-client';
 import { useAuth } from '@/context/AuthContext';
@@ -27,6 +27,8 @@ import { AnnotationLayer } from '@/components/meetings/AnnotationLayer';
 import { AudioButton, ToolButton, VideoButton, darkItem, darkPanel } from '@/components/meetings/MeetingControls';
 import { BackgroundsPanel, CaptionsOverlay, ChatPanel, ParticipantsPanel, PollsPanel, TranscriptPanel, type ChatLine } from '@/components/meetings/MeetingPanels';
 import { useCaptions } from '@/meetings/useCaptions';
+import { useRecorder } from '@/meetings/useRecorder';
+import { transcriptText } from '@/meetings/captions';
 import { BreakoutPanel } from '@/components/meetings/BreakoutPanel';
 import { parseBreakout, roomOf, timeLeft } from '@/meetings/breakouts';
 import type { BreakoutState } from '@/lib/meetings';
@@ -457,6 +459,7 @@ const LIVE_POLL_MS = 5000;
 function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
   meeting: Meeting; join: JoinChoice; onLeave: () => void; onEnded: (by: 'you' | 'host' | 'removed') => void; onHome: () => void; refresh: () => Promise<Meeting | null>;
 }) {
+  const { workspace } = useAuth();
   // The meeting as it is now: the host can lock it, turn on the waiting room or open breakout rooms.
   const [meeting, setMeeting] = useState(initial);
   const { profile } = useAuth();
@@ -604,6 +607,15 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
 
   const bg = useBackground(call.camOn ? call.localTracks.camera : null, (m) => toast(m, 'error'));
   const captions = useCaptions({ bus, room, me: you.id, myName: you.name, micOn: call.micOn, names });
+  const recorder = useRecorder({
+    bus, room, isHost, hostId: meeting.host_id, meetingId: meeting.id, meetingTitle: meeting.title,
+    // Saved to the account that owns the meeting (the host is a member of it).
+    workspaceId: workspace?.id === meeting.workspace_id ? meeting.workspace_id : null,
+    micTrack: call.micOn ? call.localTracks.microphone?.mediaStreamTrack ?? null : null,
+    transcript: () => (captions.transcript.length ? transcriptText(meeting.title, captions.transcript, startedAt ?? undefined) : ''),
+    notice: (m, tone) => toast(m, tone ?? 'info'),
+  });
+  const [fileDismissed, setFileDismissed] = useState<string | null>(null);
   const board = useWhiteboard({ bus, room, me: you.id, hostId: meeting.host_id });
   const sharing = !!sharer;
   useEffect(() => { if (!sharing) setAnnotating(false); }, [sharing]);
@@ -826,6 +838,11 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
         {!isHost && myRoom === 0 && assignedRoom > 0 && (
           <button type="button" onClick={() => setOptedOut(null)} className="inline-flex shrink-0 items-center gap-1 rounded-full bg-navy-800 px-2.5 py-0.5 text-[11px] font-semibold text-white hover:bg-navy-700"><Split className="h-3 w-3" /> Join {plan?.rooms.find((r) => r.n === assignedRoom)?.name ?? 'your room'}</button>
         )}
+        {recorder.someoneRecording && (
+          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-burgundy-50 px-2 py-0.5 text-[11px] font-semibold text-burgundy-700 ring-1 ring-inset ring-burgundy-100" data-recording-pill>
+            <span className="h-2 w-2 animate-pulse rounded-full bg-[#C42B1C]" aria-hidden="true" /> Recording{recorder.startedAt ? ` ${elapsed(now - recorder.startedAt)}` : ''}
+          </span>
+        )}
         {meeting.locked && <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-navy-50 px-2 py-0.5 text-[11px] font-semibold text-navy-800 ring-1 ring-inset ring-navy-100" title="Nobody new can join"><Lock className="h-3 w-3" /> Locked</span>}
 
         {sharer && (
@@ -899,6 +916,16 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
           )}
           {isHost && panel !== 'people' && <WaitingBanner wr={wr} onSeeAll={() => openPanel('people')} />}
           <CaptionsOverlay captions={captions} />
+          {recorder.state === 'saving' && (
+            <div className="absolute bottom-4 left-4 z-30 rounded-xl bg-white px-4 py-2.5 text-sm text-navy-900 shadow-popover ring-1 ring-navy-100" role="status">Saving the recording…</div>
+          )}
+          {recorder.lastFile && recorder.state === 'idle' && fileDismissed !== recorder.lastFile.url && (
+            <div className="absolute bottom-4 left-4 z-30 flex items-center gap-3 rounded-xl bg-white px-4 py-2.5 text-sm text-navy-900 shadow-popover ring-1 ring-navy-100" role="status" aria-label="Recording finished">
+              Recording finished
+              <a href={recorder.lastFile.url} download={recorder.lastFile.name} className="inline-flex items-center gap-1 font-semibold text-gold-700 hover:text-gold-800"><Download className="h-4 w-4" /> Download a copy</a>
+              <button type="button" onClick={() => setFileDismissed(recorder.lastFile!.url)} aria-label="Dismiss" className="rounded-md p-1 text-navy-500 hover:bg-navy-50"><X className="h-4 w-4" /></button>
+            </div>
+          )}
           {infoOpen && <MeetingInfo meeting={meeting} hostName={names[meeting.host_id] ?? (isHost ? you.name : null)} onCopy={copy} onClose={() => setInfoOpen(false)} />}
           <CallNotices call={call} onOpenSettings={() => setSettingsOpen(true)} />
         </main>
@@ -966,15 +993,25 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
             />
           )}
           <ToolButton
-            className="hidden sm:flex"
+            className="hidden md:flex"
             label="Polls"
             icon={<BarChart3 className="h-[22px] w-[22px]" />}
             badge={polls.active && !polls.active.mine && !isHost && panel !== 'polls' ? 1 : undefined}
             pressed={panel === 'polls'}
             onClick={() => openPanel('polls')}
           />
+          {isHost && recorder.supported && (
+            <ToolButton
+              className="hidden lg:flex"
+              label={recorder.state === 'recording' ? 'Stop recording' : 'Record'}
+              icon={recorder.state === 'recording' ? <Square className="h-[20px] w-[20px] fill-[#C42B1C] text-[#C42B1C]" /> : <Circle className="h-[22px] w-[22px] text-[#C42B1C]" />}
+              pressed={recorder.state === 'recording'}
+              busy={recorder.state === 'starting' || recorder.state === 'saving'}
+              onClick={() => { if (recorder.state === 'recording') recorder.stop(); else if (recorder.state === 'idle') void recorder.start(); }}
+            />
+          )}
           <Popover
-            className="hidden sm:block"
+            className="hidden lg:block"
             label="Captions"
             panelClassName={cn('bottom-full left-1/2 mb-3 w-64 -translate-x-1/2', darkPanel)}
             trigger={({ open, toggle }) => <ToolButton label="Captions" icon={<CaptionsIcon className="h-[22px] w-[22px]" />} pressed={captions.on} aria-expanded={open} aria-haspopup="menu" onClick={toggle} />}
@@ -990,7 +1027,7 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
             )}
           </Popover>
           <ToolButton
-            className="hidden md:flex"
+            className="hidden lg:flex"
             label="Whiteboard"
             icon={<Presentation className="h-[22px] w-[22px]" />}
             pressed={!!board.owner}
@@ -1034,9 +1071,24 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
                   <ReactionPicker handUp={!!hands[you.id]} onReact={(e) => { react(e); close(); }} onHand={() => { toggleHand(); close(); }} />
                   <div className="my-1 h-px bg-sand" />
                 </div>
-                <button role="menuitem" className={cn(darkItem, 'sm:hidden')} onClick={() => { close(); openPanel('polls'); }}><BarChart3 className="h-4 w-4" /> Polls</button>
+                <button role="menuitem" className={cn(darkItem, 'md:hidden')} onClick={() => { close(); openPanel('polls'); }}><BarChart3 className="h-4 w-4" /> Polls</button>
                 {isHost && <button role="menuitem" className={cn(darkItem, 'sm:hidden')} onClick={() => { close(); openPanel('breakout'); }}><Split className="h-4 w-4" /> Breakout rooms</button>}
-                <button role="menuitem" className={cn(darkItem, 'sm:hidden')} onClick={() => { close(); if (!captions.on) captions.turnOn(); openPanel('transcript'); }}><CaptionsIcon className="h-4 w-4" /> Captions &amp; transcript</button>
+                {isHost && (
+                  <div className="sm:hidden">
+                    <button role="menuitemcheckbox" aria-checked={!!meeting.waiting_room} className={darkItem} onClick={() => { close(); void setSetting({ waiting_room: !meeting.waiting_room }); }}>
+                      <DoorOpen className="h-4 w-4" /> <span className="flex-1 text-left">Waiting room</span> <Toggle on={!!meeting.waiting_room} />
+                    </button>
+                    <button role="menuitemcheckbox" aria-checked={!!meeting.locked} className={darkItem} onClick={() => { close(); void setSetting({ locked: !meeting.locked }); }}>
+                      <Lock className="h-4 w-4" /> <span className="flex-1 text-left">Lock meeting</span> <Toggle on={!!meeting.locked} />
+                    </button>
+                  </div>
+                )}
+                {isHost && recorder.supported && (
+                  <button role="menuitem" className={cn(darkItem, 'lg:hidden')} onClick={() => { close(); if (recorder.state === 'recording') recorder.stop(); else if (recorder.state === 'idle') void recorder.start(); }}>
+                    {recorder.state === 'recording' ? <Square className="h-4 w-4 text-[#C42B1C]" /> : <Circle className="h-4 w-4 text-[#C42B1C]" />} {recorder.state === 'recording' ? 'Stop recording' : 'Record'}
+                  </button>
+                )}
+                <button role="menuitem" className={cn(darkItem, 'lg:hidden')} onClick={() => { close(); if (!captions.on) captions.turnOn(); openPanel('transcript'); }}><CaptionsIcon className="h-4 w-4" /> Captions &amp; transcript</button>
                 <button role="menuitem" className={darkItem} onClick={() => { close(); openPanel('backgrounds'); }}><Sparkles className="h-4 w-4" /> Backgrounds &amp; blur</button>
                 {!board.owner
                   ? <button role="menuitem" className={darkItem} onClick={() => { close(); board.open(); }}><Presentation className="h-4 w-4" /> Open whiteboard</button>
