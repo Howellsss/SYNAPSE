@@ -17,6 +17,7 @@ import { FormBuilder } from '@/pages/FormBuilder';
 import { WorkflowsHome } from '@/components/workflows/WorkflowsHome';
 import { Builder } from '@/components/workflows/Builder';
 import { RecordingsPage } from '@/pages/RecordingsPage';
+import { CharactersPage } from '@/pages/CharactersPage';
 import { AIAgentPage } from '@/pages/AIAgentPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { MeetingsPage } from '@/pages/MeetingsPage';
@@ -132,6 +133,7 @@ function AppContent() {
     }
     if (path.startsWith('/workflows')) return <WorkflowsHome />;
     if (path.startsWith('/recordings')) return <RecordingsPage />;
+    if (path.startsWith('/characters')) return <CharactersPage />;
     if (path.startsWith('/ai-hub')) return <AIAgentPage />;
     if (path.startsWith('/settings')) return <SettingsPage />;
     if (path.startsWith('/meetings')) return <MeetingsPage />;
