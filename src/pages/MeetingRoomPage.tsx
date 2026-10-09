@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import {
   ArrowLeft, Check, ChevronDown, Copy, RefreshCw, Smartphone, Hand, Info, LayoutGrid, MessageSquare, Mic, MicOff, MonitorUp, MoreHorizontal, PenLine, PhoneOff,
   SearchX, Settings2, SmilePlus, Users, Video, VideoOff, Camera, X, Clock, LogOut, Maximize2, Minimize2, PictureInPicture2, Pin, PinOff, Shield, ShieldCheck, XCircle,
-  Lock, DoorOpen, BarChart3, Presentation,
+  Lock, DoorOpen, BarChart3, Presentation, Sparkles, Captions as CaptionsIcon, FileText, EyeOff, Eye, Split,
 } from 'lucide-react';
 import type { LocalTrack, RemoteTrack, Room, Track } from 'livekit-client';
 import { useAuth } from '@/context/AuthContext';
@@ -10,7 +10,7 @@ import { useToast } from '@/context/ToastContext';
 import { useRouter } from '@/lib/router';
 import { endMeeting, getMeetingByCode, getMeetingByInvite, markRemoved, updateMeetingSettings, type Meeting } from '@/lib/meetings';
 import { inviteUrl } from '@/meetings/codes';
-import { REACTIONS, elapsed, isStopShare, newChatId, parseChat, parseControl, parseHostRequest, parseReact, type Reaction } from '@/meetings/messages';
+import { REACTIONS, elapsed, isRefresh, isStopShare, newChatId, parseChat, parseControl, parseHostRequest, parseReact, type Reaction } from '@/meetings/messages';
 import { TOPICS, useMeetingBus } from '@/meetings/useMeetingBus';
 import { useActiveDevices, type DeviceKind } from '@/meetings/useActiveDevices';
 import { normalizeMediaPrefs, problemText } from '@/spatial/media/devices';
@@ -25,7 +25,12 @@ import { CallNotices } from '@/components/spaces/room/CallNotices';
 import { Popover } from '@/components/spaces/room/Popover';
 import { AnnotationLayer } from '@/components/meetings/AnnotationLayer';
 import { AudioButton, ToolButton, VideoButton, darkItem, darkPanel } from '@/components/meetings/MeetingControls';
-import { ChatPanel, ParticipantsPanel, PollsPanel, type ChatLine } from '@/components/meetings/MeetingPanels';
+import { BackgroundsPanel, CaptionsOverlay, ChatPanel, ParticipantsPanel, PollsPanel, TranscriptPanel, type ChatLine } from '@/components/meetings/MeetingPanels';
+import { useCaptions } from '@/meetings/useCaptions';
+import { BreakoutPanel } from '@/components/meetings/BreakoutPanel';
+import { parseBreakout, roomOf, timeLeft } from '@/meetings/breakouts';
+import type { BreakoutState } from '@/lib/meetings';
+import { useBackground } from '@/meetings/useBackground';
 import { usePolls } from '@/meetings/usePolls';
 import { Whiteboard } from '@/components/meetings/Whiteboard';
 import { useWhiteboard } from '@/meetings/useWhiteboard';
@@ -433,7 +438,7 @@ function tilesFrom(call: LiveKitRoom, me: { id: string; name: string; avatarUrl:
   return list;
 }
 
-type SidePanel = 'people' | 'chat' | 'polls' | null;
+type SidePanel = 'people' | 'chat' | 'polls' | 'backgrounds' | 'transcript' | 'breakout' | null;
 type Layout = 'gallery' | 'speaker';
 
 function useNow(on: boolean) {
@@ -486,16 +491,32 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
   const [wantsShare, setWantsShare] = useState(() => new URLSearchParams(window.location.search || window.location.hash.split('?')[1] || '').get('share') === '1');
 
   const prefs = { ...normalizeMediaPrefs(profile?.media_prefs), join_muted: !join.mic, join_camera_off: !join.cam };
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  // Who we are in the call. Kept while switching rooms, so the breakout plan keeps finding us.
+  const [myId, setMyId] = useState(account.id);
+  const plan = parseBreakout(meeting.breakout ?? null);
+  const planKey = plan?.open ? `${plan.rooms.length}:${plan.ends_at ?? ''}:${Object.keys(plan.assign).length}` : '';
+  const [hostRoom, setHostRoom] = useState(0);
+  // A participant can step back to the main room until the host changes the rooms.
+  const [optedOut, setOptedOut] = useState<string | null>(null);
+  const hostHere = myId === meeting.host_id;
+  const myRoom = hostHere ? (plan?.open ? hostRoom : 0) : optedOut === planKey ? 0 : roomOf(plan, myId);
   const call = useLiveKitRoom(meeting.id, {
     prefs,
-    tokenBody: guestCtx.isGuest ? { meetingCode: meeting.code, invite: guestCtx.invite ?? '', guestName: guestCtx.name.trim() } : guestCtx.invite ? { meetingCode: meeting.code, invite: guestCtx.invite } : { meetingCode: meeting.code },
+    tokenBody: {
+      ...(guestCtx.isGuest ? { meetingCode: meeting.code, invite: guestCtx.invite ?? '', guestName: guestCtx.name.trim() } : guestCtx.invite ? { meetingCode: meeting.code, invite: guestCtx.invite } : { meetingCode: meeting.code }),
+      ...(myRoom ? { breakout: myRoom } : {}),
+    },
     ticketKey: `synapse.ticket.${meeting.code}`,
     autoSubscribe: true,
     onNotice: (m, tone) => toast(m, tone ?? 'info'),
   });
   const room = call.room;
   // Guests get their identity from the server (guest_…), so "you" is whoever this room says we are.
-  const you = { ...account, id: room?.localParticipant?.identity || account.id };
+  const liveId = room?.localParticipant?.identity;
+  useEffect(() => { if (liveId) setMyId(liveId); }, [liveId]);
+  const you = { ...account, id: liveId || myId };
   const bus = useMeetingBus(room);
   const devices = useDevices(true);
   const { active, choose } = useActiveDevices(room);
@@ -531,6 +552,7 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
   toggleMicRef.current = call.toggleMic;
   useEffect(() => bus.on(TOPICS.control, (raw, from) => {
     if (from !== meeting.host_id) return;
+    if (isRefresh(raw)) { void refreshRef.current().then((m) => { if (m) setMeeting((cur) => ({ ...cur, ...m })); }); return; }
     if (isStopShare(raw)) { void stopShareRef.current(); toast('The host stopped your screen share.', 'info'); return; }
     const req = parseHostRequest(raw);
     if (req === 'mute' || req === 'muteAll') {
@@ -580,6 +602,8 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
     seenPolls.current = polls.unseen;
   }, [polls.unseen, isHost, polls]);
 
+  const bg = useBackground(call.camOn ? call.localTracks.camera : null, (m) => toast(m, 'error'));
+  const captions = useCaptions({ bus, room, me: you.id, myName: you.name, micOn: call.micOn, names });
   const board = useWhiteboard({ bus, room, me: you.id, hostId: meeting.host_id });
   const sharing = !!sharer;
   useEffect(() => { if (!sharing) setAnnotating(false); }, [sharing]);
@@ -623,8 +647,6 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
   // The server is the source of truth: if the host ended the meeting and the message was lost,
   // this still takes everyone out within a few seconds. It also picks up lock / waiting room /
   // breakout changes.
-  const refreshRef = useRef(refresh);
-  refreshRef.current = refresh;
   const onEndedRef = useRef(onEnded);
   onEndedRef.current = onEnded;
   useEffect(() => {
@@ -651,6 +673,52 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
       if (!patch.waiting_room) await wr.admit('all');
     }
   };
+
+  // Breakout rooms. The host saves the plan on the meeting; everyone's app follows it.
+  const savePlan = async (next: BreakoutState, done?: string) => {
+    const before = meeting;
+    setMeeting((m) => ({ ...m, breakout: next }));
+    const err = await updateMeetingSettings(meeting.id, { breakout: next });
+    if (err) { setMeeting(before); toast(err, 'error'); return false; }
+    void bus.send(TOPICS.control, { t: 'refresh' });
+    if (done) toast(done, 'info');
+    return true;
+  };
+  const closeRooms = async () => {
+    if (!plan) return;
+    if (await savePlan({ ...plan, open: false }, 'Breakout rooms closed. Everyone is coming back.')) setHostRoom(0);
+  };
+  useEffect(() => { if (!plan?.open) setHostRoom(0); }, [plan?.open]);
+  // Time's up: the host's app closes the rooms.
+  const closeRoomsRef = useRef(closeRooms);
+  closeRoomsRef.current = closeRooms;
+  const endsAt = plan?.open ? plan.ends_at : null;
+  useEffect(() => {
+    if (!isHost || !endsAt) return;
+    const ms = new Date(endsAt).getTime() - Date.now();
+    const t = window.setTimeout(() => { void closeRoomsRef.current(); }, Math.max(0, ms));
+    return () => window.clearTimeout(t);
+  }, [isHost, endsAt]);
+  // Tell people where they are as they move.
+  const lastRoom = useRef(myRoom);
+  useEffect(() => {
+    const prev = lastRoom.current;
+    lastRoom.current = myRoom;
+    if (prev === myRoom) return;
+    const name = plan?.rooms.find((r) => r.n === myRoom)?.name;
+    if (myRoom) toast(`You're in ${name ?? `Room ${myRoom}`}.`, 'info');
+    else if (prev) toast(plan?.open ? 'You’re back in the main room.' : 'Breakout rooms have closed. You’re back in the main room.', 'info');
+  }, [myRoom, plan, toast]);
+  // The host's message to all rooms.
+  const lastMessage = useRef(plan?.message?.at ?? null);
+  const messageAt = plan?.message?.at ?? null;
+  useEffect(() => {
+    if (!messageAt || messageAt === lastMessage.current) return;
+    lastMessage.current = messageAt;
+    if (!isHost && plan?.message) toast(`Message from the host: ${plan.message.text}`, 'info');
+  }, [messageAt, isHost, plan?.message, toast]);
+  const myRoomName = plan?.rooms.find((r) => r.n === myRoom)?.name ?? `Room ${myRoom}`;
+  const assignedRoom = roomOf(plan, myId);
 
   const tileProps = (t: TileInfo) => ({
     tile: t, hand: !!hands[t.id], reaction: reactions[t.id]?.e, host: t.id === meeting.host_id,
@@ -749,6 +817,15 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
         <span className="flex h-8 w-8 items-center justify-center text-green-600" title="Audio, video and chat are encrypted in transit" aria-label="Encrypted"><ShieldCheck className="h-[18px] w-[18px]" /></span>
         <h1 className="min-w-0 truncate text-sm font-semibold">{meeting.title}</h1>
         <span className="hidden shrink-0 text-xs text-ivory-700 md:inline">· Room {meeting.code} · {count} {count === 1 ? 'person' : 'people'}</span>
+        {myRoom > 0 && (
+          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-gold-50 py-0.5 pl-2 pr-1 text-[11px] font-semibold text-navy-900 ring-1 ring-inset ring-gold-200" data-breakout-pill>
+            <Split className="h-3 w-3 text-gold-700" /> {myRoomName}{timeLeft(plan?.ends_at, now) ? ` · ${timeLeft(plan?.ends_at, now)}` : ''}
+            {!isHost && <button type="button" onClick={() => setOptedOut(planKey)} className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50">Leave room</button>}
+          </span>
+        )}
+        {!isHost && myRoom === 0 && assignedRoom > 0 && (
+          <button type="button" onClick={() => setOptedOut(null)} className="inline-flex shrink-0 items-center gap-1 rounded-full bg-navy-800 px-2.5 py-0.5 text-[11px] font-semibold text-white hover:bg-navy-700"><Split className="h-3 w-3" /> Join {plan?.rooms.find((r) => r.n === assignedRoom)?.name ?? 'your room'}</button>
+        )}
         {meeting.locked && <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-navy-50 px-2 py-0.5 text-[11px] font-semibold text-navy-800 ring-1 ring-inset ring-navy-100" title="Nobody new can join"><Lock className="h-3 w-3" /> Locked</span>}
 
         {sharer && (
@@ -821,6 +898,7 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
             </div>
           )}
           {isHost && panel !== 'people' && <WaitingBanner wr={wr} onSeeAll={() => openPanel('people')} />}
+          <CaptionsOverlay captions={captions} />
           {infoOpen && <MeetingInfo meeting={meeting} hostName={names[meeting.host_id] ?? (isHost ? you.name : null)} onCopy={copy} onClose={() => setInfoOpen(false)} />}
           <CallNotices call={call} onOpenSettings={() => setSettingsOpen(true)} />
         </main>
@@ -834,6 +912,21 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
           />
         )}
         {panel === 'chat' && <ChatPanel lines={chat} onSend={sendChat} onClose={() => setPanel(null)} />}
+        {panel === 'breakout' && isHost && (
+          <BreakoutPanel
+            plan={plan}
+            people={tiles.filter((t) => !t.local && t.id !== meeting.host_id).map((t) => ({ id: t.id, name: t.name }))}
+            hostRoom={hostRoom}
+            now={now}
+            onOpen={(p) => { void savePlan(p, `Opened ${p.rooms.length} breakout ${p.rooms.length === 1 ? 'room' : 'rooms'}.`); }}
+            onCloseRooms={() => { void closeRooms(); }}
+            onMessage={(text) => { if (plan) void savePlan({ ...plan, message: { text, at: new Date().toISOString() } }, 'Message sent to all rooms.'); }}
+            onVisit={setHostRoom}
+            onClose={() => setPanel(null)}
+          />
+        )}
+        {panel === 'transcript' && <TranscriptPanel captions={captions} title={meeting.title} startedAt={startedAt} onClose={() => setPanel(null)} />}
+        {panel === 'backgrounds' && <BackgroundsPanel bg={bg} onClose={() => setPanel(null)} />}
         {panel === 'polls' && <PollsPanel polls={polls} isHost={isHost} onClose={() => setPanel(null)} />}
       </div>
 
@@ -841,7 +934,7 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
       <footer role="toolbar" aria-label="Meeting controls" className="relative z-20 grid shrink-0 grid-cols-[auto_1fr_auto] items-center gap-1 border-t border-sand bg-white px-1.5 py-1 sm:px-3 sm:py-1.5">
         <div className="flex items-center gap-0.5 sm:gap-1">
           <AudioButton micOn={call.micOn} busy={call.pending.microphone} onToggle={() => { void call.toggleMic(); }} devices={devices} active={active} onChoose={onChoose} onSettings={() => setSettingsOpen(true)} shortcut={SHORTCUTS.mic} />
-          <VideoButton onRefresh={devices.rescan} camOn={call.camOn} busy={call.pending.camera} onToggle={() => { void call.toggleCam(); }} devices={devices} active={active} onChoose={onChoose} onSettings={() => setSettingsOpen(true)} shortcut={SHORTCUTS.cam} />
+          <VideoButton onRefresh={devices.rescan} camOn={call.camOn} busy={call.pending.camera} onToggle={() => { void call.toggleCam(); }} devices={devices} active={active} onChoose={onChoose} onSettings={() => setSettingsOpen(true)} shortcut={SHORTCUTS.cam} onBackgrounds={() => openPanel('backgrounds')} />
         </div>
 
         <div className="flex min-w-0 items-center justify-center gap-0.5 sm:gap-1">
@@ -880,6 +973,22 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
             pressed={panel === 'polls'}
             onClick={() => openPanel('polls')}
           />
+          <Popover
+            className="hidden sm:block"
+            label="Captions"
+            panelClassName={cn('bottom-full left-1/2 mb-3 w-64 -translate-x-1/2', darkPanel)}
+            trigger={({ open, toggle }) => <ToolButton label="Captions" icon={<CaptionsIcon className="h-[22px] w-[22px]" />} pressed={captions.on} aria-expanded={open} aria-haspopup="menu" onClick={toggle} />}
+          >
+            {(close) => (
+              <>
+                {captions.on
+                  ? <button role="menuitem" className={darkItem} onClick={() => { close(); captions.turnOff(); }}><CaptionsIcon className="h-4 w-4" /> Turn off captions for everyone</button>
+                  : <button role="menuitem" className={darkItem} onClick={() => { close(); captions.turnOn(); }}><CaptionsIcon className="h-4 w-4" /> Turn on captions</button>}
+                {captions.on && <button role="menuitem" className={darkItem} onClick={() => { close(); captions.setShown(!captions.shown); }}>{captions.shown ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />} {captions.shown ? 'Hide captions on my screen' : 'Show captions'}</button>}
+                <button role="menuitem" className={darkItem} onClick={() => { close(); openPanel('transcript'); }}><FileText className="h-4 w-4" /> View full transcript</button>
+              </>
+            )}
+          </Popover>
           <ToolButton
             className="hidden md:flex"
             label="Whiteboard"
@@ -901,6 +1010,7 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
                   <button role="menuitem" className={darkItem} onClick={() => { close(); setInfoOpen(true); }}><Info className="h-4 w-4" /> Meeting info</button>
                   {sharer && !sharer.local && <button role="menuitem" className={darkItem} onClick={() => { close(); stopTheirShare(); }}><X className="h-4 w-4" /> Stop participant’s sharing</button>}
                   <div className="my-1 h-px bg-sand" />
+                  <button role="menuitem" className={darkItem} onClick={() => { close(); openPanel('breakout'); }}><Split className="h-4 w-4" /> Breakout rooms{plan?.open ? ' (open)' : ''}</button>
                   <button role="menuitemcheckbox" aria-checked={!!meeting.waiting_room} className={darkItem} onClick={() => { close(); void setSetting({ waiting_room: !meeting.waiting_room }); }}>
                     <DoorOpen className="h-4 w-4" /> <span className="flex-1 text-left">Waiting room</span> <Toggle on={!!meeting.waiting_room} />
                   </button>
@@ -925,6 +1035,9 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
                   <div className="my-1 h-px bg-sand" />
                 </div>
                 <button role="menuitem" className={cn(darkItem, 'sm:hidden')} onClick={() => { close(); openPanel('polls'); }}><BarChart3 className="h-4 w-4" /> Polls</button>
+                {isHost && <button role="menuitem" className={cn(darkItem, 'sm:hidden')} onClick={() => { close(); openPanel('breakout'); }}><Split className="h-4 w-4" /> Breakout rooms</button>}
+                <button role="menuitem" className={cn(darkItem, 'sm:hidden')} onClick={() => { close(); if (!captions.on) captions.turnOn(); openPanel('transcript'); }}><CaptionsIcon className="h-4 w-4" /> Captions &amp; transcript</button>
+                <button role="menuitem" className={darkItem} onClick={() => { close(); openPanel('backgrounds'); }}><Sparkles className="h-4 w-4" /> Backgrounds &amp; blur</button>
                 {!board.owner
                   ? <button role="menuitem" className={darkItem} onClick={() => { close(); board.open(); }}><Presentation className="h-4 w-4" /> Open whiteboard</button>
                   : board.canClose && <button role="menuitem" className={darkItem} onClick={() => { close(); board.close(); }}><Presentation className="h-4 w-4" /> Close whiteboard</button>}

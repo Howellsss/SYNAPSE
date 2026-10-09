@@ -33,6 +33,9 @@ export function parseControl(raw: unknown): ControlMsg | null {
   return isObj(raw) && raw.t === 'ended' ? { t: 'ended' } : null;
 }
 
+/** The host telling everyone to re-read the meeting now (breakout rooms changed). */
+export const isRefresh = (raw: unknown) => isObj(raw) && raw.t === 'refresh';
+
 /** The host asking the person sharing their screen to stop. */
 export const isStopShare = (raw: unknown) => isObj(raw) && raw.t === 'stopShare';
 

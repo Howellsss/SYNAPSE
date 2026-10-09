@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Check, ChevronUp, Mic, MicOff, RefreshCw, Settings2, Smartphone, Video, VideoOff, Volume2 } from 'lucide-react';
+import { Check, ChevronUp, Mic, MicOff, RefreshCw, Settings2, Smartphone, Sparkles, Video, VideoOff, Volume2 } from 'lucide-react';
 import { Popover } from '@/components/spaces/room/Popover';
 import { deviceLabel, isIphoneCamera, type DeviceLists } from '@/spatial/media/useDevices';
 import { iphoneStatus, isMacDesktop } from '@/spatial/media/continuity';
@@ -154,9 +154,11 @@ export function AudioButton({ micOn, busy, onToggle, devices, active, onChoose, 
   );
 }
 
-export function VideoButton({ camOn, busy, onToggle, devices, active, onChoose, onSettings, onRefresh, shortcut }: {
+export function VideoButton({ camOn, busy, onToggle, devices, active, onChoose, onSettings, onRefresh, shortcut, onBackgrounds }: {
   camOn: boolean; busy?: boolean; onToggle: () => void; devices: DeviceLists; active: Record<DeviceKind, string | undefined>;
   onChoose: (kind: DeviceKind, d: MediaDeviceInfo) => void; onSettings: () => void; onRefresh: () => Promise<void>; shortcut: string;
+  /** Opens blur / background choices. */
+  onBackgrounds?: () => void;
 }) {
   const iphone = iphoneStatus(devices.cameras, devices.microphones);
   return (
@@ -182,6 +184,7 @@ export function VideoButton({ camOn, busy, onToggle, devices, active, onChoose, 
             <IphoneCameraHelp status={iphone} onLookAgain={onRefresh} cameras={devices.cameras} className="mx-2 my-1" />
           )}
           <div className="my-1 h-px bg-sand" />
+          {onBackgrounds && <button role="menuitem" className={darkItem} onClick={() => { close(); onBackgrounds(); }}><Sparkles className="h-4 w-4" /> Blur my background…</button>}
           <button role="menuitem" className={darkItem} onClick={() => { close(); onSettings(); }}><Settings2 className="h-4 w-4" /> Video settings…</button>
         </>
       )}

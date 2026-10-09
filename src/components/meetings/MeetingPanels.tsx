@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { BarChart3, Copy, Hand, Mic, MicOff, Plus, Send, UserMinus, Video, VideoOff, X } from 'lucide-react';
+import { Ban, BarChart3, Captions as CaptionsIcon, CaptionsOff, Copy, Download, Droplet, Droplets, Hand, ImagePlus, Mic, MicOff, Plus, Send, UserMinus, Video, VideoOff, X } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { MAX_CHAT } from '@/meetings/messages';
 import { MAX_OPTION, MAX_OPTIONS, MAX_QUESTION, percent } from '@/meetings/polls';
 import type { PollState, Polls } from '@/meetings/usePolls';
+import { PRESETS, paintPreset, type BackgroundChoice } from '@/meetings/backgrounds';
+import type { Background } from '@/meetings/useBackground';
+import type { Captions } from '@/meetings/useCaptions';
+import { transcriptText } from '@/meetings/captions';
 import { cn } from '@/lib/utils';
 
 export interface ChatLine {
@@ -242,5 +246,105 @@ function PollCard({ s, isHost, onVote, onEnd }: { s: PollState; isHost: boolean;
         {isHost && !s.closed && <button type="button" onClick={onEnd} className="rounded-md px-2.5 py-1 font-semibold text-burgundy-600 ring-1 ring-inset ring-navy-100 hover:bg-burgundy-50">End poll</button>}
       </div>
     </article>
+  );
+}
+
+export function BackgroundsPanel({ bg, onClose }: { bg: Background; onClose: () => void }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [thumbs] = useState(() => Object.fromEntries(PRESETS.map((p) => [p.id, paintPreset(p, 160, 90)])));
+  const pick = (c: BackgroundChoice) => bg.choose(c);
+  const Tile = ({ label, on, onClick, children }: { label: string; on: boolean; onClick: () => void; children: React.ReactNode }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={on}
+      aria-label={label}
+      title={label}
+      className={cn('relative flex aspect-video items-center justify-center overflow-hidden rounded-lg bg-navy-50 text-xs font-semibold text-navy-800 ring-2 ring-offset-2 transition', on ? 'ring-gold-400' : 'ring-transparent hover:ring-navy-100')}
+    >
+      {children}
+    </button>
+  );
+  const status = bg.status === 'loading' ? 'Applying…' : bg.status === 'unsupported' ? "This browser can't change backgrounds. Try Chrome, Edge or Safari on a computer." : bg.status === 'error' ? "Couldn't apply it. Your camera is shown as it is." : bg.status === 'on' ? 'On. Everyone sees this.' : 'Turn on your camera to see it.';
+  return (
+    <Panel title="Backgrounds" onClose={onClose}>
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+        <p className="mb-2 text-xs text-ivory-700" role="status">{bg.choice.kind === 'none' ? 'No effect.' : status}</p>
+        <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-ivory-700">Blur</h3>
+        <div className="grid grid-cols-3 gap-2">
+          <Tile label="No background effect" on={bg.choice.kind === 'none'} onClick={() => pick({ kind: 'none' })}><Ban className="h-5 w-5" /></Tile>
+          <Tile label="Light blur" on={bg.choice.kind === 'blur' && bg.choice.strength === 'light'} onClick={() => pick({ kind: 'blur', strength: 'light' })}><Droplet className="mr-1 h-4 w-4" />Light</Tile>
+          <Tile label="Strong blur" on={bg.choice.kind === 'blur' && bg.choice.strength === 'strong'} onClick={() => pick({ kind: 'blur', strength: 'strong' })}><Droplets className="mr-1 h-4 w-4" />Strong</Tile>
+        </div>
+        <h3 className="mb-1.5 mt-4 text-xs font-semibold uppercase tracking-wider text-ivory-700">Backgrounds</h3>
+        <div className="grid grid-cols-3 gap-2">
+          {PRESETS.map((p) => (
+            <Tile key={p.id} label={p.label} on={bg.choice.kind === 'image' && bg.choice.id === p.id} onClick={() => pick({ kind: 'image', id: p.id, url: '', label: p.label })}>
+              <img src={thumbs[p.id]} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            </Tile>
+          ))}
+          {bg.choice.kind === 'image' && bg.choice.id.startsWith('upload-') && (
+            <Tile label={bg.choice.label} on onClick={() => {}}><img src={bg.choice.url} alt="" className="absolute inset-0 h-full w-full object-cover" /></Tile>
+          )}
+          <Tile label="Upload a picture" on={false} onClick={() => fileRef.current?.click()}><ImagePlus className="h-5 w-5" /></Tile>
+        </div>
+        <input ref={fileRef} type="file" accept="image/*" className="hidden" aria-label="Background picture" onChange={(e) => { const f = e.target.files?.[0]; if (f) bg.upload(f); e.target.value = ''; }} />
+        <p className="mt-4 text-xs text-ivory-700">Works best with good light and a plain wall. Your picture stays on this computer.</p>
+      </div>
+    </Panel>
+  );
+}
+
+export function TranscriptPanel({ captions, title, startedAt, onClose }: { captions: Captions; title: string; startedAt: number | null; onClose: () => void }) {
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [captions.transcript.length]);
+  const download = () => {
+    const blob = new Blob([transcriptText(title, captions.transcript, startedAt ?? undefined)], { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${title} transcript.txt`;
+    a.click();
+    window.setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  return (
+    <Panel title="Transcript" onClose={onClose}>
+      <div className="flex flex-wrap gap-2 border-b border-sand p-3">
+        {captions.on
+          ? <button type="button" onClick={captions.turnOff} className="btn-secondary flex-1"><CaptionsOff className="h-4 w-4" /> Stop captions</button>
+          : <button type="button" onClick={captions.turnOn} className="btn-primary flex-1"><CaptionsIcon className="h-4 w-4" /> Start captions</button>}
+        <button type="button" onClick={download} disabled={!captions.transcript.length} className="btn-secondary flex-1 disabled:opacity-50"><Download className="h-4 w-4" /> Save .txt</button>
+      </div>
+      {captions.problem && <p role="alert" className="mx-3 mt-3 rounded-lg bg-gold-50 px-3 py-2 text-xs text-navy-900 ring-1 ring-inset ring-gold-200">{captions.problem}</p>}
+      <div ref={listRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4" aria-live="polite">
+        {!captions.transcript.length && (
+          <p className="pt-6 text-center text-sm text-ivory-700">
+            {captions.on ? 'Listening… what people say appears here.' : 'Turn on captions to see what everyone says, and keep a transcript of the meeting.'}
+          </p>
+        )}
+        {captions.transcript.map((l) => (
+          <div key={l.id}>
+            <span className="text-[11px] text-ivory-700">{l.name} · {time(l.at)}</span>
+            <p className="text-sm text-navy-900">{l.text}</p>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+/** Captions over the bottom of the call, like subtitles. */
+export function CaptionsOverlay({ captions }: { captions: Captions }) {
+  if (!captions.on || !captions.shown || !captions.live.length) return null;
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-12 z-20 flex justify-center px-4" data-captions>
+      <div className="max-w-3xl space-y-1 rounded-xl bg-navy-900/85 px-4 py-2.5 text-center text-white shadow-popover backdrop-blur">
+        {captions.live.map((c) => (
+          <p key={c.who + c.at} className="text-[15px] leading-snug"><span className="font-semibold text-gold-300">{c.name}: </span>{c.text}</p>
+        ))}
+      </div>
+    </div>
   );
 }

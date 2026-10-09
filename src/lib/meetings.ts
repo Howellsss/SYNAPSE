@@ -35,6 +35,10 @@ export interface BreakoutState {
   assign: Record<string, number>;
   /** Shown to everyone: when the host plans to bring people back (ISO time), if set. */
   ends_at?: string | null;
+  /** The host's latest message to every room. */
+  message?: { text: string; at: string } | null;
+  /** Names of the people assigned, so the host can see who is where. */
+  names?: Record<string, string>;
 }
 
 /** Shown when a meeting tool needs the database update that hasn't been applied yet. */
