@@ -63,8 +63,21 @@ export async function characterFileUrl(character: Pick<Character, 'storage_path'
   return { url: data?.signedUrl ?? null, error: error?.message ?? (data?.signedUrl ? null : 'Could not open the character file.') };
 }
 
-export async function updateCharacter(id: string, changes: Partial<Pick<Character, 'name' | 'default_clip'>>): Promise<{ error: string | null }> {
+export async function updateCharacter(id: string, changes: Partial<Pick<Character, 'name' | 'default_clip' | 'space_clips'>>): Promise<{ error: string | null }> {
   const { error } = await supabase.from('characters').update(changes).eq('id', id);
+  return { error: error?.message ?? null };
+}
+
+/** Makes this the character everyone appears as in the workspace's spaces (one per workspace). */
+export async function setSpaceCharacter(workspaceId: string, id: string): Promise<{ error: string | null }> {
+  const { error: clearError } = await supabase
+    .from('characters')
+    .update({ use_in_spaces: false })
+    .eq('workspace_id', workspaceId)
+    .eq('use_in_spaces', true)
+    .neq('id', id);
+  if (clearError) return { error: clearError.message };
+  const { error } = await supabase.from('characters').update({ use_in_spaces: true }).eq('id', id);
   return { error: error?.message ?? null };
 }
 

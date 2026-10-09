@@ -1,8 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { Box, Pause, Play, Star, Trash2, Upload } from 'lucide-react';
+import { Box, Check, Pause, Play, Star, Trash2, Upload, Users } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
-import { characterFileUrl, deleteCharacter, listCharacters, updateCharacter, uploadCharacter } from '@/lib/characters';
+import { characterFileUrl, deleteCharacter, listCharacters, setSpaceCharacter, updateCharacter, uploadCharacter } from '@/lib/characters';
+import { AVATAR_ACTION_LABELS, AVATAR_ACTIONS, pickSpaceCharacter, resolveSpaceClips, type AvatarAction } from '@/spatial/scene/avatarClips';
 import { formatMb } from '@/lib/glb';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState, ErrorState, LoadingSpinner, Skeleton } from '@/components/ui/States';
@@ -63,6 +64,15 @@ export function CharactersPage() {
 
   const onChanged = (c: Character) => setCharacters((list) => list.map((x) => (x.id === c.id ? c : x)));
 
+  const onUseInSpaces = async (c: Character) => {
+    if (!workspace) return;
+    const { error } = await setSpaceCharacter(workspace.id, c.id);
+    if (error) { toast(error, 'error'); return; }
+    setCharacters((list) => list.map((x) => ({ ...x, use_in_spaces: x.id === c.id })));
+    toast(`Everyone now appears as ${c.name} in your workspaces.`);
+  };
+  const inSpaces = pickSpaceCharacter(characters);
+
   const selected = characters.find((c) => c.id === selectedId) ?? null;
   const uploadButton = (
     <button type="button" className="btn-primary" onClick={() => fileInput.current?.click()} disabled={!!uploading}>
@@ -116,6 +126,7 @@ export function CharactersPage() {
                   className={cn('card card-hover w-full p-4 text-left', c.id === selectedId && 'ring-2 ring-gold-400')}
                 >
                   <p className="truncate text-sm font-semibold text-navy-800">{c.name}</p>
+                  {inSpaces?.id === c.id && <p className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-gold-700"><Users className="h-3.5 w-3.5" /> Used in workspaces</p>}
                   <p className="mt-0.5 text-xs text-ivory-600">
                     {c.clips.length} animation{c.clips.length === 1 ? '' : 's'} · {formatMb(c.size_bytes)} · {timeAgo(c.created_at)}
                   </p>
@@ -129,6 +140,8 @@ export function CharactersPage() {
               character={selected}
               onChanged={onChanged}
               onDelete={() => setConfirmDelete(selected)}
+              inSpaces={inSpaces?.id === selected.id}
+              onUseInSpaces={() => onUseInSpaces(selected)}
             />
           )}
         </div>
@@ -147,10 +160,12 @@ export function CharactersPage() {
   );
 }
 
-function CharacterDetail({ character, onChanged, onDelete }: {
+function CharacterDetail({ character, onChanged, onDelete, inSpaces, onUseInSpaces }: {
   character: Character;
   onChanged: (c: Character) => void;
   onDelete: () => void;
+  inSpaces: boolean;
+  onUseInSpaces: () => void;
 }) {
   const { toast } = useToast();
   const [url, setUrl] = useState<string | null>(null);
@@ -252,8 +267,56 @@ function CharacterDetail({ character, onChanged, onDelete }: {
                 </span>
               ) : null}
             </div>
+
+            <SpaceClipChoices character={character} clipNames={clipNames} onPreview={(name) => { setClip(name); setPlaying(true); }} onChanged={onChanged} />
           </>
         )}
+
+        <div className="flex flex-wrap items-center gap-3 border-t border-navy-50 pt-4">
+          {inSpaces ? (
+            <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-navy-800"><Check className="h-4 w-4 text-green-600" /> Everyone appears as this character in your workspaces</span>
+          ) : (
+            <button type="button" className="btn-secondary btn-sm" onClick={onUseInSpaces}><Users className="h-4 w-4" /> Use in workspaces</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Which clip plays for standing, walking, wave and cheer when people walk around a space. */
+function SpaceClipChoices({ character, clipNames, onPreview, onChanged }: {
+  character: Character;
+  clipNames: string[];
+  onPreview: (clip: string) => void;
+  onChanged: (c: Character) => void;
+}) {
+  const { toast } = useToast();
+  const chosen = resolveSpaceClips(character);
+
+  const choose = async (action: AvatarAction, value: string) => {
+    const next = { ...chosen, [action]: value || null };
+    const { error } = await updateCharacter(character.id, { space_clips: next });
+    if (error) { toast(error, 'error'); return; }
+    onChanged({ ...character, space_clips: next });
+    if (value) onPreview(value);
+  };
+
+  return (
+    <div>
+      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ivory-600">In workspaces</p>
+      <p className="mb-3 text-xs text-ivory-600">Which animation plays as people walk around a space. Choosing one plays it above.</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {AVATAR_ACTIONS.map((action) => (
+          <label key={action} className="block text-sm">
+            <span className="font-medium text-navy-800">{AVATAR_ACTION_LABELS[action].label}</span>
+            <span className="block text-xs text-ivory-600">{AVATAR_ACTION_LABELS[action].hint}</span>
+            <select className="input-field mt-1" value={chosen[action] ?? ''} onChange={(e) => choose(action, e.target.value)}>
+              <option value="">{action === 'idle' ? 'None (stand still)' : 'None'}</option>
+              {clipNames.map((name) => <option key={name} value={name}>{name.replace(/_/g, ' ')}</option>)}
+            </select>
+          </label>
+        ))}
       </div>
     </div>
   );

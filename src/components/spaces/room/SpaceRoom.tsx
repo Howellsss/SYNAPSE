@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Clock, X, Loader2, WifiOff, Gauge } from 'lucide-react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Clock, X, Loader2, WifiOff, Gauge, Footprints } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from '@/lib/router';
 import { listSpaces } from '@/lib/spaces';
+import { characterFileUrl, listCharacters } from '@/lib/characters';
 import { spaceTypeInfo } from '@/spatial/data/spaceTypes';
 import { templateInfo } from '@/spatial/data/templates';
 import { buildRooms } from '@/spatial/data/rooms';
@@ -12,7 +13,11 @@ import { loadStatus, saveStatus, type PresenceStatus } from '@/spatial/net/statu
 import { useSpaceChannel, type MeInput } from '@/spatial/net/useSpaceChannel';
 import { useAway } from '@/spatial/net/useAway';
 import { EMOTE_EMOJI } from '@/spatial/net/emotes';
-import type { EmoteMsg, PresenceMeta } from '@/spatial/net/protocol';
+import type { EmoteKind, EmoteMsg, PresenceMeta } from '@/spatial/net/protocol';
+import type { LocalState } from '@/spatial/net/moveSender';
+import { pickSpaceCharacter, resolveSpaceClips, type SpaceClips } from '@/spatial/scene/avatarClips';
+import { floorFor } from '@/spatial/scene/floor';
+import type { SceneControls } from '@/components/spaces/scene/SpaceScene';
 import { loadQuality, saveQuality, type GraphicsQuality } from '@/spatial/quality';
 import { normalizeMediaPrefs } from '@/spatial/media/devices';
 import { TypeArt } from '@/components/spaces/TypeArt';
@@ -30,10 +35,17 @@ import { ConnectionPill, ControlBar, WorldToolbar } from './Overlay';
 import { InviteToSpace } from './InviteToSpace';
 import type { Space } from '@/types';
 
+// three.js is large; load the 3D world only inside a space.
+const SpaceScene = lazy(() => import('@/components/spaces/scene/SpaceScene'));
+
+const NO_CLIPS: SpaceClips = { idle: null, walk: null, wave: null, cheer: null };
+/** Share my position with proximity (React state) only when I've moved this far, not every frame. */
+const POS_STEP = 0.25;
+
 /**
- * Inside a space: people panel on the left, the world on the right with floating controls.
- * The world itself (SpaceScene) arrives with the 3D art kit; until then the area shows the
- * workspace's picture so everything around it can be used.
+ * Inside a space: people panel on the left, the 3D world on the right with floating controls.
+ * The world is an open floor sized to the team where everyone appears as the workspace's
+ * character (Characters page), until the art kit brings rooms and furniture.
  */
 export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; closedNote: string | null; onSpaceChange: (s: Space) => void }) {
   const { user, profile, role, workspace } = useAuth();
@@ -50,27 +62,46 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
   const { toast } = useToast();
   const name = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || user?.email?.split('@')[0] || 'You';
   const away = useAway();
-  // Where I am. The 3D scene sets this; until it exists nobody is placed.
+  // Where I am (set by the 3D scene as I walk).
   const [myPos, setMyPos] = useState<{ x: number; z: number } | null>(null);
-  const [myZone, setMyZone] = useState<string | null>(null);
+  const [myZone] = useState<string | null>(null);
   const [myGroup, setMyGroup] = useState<string[]>([]);
   const [myLocks, setMyLocks] = useState<string[]>([]);
   const me = useMemo<MeInput | null>(() => (user ? {
     userId: user.id, name, avatarUrl: profile?.avatar_url ?? null, avatarHash: null, status,
     zoneId: myZone, deskId: null, conversation: myGroup, locks: myLocks,
   } : null), [user, name, profile?.avatar_url, status, myZone, myGroup, myLocks]);
-  const { people, connection, remotes, updateLocal, sendEmote, onEmote, sendKnock, sendAdmit, onRoomSignal } = useSpaceChannel(space.id, me, away);
+  const { people, connection, remotes, updateLocal, startPath, endPath, sendEmote, onEmote, sendKnock, sendAdmit, onRoomSignal } = useSpaceChannel(space.id, me, away);
 
-  // Share my position whenever it changes.
-  useEffect(() => { if (myPos) updateLocal({ x: myPos.x, z: myPos.z, rot: 0, anim: 'idle' }); }, [myPos, updateLocal]);
-  // Development hook: place yourself until the 3D scene does it (window.__synapse.setPose(x, z, zoneId)).
+  // The scene reports where I am every frame: the network sender decides what to send, and
+  // proximity hears about it when I've moved a little.
+  const lastPos = useRef<{ x: number; z: number } | null>(null);
+  const onLocal = useCallback((state: LocalState) => {
+    updateLocal(state);
+    const prev = lastPos.current;
+    if (!prev || Math.hypot(prev.x - state.x, prev.z - state.z) >= POS_STEP) {
+      lastPos.current = { x: state.x, z: state.z };
+      setMyPos({ x: state.x, z: state.z });
+    }
+  }, [updateLocal]);
+
+  // The character everyone appears as (the workspace's chosen one, else its newest).
+  const [character, setCharacter] = useState<{ url: string | null; clips: SpaceClips; loaded: boolean }>({ url: null, clips: NO_CLIPS, loaded: false });
   useEffect(() => {
-    if (!import.meta.env.DEV) return;
-    (window as unknown as { __synapse?: unknown }).__synapse = {
-      setPose: (x: number, z: number, zone: string | null = null) => { setMyPos({ x, z }); setMyZone(zone); },
-    };
-    return () => { delete (window as unknown as { __synapse?: unknown }).__synapse; };
-  }, []);
+    if (!workspace) { setCharacter({ url: null, clips: NO_CLIPS, loaded: true }); return; }
+    let alive = true;
+    (async () => {
+      const { data } = await listCharacters(workspace.id);
+      const chosen = pickSpaceCharacter(data);
+      const file = chosen ? await characterFileUrl(chosen) : { url: null };
+      if (alive) setCharacter({ url: file.url, clips: chosen ? resolveSpaceClips(chosen) : NO_CLIPS, loaded: true });
+    })();
+    return () => { alive = false; };
+  }, [workspace]);
+  const sceneControls = useRef<SceneControls | null>(null);
+  const [localEmote, setLocalEmote] = useState<{ kind: EmoteKind; id: number } | null>(null);
+  const [hintOpen, setHintOpen] = useState(true);
+  const floor = floorFor(space.size_band);
   // Always list yourself, even before (or without) the presence channel answering.
   const shown = useMemo<PresenceMeta[]>(
     () => (!me || people.some((p) => p.userId === me.userId) ? people : [...people, { ...me, away, joinedAt: '' }].sort((a, b) => a.name.localeCompare(b.name))),
@@ -109,6 +140,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
 
   const react = useCallback((kind: 'wave' | 'cheer' | 'heart') => {
     sendEmote(kind);
+    setLocalEmote({ kind, id: Date.now() });
     const id = Date.now() + Math.random();
     setBubbles((b) => [...b.slice(-4), { id, text: `You ${EMOTE_EMOJI[kind]}` }]);
     window.setTimeout(() => setBubbles((b) => b.filter((x) => x.id !== id)), 3500);
@@ -191,6 +223,10 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
       raisedHands={hands}
       conversation={proximity.myGroup}
       onWave={(id) => { sendEmote('wave', id); toast(`You waved at ${people.find((p) => p.userId === id)?.name ?? 'them'} 👋`); }}
+      onWalkTo={(id) => {
+        setSheetOpen(false);
+        if (!sceneControls.current?.walkTo(id)) toast("They haven't appeared on the floor yet.", 'info');
+      }}
     />
   );
 
@@ -203,14 +239,43 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
         <div className="absolute inset-0" data-quality={quality}>
           <TypeArt info={info} eager className="scale-105 opacity-60 blur-[2px]" />
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(13,28,59,0.35),rgba(13,28,59,0.92))]" />
+          {user && character.loaded && (
+            <Suspense fallback={<div className="absolute inset-0 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-ivory-300" /></div>}>
+              <SpaceScene
+                characterUrl={character.url}
+                clips={character.clips}
+                floor={floor}
+                quality={quality}
+                meId={user.id}
+                people={shown}
+                raisedHands={hands}
+                remotes={remotes}
+                groups={proximity.groups}
+                onLocal={onLocal}
+                startPath={startPath}
+                endPath={endPath}
+                onEmote={onEmote}
+                localEmote={localEmote}
+                controls={sceneControls}
+                onCharacterError={(m) => toast(m, 'error')}
+              />
+            </Suspense>
+          )}
         </div>
-        <div className="absolute inset-0 flex items-center justify-center py-6 pb-28 pl-4 pr-16 sm:px-20">
-          <div className="max-w-sm rounded-3xl bg-navy-900/70 p-6 text-center text-white ring-1 ring-white/10 backdrop-blur">
-            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-gold-400">{info.name}{template ? ` · ${template.name}` : ''}</p>
-            <h1 className="mt-2 break-words text-2xl font-bold">{space.name}</h1>
-            <p className="mt-2 text-sm text-ivory-300">The walkable 3D office is coming soon. You can already see who's here, set your status and invite people.</p>
+        <h1 className="sr-only">{space.name} · {info.name}{template ? ` · ${template.name}` : ''}</h1>
+
+        {hintOpen && (
+          <div className="absolute inset-x-0 bottom-36 z-10 flex justify-center px-3 lg:bottom-24">
+            <p className="flex max-w-md items-center gap-2 rounded-2xl bg-white/95 px-4 py-2 text-sm text-navy-800 shadow-popover backdrop-blur">
+              <Footprints className="h-4 w-4 shrink-0 text-gold-600" />
+              <span className="min-w-0 flex-1">
+                Click or tap the floor to walk, or use the arrow keys or WASD.
+                {character.loaded && !character.url && <> Everyone shows as a simple figure until a character is uploaded on the <button type="button" className="font-semibold text-gold-700 underline" onClick={() => navigate('/characters')}>Characters</button> page.</>}
+              </span>
+              <button type="button" onClick={() => setHintOpen(false)} aria-label="Hide tip" className="rounded-lg p-1 text-ivory-700 hover:bg-ivory-50"><X className="h-4 w-4" /></button>
+            </p>
           </div>
-        </div>
+        )}
 
         {/* Video strip (filled by proximity video) */}
         <div className="absolute inset-x-0 top-3 z-10 flex justify-center pl-16 pr-3 sm:px-16 lg:left-64 lg:right-4 lg:px-0">
@@ -272,9 +337,9 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
             quality={quality}
             onQuality={changeQuality}
             canEdit={canEdit}
-            onCenter={() => {}}
-            onZoomIn={() => {}}
-            onZoomOut={() => {}}
+            onCenter={() => sceneControls.current?.center()}
+            onZoomIn={() => sceneControls.current?.zoomIn()}
+            onZoomOut={() => sceneControls.current?.zoomOut()}
             mapOpen={mapOpen}
             onToggleMap={() => setMapOpen((v) => !v)}
             onEdit={() => setEditOpen(true)}
