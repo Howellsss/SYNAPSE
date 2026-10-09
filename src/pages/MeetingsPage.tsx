@@ -104,45 +104,47 @@ export function MeetingsPage() {
 
           {/* Everything you can start, in one row */}
           <div className="mt-5 flex flex-wrap items-start gap-2.5">
-            <div className="flex h-11 overflow-hidden rounded-xl bg-gold-400 text-navy-900 shadow-[0_6px_16px_-8px_rgba(228,169,60,0.9)]">
-              <button type="button" onClick={() => { void startInstant(); }} disabled={startingInstant} aria-label="New meeting" className="inline-flex items-center gap-2 pl-4 pr-3 text-[15px] font-semibold hover:bg-gold-300 disabled:opacity-70">
-                {startingInstant ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <Video className="h-[18px] w-[18px]" />} New meeting
-              </button>
-              <Popover
-                label="New meeting options"
-                panelClassName="left-0 top-full mt-2 w-64"
-                trigger={({ open, toggle }) => (
-                  <button type="button" onClick={toggle} aria-haspopup="menu" aria-expanded={open} aria-label="New meeting options" className="flex h-full items-center border-l border-navy-900/15 px-2.5 hover:bg-gold-300">
+            {/* The whole split button anchors the options menu (no overflow-hidden, so the menu isn't clipped). */}
+            <Popover
+              label="New meeting options"
+              panelClassName="left-0 top-full mt-2 w-64"
+              trigger={({ open, toggle }) => (
+                <div className="flex h-11 rounded-xl bg-gold-400 text-navy-900 shadow-[0_6px_16px_-8px_rgba(228,169,60,0.9)]">
+                  <button type="button" onClick={() => { void startInstant(); }} disabled={startingInstant} aria-label="New meeting" className="inline-flex items-center gap-2.5 rounded-l-xl pl-2 pr-3 text-[15px] font-semibold hover:bg-gold-300 disabled:opacity-70">
+                    <IconChip className="bg-navy-800 text-gold-300">{startingInstant ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}</IconChip> New meeting
+                  </button>
+                  <button type="button" onClick={toggle} aria-haspopup="menu" aria-expanded={open} aria-label="New meeting options" className="flex items-center rounded-r-xl border-l border-navy-900/15 px-2.5 hover:bg-gold-300">
                     <ChevronDown className={cn('h-4 w-4 transition', open && 'rotate-180')} />
                   </button>
-                )}
-              >
-                {(close) => (
-                  <>
-                    <button role="menuitem" className={cn(menuItem, 'py-2.5 font-medium')} disabled={startingInstant} onClick={() => { close(); void startInstant(); }}>
-                      <Video className="h-4 w-4 text-green-600" /> Start an instant meeting
-                    </button>
-                    <button role="menuitem" className={cn(menuItem, 'py-2.5 font-medium')} onClick={() => { close(); setCreating('later'); }}>
-                      <Link2 className="h-4 w-4 text-navy-500" /> Create a meeting for later
-                    </button>
-                    <button role="menuitem" className={cn(menuItem, 'py-2.5 font-medium')} onClick={() => { close(); setCreating('scheduled'); }}>
-                      <CalendarDays className="h-4 w-4 text-purple-600" /> Schedule in calendar
-                    </button>
-                  </>
-                )}
-              </Popover>
-            </div>
-            <button type="button" onClick={() => setCreating('scheduled')} className="inline-flex h-11 items-center gap-2 rounded-xl bg-white px-4 text-[15px] font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50"><CalendarDays className="h-[18px] w-[18px]" /> Schedule</button>
-            <button type="button" onClick={() => { void startInstant('share'); }} disabled={startingInstant} className="inline-flex h-11 items-center gap-2 rounded-xl bg-white px-4 text-[15px] font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50 disabled:opacity-70"><MonitorUp className="h-[18px] w-[18px]" /> Share screen</button>
+                </div>
+              )}
+            >
+              {(close) => (
+                <>
+                  <button role="menuitem" className={cn(menuItem, 'py-2.5 font-medium')} disabled={startingInstant} onClick={() => { close(); void startInstant(); }}>
+                    <Video className="h-4 w-4 text-green-600" /> Start an instant meeting
+                  </button>
+                  <button role="menuitem" className={cn(menuItem, 'py-2.5 font-medium')} onClick={() => { close(); setCreating('later'); }}>
+                    <Link2 className="h-4 w-4 text-navy-500" /> Create a meeting for later
+                  </button>
+                  <button role="menuitem" className={cn(menuItem, 'py-2.5 font-medium')} onClick={() => { close(); setCreating('scheduled'); }}>
+                    <CalendarDays className="h-4 w-4 text-purple-600" /> Schedule in calendar
+                  </button>
+                </>
+              )}
+            </Popover>
+            <button type="button" onClick={() => setCreating('scheduled')} className="inline-flex h-11 items-center gap-2.5 rounded-xl bg-white pl-2 pr-4 text-[15px] font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50"><IconChip className="bg-[#5B5BD6] text-white"><CalendarDays className="h-4 w-4" /></IconChip> Schedule</button>
+            <button type="button" onClick={() => { void startInstant('share'); }} disabled={startingInstant} className="inline-flex h-11 items-center gap-2.5 rounded-xl bg-white pl-2 pr-4 text-[15px] font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50 disabled:opacity-70"><IconChip className="bg-green-600 text-white"><MonitorUp className="h-4 w-4" /></IconChip> Share screen</button>
             <form onSubmit={join} noValidate className="w-full sm:w-auto" aria-label="Join a meeting">
               <div className={cn('flex h-11 overflow-hidden rounded-xl bg-white ring-1 ring-inset focus-within:ring-2 focus-within:ring-gold-400', joinError ? 'ring-burgundy-500' : 'ring-navy-100')}>
+                <span className="flex items-center pl-2"><IconChip className="bg-navy-800 text-white"><Plus className="h-4 w-4" strokeWidth={2.5} /></IconChip></span>
                 <input
                   value={joinText}
                   onChange={(e) => { setJoinText(e.target.value); setJoinError(null); }}
                   placeholder="Enter a code or link"
                   aria-label="Meeting code or nickname"
                   aria-invalid={!!joinError}
-                  className="min-w-0 flex-1 bg-transparent px-4 text-[15px] text-navy-900 placeholder:text-ivory-600 focus:outline-none sm:w-52"
+                  className="min-w-0 flex-1 bg-transparent px-3 text-[15px] text-navy-900 placeholder:text-ivory-600 focus:outline-none sm:w-40"
                 />
                 <button type="submit" disabled={!joinText.trim() || joining} className="flex items-center bg-navy-800 px-4 text-[15px] font-semibold text-white hover:bg-navy-700 disabled:cursor-default disabled:hover:bg-navy-800">{joining ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Join'}</button>
               </div>
@@ -221,6 +223,11 @@ export function MeetingsPage() {
       )}
     </div>
   );
+}
+
+/** A small coloured square behind a button's icon, as on Apple's app icons. */
+function IconChip({ className, children }: { className?: string; children: React.ReactNode }) {
+  return <span aria-hidden="true" className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-lg shadow-[inset_0_-1px_0_rgba(0,0,0,0.12)]', className)}>{children}</span>;
 }
 
 /** Instant rooms nobody ended: after this long they're shown under Past calls, not as live. */
