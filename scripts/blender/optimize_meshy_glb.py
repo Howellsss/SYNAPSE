@@ -749,8 +749,28 @@ def resolve_merge_sources(path):
     if first and first not in found:
         raise OptimizeError("That file looks like one this script made. Pick one of the original GLBs.")
     if len(found) < 2:
+        hint = ""
+        candidates = []
+        try:
+            for sub in sorted(os.listdir(folder)):
+                full = os.path.join(folder, sub)
+                if os.path.isdir(full) and not sub.startswith("."):
+                    try:
+                        if len(folder_glbs(full)) >= 2:
+                            candidates.append(sub)
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+        if candidates:
+            hint = (" Folders here that do have animation GLBs: " + ", ".join(f"'{c}'" for c in candidates[:5])
+                    + ". Double-click that folder so you are inside it (its GLBs are listed), "
+                      "then press Merge Animations.")
+        else:
+            hint = (" Double-click your Meshy folder so you are inside it (its GLBs are listed), "
+                    "then press Merge Animations.")
         raise OptimizeError(f"The folder '{os.path.basename(folder)}' has {len(found)} GLB file(s); "
-                            "merging needs at least two. Use 'Optimize one GLB' instead.")
+                            f"merging needs at least two.{hint}")
     if first:
         found.remove(first)
         found.insert(0, first)

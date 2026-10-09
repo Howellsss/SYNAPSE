@@ -24,9 +24,11 @@ original files are never overwritten.
 4. Hover over the code and press **⌥P** (or click ▶ in the Text Editor header).
 5. A small menu appears. Choose **Merge all animations in a folder** or **Optimize one GLB**.
 6. A file browser opens.
-   - **Merge:** go to the Meshy download folder and either click the folder once, or open it and
-     click the GLB whose mesh and textures you want to keep (any of them works, they're the same
-     character). Then click **Merge Animations**. Every GLB in that folder is merged.
+   - **Merge:** **double-click** the Meshy download folder so you are *inside* it and its `.glb`
+     files are listed, then click **Merge Animations**. Every GLB in that folder is merged.
+     (Single-clicking a folder in Blender's file browser does not select it; the button always uses
+     the folder you are inside.) Optionally click one of the GLBs first to choose whose mesh and
+     textures are kept; they're the same character anyway.
    - **Optimize:** open the folder, click one `.glb` so its name shows in the file-name box, and
      click **Optimize GLB**.
    - Options are in the browser's right side panel (press **N** if it's hidden):
