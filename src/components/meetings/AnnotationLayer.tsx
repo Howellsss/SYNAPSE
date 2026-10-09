@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { MousePointer2, Pen, Highlighter, Type, Eraser, Undo2, Trash2, X, Users, Zap } from 'lucide-react';
 import {
-  COLORS, TOPIC, WIDTHS, chunkSync, contentRect, emptyState, hitTest, mayAnnotate, newId, parseMsg, reduce,
+  COLORS, TOPIC as DEFAULT_TOPIC, WIDTHS, chunkSync, contentRect, emptyState, hitTest, mayAnnotate, newId, parseMsg, reduce,
   type AnnotMsg, type AnnotState, type Item, type Point, type Roles, type Tool,
 } from '@/meetings/annotations';
 import type { MeetingBus } from '@/meetings/useMeetingBus';
@@ -14,7 +14,17 @@ interface Props {
   me: string;
   roles: Roles;
   /** The shared-screen <video>, for where the picture actually sits. */
-  video: HTMLVideoElement | null;
+  video?: HTMLVideoElement | null;
+  /** Or a blank surface to draw on (the whiteboard): the layer covers all of it. */
+  surface?: HTMLElement | null;
+  /** Data channel topic (the whiteboard uses its own). */
+  topic?: string;
+  /** Pen colours to offer; the first is the starting colour. */
+  colors?: readonly string[];
+  /** What the tool bar's close button says. */
+  closeLabel?: string;
+  /** Extra buttons at the end of the tool bar. */
+  extra?: React.ReactNode;
   /** Show the annotation tool bar. */
   open: boolean;
   onClose: () => void;
@@ -25,14 +35,14 @@ const LASER_MS = 1500;
 const FLUSH_MS = 40;
 
 /** Annotations drawn over a shared screen, shared live with everyone in the meeting. */
-export function AnnotationLayer({ bus, me, roles, video, open, onClose, names }: Props) {
+export function AnnotationLayer({ bus, me, roles, video = null, surface = null, topic: TOPIC = DEFAULT_TOPIC, colors = COLORS, closeLabel = 'Close annotation tools', extra, open, onClose, names }: Props) {
   const [state, setState] = useState<AnnotState>(emptyState);
   const stateRef = useRef(state);
   stateRef.current = state;
   const rolesRef = useRef(roles);
   rolesRef.current = roles;
   const [tool, setTool] = useState<Tool>('pen');
-  const [color, setColor] = useState(COLORS[1]);
+  const [color, setColor] = useState(colors === COLORS ? COLORS[1] : colors[0]);
   const [rect, setRect] = useState({ x: 0, y: 0, w: 0, h: 0 });
   const [textAt, setTextAt] = useState<Point | null>(null);
   const [textValue, setTextValue] = useState('');
@@ -52,7 +62,7 @@ export function AnnotationLayer({ bus, me, roles, video, open, onClose, names }:
   const send = useCallback((msg: AnnotMsg, reliable = true) => {
     bus.send(TOPIC, msg, { reliable });
     apply(msg, me);
-  }, [bus, apply, me]);
+  }, [bus, apply, me, TOPIC]);
 
   // Incoming messages.
   useEffect(() => bus.on(TOPIC, (raw, from) => {
@@ -71,13 +81,23 @@ export function AnnotationLayer({ bus, me, roles, video, open, onClose, names }:
       return;
     }
     apply(msg, from);
-  }), [bus, apply, me]);
+  }), [bus, apply, me, TOPIC]);
 
   // New presentation: start clean, and ask the presenter for what's already there.
   useEffect(() => {
     setState(emptyState());
     if (roles.presenter && roles.presenter !== me) bus.send(TOPIC, { t: 'sync-req' }, { to: [roles.presenter] });
-  }, [roles.presenter, me, bus]);
+  }, [roles.presenter, me, bus, TOPIC]);
+
+  // A blank surface: draw over all of it.
+  useLayoutEffect(() => {
+    if (!surface) return;
+    const measure = () => setRect({ x: 0, y: 0, w: surface.clientWidth, h: surface.clientHeight });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(surface);
+    return () => ro.disconnect();
+  }, [surface]);
 
   // Follow the video's on-screen picture (it's letterboxed inside its box).
   useLayoutEffect(() => {
@@ -110,7 +130,7 @@ export function AnnotationLayer({ bus, me, roles, video, open, onClose, names }:
       const ctx = canvas.getContext('2d')!;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, rect.w, rect.h);
-      for (const item of stateRef.current.items) drawItem(ctx, item, rect.w, rect.h);
+      for (const item of stateRef.current.items) drawItem(ctx, item, rect.w, rect.h, !surface);
       // Laser pointers fade after a moment.
       const now = performance.now();
       let live = false;
@@ -250,7 +270,7 @@ export function AnnotationLayer({ bus, me, roles, video, open, onClose, names }:
       )}
 
       {open && (
-        <div role="toolbar" aria-label="Annotation tools" className="absolute left-1/2 top-3 z-30 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-1 overflow-x-auto rounded-2xl bg-navy-900/95 p-1.5 text-white shadow-popover ring-1 ring-white/10">
+        <div role="toolbar" aria-label="Annotation tools" className="absolute left-1/2 top-3 z-30 flex w-max max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-1 overflow-x-auto rounded-2xl bg-navy-900/95 p-1.5 text-white shadow-popover ring-1 ring-white/10">
           {tools.map((t) => (
             <button
               key={t.id}
@@ -266,7 +286,7 @@ export function AnnotationLayer({ bus, me, roles, video, open, onClose, names }:
             </button>
           ))}
           <span className="mx-1 h-6 w-px shrink-0 bg-white/15" aria-hidden="true" />
-          {COLORS.map((c) => (
+          {colors.map((c) => (
             <button
               key={c}
               type="button"
@@ -304,7 +324,8 @@ export function AnnotationLayer({ bus, me, roles, video, open, onClose, names }:
               <Users className="h-4 w-4" /> {state.allowed ? 'Others can draw' : 'Only you'}
             </button>
           )}
-          <button type="button" onClick={onClose} aria-label="Close annotation tools" className="ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl hover:bg-white/10"><X className="h-[18px] w-[18px]" /></button>
+          {extra}
+          <button type="button" onClick={onClose} aria-label={closeLabel} title={closeLabel} className="ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl hover:bg-white/10"><X className="h-[18px] w-[18px]" /></button>
         </div>
       )}
       {open && !allowedForMe && (
@@ -314,12 +335,15 @@ export function AnnotationLayer({ bus, me, roles, video, open, onClose, names }:
   );
 }
 
-function drawItem(ctx: CanvasRenderingContext2D, item: Item, w: number, h: number) {
+function drawItem(ctx: CanvasRenderingContext2D, item: Item, w: number, h: number, outline = true) {
   if (item.kind === 'text') {
     ctx.font = `700 ${Math.max(12, Math.round(w * 0.024))}px Inter, system-ui, sans-serif`;
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-    ctx.strokeText(item.text, item.x * w, item.y * h);
+    if (outline) {
+      // Over a shared screen, a dark edge keeps text readable on any picture.
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+      ctx.strokeText(item.text, item.x * w, item.y * h);
+    }
     ctx.fillStyle = item.color;
     ctx.fillText(item.text, item.x * w, item.y * h);
     return;

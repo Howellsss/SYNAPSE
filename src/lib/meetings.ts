@@ -19,7 +19,27 @@ export interface Meeting {
   invite_token?: string | null;
   /** Only from meeting_by_invite: who is hosting, for the guest's join screen. */
   host_name?: string;
+  /** After the meeting-tools database update: everyone but the host waits to be let in. */
+  waiting_room?: boolean;
+  /** Nobody new can join. */
+  locked?: boolean;
+  /** The host's breakout rooms while they are open. */
+  breakout?: BreakoutState | null;
 }
+
+export interface BreakoutRoom { n: number; name: string }
+export interface BreakoutState {
+  open: boolean;
+  rooms: BreakoutRoom[];
+  /** participant id -> room number */
+  assign: Record<string, number>;
+  /** Shown to everyone: when the host plans to bring people back (ISO time), if set. */
+  ends_at?: string | null;
+}
+
+/** Shown when a meeting tool needs the database update that hasn't been applied yet. */
+export const TOOLS_NOT_SET_UP = 'This needs the meeting-tools database update (20261009090000_meeting_rooms_admit_breakouts_recordings.sql).';
+const missing = (msg: string) => /does not exist|Could not find the (table|.*column)|schema cache/i.test(msg);
 
 /** A calendar appointment today that has a video link (shown alongside meetings). */
 export interface VideoAppointment {
@@ -129,4 +149,47 @@ export async function getMeetingByInvite(code: string, invite: string): Promise<
 export async function endMeeting(id: string): Promise<string | null> {
   const { error } = await supabase.from('meetings').update({ ended_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', id);
   return error?.message ?? null;
+}
+
+/** Host settings: waiting room, lock, breakout rooms. */
+export async function updateMeetingSettings(id: string, patch: Partial<Pick<Meeting, 'waiting_room' | 'locked' | 'breakout'>>): Promise<string | null> {
+  const { error } = await supabase.from('meetings').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id);
+  if (!error) return null;
+  return missing(error.message) ? TOOLS_NOT_SET_UP : error.message;
+}
+
+export type AdmissionStatus = 'waiting' | 'admitted' | 'denied' | 'removed';
+export interface Admission {
+  ticket: string;
+  identity: string;
+  name: string;
+  status: AdmissionStatus;
+  created_at: string;
+}
+
+/** People in the waiting room, oldest first. null when admissions aren't set up yet. */
+export async function listWaiting(meetingId: string): Promise<Admission[] | null> {
+  const { data, error } = await supabase
+    .from('meeting_admissions')
+    .select('ticket, identity, name, status, created_at')
+    .eq('meeting_id', meetingId)
+    .eq('status', 'waiting')
+    .order('created_at')
+    .limit(100);
+  if (error) return null;
+  return (data ?? []) as Admission[];
+}
+
+/** Admit or turn away people in the waiting room. */
+export async function decideAdmissions(meetingId: string, tickets: string[] | 'all', status: 'admitted' | 'denied'): Promise<string | null> {
+  let q = supabase.from('meeting_admissions').update({ status, decided_at: new Date().toISOString() }).eq('meeting_id', meetingId).eq('status', 'waiting');
+  if (tickets !== 'all') q = q.in('ticket', tickets);
+  const { error } = await q;
+  if (!error) return null;
+  return missing(error.message) ? TOOLS_NOT_SET_UP : error.message;
+}
+
+/** Removed people can't come back with the same link or login. */
+export async function markRemoved(meetingId: string, identity: string): Promise<void> {
+  await supabase.from('meeting_admissions').update({ status: 'removed', decided_at: new Date().toISOString() }).eq('meeting_id', meetingId).eq('identity', identity);
 }

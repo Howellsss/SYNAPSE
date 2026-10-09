@@ -8,6 +8,10 @@ export const TOPICS = {
   chat: 'synapse.chat',
   react: 'synapse.react',
   control: 'synapse.control',
+  poll: 'synapse.poll',
+  board: 'synapse.board',
+  captions: 'synapse.captions',
+  record: 'synapse.record',
 } as const;
 
 const enc = new TextEncoder();
