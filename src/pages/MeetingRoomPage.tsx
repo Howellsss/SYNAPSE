@@ -2,12 +2,13 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import {
   ArrowLeft, Check, ChevronDown, Copy, RefreshCw, Smartphone, Hand, Info, LayoutGrid, MessageSquare, Mic, MicOff, MonitorUp, MoreHorizontal, PenLine, PhoneOff,
   SearchX, Settings2, SmilePlus, Users, Video, VideoOff, Camera, X, Clock, LogOut, Maximize2, Minimize2, PictureInPicture2, Pin, PinOff, Shield, ShieldCheck, XCircle,
+  Lock, DoorOpen, BarChart3, Presentation,
 } from 'lucide-react';
 import type { LocalTrack, RemoteTrack, Room, Track } from 'livekit-client';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useRouter } from '@/lib/router';
-import { endMeeting, getMeetingByCode, getMeetingByInvite, type Meeting } from '@/lib/meetings';
+import { endMeeting, getMeetingByCode, getMeetingByInvite, markRemoved, updateMeetingSettings, type Meeting } from '@/lib/meetings';
 import { inviteUrl } from '@/meetings/codes';
 import { REACTIONS, elapsed, isStopShare, newChatId, parseChat, parseControl, parseHostRequest, parseReact, type Reaction } from '@/meetings/messages';
 import { TOPICS, useMeetingBus } from '@/meetings/useMeetingBus';
@@ -24,7 +25,12 @@ import { CallNotices } from '@/components/spaces/room/CallNotices';
 import { Popover } from '@/components/spaces/room/Popover';
 import { AnnotationLayer } from '@/components/meetings/AnnotationLayer';
 import { AudioButton, ToolButton, VideoButton, darkItem, darkPanel } from '@/components/meetings/MeetingControls';
-import { ChatPanel, ParticipantsPanel, type ChatLine } from '@/components/meetings/MeetingPanels';
+import { ChatPanel, ParticipantsPanel, PollsPanel, type ChatLine } from '@/components/meetings/MeetingPanels';
+import { usePolls } from '@/meetings/usePolls';
+import { Whiteboard } from '@/components/meetings/Whiteboard';
+import { useWhiteboard } from '@/meetings/useWhiteboard';
+import { RefusedScreen, WaitingBanner, WaitingList, WaitingScreen } from '@/components/meetings/WaitingRoom';
+import { useWaitingRoom } from '@/meetings/useWaitingRoom';
 import { HowellsLogo } from '@/components/layout/Sidebar';
 import { Avatar } from '@/components/ui/Avatar';
 import { LoadingSpinner } from '@/components/ui/States';
@@ -81,12 +87,13 @@ function MeetingRoom({ code, invite }: { code: string; invite: string | null }) 
 
   const home = () => navigate(user ? '/meetings' : '/');
 
-  /** Ask the server whether the meeting has ended (members by code, guests through the invite). */
-  const hasEnded = useCallback(async (): Promise<boolean> => {
+  /** The meeting as the server has it now (members by code, guests through the invite). */
+  const refresh = useCallback(async (): Promise<Meeting | null> => {
     let m = user ? (await getMeetingByCode(code.toUpperCase())).data : null;
     if (!m && invite) m = await getMeetingByInvite(code.toUpperCase(), invite);
-    return !!m?.ended_at;
+    return m;
   }, [code, invite, user]);
+  const hasEnded = useCallback(async () => !!(await refresh())?.ended_at, [refresh]);
 
   // After leaving, check before offering Rejoin: if the host has ended it, say so instead.
   useEffect(() => {
@@ -141,7 +148,8 @@ function MeetingRoom({ code, invite }: { code: string; invite: string | null }) 
       join={join}
       onLeave={() => setStage('left')}
       onEnded={(by) => { setEndedBy(by); setStage('ended'); }}
-      hasEnded={hasEnded}
+      onHome={home}
+      refresh={refresh}
     />
   );
 }
@@ -425,7 +433,7 @@ function tilesFrom(call: LiveKitRoom, me: { id: string; name: string; avatarUrl:
   return list;
 }
 
-type SidePanel = 'people' | 'chat' | null;
+type SidePanel = 'people' | 'chat' | 'polls' | null;
 type Layout = 'gallery' | 'speaker';
 
 function useNow(on: boolean) {
@@ -438,9 +446,14 @@ function useNow(on: boolean) {
   return now;
 }
 
-function InCall({ meeting, join, onLeave, onEnded, hasEnded }: {
-  meeting: Meeting; join: JoinChoice; onLeave: () => void; onEnded: (by: 'you' | 'host' | 'removed') => void; hasEnded: () => Promise<boolean>;
+/** How often everyone re-reads the meeting (ended, locked, breakout rooms). */
+const LIVE_POLL_MS = 5000;
+
+function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
+  meeting: Meeting; join: JoinChoice; onLeave: () => void; onEnded: (by: 'you' | 'host' | 'removed') => void; onHome: () => void; refresh: () => Promise<Meeting | null>;
 }) {
+  // The meeting as it is now: the host can lock it, turn on the waiting room or open breakout rooms.
+  const [meeting, setMeeting] = useState(initial);
   const { profile } = useAuth();
   const { toast } = useToast();
   const guestCtx = useContext(GuestContext);
@@ -476,6 +489,7 @@ function InCall({ meeting, join, onLeave, onEnded, hasEnded }: {
   const call = useLiveKitRoom(meeting.id, {
     prefs,
     tokenBody: guestCtx.isGuest ? { meetingCode: meeting.code, invite: guestCtx.invite ?? '', guestName: guestCtx.name.trim() } : guestCtx.invite ? { meetingCode: meeting.code, invite: guestCtx.invite } : { meetingCode: meeting.code },
+    ticketKey: `synapse.ticket.${meeting.code}`,
     autoSubscribe: true,
     onNotice: (m, tone) => toast(m, tone ?? 'info'),
   });
@@ -558,6 +572,15 @@ function InCall({ meeting, join, onLeave, onEnded, hasEnded }: {
     return () => { room.off('participantConnected', onJoin).off('participantDisconnected', onGone); };
   }, [room, bus, you.id]);
 
+  const polls = usePolls({ bus, room, isHost, hostId: meeting.host_id, me: you.id });
+  // A new poll from the host opens the Polls panel, as Zoom pops the poll up.
+  const seenPolls = useRef(0);
+  useEffect(() => {
+    if (polls.unseen > seenPolls.current && !isHost) { setPanel('polls'); polls.markSeen(); }
+    seenPolls.current = polls.unseen;
+  }, [polls.unseen, isHost, polls]);
+
+  const board = useWhiteboard({ bus, room, me: you.id, hostId: meeting.host_id });
   const sharing = !!sharer;
   useEffect(() => { if (!sharing) setAnnotating(false); }, [sharing]);
 
@@ -598,18 +621,36 @@ function InCall({ meeting, join, onLeave, onEnded, hasEnded }: {
   };
 
   // The server is the source of truth: if the host ended the meeting and the message was lost,
-  // this still takes everyone out within a few seconds.
-  const endedCheck = useRef(hasEnded);
-  endedCheck.current = hasEnded;
+  // this still takes everyone out within a few seconds. It also picks up lock / waiting room /
+  // breakout changes.
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
   const onEndedRef = useRef(onEnded);
   onEndedRef.current = onEnded;
   useEffect(() => {
     if (call.state !== 'connected' && call.state !== 'reconnecting') return;
     const t = window.setInterval(async () => {
-      if (await endedCheck.current()) { room?.disconnect(); onEndedRef.current('host'); }
-    }, 10000);
+      const m = await refreshRef.current();
+      if (!m) return;
+      setMeeting((cur) => ({ ...cur, ...m }));
+      if (m.ended_at) { room?.disconnect(); onEndedRef.current('host'); }
+    }, LIVE_POLL_MS);
     return () => window.clearInterval(t);
   }, [call.state, room]);
+
+  // Host: the waiting room, and the switches for it and the lock.
+  const wr = useWaitingRoom(meeting.id, isHost && call.state === 'connected', (m) => toast(m, 'error'));
+  const setSetting = async (patch: { waiting_room?: boolean; locked?: boolean }) => {
+    const before = meeting;
+    setMeeting((m) => ({ ...m, ...patch }));
+    const err = await updateMeetingSettings(meeting.id, patch);
+    if (err) { setMeeting(before); toast(err, 'error'); return; }
+    if (patch.locked !== undefined) toast(patch.locked ? 'Meeting locked. Nobody new can join.' : 'Meeting unlocked.', 'info');
+    if (patch.waiting_room !== undefined) {
+      toast(patch.waiting_room ? 'Waiting room on. You’ll let each person in.' : 'Waiting room off. Everyone waiting was let in.', 'info');
+      if (!patch.waiting_room) await wr.admit('all');
+    }
+  };
 
   const tileProps = (t: TileInfo) => ({
     tile: t, hand: !!hands[t.id], reaction: reactions[t.id]?.e, host: t.id === meeting.host_id,
@@ -620,7 +661,12 @@ function InCall({ meeting, join, onLeave, onEnded, hasEnded }: {
   const hostActions = isHost ? {
     onMute: (id: string) => { void bus.send(TOPICS.control, { t: 'mute' }, { to: [id] }); toast(`Asked ${names[id] ?? 'them'} to mute`, 'info'); },
     onMuteAll: () => { void bus.send(TOPICS.control, { t: 'muteAll' }); toast('Muted everyone else', 'info'); },
-    onRemove: (id: string) => { void bus.send(TOPICS.control, { t: 'remove' }, { to: [id] }); toast(`Removed ${names[id] ?? 'them'} from the meeting`, 'info'); },
+    onRemove: (id: string) => {
+      void bus.send(TOPICS.control, { t: 'remove' }, { to: [id] });
+      // Also on the server, so they can't come straight back with the same link.
+      void markRemoved(meeting.id, id);
+      toast(`Removed ${names[id] ?? 'them'} from the meeting`, 'info');
+    },
   } : undefined;
 
   let stage: React.ReactNode;
@@ -647,6 +693,15 @@ function InCall({ meeting, join, onLeave, onEnded, hasEnded }: {
             />
           )}
         </div>
+        <div className="flex shrink-0 gap-1.5 overflow-auto lg:w-60 lg:flex-col">
+          {tiles.map((t) => <ParticipantTile key={t.id} {...tileProps(t)} className="aspect-video w-40 shrink-0 lg:w-full" />)}
+        </div>
+      </div>
+    );
+  } else if (board.owner) {
+    stage = (
+      <div className="flex h-full flex-col gap-1.5 lg:flex-row">
+        <div className="relative min-h-0 flex-1"><Whiteboard bus={bus} me={you.id} hostId={meeting.host_id} board={board} names={names} /></div>
         <div className="flex shrink-0 gap-1.5 overflow-auto lg:w-60 lg:flex-col">
           {tiles.map((t) => <ParticipantTile key={t.id} {...tileProps(t)} className="aspect-video w-40 shrink-0 lg:w-full" />)}
         </div>
@@ -679,6 +734,13 @@ function InCall({ meeting, join, onLeave, onEnded, hasEnded }: {
     toast(`Asked ${sharer.name} to stop sharing`, 'info');
   };
 
+  if (call.state === 'waiting') return <WaitingScreen title={meeting.title} hostName={meeting.host_name} onLeave={leave} />;
+  if (call.state === 'unavailable' && call.error && /\bhost\b/i.test(call.error)) {
+    // Turned away, removed, or the meeting is locked: a clear screen, not a broken call.
+    const locked = /locked/i.test(call.error);
+    return <RefusedScreen message={call.error} locked={locked} onBack={onHome} backLabel={guestCtx.isGuest ? 'Go to SYNAPSE' : 'Back to meetings'} onRetry={locked ? call.retry : undefined} />;
+  }
+
   return (
     <div className="flex h-[100dvh] flex-col bg-white text-navy-900">
       {/* Top bar: meeting info on the left, what's on screen in the middle, time and view on the right */}
@@ -687,6 +749,7 @@ function InCall({ meeting, join, onLeave, onEnded, hasEnded }: {
         <span className="flex h-8 w-8 items-center justify-center text-green-600" title="Audio, video and chat are encrypted in transit" aria-label="Encrypted"><ShieldCheck className="h-[18px] w-[18px]" /></span>
         <h1 className="min-w-0 truncate text-sm font-semibold">{meeting.title}</h1>
         <span className="hidden shrink-0 text-xs text-ivory-700 md:inline">· Room {meeting.code} · {count} {count === 1 ? 'person' : 'people'}</span>
+        {meeting.locked && <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-navy-50 px-2 py-0.5 text-[11px] font-semibold text-navy-800 ring-1 ring-inset ring-navy-100" title="Nobody new can join"><Lock className="h-3 w-3" /> Locked</span>}
 
         {sharer && (
           <div className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-lg bg-navy-50 py-1 pl-3 pr-1 text-sm font-semibold text-navy-900 ring-1 ring-inset ring-navy-100 md:flex">
@@ -729,7 +792,7 @@ function InCall({ meeting, join, onLeave, onEnded, hasEnded }: {
           <button
             type="button"
             onClick={() => setLayout((l) => (l === 'gallery' ? 'speaker' : 'gallery'))}
-            disabled={!!sharer}
+            disabled={!!sharer || !!board.owner}
             aria-label={layout === 'gallery' ? 'Switch to speaker view' : 'Switch to gallery view'}
             title={layout === 'gallery' ? 'Speaker view' : 'Gallery view'}
             className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] font-semibold text-navy-700 hover:bg-navy-50 disabled:opacity-40"
@@ -757,6 +820,7 @@ function InCall({ meeting, join, onLeave, onEnded, hasEnded }: {
               </div>
             </div>
           )}
+          {isHost && panel !== 'people' && <WaitingBanner wr={wr} onSeeAll={() => openPanel('people')} />}
           {infoOpen && <MeetingInfo meeting={meeting} hostName={names[meeting.host_id] ?? (isHost ? you.name : null)} onCopy={copy} onClose={() => setInfoOpen(false)} />}
           <CallNotices call={call} onOpenSettings={() => setSettingsOpen(true)} />
         </main>
@@ -766,9 +830,11 @@ function InCall({ meeting, join, onLeave, onEnded, hasEnded }: {
             onClose={() => setPanel(null)}
             onCopyLink={copy}
             host={hostActions}
+            top={isHost ? <WaitingList wr={wr} /> : undefined}
           />
         )}
         {panel === 'chat' && <ChatPanel lines={chat} onSend={sendChat} onClose={() => setPanel(null)} />}
+        {panel === 'polls' && <PollsPanel polls={polls} isHost={isHost} onClose={() => setPanel(null)} />}
       </div>
 
       {/* Bottom bar, as in Zoom: your audio & video left, meeting tools centre, End right */}
@@ -806,6 +872,22 @@ function InCall({ meeting, join, onLeave, onEnded, hasEnded }: {
               onClick={() => { setShareZoom('fit'); setAnnotating((v) => !v); }}
             />
           )}
+          <ToolButton
+            className="hidden sm:flex"
+            label="Polls"
+            icon={<BarChart3 className="h-[22px] w-[22px]" />}
+            badge={polls.active && !polls.active.mine && !isHost && panel !== 'polls' ? 1 : undefined}
+            pressed={panel === 'polls'}
+            onClick={() => openPanel('polls')}
+          />
+          <ToolButton
+            className="hidden md:flex"
+            label="Whiteboard"
+            icon={<Presentation className="h-[22px] w-[22px]" />}
+            pressed={!!board.owner}
+            disabled={!!board.owner && !board.canClose}
+            onClick={() => (board.owner ? board.close() : board.open())}
+          />
           {isHost && (
             <Popover
               className="hidden sm:block"
@@ -818,6 +900,13 @@ function InCall({ meeting, join, onLeave, onEnded, hasEnded }: {
                   <button role="menuitem" className={darkItem} onClick={() => { close(); void copy(); }}><Copy className="h-4 w-4" /> Copy invite link</button>
                   <button role="menuitem" className={darkItem} onClick={() => { close(); setInfoOpen(true); }}><Info className="h-4 w-4" /> Meeting info</button>
                   {sharer && !sharer.local && <button role="menuitem" className={darkItem} onClick={() => { close(); stopTheirShare(); }}><X className="h-4 w-4" /> Stop participant’s sharing</button>}
+                  <div className="my-1 h-px bg-sand" />
+                  <button role="menuitemcheckbox" aria-checked={!!meeting.waiting_room} className={darkItem} onClick={() => { close(); void setSetting({ waiting_room: !meeting.waiting_room }); }}>
+                    <DoorOpen className="h-4 w-4" /> <span className="flex-1 text-left">Waiting room</span> <Toggle on={!!meeting.waiting_room} />
+                  </button>
+                  <button role="menuitemcheckbox" aria-checked={!!meeting.locked} className={darkItem} onClick={() => { close(); void setSetting({ locked: !meeting.locked }); }}>
+                    <Lock className="h-4 w-4" /> <span className="flex-1 text-left">Lock meeting</span> <Toggle on={!!meeting.locked} />
+                  </button>
                   <div className="my-1 h-px bg-sand" />
                   <button role="menuitem" className={cn(darkItem, '!text-burgundy-600')} onClick={() => { close(); void endForAll(); }}><XCircle className="h-4 w-4" /> End meeting for all</button>
                 </>
@@ -835,6 +924,10 @@ function InCall({ meeting, join, onLeave, onEnded, hasEnded }: {
                   <ReactionPicker handUp={!!hands[you.id]} onReact={(e) => { react(e); close(); }} onHand={() => { toggleHand(); close(); }} />
                   <div className="my-1 h-px bg-sand" />
                 </div>
+                <button role="menuitem" className={cn(darkItem, 'sm:hidden')} onClick={() => { close(); openPanel('polls'); }}><BarChart3 className="h-4 w-4" /> Polls</button>
+                {!board.owner
+                  ? <button role="menuitem" className={darkItem} onClick={() => { close(); board.open(); }}><Presentation className="h-4 w-4" /> Open whiteboard</button>
+                  : board.canClose && <button role="menuitem" className={darkItem} onClick={() => { close(); board.close(); }}><Presentation className="h-4 w-4" /> Close whiteboard</button>}
                 {sharer && <button role="menuitem" className={darkItem} onClick={() => { close(); setShareZoom('fit'); setAnnotating(true); }}><PenLine className="h-4 w-4" /> Annotate the shared screen</button>}
                 {pinned && <button role="menuitem" className={darkItem} onClick={() => { close(); setPinned(null); }}><PinOff className="h-4 w-4" /> Unpin</button>}
                 <button role="menuitem" className={darkItem} onClick={() => { close(); toggleFullscreen(); }}>{fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />} {fullscreen ? 'Exit full screen' : 'Full screen'}</button>
@@ -871,6 +964,14 @@ function InCall({ meeting, join, onLeave, onEnded, hasEnded }: {
   );
 }
 
+function Toggle({ on }: { on: boolean }) {
+  return (
+    <span aria-hidden="true" className={cn('relative inline-flex h-5 w-9 shrink-0 rounded-full transition', on ? 'bg-gold-400' : 'bg-navy-100')}>
+      <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all', on ? 'left-[18px]' : 'left-0.5')} />
+    </span>
+  );
+}
+
 function ReactionPicker({ handUp, onReact, onHand }: { handUp: boolean; onReact: (e: Reaction) => void; onHand: () => void }) {
   return (
     <div className="flex flex-col gap-2 p-1">
@@ -897,7 +998,7 @@ function MeetingInfo({ meeting, hostName, onCopy, onClose }: { meeting: Meeting;
         <dt>Room</dt><dd className="font-mono text-navy-900">{meeting.code}</dd>
         {hostName && <><dt>Host</dt><dd className="text-navy-900">{hostName}</dd></>}
         <dt>Invite link</dt><dd className="break-all text-navy-900">{inviteUrl(meeting)}</dd>
-        <dt>Security</dt><dd className="text-navy-900">Encrypted in transit. Members of this SYNAPSE account, and guests with the invite link, can join.</dd>
+        <dt>Security</dt><dd className="text-navy-900">Encrypted in transit. Members of this SYNAPSE account, and guests with the invite link, can join.{meeting.waiting_room ? ' The host lets each person in from the waiting room.' : ''}{meeting.locked ? ' The meeting is locked: nobody new can join.' : ''}</dd>
       </dl>
       <button type="button" onClick={onCopy} className="mt-4 inline-flex items-center gap-1.5 font-semibold text-gold-700 hover:text-gold-800"><Copy className="h-4 w-4" /> Copy link</button>
     </div>

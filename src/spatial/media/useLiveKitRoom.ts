@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { classifyMediaError, loadDeviceIds, type DeviceProblem } from './devices';
 import type { MediaPrefs } from '@/types';
 
-export type CallState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'unavailable';
+export type CallState = 'idle' | 'connecting' | 'waiting' | 'connected' | 'reconnecting' | 'disconnected' | 'unavailable';
 export type Quality = 'excellent' | 'good' | 'poor' | 'lost' | 'unknown';
 export type CallDevice = 'microphone' | 'camera' | 'screen';
 
@@ -54,7 +54,12 @@ export interface LiveKitRoom {
 interface Options {
   prefs: MediaPrefs;
   /** Body for the livekit-token function (default { spaceId }). Meetings pass { meetingCode }. */
-  tokenBody?: Record<string, string>;
+  tokenBody?: Record<string, string | number>;
+  /**
+   * Meetings: where this tab keeps its admission ticket (sessionStorage), so a waiting-room
+   * guest keeps their place and an admitted person can rejoin without waiting again.
+   */
+  ticketKey?: string;
   /** Spaces leave this off (proximity decides); meetings subscribe to everyone. */
   autoSubscribe?: boolean;
   /** Short messages for a toast ("Switched to AirPods"). */
@@ -62,6 +67,19 @@ interface Options {
 }
 
 const RETRY_DELAYS = [2000, 5000, 10000];
+/** How often someone in the waiting room asks whether they've been let in. */
+export const WAITING_POLL_MS = 3000;
+
+function readTicket(key?: string): string | null {
+  if (!key) return null;
+  try { return sessionStorage.getItem(key); } catch { return null; }
+}
+function saveTicket(key: string | undefined, ticket: string) {
+  if (!key) return;
+  try { sessionStorage.setItem(key, ticket); } catch { /* private mode */ }
+}
+
+interface TokenAnswer { token?: string; url?: string; waiting?: boolean; ticket?: string }
 
 /** Error text from the livekit-token function, or a plain explanation. */
 async function tokenError(err: unknown, guest = false): Promise<string> {
@@ -69,7 +87,11 @@ async function tokenError(err: unknown, guest = false): Promise<string> {
   if (ctx && typeof ctx.status === 'number' && guest) {
     // A guest from an invite link: no login to fix, so say what's actually wrong.
     if (ctx.status === 401) return "Guest joining isn't switched on for this meeting service yet. Ask the host to finish updating SYNAPSE's meeting service, then try again.";
-    if (ctx.status === 403) return "This invite link isn't valid any more. Ask the host for a new one.";
+    if (ctx.status === 403) {
+      // The host turned them away or removed them: say so. Otherwise the link is the problem.
+      const said = await ctx.clone().json().then((b) => (typeof b?.error === 'string' ? b.error : ''), () => '');
+      return /host/i.test(said) ? said : "This invite link isn't valid any more. Ask the host for a new one.";
+    }
   }
   if (ctx && typeof ctx.status === 'number') {
     if (ctx.status === 404) return "Audio and video aren't set up for this SYNAPSE yet.";
@@ -89,7 +111,7 @@ async function tokenError(err: unknown, guest = false): Promise<string> {
  * subscribes to nothing by itself (proximity decides who you hear and see), and publishes your
  * mic and camera according to your join preferences.
  */
-export function useLiveKitRoom(spaceId: string | null, { prefs, onNotice, tokenBody, autoSubscribe = false }: Options): LiveKitRoom {
+export function useLiveKitRoom(spaceId: string | null, { prefs, onNotice, tokenBody, ticketKey, autoSubscribe = false }: Options): LiveKitRoom {
   const bodyKey = JSON.stringify(tokenBody ?? { spaceId });
   const [state, setState] = useState<CallState>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -117,8 +139,21 @@ export function useLiveKitRoom(spaceId: string | null, { prefs, onNotice, tokenB
 
     (async () => {
       const lk = await import('livekit-client');
-      const { data, error: fnError } = await supabase.functions.invoke<{ token: string; url: string }>('livekit-token', { body: JSON.parse(bodyKey) });
+      const ask = () => {
+        const ticket = readTicket(ticketKey);
+        return supabase.functions.invoke<TokenAnswer>('livekit-token', { body: { ...JSON.parse(bodyKey), ...(ticket ? { ticket } : {}) } });
+      };
+      let { data, error: fnError } = await ask();
+      // Waiting room: keep our place (the ticket) and ask again until the host lets us in.
+      while (alive && !fnError && data?.waiting) {
+        if (data.ticket) saveTicket(ticketKey, data.ticket);
+        setState('waiting');
+        await new Promise((ok) => { retryTimer = window.setTimeout(ok, WAITING_POLL_MS); });
+        if (!alive) return;
+        ({ data, error: fnError } = await ask());
+      }
       if (!alive) return;
+      if (data?.ticket) saveTicket(ticketKey, data.ticket);
       if (fnError || !data?.token || !data?.url) {
         setError(await tokenError(fnError, /"guestName"/.test(bodyKey)));
         setState('unavailable');
@@ -269,7 +304,7 @@ export function useLiveKitRoom(spaceId: string | null, { prefs, onNotice, tokenB
       current?.disconnect();
       setRoom(null);
     };
-  }, [spaceId, attempt, bump, bodyKey, autoSubscribe]);
+  }, [spaceId, attempt, bump, bodyKey, ticketKey, autoSubscribe]);
 
   // Permission taken away in browser settings while in the call.
   useEffect(() => {

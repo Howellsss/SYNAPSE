@@ -19,7 +19,7 @@ const heading = 'px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wid
  */
 export function ToolButton({ label, icon, onClick, pressed, off, badge, busy, title, className, ...rest }: {
   label: string; icon: ReactNode; onClick: () => void; pressed?: boolean; off?: boolean; badge?: number | string; busy?: boolean; title?: string; className?: string;
-  'aria-expanded'?: boolean; 'aria-haspopup'?: 'menu' | 'dialog';
+  'aria-expanded'?: boolean; 'aria-haspopup'?: 'menu' | 'dialog'; disabled?: boolean;
 }) {
   return (
     <button
@@ -34,6 +34,7 @@ export function ToolButton({ label, icon, onClick, pressed, off, badge, busy, ti
         'relative flex h-11 min-w-[44px] shrink-0 flex-col items-center justify-center gap-1 rounded-lg px-1.5 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400 sm:h-[58px] sm:min-w-[64px] sm:px-2',
         pressed ? 'bg-navy-50 text-gold-700' : 'text-navy-800 hover:bg-navy-50',
         busy && 'cursor-wait opacity-70',
+        'disabled:cursor-not-allowed disabled:opacity-40',
         className,
       )}
     >
