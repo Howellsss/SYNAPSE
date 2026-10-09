@@ -428,8 +428,12 @@ def image_links(materials):
 
 
 def is_helper(obj):
-    """Objects the glTF importer makes for its own use (e.g. bone display shapes)."""
-    return any(c.name.startswith("glTF_not_exported") for c in obj.users_collection)
+    """Objects the glTF importer makes for its own use (e.g. bone display shapes).
+
+    They sit in a "glTF_not_exported" collection, or in no scene at all.
+    """
+    return (not obj.users_scene
+            or any(c.name.startswith("glTF_not_exported") for c in obj.users_collection))
 
 
 def inspect_import(log, new, original):
@@ -975,8 +979,12 @@ def import_glb(path, work_scene):
     if "FINISHED" not in result:
         raise OptimizeError(f"Blender's glTF importer failed on {os.path.basename(path)}.")
     new = new_since(before)
-    if any(work_scene not in o.users_scene for o in new["objects"]):
-        raise OptimizeError("The importer put objects outside the work scene; stopping to be safe.")
+    # Imported objects may sit in the work scene or in no scene at all (the importer's
+    # hidden helpers), but never in one of your scenes.
+    leaked = sorted(o.name for o in new["objects"] if any(sc != work_scene for sc in o.users_scene))
+    if leaked:
+        raise OptimizeError("The importer put objects into another scene ("
+                            + ", ".join(leaked[:10]) + "); stopping to be safe.")
     return new
 
 
