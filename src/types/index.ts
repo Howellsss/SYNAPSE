@@ -718,7 +718,8 @@ export interface Recording {
 /** An uploaded 3D character (.glb) and the animation clips inside it. */
 export interface Character {
   id: string;
-  workspace_id: string;
+  /** Null for the shared SYNAPSE library (all new uploads). */
+  workspace_id: string | null;
   name: string;
   storage_path: string;
   size_bytes: number;

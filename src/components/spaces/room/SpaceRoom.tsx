@@ -85,19 +85,19 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
     }
   }, [updateLocal]);
 
-  // The character everyone appears as (the workspace's chosen one, else its newest).
+  // The character everyone appears as: from the shared SYNAPSE library (the chosen one, else the newest).
   const [character, setCharacter] = useState<{ url: string | null; clips: SpaceClips; loaded: boolean }>({ url: null, clips: NO_CLIPS, loaded: false });
   useEffect(() => {
-    if (!workspace) { setCharacter({ url: null, clips: NO_CLIPS, loaded: true }); return; }
+    if (!user) { setCharacter({ url: null, clips: NO_CLIPS, loaded: true }); return; }
     let alive = true;
     (async () => {
-      const { data } = await listCharacters(workspace.id);
+      const { data } = await listCharacters();
       const chosen = pickSpaceCharacter(data);
       const file = chosen ? await characterFileUrl(chosen) : { url: null };
       if (alive) setCharacter({ url: file.url, clips: chosen ? resolveSpaceClips(chosen) : NO_CLIPS, loaded: true });
     })();
     return () => { alive = false; };
-  }, [workspace]);
+  }, [user]);
   const sceneControls = useRef<SceneControls | null>(null);
   const [localEmote, setLocalEmote] = useState<{ kind: EmoteKind; id: number } | null>(null);
   const [hintOpen, setHintOpen] = useState(true);

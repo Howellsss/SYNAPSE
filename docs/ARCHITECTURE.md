@@ -131,13 +131,14 @@ is the fallback. New work should still scope by `workspace_id`.
 | Spaces (virtual offices) | `spaces` (owned by a workspace; slug unique across all tenants; also `access_mode`, `guest_link_token`, `permissions`, `persistence` + `schedule`, `branding`, `config.rooms`), `space_members` (per-person state in a space) |
 | Messaging | `messages` (email/SMS log per contact), `email_accounts`, `email_account_secrets` (encrypted OAuth tokens, no client access) |
 | Recordings | `recordings` |
-| Characters | `characters` (an uploaded .glb per row: clips, default clip, size; file in the `characters` bucket) |
+| Characters | `characters`: the shared SYNAPSE character library (an uploaded .glb per row: clips, default clip, size; file in the `characters` bucket). Everyone signed in can read it; only `platform_admins` can change it |
+| SYNAPSE admins | `platform_admins` (people who run SYNAPSE itself, not workspace owners; `is_platform_admin()`) |
 | Integrations | `integrations`, `integration_sync_logs`, `webhooks` |
 
 Child tables (`form_fields`, `workflow_nodes`, `calendar_hosts`, `availability_rules`, …) have no
 `workspace_id`; their RLS goes through the parent row. Storage buckets: `avatars`,
-`workspace-logos` (both public); `characters` (private, 30 MB per file, files under
-`<workspace id>/`, members only).
+`workspace-logos` (both public); `characters` (private, 30 MB per file, new files under
+`library/`; everyone signed in can read, SYNAPSE admins upload and delete).
 
 ## Sidebar items
 
@@ -154,7 +155,7 @@ Child tables (`form_fields`, `workflow_nodes`, `calendar_hosts`, `availability_r
 | Submissions | `/forms` | Real: forms and surveys, builder, submissions |
 | Workflows | `/workflows` | Real builder and storage; runs in the browser (`workflow-engine.ts`), triggered only by public-page bookings and cancellations |
 | Recordings | `/recordings` | Real list/detail over `recordings`; nothing creates recordings yet |
-| Characters | `/characters` | Real: upload a 3D character (.glb, up to 30 MB), preview it in 3D, play each animation clip and save one as the default; choose the character everyone appears as in spaces and which clip plays for standing, walking, wave and cheer. Make Meshy files fit with `scripts/blender/optimize_meshy_glb.py` |
+| Characters | `/characters` | SYNAPSE admins only (hidden for everyone else): the shared character library for all accounts. Upload a 3D character (.glb, up to 30 MB), preview it in 3D, play each animation clip and save one as the default; choose the character everyone appears as in spaces and which clip plays for standing, walking, wave and cheer. Make Meshy files fit with `scripts/blender/optimize_meshy_glb.py` |
 | Media Library | `/media-library` | **Placeholder** (`ComingSoonPage`) |
 | AI Hub | `/ai-hub` | Partial: keyword-matched database queries, no AI model behind it |
 | Settings | `/settings` | Real: profile, workspace, team, email (Gmail); some tabs only save preferences |
@@ -272,12 +273,13 @@ What you see inside a space, until the art kit brings rooms and furniture:
   broadcast and walked by the clock on everyone's screen), or hold the arrow keys / WASD (move
   messages, rate-limited by `MoveSender`). **Walk to** in the people panel walks to about a metre
   from someone.
-- **People:** everyone appears as the workspace's character: the one chosen with **Use in
-  workspaces** on the Characters page, else the newest upload. It's scaled to 1.7 m and its clips
+- **People:** everyone appears as the library's default character: the one a SYNAPSE admin chose
+  with **Use in workspaces** on the Characters page, else the newest upload. The library is
+  shared by every account and workspace. It's scaled to 1.7 m and its clips
   are kept in place (root motion removed). Which clip plays for standing, walking, wave and cheer
   is chosen on the Characters page (`characters.space_clips`), guessed from clip names until then
-  (`spatial/scene/avatarClips.ts`). Without a character, or if it can't load (guests who aren't
-  members can't read the private file), people appear as simple coloured figures.
+  (`spatial/scene/avatarClips.ts`). Without a character, or if it can't load (for example if the
+  library migration hasn't been run), people appear as simple coloured figures.
 - **Labels and rings:** a name label over each head (status dot, ✋ for a raised hand, the latest
   reaction for 3 s), and a gold ring on the floor around each conversation group.
 - **Graphics quality:** Low renders at 1× pixel ratio without antialiasing. Changing it rebuilds
