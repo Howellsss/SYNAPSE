@@ -979,9 +979,12 @@ def import_glb(path, work_scene):
     if "FINISHED" not in result:
         raise OptimizeError(f"Blender's glTF importer failed on {os.path.basename(path)}.")
     new = new_since(before)
-    # Imported objects may sit in the work scene or in no scene at all (the importer's
-    # hidden helpers), but never in one of your scenes.
-    leaked = sorted(o.name for o in new["objects"] if any(sc != work_scene for sc in o.users_scene))
+    # Imported objects may sit in the work scene or in no scene at all, but never in one of your
+    # scenes. The importer's hidden helpers (bone display shapes) go into its shared
+    # "glTF_not_exported" collection, which may belong to an earlier run's work scene.
+    def allowed(o, sc):
+        return sc == work_scene or (is_helper(o) and sc.name.startswith(WORK_SCENE_NAME))
+    leaked = sorted(o.name for o in new["objects"] if any(not allowed(o, sc) for sc in o.users_scene))
     if leaked:
         raise OptimizeError("The importer put objects into another scene ("
                             + ", ".join(leaked[:10]) + "); stopping to be safe.")
