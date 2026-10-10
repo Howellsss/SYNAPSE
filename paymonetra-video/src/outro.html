@@ -1,0 +1,110 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>PayMonetra Outro</title>
+<script type="importmap">
+{ "imports": {
+  "three": "/node_modules/three/build/three.module.js",
+  "three/addons/": "/node_modules/three/examples/jsm/"
+} }
+</script>
+<style>
+  :root { --orange: #FF7A1A; --white: #FFFFFF; }
+  html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
+  #stage {
+    position: relative; width: 1920px; height: 1080px; overflow: hidden;
+    font-family: "Inter", "Inter Display", sans-serif; color: var(--white);
+  }
+  canvas { position: absolute; inset: 0; }
+  .layer { position: absolute; inset: 0; pointer-events: none; }
+
+  /* Feature copy (left column) */
+  .feature { position: absolute; left: 150px; top: 350px; width: 940px; visibility: hidden; }
+  .feature .label {
+    font-weight: 700; font-size: 28px; letter-spacing: 6px; color: var(--orange); margin-bottom: 26px;
+  }
+  .feature .head { font-weight: 800; font-size: 84px; line-height: 1.02; letter-spacing: -1px; }
+  .feature .head .accent { color: var(--orange); }
+  .feature .sub { margin-top: 30px; font-weight: 500; font-size: 32px; color: rgba(255,255,255,.82); }
+  .feature .line { display: block; will-change: transform, opacity; }
+
+  /* End card */
+  #end { position: absolute; inset: 0; visibility: hidden; text-align: center; }
+  #logo {
+    position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 28px;
+    transform-origin: 50% 50%;
+  }
+  #mark {
+    width: 132px; height: 132px; border-radius: 34px; background: var(--orange);
+    display: grid; place-items: center; box-shadow: 0 18px 50px rgba(255,122,26,.25);
+  }
+  #wordmark {
+    font-family: "Inter Display", "Inter", sans-serif;
+    font-weight: 800; font-size: 104px; letter-spacing: -3px; line-height: 1; white-space: nowrap;
+  }
+  #wordmark .accent { color: var(--orange); }
+  #end .tag { position: absolute; left: 0; width: 1920px; top: 500px; font-weight: 800; font-size: 56px; letter-spacing: 4px; }
+  #end .cta { position: absolute; left: 0; width: 1920px; top: 590px; font-weight: 800; font-size: 40px; letter-spacing: 8px; color: var(--orange); }
+  #stores { position: absolute; left: 0; width: 1920px; top: 690px; display: flex; justify-content: center; gap: 28px; }
+  .store {
+    width: 300px; height: 92px; border-radius: 18px; border: 2px solid rgba(255,255,255,.55);
+    background: rgba(0,0,0,.35); display: flex; flex-direction: column; justify-content: center;
+    align-items: flex-start; padding-left: 34px; box-sizing: border-box; text-align: left;
+  }
+  .store small { font-size: 18px; font-weight: 500; letter-spacing: 1px; color: rgba(255,255,255,.8); }
+  .store b { font-size: 34px; font-weight: 700; letter-spacing: -0.5px; }
+  #end .urls { position: absolute; left: 0; width: 1920px; top: 880px; font-weight: 500; font-size: 28px; letter-spacing: 1px; color: rgba(255,255,255,.6); }
+  #end .urls span { color: rgba(255,255,255,.35); margin: 0 18px; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="fx" width="1920" height="1080"></canvas>
+  <canvas id="gl" width="1920" height="1080"></canvas>
+  <div class="layer">
+    <div class="feature" id="f0">
+      <div class="label line">01 — TRANSFERS</div>
+      <div class="head"><span class="line">SEND MONEY.</span><span class="line accent">RECEIVE MONEY.</span></div>
+      <div class="sub line">Transfers to Nigerian bank accounts in seconds.</div>
+    </div>
+    <div class="feature" id="f1">
+      <div class="label line">02 — CRYPTO</div>
+      <div class="head"><span class="line">CRYPTO MADE</span><span class="line accent">ACCESSIBLE.</span></div>
+      <div class="sub line">Buy • Sell • Manage — Bitcoin, Ethereum &amp; USDT.</div>
+    </div>
+    <div class="feature" id="f2">
+      <div class="label line">03 — CARDS</div>
+      <div class="head"><span class="line">SMARTER CARD</span><span class="line accent">PAYMENTS.</span></div>
+      <div class="sub line">Virtual cards for your everyday spending.</div>
+    </div>
+    <div class="feature" id="f3">
+      <div class="label line">04 — BILLS</div>
+      <div class="head"><span class="line">EVERYDAY BILLS.</span><span class="line accent">MADE SIMPLE.</span></div>
+      <div class="sub line">Airtime • Data • Electricity • TV</div>
+    </div>
+
+    <div id="end">
+      <div id="logo">
+        <div id="mark">
+          <svg width="84" height="84" viewBox="0 0 84 84">
+            <path d="M24 70 V16 H48 A17 17 0 0 1 48 50 H24" fill="none" stroke="#fff" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="60" cy="68" r="7" fill="#073826"/>
+          </svg>
+        </div>
+        <div id="wordmark">Pay<span class="accent">Monetra</span></div>
+      </div>
+      <div class="tag">ONE APP FOR EVERYDAY MONEY.</div>
+      <div class="cta">DOWNLOAD NOW.</div>
+      <div id="stores">
+        <div class="store"><small>GET IT ON</small><b>Google Play</b></div>
+        <div class="store"><small>Download on the</small><b>App Store</b></div>
+      </div>
+      <div class="urls">paymonetra.com<span>|</span>business.paymonetra.com</div>
+    </div>
+  </div>
+  <canvas id="top" width="1920" height="1080"></canvas>
+</div>
+<script type="module" src="/src/outro.js"></script>
+</body>
+</html>

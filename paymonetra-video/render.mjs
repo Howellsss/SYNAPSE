@@ -1,5 +1,5 @@
 // Renders src/teaser.html frame by frame in headless Chromium and encodes it with ffmpeg.
-// Usage: node render.mjs [--stills 0,90,180]   (stills mode writes PNGs to frames/ for review)
+// Usage: node render.mjs [--page teaser|outro] [--stills 0,90,180]   (stills mode writes PNGs to frames/)
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -26,7 +26,9 @@ const server = http.createServer((req, res) => {
   fs.createReadStream(file).pipe(res);
 });
 await new Promise((r) => server.listen(0, r));
-const url = `http://127.0.0.1:${server.address().port}/src/teaser.html`;
+const pageArg = process.argv.indexOf('--page');
+const PAGE = pageArg !== -1 ? process.argv[pageArg + 1] : 'teaser';
+const url = `http://127.0.0.1:${server.address().port}/src/${PAGE}.html`;
 
 const browser = await chromium.launch({
   args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
@@ -44,11 +46,11 @@ if (stillsArg !== -1) {
   fs.mkdirSync(path.join(ROOT, 'frames'), { recursive: true });
   for (const f of process.argv[stillsArg + 1].split(',').map(Number)) {
     await page.evaluate((n) => window.renderFrame(n), f);
-    await stage.screenshot({ path: path.join(ROOT, 'frames', `f${String(f).padStart(4, '0')}.png`) });
+    await stage.screenshot({ path: path.join(ROOT, 'frames', `${PAGE}-f${String(f).padStart(4, '0')}.png`) });
   }
 } else {
   fs.mkdirSync(OUT, { recursive: true });
-  const silent = path.join(OUT, 'video-only.mp4');
+  const silent = path.join(OUT, PAGE === 'teaser' ? 'video-only.mp4' : `${PAGE}-video-only.mp4`);
   const ff = spawn('ffmpeg', [
     '-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', '30', '-c:v', 'png', '-i', '-',
     '-c:v', 'libx264', '-preset', 'slow', '-crf', '15', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', silent,
