@@ -3,14 +3,14 @@
 # -> out/PayMonetra_30s_1920x1080.mp4
 # Needs: out/PayMonetra_Teaser_10s_1920x1080.mp4, out/PayMonetra_Outro_10s_1920x1080.mp4,
 #        assets/char1.mp4 (Higgsfield Wan 3.0, 854x480) and assets/char2_matched.mp4
-#        (take 2 reframed by match_take.py to continue take 1's close-up).
+#        (take 2 reframed by match_take.py: locked-off zoom that eases from 1.25x).
 set -euo pipefail
 cd "$(dirname "$0")"
 T=out/PayMonetra_Teaser_10s_1920x1080.mp4; O=out/PayMonetra_Outro_10s_1920x1080.mp4
 C1=assets/char1.mp4; C2=assets/char2_matched.mp4
 OUT=out/PayMonetra_30s_1920x1080.mp4
 X=0.5   # teaser -> character crossfade (s); the outro opens on a full-frame orange wipe, so it hard-cuts in
-XC=0.25 # take 1 -> take 2 blend; framing is matched, so a short dissolve hides the join.
+XC=0.4  # take 1 -> take 2 blend; take 2 opens zoomed towards take 1's framing, so a short dissolve hides the join.
         # Audio: take 1's silent tail is trimmed by the same amount so take 2's voice starts at full level.
 DT=$(ffprobe -v error -show_entries format=duration -of csv=p=0 $T)
 D1=$(ffprobe -v error -show_entries format=duration -of csv=p=0 $C1)
