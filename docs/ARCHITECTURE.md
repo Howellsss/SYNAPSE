@@ -29,7 +29,10 @@ src/
     invitations.ts       Team invitations (used by Settings → Team and the space wizard)
     glb.ts               Reads a character .glb in the browser: size check (30 MB), clip names and
                          lengths, bones, triangles (+ glb.test.ts)
-    characters.ts        Characters: list, upload (checks the GLB first), signed file URL, set the
+    glbCompress.ts       Shrinks a .glb in the browser before upload (textures only: JPEG, then smaller,
+                         lightest step first; mesh, skeleton and animation bytes untouched), so files
+                         straight from Meshy fit the 30 MB limit without Blender (+ glbCompress.test.ts)
+    characters.ts        Characters: list, upload (checks and, if needed, shrinks the GLB first), signed file URL, set the
                          default clip, delete
   pages/                 One component per screen (see Routing)
   components/

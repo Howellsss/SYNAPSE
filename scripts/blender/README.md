@@ -2,6 +2,11 @@
 
 ## `optimize_meshy_glb.py`: shrink and merge Meshy character GLBs
 
+> **You usually don't need this any more.** The Characters page in SYNAPSE shrinks large files by
+> itself when you upload them, so a single Meshy file with all its animations can go straight in.
+> Use this script only to merge separate per-animation files, or if SYNAPSE says a file is still
+> too big.
+
 Meshy exports one complete `.glb` per animation: the same mesh, skeleton and textures, each with
 one clip. This script does one of two jobs:
 

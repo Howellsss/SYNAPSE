@@ -47,8 +47,8 @@ export function CharactersPage() {
 
   const onFile = async (file: File | undefined) => {
     if (!file || !user) return;
-    setUploading(`${file.name} (${formatMb(file.size)})`);
-    const { data, error } = await uploadCharacter(user.id, file);
+    setUploading(`Reading ${file.name} (${formatMb(file.size)})…`);
+    const { data, error } = await uploadCharacter(user.id, file, setUploading);
     setUploading(null);
     if (fileInput.current) fileInput.current.value = '';
     if (error || !data) { toast(error ?? 'Upload failed.', 'error'); return; }
@@ -104,7 +104,7 @@ export function CharactersPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-navy-800">Characters</h1>
-          <p className="mt-0.5 text-sm text-ivory-600">The SYNAPSE character library. Characters added here are available to everyone, in every workspace. Upload a .glb (up to 30 MB) and preview its animations.</p>
+          <p className="mt-0.5 text-sm text-ivory-600">The SYNAPSE character library. Characters added here are available to everyone, in every workspace. Upload the .glb straight from Meshy: files over 30 MB are shrunk automatically.</p>
         </div>
         {uploadButton}
         <input ref={fileInput} type="file" accept=".glb,model/gltf-binary" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
@@ -112,7 +112,7 @@ export function CharactersPage() {
 
       {uploading && (
         <div className="card flex items-center gap-3 p-4 text-sm text-navy-800" role="status">
-          <LoadingSpinner className="h-4 w-4" /> Uploading {uploading}… Large files can take a minute.
+          <LoadingSpinner className="h-4 w-4" /> {uploading} Large files can take a minute or two.
         </div>
       )}
 
@@ -128,7 +128,7 @@ export function CharactersPage() {
           <EmptyState
             icon={<Box className="h-7 w-7" />}
             title="No characters yet"
-            description="Upload a .glb character, for example a Meshy export with its animations merged into one file. Files can be up to 30 MB."
+            description="Upload a .glb character straight from Meshy, with all its animations in one file. Large files are shrunk automatically to fit."
             action={uploadButton}
           />
         </div>

@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
-import { checkCharacterFileMeta, characterNameFromFile, readGlbSummary } from '@/lib/glb';
+import { checkCharacterFileMeta, characterNameFromFile, formatMb, readGlbSummary } from '@/lib/glb';
+import { shrinkGlbFile } from '@/lib/glbCompress';
 import type { Character } from '@/types';
 
 /**
@@ -17,11 +18,24 @@ export async function listCharacters(): Promise<{ data: Character[]; error: stri
   return { data: (data ?? []) as Character[], error: error?.message ?? null };
 }
 
+/** Largest file accepted before shrinking (straight from Meshy). */
+const MAX_SOURCE_BYTES = 300 * 1024 * 1024;
+
 /**
- * Checks the .glb in the browser, uploads it to the workspace's folder and records it.
- * Nothing is stored if the file isn't a valid GLB or is over 30 MB.
+ * Checks the .glb in the browser, shrinks its textures when it's over the limit (no Blender
+ * needed), uploads it to the library and records it. Nothing is stored if it isn't a valid GLB
+ * or can't be brought under 30 MB.
  */
-export async function uploadCharacter(userId: string, file: File): Promise<{ data: Character | null; error: string | null }> {
+export async function uploadCharacter(userId: string, original: File, onProgress?: (message: string) => void): Promise<{ data: Character | null; error: string | null }> {
+  if (!/\.glb$/i.test(original.name)) return { data: null, error: 'Please choose a .glb file (binary glTF).' };
+  if (original.size > MAX_SOURCE_BYTES) return { data: null, error: `That file is ${formatMb(original.size)}. Files up to ${formatMb(MAX_SOURCE_BYTES)} can be shrunk.` };
+  let file: File;
+  try {
+    file = await shrinkGlbFile(original, onProgress);
+  } catch (e) {
+    return { data: null, error: (e as Error).message };
+  }
+  onProgress?.(file === original ? `Uploading ${formatMb(file.size)}…` : `Shrunk ${formatMb(original.size)} to ${formatMb(file.size)}. Uploading…`);
   const metaError = checkCharacterFileMeta(file);
   if (metaError) return { data: null, error: metaError };
   let summary;
@@ -41,7 +55,7 @@ export async function uploadCharacter(userId: string, file: File): Promise<{ dat
     .from('characters')
     .insert({
       workspace_id: null,
-      name: characterNameFromFile(file.name),
+      name: characterNameFromFile(original.name),
       storage_path: path,
       size_bytes: file.size,
       clips: summary.clips,
