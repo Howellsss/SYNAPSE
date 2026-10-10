@@ -10,7 +10,7 @@ T=out/PayMonetra_Teaser_10s_1920x1080.mp4; O=out/PayMonetra_Outro_10s_1920x1080.
 C1=assets/char1.mp4; C2=assets/char2_matched.mp4
 OUT=out/PayMonetra_30s_1920x1080.mp4
 X=0.5   # teaser -> character crossfade (s); the outro opens on a full-frame orange wipe, so it hard-cuts in
-XC=0.4  # take 1 -> take 2 blend; take 2 opens zoomed towards take 1's framing, so a short dissolve hides the join.
+XC=0.2  # take 1 -> take 2 blend: 6 frames, so the slight size difference reads as a soft cut, not a double image.
         # Audio: take 1's silent tail is trimmed by the same amount so take 2's voice starts at full level.
 DT=$(ffprobe -v error -show_entries format=duration -of csv=p=0 $T)
 D1=$(ffprobe -v error -show_entries format=duration -of csv=p=0 $C1)
