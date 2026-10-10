@@ -83,6 +83,28 @@ export async function setSpaceCharacter(id: string): Promise<{ error: string | n
   return { error: error?.message ?? null };
 }
 
+/** Short-lived links for several characters at once, by character id. */
+export async function characterFileUrls(characters: Pick<Character, 'id' | 'storage_path'>[]): Promise<Record<string, string>> {
+  if (!characters.length) return {};
+  const { data } = await supabase.storage.from(CHARACTERS_BUCKET).createSignedUrls(characters.map((c) => c.storage_path), 3600);
+  const byPath = new Map((data ?? []).filter((d) => d.signedUrl && !d.error).map((d) => [d.path, d.signedUrl]));
+  const out: Record<string, string> = {};
+  for (const c of characters) {
+    const url = byPath.get(c.storage_path);
+    if (url) out[c.id] = url;
+  }
+  return out;
+}
+
+/** Saves the character you appear as (profiles.avatar_config.characterId), keeping other avatar settings. */
+export async function saveMyCharacter(userId: string, currentConfig: Record<string, unknown> | null, characterId: string): Promise<{ error: string | null }> {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ avatar_config: { ...(currentConfig ?? {}), characterId } })
+    .eq('user_id', userId);
+  return { error: error?.message ?? null };
+}
+
 /** Removes the record and its file. */
 export async function deleteCharacter(character: Pick<Character, 'id' | 'storage_path'>): Promise<{ error: string | null }> {
   const { error } = await supabase.from('characters').delete().eq('id', character.id);

@@ -28,10 +28,20 @@ export interface SceneControls {
   walkTo: (userId: string) => boolean;
 }
 
-export interface SpaceSceneProps {
-  /** Signed URL of the workspace's character .glb, or null to use simple figures. */
-  characterUrl: string | null;
+/** A character from the shared library, ready to load. */
+export interface SceneCharacter {
+  id: string;
+  /** Signed URL of the .glb. */
+  url: string;
   clips: SpaceClips;
+}
+
+export interface SpaceSceneProps {
+  /** The SYNAPSE character library. Each person appears as the one they chose, else the default. */
+  library: SceneCharacter[];
+  defaultCharacterId: string | null;
+  /** The character I chose (others' choices arrive with their presence). */
+  myCharacterId: string | null;
   floor: Floor;
   quality: GraphicsQuality;
   meId: string;
@@ -49,7 +59,7 @@ export interface SpaceSceneProps {
   /** My own reactions (others' arrive through onEmote). */
   localEmote: { kind: EmoteKind; id: number } | null;
   controls: MutableRefObject<SceneControls | null>;
-  /** The character file couldn't be loaded; figures are used instead. */
+  /** A character file couldn't be loaded; simple figures are used instead. */
   onCharacterError?: (message: string) => void;
 }
 
@@ -63,6 +73,7 @@ const EMOTE_BUBBLE_MS = 3000;
 const ONE_SHOT: AvatarAction[] = ['wave', 'cheer'];
 
 interface Template {
+  id: string;
   scene: THREE.Object3D;
   clips: Map<string, THREE.AnimationClip>;
   scale: number;
@@ -73,6 +84,8 @@ interface Avatar {
   root: THREE.Group;
   body: THREE.Object3D | null;
   bodyFor: Template | null | undefined;
+  /** The clip choices the body was built with. */
+  clipsSig: string;
   mixer: THREE.AnimationMixer | null;
   actions: Partial<Record<AvatarAction, THREE.AnimationAction>>;
   current: AvatarAction | null;
@@ -140,52 +153,23 @@ export default function SpaceScene(props: SpaceSceneProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const latest = useRef(props);
   latest.current = props;
-  const templateRef = useRef<Template | null>(null);
+  /** Loaded characters by id ('loading' / 'failed' while not usable). Kept across scene rebuilds. */
+  const templates = useRef(new Map<string, Template | 'loading' | 'failed'>());
   const emotesRef = useRef<{ userId: string; kind: EmoteKind }[]>([]);
   const groupsDirty = useRef(true);
   /** Where I am, kept when the scene is rebuilt (e.g. a graphics quality change). */
   const myPlace = useRef<{ x: number; z: number; rot: number } | null>(null);
   const zoomRef = useRef(1);
-  const { quality, floor, characterUrl } = props;
+  const { quality, floor } = props;
 
-  // Load the character once per file.
+  // Free the loaded characters when leaving the space.
   useEffect(() => {
-    templateRef.current = null;
-    if (!characterUrl) return;
-    let cancelled = false;
-    new GLTFLoader().load(
-      characterUrl,
-      (gltf) => {
-        if (cancelled) return;
-        const box = new THREE.Box3().setFromObject(gltf.scene);
-        const height = box.max.y - box.min.y;
-        const scale = height > 0 ? AVATAR_HEIGHT / height : 1;
-        // Keep every clip in place: the network decides where people are.
-        for (const clip of gltf.animations) {
-          for (const track of clip.tracks) {
-            if (!track.name.endsWith('.position')) continue;
-            const node = gltf.scene.getObjectByName(track.name.slice(0, -'.position'.length));
-            const isRoot = node && (node as THREE.Bone).isBone && !(node.parent as THREE.Bone | null)?.isBone;
-            if (isRoot) pinRootMotion(track.values);
-          }
-        }
-        templateRef.current = {
-          scene: gltf.scene,
-          clips: new Map(gltf.animations.map((c) => [c.name, c])),
-          scale,
-          lift: -box.min.y * scale,
-        };
-      },
-      undefined,
-      () => { if (!cancelled) latest.current.onCharacterError?.("Couldn't load the workspace's character; showing simple figures."); },
-    );
+    const loaded = templates.current;
     return () => {
-      cancelled = true;
-      const t = templateRef.current;
-      templateRef.current = null;
-      if (t) disposeObject(t.scene);
+      for (const t of loaded.values()) if (typeof t === 'object') disposeObject(t.scene);
+      loaded.clear();
     };
-  }, [characterUrl]);
+  }, []);
 
   // Remote emotes.
   useEffect(() => props.onEmote((e) => { emotesRef.current.push({ userId: e.userId, kind: e.kind }); }), [props.onEmote]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -313,6 +297,52 @@ export default function SpaceScene(props: SpaceSceneProps) {
       return true;
     };
 
+    // Characters load the first time someone appears as them.
+    const loadTemplate = (entry: SceneCharacter) => {
+      templates.current.set(entry.id, 'loading');
+      new GLTFLoader().load(
+        entry.url,
+        (gltf) => {
+          const box = new THREE.Box3().setFromObject(gltf.scene);
+          const height = box.max.y - box.min.y;
+          const scale = height > 0 ? AVATAR_HEIGHT / height : 1;
+          // Keep every clip in place: the network decides where people are.
+          for (const clip of gltf.animations) {
+            for (const track of clip.tracks) {
+              if (!track.name.endsWith('.position')) continue;
+              const node = gltf.scene.getObjectByName(track.name.slice(0, -'.position'.length));
+              const isRoot = node && (node as THREE.Bone).isBone && !(node.parent as THREE.Bone | null)?.isBone;
+              if (isRoot) pinRootMotion(track.values);
+            }
+          }
+          templates.current.set(entry.id, {
+            id: entry.id,
+            scene: gltf.scene,
+            clips: new Map(gltf.animations.map((c) => [c.name, c])),
+            scale,
+            lift: -box.min.y * scale,
+          });
+        },
+        undefined,
+        () => {
+          templates.current.set(entry.id, 'failed');
+          latest.current.onCharacterError?.("Couldn't load a character; showing a simple figure instead.");
+        },
+      );
+    };
+    /** The loaded character someone appears as, or null (a simple figure) while it loads. */
+    const templateFor = (chosenId: string | null | undefined): Template | null => {
+      const { library, defaultCharacterId } = latest.current;
+      const entry = (chosenId ? library.find((c) => c.id === chosenId) : undefined)
+        ?? library.find((c) => c.id === defaultCharacterId);
+      if (!entry) return null;
+      const t = templates.current.get(entry.id);
+      if (t === undefined) { loadTemplate(entry); return null; }
+      return typeof t === 'object' ? t : null;
+    };
+    const clipsFor = (tpl: Template | null): SpaceClips | null =>
+      (tpl ? latest.current.library.find((c) => c.id === tpl.id)?.clips : null) ?? null;
+
     // Avatars.
     const avatars = new Map<string, Avatar>();
     const makeAvatar = (): Avatar => {
@@ -327,7 +357,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       label.position.set(0, LABEL_HEIGHT, 0);
       root.add(label);
       scene.add(root);
-      return { root, body: null, bodyFor: undefined, mixer: null, actions: {}, current: null, emote: null, label, labelEl, labelSig: '', bubble: null };
+      return { root, body: null, bodyFor: undefined, clipsSig: '', mixer: null, actions: {}, current: null, emote: null, label, labelEl, labelSig: '', bubble: null };
     };
     const setBody = (a: Avatar, userId: string, tpl: Template | null) => {
       if (a.body) {
@@ -339,6 +369,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
       a.actions = {};
       a.current = null;
       a.bodyFor = tpl;
+      const names = clipsFor(tpl);
+      a.clipsSig = JSON.stringify(names);
       if (!tpl) {
         a.body = makeFigure(userId);
       } else {
@@ -349,9 +381,9 @@ export default function SpaceScene(props: SpaceSceneProps) {
         holder.add(model);
         a.body = holder;
         a.mixer = new THREE.AnimationMixer(model);
-        const names = latest.current.clips;
         for (const action of AVATAR_ACTIONS) {
-          const clip = names[action] ? tpl.clips.get(names[action]!) : undefined;
+          const name = names?.[action];
+          const clip = name ? tpl.clips.get(name) : undefined;
           if (!clip) continue;
           const act = a.mixer.clipAction(clip);
           if (ONE_SHOT.includes(action)) { act.setLoop(THREE.LoopOnce, 1); act.clampWhenFinished = true; }
@@ -377,7 +409,6 @@ export default function SpaceScene(props: SpaceSceneProps) {
       if (next) next.reset().fadeIn(0.2).play();
       a.current = want;
     };
-    let clipsSig = JSON.stringify(latest.current.clips);
 
     const updateLabel = (a: Avatar, p: PresenceMeta | undefined, isMe: boolean, now: number) => {
       const st = p ? shownStatus(p) : null;
@@ -489,10 +520,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       }
 
       // Rebuild bodies when the character (or its clip choices) changes.
-      const tpl = templateRef.current;
-      const sig = JSON.stringify(p.clips);
-      const clipsChanged = sig !== clipsSig;
-      clipsSig = sig;
+      const needsBody = (a: Avatar, tpl: Template | null) => a.bodyFor !== tpl || a.clipsSig !== JSON.stringify(clipsFor(tpl));
 
       // Everyone present (me included).
       const present = new Set<string>();
@@ -503,7 +531,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
         present.add(person.userId);
         let a = avatars.get(person.userId);
         if (!a) { a = makeAvatar(); avatars.set(person.userId, a); }
-        if (a.bodyFor !== tpl || clipsChanged) setBody(a, person.userId, tpl);
+        const tpl = templateFor(isMe ? p.myCharacterId : person.characterId);
+        if (needsBody(a, tpl)) setBody(a, person.userId, tpl);
         a.root.position.set(pose.x, 0, pose.z);
         a.root.rotation.y = pose.rot;
         if (a.emote && (a.emote.until <= now || pose.anim === 'walk')) a.emote = null;
@@ -516,7 +545,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
       if (!present.has(p.meId)) {
         let a = avatars.get(p.meId);
         if (!a) { a = makeAvatar(); avatars.set(p.meId, a); }
-        if (a.bodyFor !== tpl || clipsChanged) setBody(a, p.meId, tpl);
+        const tpl = templateFor(p.myCharacterId);
+        if (needsBody(a, tpl)) setBody(a, p.meId, tpl);
         a.root.position.set(me.x, 0, me.z);
         a.root.rotation.y = me.rot;
         play(a, moving && a.actions.walk ? 'walk' : a.actions.idle ? 'idle' : null);

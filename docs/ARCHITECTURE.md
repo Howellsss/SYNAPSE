@@ -273,9 +273,12 @@ What you see inside a space, until the art kit brings rooms and furniture:
   broadcast and walked by the clock on everyone's screen), or hold the arrow keys / WASD (move
   messages, rate-limited by `MoveSender`). **Walk to** in the people panel walks to about a metre
   from someone.
-- **People:** everyone appears as the library's default character: the one a SYNAPSE admin chose
-  with **Use in workspaces** on the Characters page, else the newest upload. The library is
-  shared by every account and workspace. It's scaled to 1.7 m and its clips
+- **People:** everyone appears as the character they picked in **Choose your character** (the
+  shirt button on the world toolbar; offered automatically on a first visit). The pick is saved in
+  `profiles.avatar_config.characterId` and shared with others through presence (`characterId`).
+  Without a pick (or if it was deleted) they appear as the library's default: the one a SYNAPSE
+  admin chose with **Use in workspaces** on the Characters page, else the newest upload. Each
+  character file downloads once, the first time someone in the space appears as it. It's scaled to 1.7 m and its clips
   are kept in place (root motion removed). Which clip plays for standing, walking, wave and cheer
   is chosen on the Characters page (`characters.space_clips`), guessed from clip names until then
   (`spatial/scene/avatarClips.ts`). Without a character, or if it can't load (for example if the

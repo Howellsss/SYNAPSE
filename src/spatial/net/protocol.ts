@@ -20,6 +20,8 @@ export interface PresenceMeta {
   avatarUrl: string | null;
   /** Hash of the avatar config; receivers fetch the config when it changes. Null until avatars exist. */
   avatarHash: string | null;
+  /** The library character they chose to appear as (null = the SYNAPSE default). */
+  characterId?: string | null;
   status: PresenceStatus;
   /** True after 5 minutes hidden or idle. Shown as "Away" whatever the chosen status. */
   away: boolean;
@@ -182,6 +184,7 @@ export function parsePresence(raw: unknown): PresenceMeta | null {
     name,
     avatarUrl: avatarUrl && /^https:\/\//.test(avatarUrl) ? avatarUrl : null,
     avatarHash: optStr(raw.avatarHash),
+    characterId: optStr(raw.characterId),
     status,
     away: raw.away === true,
     zoneId: optStr(raw.zoneId),

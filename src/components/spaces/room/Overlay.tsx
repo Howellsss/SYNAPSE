@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import {
   LocateFixed, ZoomIn, ZoomOut, Map as MapIcon, Gauge, PencilRuler, Mic, MicOff, Video, VideoOff, MonitorUp,
-  SmilePlus, Hand, MessageSquare, Megaphone, MoreHorizontal, PhoneOff, Settings2, Check, Wifi, WifiOff, Loader2,
+  SmilePlus, Hand, MessageSquare, Megaphone, MoreHorizontal, PhoneOff, Settings2, Check, Wifi, WifiOff, Loader2, Shirt,
 } from 'lucide-react';
 import type { ConnectionState } from '@/spatial/net/status';
 import { REACTIONS, type ReactionKind } from '@/spatial/net/emotes';
@@ -32,7 +32,7 @@ function ToolButton({ label, onClick, active, children }: { label: string; onCli
   );
 }
 
-export function WorldToolbar({ quality, onQuality, canEdit, onCenter, onZoomIn, onZoomOut, mapOpen, onToggleMap, onEdit }: {
+export function WorldToolbar({ quality, onQuality, canEdit, onCenter, onZoomIn, onZoomOut, mapOpen, onToggleMap, onEdit, onCharacter }: {
   quality: GraphicsQuality;
   onQuality: (q: GraphicsQuality) => void;
   canEdit: boolean;
@@ -42,6 +42,8 @@ export function WorldToolbar({ quality, onQuality, canEdit, onCenter, onZoomIn, 
   mapOpen: boolean;
   onToggleMap: () => void;
   onEdit: () => void;
+  /** Open "Choose your character" (hidden when there are no characters). */
+  onCharacter?: () => void;
 }) {
   return (
     <div role="toolbar" aria-label="View" aria-orientation="vertical" className="flex flex-col gap-1 rounded-2xl border border-navy-100/70 bg-white/95 p-1 shadow-popover backdrop-blur">
@@ -49,6 +51,7 @@ export function WorldToolbar({ quality, onQuality, canEdit, onCenter, onZoomIn, 
       <ToolButton label="Zoom in" onClick={onZoomIn}><ZoomIn className="h-[18px] w-[18px]" /></ToolButton>
       <ToolButton label="Zoom out" onClick={onZoomOut}><ZoomOut className="h-[18px] w-[18px]" /></ToolButton>
       <ToolButton label="Floor map" onClick={onToggleMap} active={mapOpen}><MapIcon className="h-[18px] w-[18px]" /></ToolButton>
+      {onCharacter && <ToolButton label="My character" onClick={onCharacter}><Shirt className="h-[18px] w-[18px]" /></ToolButton>}
       <Popover
         label="Graphics quality"
         panelClassName="right-full top-0 mr-2 w-48"
