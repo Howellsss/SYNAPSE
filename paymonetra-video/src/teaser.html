@@ -1,0 +1,88 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>PayMonetra Teaser</title>
+<script type="importmap">
+{ "imports": {
+  "three": "/node_modules/three/build/three.module.js",
+  "three/addons/": "/node_modules/three/examples/jsm/"
+} }
+</script>
+<style>
+  :root {
+    --green-900: #04241A;
+    --green-800: #073826;
+    --green-600: #0E5A3C;
+    --orange: #FF7A1A;
+    --white: #FFFFFF;
+  }
+  html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
+  #stage {
+    position: relative; width: 1920px; height: 1080px; overflow: hidden;
+    font-family: "Inter", "Inter Display", sans-serif; color: var(--white);
+  }
+  canvas { position: absolute; inset: 0; }
+  .layer { position: absolute; inset: 0; pointer-events: none; }
+
+  /* Logo (placeholder until the official file arrives) */
+  #logo {
+    position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 28px;
+    transform-origin: 0 50%; will-change: transform, opacity;
+  }
+  #mark {
+    width: 132px; height: 132px; border-radius: 34px; background: var(--orange);
+    display: grid; place-items: center; box-shadow: 0 18px 50px rgba(255,122,26,.25);
+  }
+  #wordmark-clip { overflow: hidden; }
+  #wordmark {
+    font-family: "Inter Display", "Inter", sans-serif;
+    font-weight: 800; font-size: 104px; letter-spacing: -3px; line-height: 1; white-space: nowrap;
+  }
+  #wordmark .accent { color: var(--orange); }
+
+  #tagline {
+    position: absolute; left: 0; width: 1920px; top: 640px; text-align: center;
+    font-weight: 700; font-size: 46px; letter-spacing: 8px; white-space: nowrap;
+  }
+  #tagline span { display: inline-block; margin: 0 14px; opacity: 0; }
+  #tagline .accent { color: var(--orange); }
+
+  #meet { position: absolute; left: 170px; top: 610px; opacity: 0; }
+  #meet .kicker {
+    font-weight: 800; font-size: 64px; letter-spacing: 4px; line-height: 1.1;
+  }
+  #meet .bar { width: 96px; height: 6px; background: var(--orange); border-radius: 3px; margin: 26px 0 26px; transform-origin: 0 50%; }
+  #meet .tag { font-weight: 500; font-size: 40px; color: rgba(255,255,255,.88); }
+  #meet .tag b { color: var(--orange); font-weight: 700; }
+  #meet .url { margin-top: 22px; font-weight: 500; font-size: 26px; letter-spacing: 1px; color: rgba(255,255,255,.55); }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="fx" width="1920" height="1080"></canvas>
+  <canvas id="gl" width="1920" height="1080"></canvas>
+  <div class="layer">
+    <div id="logo">
+      <div id="mark">
+        <svg width="84" height="84" viewBox="0 0 84 84">
+          <path d="M24 70 V16 H48 A17 17 0 0 1 48 50 H24" fill="none" stroke="#fff" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="60" cy="68" r="7" fill="#073826"/>
+        </svg>
+      </div>
+      <div id="wordmark-clip"><div id="wordmark">Pay<span class="accent">Monetra</span></div></div>
+    </div>
+    <div id="tagline">
+      <span>YOUR MONEY.</span><span>YOUR WORLD.</span><span class="accent">ONE APP.</span>
+    </div>
+    <div id="meet">
+      <div class="kicker">MEET<br>PAYMONETRA</div>
+      <div class="bar"></div>
+      <div class="tag">One App for <b>Everyday Money.</b></div>
+      <div class="url">paymonetra.com</div>
+    </div>
+  </div>
+</div>
+<script type="module" src="/src/teaser.js"></script>
+</body>
+</html>

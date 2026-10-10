@@ -1,0 +1,11 @@
+{
+  "name": "paymonetra-video",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "render": "node render.mjs"
+  },
+  "dependencies": {
+    "three": "0.170.0"
+  }
+}
