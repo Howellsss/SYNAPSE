@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { guessSpaceClips, pickSpaceCharacter, resolveSpaceClips } from './avatarClips';
+import { characterFor, chosenCharacterId, guessSpaceClips, pickSpaceCharacter, resolveSpaceClips } from './avatarClips';
 
 const meshy = ['Joyful_Dance_with_Hand_Sway', 'Running', 'Walking', 'ymca_dance'];
 
@@ -43,5 +43,24 @@ describe('pickSpaceCharacter', () => {
     expect(pickSpaceCharacter([a, b, c])?.id).toBe('c');
     expect(pickSpaceCharacter([a, b])?.id).toBe('b');
     expect(pickSpaceCharacter([])).toBeNull();
+  });
+});
+
+describe('choosing your character', () => {
+  const lib = [
+    { id: 'man', use_in_spaces: true, created_at: '2026-10-01T00:00:00Z' },
+    { id: 'mo', use_in_spaces: false, created_at: '2026-10-10T00:00:00Z' },
+  ];
+  it('reads the pick from the profile', () => {
+    expect(chosenCharacterId({ characterId: 'mo' })).toBe('mo');
+    expect(chosenCharacterId({ characterId: 42 })).toBeNull();
+    expect(chosenCharacterId(null)).toBeNull();
+    expect(chosenCharacterId(['mo'])).toBeNull();
+  });
+  it('uses the pick, else the default (also when the pick was deleted)', () => {
+    expect(characterFor(lib, 'mo')?.id).toBe('mo');
+    expect(characterFor(lib, null)?.id).toBe('man');
+    expect(characterFor(lib, 'deleted')?.id).toBe('man');
+    expect(characterFor([], 'mo')).toBeNull();
   });
 });

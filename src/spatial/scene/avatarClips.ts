@@ -71,3 +71,17 @@ export function pickSpaceCharacter<T extends Pick<Character, 'use_in_spaces' | '
   if (chosen) return chosen;
   return [...characters].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
 }
+
+/** The character someone picked (profiles.avatar_config.characterId), if any. */
+export function chosenCharacterId(config: unknown): string | null {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return null;
+  const id = (config as Record<string, unknown>).characterId;
+  return typeof id === 'string' && id.length > 0 && id.length <= 64 ? id : null;
+}
+
+/** Who someone appears as: their pick if it's still in the library, else the library default. */
+export function characterFor<T extends { id: string } & Pick<Character, 'use_in_spaces' | 'created_at'>>(
+  library: T[], chosenId: string | null | undefined,
+): T | null {
+  return (chosenId ? library.find((c) => c.id === chosenId) : undefined) ?? pickSpaceCharacter(library);
+}

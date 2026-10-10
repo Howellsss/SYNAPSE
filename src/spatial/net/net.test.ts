@@ -109,6 +109,9 @@ describe('protocol validation', () => {
   it('cleans presence and ignores entries filed under someone else\'s key', () => {
     expect(parsePresence({ userId: 'u', name: '  Ama  ', avatarUrl: 'javascript:alert(1)', status: 'weird' }))
       .toMatchObject({ name: 'Ama', avatarUrl: null, status: 'available', away: false });
+    expect(parsePresence({ userId: 'u', name: 'Ama', characterId: 'abc' })?.characterId).toBe('abc');
+    expect(parsePresence({ userId: 'u', name: 'Ama', characterId: 'x'.repeat(65) })?.characterId).toBeNull();
+    expect(parsePresence({ userId: 'u', name: 'Ama', characterId: 7 })?.characterId).toBeNull();
     const merged = mergePresence({
       u1: [{ userId: 'u1', name: 'Ade', joinedAt: '1' }, { userId: 'u1', name: 'Ade', status: 'busy', joinedAt: '2' }],
       u2: [{ userId: 'u1', name: 'Impostor', joinedAt: '3' }],

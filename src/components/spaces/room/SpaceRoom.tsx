@@ -4,7 +4,8 @@ import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from '@/lib/router';
 import { listSpaces } from '@/lib/spaces';
-import { characterFileUrl, listCharacters } from '@/lib/characters';
+import { characterFileUrls, listCharacters, saveMyCharacter } from '@/lib/characters';
+import { usePlatformAdmin } from '@/lib/platformAdmin';
 import { spaceTypeInfo } from '@/spatial/data/spaceTypes';
 import { templateInfo } from '@/spatial/data/templates';
 import { buildRooms } from '@/spatial/data/rooms';
@@ -15,9 +16,10 @@ import { useAway } from '@/spatial/net/useAway';
 import { EMOTE_EMOJI } from '@/spatial/net/emotes';
 import type { EmoteKind, EmoteMsg, PresenceMeta } from '@/spatial/net/protocol';
 import type { LocalState } from '@/spatial/net/moveSender';
-import { pickSpaceCharacter, resolveSpaceClips, type SpaceClips } from '@/spatial/scene/avatarClips';
+import { characterFor, chosenCharacterId, pickSpaceCharacter, resolveSpaceClips } from '@/spatial/scene/avatarClips';
 import { floorFor } from '@/spatial/scene/floor';
-import type { SceneControls } from '@/components/spaces/scene/SpaceScene';
+import type { SceneCharacter, SceneControls } from '@/components/spaces/scene/SpaceScene';
+import { CharacterPicker } from '@/components/spaces/CharacterPicker';
 import { loadQuality, saveQuality, type GraphicsQuality } from '@/spatial/quality';
 import { normalizeMediaPrefs } from '@/spatial/media/devices';
 import { TypeArt } from '@/components/spaces/TypeArt';
@@ -33,12 +35,13 @@ import { FloorMap } from './FloorMap';
 import { PeoplePanel, PeopleCountButton } from './PeoplePanel';
 import { ConnectionPill, ControlBar, WorldToolbar } from './Overlay';
 import { InviteToSpace } from './InviteToSpace';
-import type { Space } from '@/types';
+import type { Character, Space } from '@/types';
 
 // three.js is large; load the 3D world only inside a space.
 const SpaceScene = lazy(() => import('@/components/spaces/scene/SpaceScene'));
 
-const NO_CLIPS: SpaceClips = { idle: null, walk: null, wave: null, cheer: null };
+/** Shown once per browser session to people who haven't chosen a character yet. */
+const PICKER_PROMPTED_KEY = 'synapse.characterPickerPrompted';
 /** Share my position with proximity (React state) only when I've moved this far, not every frame. */
 const POS_STEP = 0.25;
 
@@ -48,7 +51,7 @@ const POS_STEP = 0.25;
  * character (Characters page), until the art kit brings rooms and furniture.
  */
 export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; closedNote: string | null; onSpaceChange: (s: Space) => void }) {
-  const { user, profile, role, workspace } = useAuth();
+  const { user, profile, role, workspace, refreshProfile } = useAuth();
   const [, navigate] = useRouter();
   const [status, setStatus] = useState<PresenceStatus>(loadStatus);
   const [quality, setQuality] = useState<GraphicsQuality>(loadQuality);
@@ -69,8 +72,8 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
   const [myLocks, setMyLocks] = useState<string[]>([]);
   const me = useMemo<MeInput | null>(() => (user ? {
     userId: user.id, name, avatarUrl: profile?.avatar_url ?? null, avatarHash: null, status,
-    zoneId: myZone, deskId: null, conversation: myGroup, locks: myLocks,
-  } : null), [user, name, profile?.avatar_url, status, myZone, myGroup, myLocks]);
+    zoneId: myZone, deskId: null, conversation: myGroup, locks: myLocks, characterId: chosenCharacterId(profile?.avatar_config),
+  } : null), [user, name, profile?.avatar_url, profile?.avatar_config, status, myZone, myGroup, myLocks]);
   const { people, connection, remotes, updateLocal, startPath, endPath, sendEmote, onEmote, sendKnock, sendAdmit, onRoomSignal } = useSpaceChannel(space.id, me, away);
 
   // The scene reports where I am every frame: the network sender decides what to send, and
@@ -85,19 +88,44 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
     }
   }, [updateLocal]);
 
-  // The character everyone appears as: from the shared SYNAPSE library (the chosen one, else the newest).
-  const [character, setCharacter] = useState<{ url: string | null; clips: SpaceClips; loaded: boolean }>({ url: null, clips: NO_CLIPS, loaded: false });
+  // The SYNAPSE character library: everyone appears as the character they chose, else the default.
+  const [library, setLibrary] = useState<{ list: Character[]; urls: Record<string, string>; loaded: boolean }>({ list: [], urls: {}, loaded: false });
   useEffect(() => {
-    if (!user) { setCharacter({ url: null, clips: NO_CLIPS, loaded: true }); return; }
+    if (!user) { setLibrary({ list: [], urls: {}, loaded: true }); return; }
     let alive = true;
     (async () => {
       const { data } = await listCharacters();
-      const chosen = pickSpaceCharacter(data);
-      const file = chosen ? await characterFileUrl(chosen) : { url: null };
-      if (alive) setCharacter({ url: file.url, clips: chosen ? resolveSpaceClips(chosen) : NO_CLIPS, loaded: true });
+      const urls = await characterFileUrls(data);
+      if (alive) setLibrary({ list: data, urls, loaded: true });
     })();
     return () => { alive = false; };
   }, [user]);
+  const sceneLibrary = useMemo<SceneCharacter[]>(
+    () => library.list.filter((c) => library.urls[c.id]).map((c) => ({ id: c.id, url: library.urls[c.id], clips: resolveSpaceClips(c) })),
+    [library],
+  );
+  const defaultCharacterId = useMemo(() => pickSpaceCharacter(library.list)?.id ?? null, [library.list]);
+  const myChoice = chosenCharacterId(profile?.avatar_config);
+  const myCharacterId = library.list.some((c) => c.id === myChoice) ? myChoice : null;
+  const isPlatformAdmin = usePlatformAdmin() === true;
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // First visit without a choice: offer the picker once per session.
+  useEffect(() => {
+    if (!library.loaded || !library.list.length || myChoice) return;
+    try {
+      if (sessionStorage.getItem(PICKER_PROMPTED_KEY)) return;
+      sessionStorage.setItem(PICKER_PROMPTED_KEY, '1');
+    } catch { /* private mode: still show it */ }
+    setPickerOpen(true);
+  }, [library.loaded, library.list.length, myChoice]);
+  const chooseCharacter = useCallback(async (characterId: string) => {
+    if (!user) return false;
+    const { error } = await saveMyCharacter(user.id, profile?.avatar_config ?? null, characterId);
+    if (error) { toast(`Couldn't save your character. ${error}`, 'error'); return false; }
+    await refreshProfile();
+    toast(`You now appear as ${library.list.find((c) => c.id === characterId)?.name ?? 'your new character'}.`);
+    return true;
+  }, [user, profile?.avatar_config, refreshProfile, toast, library.list]);
   const sceneControls = useRef<SceneControls | null>(null);
   const [localEmote, setLocalEmote] = useState<{ kind: EmoteKind; id: number } | null>(null);
   const [hintOpen, setHintOpen] = useState(true);
@@ -239,11 +267,12 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
         <div className="absolute inset-0" data-quality={quality}>
           <TypeArt info={info} eager className="scale-105 opacity-60 blur-[2px]" />
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(13,28,59,0.35),rgba(13,28,59,0.92))]" />
-          {user && character.loaded && (
+          {user && library.loaded && (
             <Suspense fallback={<div className="absolute inset-0 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-ivory-300" /></div>}>
               <SpaceScene
-                characterUrl={character.url}
-                clips={character.clips}
+                library={sceneLibrary}
+                defaultCharacterId={defaultCharacterId}
+                myCharacterId={myCharacterId}
                 floor={floor}
                 quality={quality}
                 meId={user.id}
@@ -270,7 +299,10 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
               <Footprints className="h-4 w-4 shrink-0 text-gold-600" />
               <span className="min-w-0 flex-1">
                 Click or tap the floor to walk, or use the arrow keys or WASD.
-                {character.loaded && !character.url && <> Everyone shows as a simple figure until a character is uploaded on the <button type="button" className="font-semibold text-gold-700 underline" onClick={() => navigate('/characters')}>Characters</button> page.</>}
+                {library.loaded && library.list.length > 0 && <> <button type="button" className="font-semibold text-gold-700 underline" onClick={() => setPickerOpen(true)}>Choose your character</button>.</>}
+                {library.loaded && !library.list.length && (isPlatformAdmin
+                  ? <> Everyone shows as a simple figure until a character is added on the <button type="button" className="font-semibold text-gold-700 underline" onClick={() => navigate('/characters')}>Characters</button> page.</>
+                  : <> Everyone shows as a simple figure for now.</>)}
               </span>
               <button type="button" onClick={() => setHintOpen(false)} aria-label="Hide tip" className="rounded-lg p-1 text-ivory-700 hover:bg-ivory-50"><X className="h-4 w-4" /></button>
             </p>
@@ -343,6 +375,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
             mapOpen={mapOpen}
             onToggleMap={() => setMapOpen((v) => !v)}
             onEdit={() => setEditOpen(true)}
+            onCharacter={library.list.length ? () => setPickerOpen(true) : undefined}
           />
         </div>
 
@@ -398,6 +431,14 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
       )}
 
       <InviteToSpace space={space} open={inviteOpen} onClose={() => setInviteOpen(false)} />
+      <CharacterPicker
+        open={pickerOpen}
+        library={library.list}
+        urls={library.urls}
+        currentId={characterFor(library.list, myChoice)?.id ?? null}
+        onClose={() => setPickerOpen(false)}
+        onChoose={chooseCharacter}
+      />
       <DeviceCheckModal open={devicesOpen} onClose={() => { setDevicesOpen(false); void call.applySavedDevices(); }} />
       {editOpen && (
         <SpaceSettingsDrawer
