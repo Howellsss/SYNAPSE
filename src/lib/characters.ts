@@ -2,14 +2,17 @@ import { supabase } from '@/lib/supabase';
 import { checkCharacterFileMeta, characterNameFromFile, readGlbSummary } from '@/lib/glb';
 import type { Character } from '@/types';
 
-/** Private bucket; files live under <workspace id>/. */
+/**
+ * The SYNAPSE character library: one set of characters for every account and workspace.
+ * Everyone signed in can read it; only SYNAPSE admins (platform_admins) can change it.
+ * New files live under library/ in the private "characters" bucket.
+ */
 export const CHARACTERS_BUCKET = 'characters';
 
-export async function listCharacters(workspaceId: string): Promise<{ data: Character[]; error: string | null }> {
+export async function listCharacters(): Promise<{ data: Character[]; error: string | null }> {
   const { data, error } = await supabase
     .from('characters')
     .select('*')
-    .eq('workspace_id', workspaceId)
     .order('created_at', { ascending: false });
   return { data: (data ?? []) as Character[], error: error?.message ?? null };
 }
@@ -18,7 +21,7 @@ export async function listCharacters(workspaceId: string): Promise<{ data: Chara
  * Checks the .glb in the browser, uploads it to the workspace's folder and records it.
  * Nothing is stored if the file isn't a valid GLB or is over 30 MB.
  */
-export async function uploadCharacter(workspaceId: string, userId: string, file: File): Promise<{ data: Character | null; error: string | null }> {
+export async function uploadCharacter(userId: string, file: File): Promise<{ data: Character | null; error: string | null }> {
   const metaError = checkCharacterFileMeta(file);
   if (metaError) return { data: null, error: metaError };
   let summary;
@@ -28,7 +31,7 @@ export async function uploadCharacter(workspaceId: string, userId: string, file:
     return { data: null, error: (e as Error).message };
   }
 
-  const path = `${workspaceId}/${crypto.randomUUID()}.glb`;
+  const path = `library/${crypto.randomUUID()}.glb`;
   const { error: uploadError } = await supabase.storage
     .from(CHARACTERS_BUCKET)
     .upload(path, file, { upsert: false, contentType: 'model/gltf-binary' });
@@ -37,7 +40,7 @@ export async function uploadCharacter(workspaceId: string, userId: string, file:
   const { data, error } = await supabase
     .from('characters')
     .insert({
-      workspace_id: workspaceId,
+      workspace_id: null,
       name: characterNameFromFile(file.name),
       storage_path: path,
       size_bytes: file.size,
@@ -68,12 +71,11 @@ export async function updateCharacter(id: string, changes: Partial<Pick<Characte
   return { error: error?.message ?? null };
 }
 
-/** Makes this the character everyone appears as in the workspace's spaces (one per workspace). */
-export async function setSpaceCharacter(workspaceId: string, id: string): Promise<{ error: string | null }> {
+/** Makes this the character everyone appears as in every workspace (one for all of SYNAPSE). */
+export async function setSpaceCharacter(id: string): Promise<{ error: string | null }> {
   const { error: clearError } = await supabase
     .from('characters')
     .update({ use_in_spaces: false })
-    .eq('workspace_id', workspaceId)
     .eq('use_in_spaces', true)
     .neq('id', id);
   if (clearError) return { error: clearError.message };

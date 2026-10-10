@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Box, Check, Pause, Play, Star, Trash2, Upload, Users } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { usePlatformAdmin } from '@/lib/platformAdmin';
 import { useToast } from '@/context/ToastContext';
 import { characterFileUrl, deleteCharacter, listCharacters, setSpaceCharacter, updateCharacter, uploadCharacter } from '@/lib/characters';
 import { AVATAR_ACTION_LABELS, AVATAR_ACTIONS, pickSpaceCharacter, resolveSpaceClips, type AvatarAction } from '@/spatial/scene/avatarClips';
@@ -17,9 +18,13 @@ function formatSeconds(s: number): string {
   return s >= 60 ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : `${s.toFixed(1)}s`;
 }
 
-/** Upload 3D characters (.glb) and preview each animation clip. */
+/**
+ * The SYNAPSE character library: SYNAPSE admins upload 3D characters (.glb) here, preview their
+ * animations and set them up; every account and workspace then has them.
+ */
 export function CharactersPage() {
-  const { workspace, user } = useAuth();
+  const { user } = useAuth();
+  const isAdmin = usePlatformAdmin();
   const { toast } = useToast();
   const [characters, setCharacters] = useState<Character[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,21 +35,20 @@ export function CharactersPage() {
   const fileInput = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
-    if (!workspace) { setLoading(false); return; }
     setLoading(true);
-    const { data, error } = await listCharacters(workspace.id);
+    const { data, error } = await listCharacters();
     setCharacters(data);
     setLoadError(error);
     setSelectedId((id) => (id && data.some((c) => c.id === id) ? id : data[0]?.id ?? null));
     setLoading(false);
-  }, [workspace]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
   const onFile = async (file: File | undefined) => {
-    if (!file || !workspace || !user) return;
+    if (!file || !user) return;
     setUploading(`${file.name} (${formatMb(file.size)})`);
-    const { data, error } = await uploadCharacter(workspace.id, user.id, file);
+    const { data, error } = await uploadCharacter(user.id, file);
     setUploading(null);
     if (fileInput.current) fileInput.current.value = '';
     if (error || !data) { toast(error ?? 'Upload failed.', 'error'); return; }
@@ -65,15 +69,29 @@ export function CharactersPage() {
   const onChanged = (c: Character) => setCharacters((list) => list.map((x) => (x.id === c.id ? c : x)));
 
   const onUseInSpaces = async (c: Character) => {
-    if (!workspace) return;
-    const { error } = await setSpaceCharacter(workspace.id, c.id);
+    const { error } = await setSpaceCharacter(c.id);
     if (error) { toast(error, 'error'); return; }
     setCharacters((list) => list.map((x) => ({ ...x, use_in_spaces: x.id === c.id })));
-    toast(`Everyone now appears as ${c.name} in your workspaces.`);
+    toast(`Everyone now appears as ${c.name} in every workspace.`);
   };
   const inSpaces = pickSpaceCharacter(characters);
 
   const selected = characters.find((c) => c.id === selectedId) ?? null;
+
+  if (isAdmin === null) {
+    return <div className="flex justify-center py-20"><LoadingSpinner className="h-8 w-8" /></div>;
+  }
+  if (!isAdmin) {
+    return (
+      <div className="card max-w-xl">
+        <EmptyState
+          icon={<Box className="h-7 w-7" />}
+          title="Characters are managed by the SYNAPSE team"
+          description="The SYNAPSE character library is set up for everyone. You'll find the characters inside your workspaces."
+        />
+      </div>
+    );
+  }
   const uploadButton = (
     <button type="button" className="btn-primary" onClick={() => fileInput.current?.click()} disabled={!!uploading}>
       {uploading ? <LoadingSpinner className="h-4 w-4" /> : <Upload className="h-4 w-4" />}
@@ -86,7 +104,7 @@ export function CharactersPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-navy-800">Characters</h1>
-          <p className="mt-0.5 text-sm text-ivory-600">3D characters for your workspace. Upload a .glb (up to 30 MB) and preview its animations.</p>
+          <p className="mt-0.5 text-sm text-ivory-600">The SYNAPSE character library. Characters added here are available to everyone, in every workspace. Upload a .glb (up to 30 MB) and preview its animations.</p>
         </div>
         {uploadButton}
         <input ref={fileInput} type="file" accept=".glb,model/gltf-binary" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
@@ -152,7 +170,7 @@ export function CharactersPage() {
         onClose={() => setConfirmDelete(null)}
         onConfirm={() => confirmDelete && onDelete(confirmDelete)}
         title="Delete character?"
-        message={`${confirmDelete?.name ?? 'This character'} and its file will be removed from this workspace. Your copy on your computer isn't affected.`}
+        message={`${confirmDelete?.name ?? 'This character'} and its file will be removed from SYNAPSE for everyone. Your copy on your computer isn't affected.`}
         confirmLabel="Delete"
         danger
       />
@@ -274,7 +292,7 @@ function CharacterDetail({ character, onChanged, onDelete, inSpaces, onUseInSpac
 
         <div className="flex flex-wrap items-center gap-3 border-t border-navy-50 pt-4">
           {inSpaces ? (
-            <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-navy-800"><Check className="h-4 w-4 text-green-600" /> Everyone appears as this character in your workspaces</span>
+            <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-navy-800"><Check className="h-4 w-4 text-green-600" /> Everyone appears as this character in every workspace</span>
           ) : (
             <button type="button" className="btn-secondary btn-sm" onClick={onUseInSpaces}><Users className="h-4 w-4" /> Use in workspaces</button>
           )}

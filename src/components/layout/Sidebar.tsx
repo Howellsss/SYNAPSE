@@ -6,6 +6,7 @@ import {
 } from '@heroicons/react/24/solid';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
+import { usePlatformAdmin } from '@/lib/platformAdmin';
 import { Avatar } from '@/components/ui/Avatar';
 
 interface SidebarProps {
@@ -38,6 +39,8 @@ const navGroups = [
 export function Sidebar({ currentPath, onNavigate }: SidebarProps) {
   const { profile, signOut, role } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  // The character library is managed by SYNAPSE admins only.
+  const isPlatformAdmin = usePlatformAdmin() === true;
 
   const handleNavigate = (path: string) => {
     onNavigate(path);
@@ -106,7 +109,7 @@ export function Sidebar({ currentPath, onNavigate }: SidebarProps) {
         <nav className="flex-1 px-3 pt-3">
           {navGroups.map((group, i) => (
             <div key={i} className={cn('space-y-0.5', i > 0 && 'mt-3 border-t border-navy-100 pt-3')}>
-              {group.map((n) => item(n.label, n.icon, n.path))}
+              {group.filter((n) => n.path !== '/characters' || isPlatformAdmin).map((n) => item(n.label, n.icon, n.path))}
             </div>
           ))}
         </nav>
