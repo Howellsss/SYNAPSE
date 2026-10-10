@@ -10,7 +10,8 @@ T=out/PayMonetra_Teaser_10s_1920x1080.mp4; O=out/PayMonetra_Outro_10s_1920x1080.
 C1=assets/char1.mp4; C2=assets/char2_matched.mp4
 OUT=out/PayMonetra_30s_1920x1080.mp4
 X=0.5   # teaser -> character crossfade (s); the outro opens on a full-frame orange wipe, so it hard-cuts in
-XC=0.25 # take 1 -> take 2 blend; framing is matched, so a short dissolve hides the join
+XC=0.25 # take 1 -> take 2 blend; framing is matched, so a short dissolve hides the join.
+        # Audio: take 1's silent tail is trimmed by the same amount so take 2's voice starts at full level.
 DT=$(ffprobe -v error -show_entries format=duration -of csv=p=0 $T)
 D1=$(ffprobe -v error -show_entries format=duration -of csv=p=0 $C1)
 OFF=$(python3 -c "print(round($DT-$X,3))")
@@ -29,8 +30,8 @@ ffmpeg -y -hide_banner -loglevel error -i $T -i $C1 -i $C2 -i $O -filter_complex
  [0:v]$NORM[t];[1:v]$UP[c1];[2:v]$NORM[c2];[3:v]$NORM[o];
  [t][c1]xfade=transition=fade:duration=$X:offset=$OFF[s1x];[s1x]settb=AVTB[s1];
  [s1][c2]xfade=transition=fade:duration=$XC:offset=$OFF2[s2x];[s2x]settb=AVTB[s2];
- [0:a]$AUD,volume=${GT}dB[ta];[1:a]$AUD,volume=${GC1}dB[c1a];[2:a]$AUD,volume=${GC2}dB,afade=t=out:st=4.99:d=0.04[c2a];[3:a]$AUD,volume=${GO}dB,afade=t=in:d=0.02[oa];
- [ta][c1a]acrossfade=d=$X[s1a];[s1a][c2a]acrossfade=d=$XC:c1=tri:c2=nofa[s2a];
+ [0:a]$AUD,volume=${GT}dB[ta];[1:a]$AUD,volume=${GC1}dB,atrim=end=$(python3 -c "print($D1-$XC)"),afade=t=out:st=$(python3 -c "print($D1-$XC-0.06)"):d=0.06[c1a];[2:a]$AUD,volume=${GC2}dB,afade=t=out:st=4.99:d=0.04[c2a];[3:a]$AUD,volume=${GO}dB,afade=t=in:d=0.02[oa];
+ [ta][c1a]acrossfade=d=$X[s1a];[s1a][c2a]concat=n=2:v=0:a=1[s2a];
  [s2][s2a][o][oa]concat=n=2:v=1:a=1[v][am];
  [am]alimiter=limit=0.89:level=false[a]" \
  -map "[v]" -map "[a]" -c:v libx264 -preset slow -crf 16 -pix_fmt yuv420p -c:a aac -b:a 192k -ar 48000 \
