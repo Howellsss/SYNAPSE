@@ -22,7 +22,12 @@ ffmpeg -y -hide_banner -loglevel error -i $T -i $C1 -i $C2 -i $O -filter_complex
  [0:a]$AUD[ta];[1:a]$AUD,afade=t=out:st=4.99:d=0.04[c1a];[2:a]$AUD,afade=t=in:d=0.02,afade=t=out:st=4.99:d=0.04[c2a];[3:a]$AUD,afade=t=in:d=0.02[oa];
  [ta][c1a]acrossfade=d=$X[s1a];
  [s1][s1a][c2][c2a][o][oa]concat=n=3:v=1:a=1[v][am];
- [am]loudnorm=I=-16:TP=-1.5:LRA=11,volume=2dB,alimiter=limit=0.85[a]" \
+ [am]loudnorm=I=-16:TP=-1.5:LRA=11[a]" \
  -map "[v]" -map "[a]" -c:v libx264 -preset slow -crf 16 -pix_fmt yuv420p -c:a aac -b:a 192k -ar 48000 \
  -movflags +faststart $OUT
+# Single-pass loudnorm lands a little off target; trim the gain to -16 LUFS, keeping peaks under -1 dBFS.
+I=$(ffmpeg -hide_banner -i $OUT -af ebur128 -f null - 2>&1 | awk '/^ +I:/{v=$2} END{print v}')
+G=$(python3 -c "print(round(-16 - ($I), 2))")
+ffmpeg -y -hide_banner -loglevel error -i $OUT -c:v copy -af "volume=${G}dB,alimiter=limit=0.89:level=false" -c:a aac -b:a 192k -ar 48000 -movflags +faststart $OUT.tmp.mp4
+mv $OUT.tmp.mp4 $OUT
 ffprobe -v error -show_entries format=duration -of csv=p=0 $OUT

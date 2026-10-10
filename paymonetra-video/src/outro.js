@@ -65,7 +65,8 @@ const RIGHT_X = 1440;                     // centre of the right-hand visual
 
 // ---------- layers ----------
 const fx = document.getElementById('fx').getContext('2d');
-const top = document.getElementById('top').getContext('2d');
+const topCanvas = document.getElementById('top');
+const top = topCanvas.getContext('2d');
 const features = [0, 1, 2, 3].map((i) => document.getElementById(`f${i}`));
 const featureLines = features.map((f) => [...f.querySelectorAll('.line')]);
 const end = document.getElementById('end');
@@ -247,6 +248,11 @@ scene.add(card);
 // ---------- wipes ----------
 function drawWipe(t) {
   top.clearRect(0, 0, W, H);
+  // Hide the layer outright between wipes: a canvas that was only cleared is not always
+  // repainted before the next screenshot, which froze the last wipe on screen.
+  const active = BOUNDS.some((b) => t > b - WIPE / 2 && t < b + WIPE / 2);
+  topCanvas.style.visibility = active ? 'visible' : 'hidden';
+  if (!active) return;
   for (const b of BOUNDS) {
     const p = prog(t, b - WIPE / 2, WIPE);
     if (p <= 0 || p >= 1) continue;
