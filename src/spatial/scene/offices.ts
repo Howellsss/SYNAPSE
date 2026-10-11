@@ -69,13 +69,14 @@ export const OFFICE_01: OfficeLayout = {
  * SYNAPSE Office 02: the realistic office. Oak floor, carpeted work, meeting and café areas, a
  * gold-ringed centre circle, on a dark plinth with shrub planters; soft overhead light and contact
  * shadows are baked into the floor in Blender
- * (Cycles). Blender project "SYNAPSE Office 01", revision 13. Every chair is its own footprint and
+ * (Cycles). Blender project "SYNAPSE Office 01", revision 14. Every chair is its own footprint and
  * a seat people can sit in.
  */
 export const OFFICE_02: OfficeLayout = {
   id: 'office-02',
   name: 'SYNAPSE Office 02',
-  url: '/assets/spatial/offices/office-02.glb',
+  // ?v= changes with every new export, so browsers never show an old copy.
+  url: '/assets/spatial/offices/office-02.glb?v=14',
   floor: { width: 20, depth: 16 },
   spawn: { x: 10, z: 8 },
   blurb: 'Realistic lighting. A furnished 20 × 16 m office: six-desk work area, glass meeting room, lounge, coffee bar and café. Tap a chair or the sofa to sit.',
@@ -117,8 +118,8 @@ export const OFFICE_02: OfficeLayout = {
     // Lounge: sofa, side table, arc lamp, coffee table, two armchairs, bookshelf.
     r(0.29, 1.21, 10.15, 12.65), r(0.41, 0.89, 12.91, 13.39), r(1.8, 2.41, 9.6, 10.08), r(2.68, 3.92, 10.78, 12.02),
     r(5.02, 6.14, 9.77, 10.87), r(5.02, 6.14, 11.93, 13.03), r(0.24, 0.6, 13.8, 15.8),
-    // Coffee bar and the menu board.
-    r(7.45, 10.25, 0.19, 0.91), r(11.28, 11.92, 9.35, 9.85),
+    // Coffee bar.
+    r(7.45, 10.25, 0.19, 0.91),
     // Café: three tables, three chairs each.
     r(12.98, 13.82, 10.88, 11.72), r(16.38, 17.22, 10.58, 11.42), r(14.68, 15.52, 12.98, 13.82),
     r(13.54, 14, 11.72, 12.19), r(13.57, 14.04, 10.42, 10.9), r(12.47, 12.89, 11.07, 11.49),
