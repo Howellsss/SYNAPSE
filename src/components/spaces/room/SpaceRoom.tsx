@@ -18,6 +18,7 @@ import type { EmoteKind, EmoteMsg, PresenceMeta } from '@/spatial/net/protocol';
 import type { LocalState } from '@/spatial/net/moveSender';
 import { characterFor, chosenCharacterId, pickSpaceCharacter, resolveSpaceClips } from '@/spatial/scene/avatarClips';
 import { floorFor } from '@/spatial/scene/floor';
+import { officeFor } from '@/spatial/scene/offices';
 import type { SceneCharacter, SceneControls } from '@/components/spaces/scene/SpaceScene';
 import { CharacterPicker } from '@/components/spaces/CharacterPicker';
 import { loadQuality, saveQuality, type GraphicsQuality } from '@/spatial/quality';
@@ -129,7 +130,8 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
   const sceneControls = useRef<SceneControls | null>(null);
   const [localEmote, setLocalEmote] = useState<{ kind: EmoteKind; id: number } | null>(null);
   const [hintOpen, setHintOpen] = useState(true);
-  const floor = floorFor(space.size_band);
+  const office = officeFor(space.config?.scene);
+  const floor = office ? office.floor : floorFor(space.size_band);
   // Always list yourself, even before (or without) the presence channel answering.
   const shown = useMemo<PresenceMeta[]>(
     () => (!me || people.some((p) => p.userId === me.userId) ? people : [...people, { ...me, away, joinedAt: '' }].sort((a, b) => a.name.localeCompare(b.name))),
@@ -274,6 +276,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
                 defaultCharacterId={defaultCharacterId}
                 myCharacterId={myCharacterId}
                 floor={floor}
+                office={office}
                 quality={quality}
                 meId={user.id}
                 people={shown}
