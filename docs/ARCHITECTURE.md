@@ -300,14 +300,26 @@ What you see inside a space, until the art kit brings rooms and furniture:
   **SYNAPSE Office 01** (20 × 16 m) was built in Blender (hosted 3D Jutsu project "SYNAPSE Office 01",
   revision 4): metres, Y up, origin at the floor's back corner, no textures, about 21k triangles.
   **SYNAPSE Office 02** (20 × 16 m, listed first) is the realistic one, from the same Blender project
-  (revision 11, about 70k triangles, 2.3 MB). Its sunlight and soft furniture shadows are baked
+  (revision 13, 1.8 MB): dark plinth with shrub planters, navy and gold accents. Its soft overhead
+  light and contact shadows are baked
   into one floor texture: a top-down Cycles render of the floors with the furniture hidden from
   the camera but still casting shadows, saved as JPEG on the `BAKED_floor` mesh. In the app a
   `BAKED_*` mesh is drawn unlit as-is, `SRC_*` meshes (the unbaked floors kept for re-baking) are
   skipped, furniture stops casting live shadows (they are in the bake) and people cast theirs onto
   a see-through shadow layer, from the office's `sun` direction so both fall the same way.
-  To re-bake after moving furniture, render the same orthographic view (centre x 8.5, z 6.5,
-  23 m wide, covering x −3..20, z −3..16) and replace the image, then update the footprints.
+  To re-bake after moving furniture, render the same orthographic view (centre x 10.075,
+  z 8.075, 20.85 m wide, covering x −0.35..20.5, z −0.35..16.5) and replace the image, then update
+  the footprints.
+- **Sitting:** an office lists its `seats` (`spatial/scene/seats.ts`: position, facing, cushion
+  height, chair / sofa / armchair). Tapping a seat (the tap's ray is followed down to cushion
+  height, and the cursor becomes a hand over free seats) walks to the free side of it, behind a
+  chair or in front of a sofa, then into it; the click-to-walk `path` is sent with
+  `sitAtEnd: true` and the resting `move` has `anim: 'sit'` and the seat's facing. Receivers find
+  the seat from the position (everyone has the same office), so nothing new goes over the network.
+  A seat someone is in can't be taken. Arrow keys or a tap elsewhere stand you up. A character's
+  "Sitting" clip (Characters page) plays if it has one; otherwise its thigh and knee bones are
+  turned each frame so the thighs point forward and the shins down, and the body is lowered onto
+  the cushion. Simple figures sink into the seat.
 
 ## Checks
 

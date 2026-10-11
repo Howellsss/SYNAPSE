@@ -302,7 +302,7 @@ function CharacterDetail({ character, onChanged, onDelete, inSpaces, onUseInSpac
   );
 }
 
-/** Which clip plays for standing, walking, wave and cheer when people walk around a space. */
+/** Which clip plays for standing, walking, sitting, wave and cheer when people walk around a space. */
 function SpaceClipChoices({ character, clipNames, onPreview, onChanged }: {
   character: Character;
   clipNames: string[];
@@ -330,7 +330,7 @@ function SpaceClipChoices({ character, clipNames, onPreview, onChanged }: {
             <span className="font-medium text-navy-800">{AVATAR_ACTION_LABELS[action].label}</span>
             <span className="block text-xs text-ivory-600">{AVATAR_ACTION_LABELS[action].hint}</span>
             <select className="input-field mt-1" value={chosen[action] ?? ''} onChange={(e) => choose(action, e.target.value)}>
-              <option value="">{action === 'idle' ? 'None (stand still)' : 'None'}</option>
+              <option value="">{action === 'idle' ? 'None (stand still)' : action === 'sit' ? 'None (bend the legs)' : 'None'}</option>
               {clipNames.map((name) => <option key={name} value={name}>{name.replace(/_/g, ' ')}</option>)}
             </select>
           </label>

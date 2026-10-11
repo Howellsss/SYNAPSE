@@ -6,20 +6,26 @@ const meshy = ['Joyful_Dance_with_Hand_Sway', 'Running', 'Walking', 'ymca_dance'
 describe('guessSpaceClips', () => {
   it('guesses from Meshy clip names', () => {
     expect(guessSpaceClips(meshy, 'ymca_dance')).toEqual({
-      idle: 'ymca_dance', walk: 'Walking', wave: null, cheer: 'Joyful_Dance_with_Hand_Sway',
+      idle: 'ymca_dance', walk: 'Walking', sit: null, wave: null, cheer: 'Joyful_Dance_with_Hand_Sway',
     });
   });
   it('prefers a real idle clip and a walk over a run', () => {
     expect(guessSpaceClips(['Run', 'Idle_Breathing', 'Walk_Cycle', 'Wave_Hello'], null)).toEqual({
-      idle: 'Idle_Breathing', walk: 'Walk_Cycle', wave: 'Wave_Hello', cheer: null,
+      idle: 'Idle_Breathing', walk: 'Walk_Cycle', sit: null, wave: 'Wave_Hello', cheer: null,
     });
   });
   it('never stands still with the walk clip', () => {
     expect(guessSpaceClips(['Walking', 'Running'], 'Walking').idle).toBeNull();
     expect(guessSpaceClips(['Walking', 'Running'], 'Running').idle).toBeNull();
   });
+  it('finds a sitting clip, but not inside other words', () => {
+    expect(guessSpaceClips(['Sitting_Idle', 'Walking'], null).sit).toBe('Sitting_Idle');
+    expect(guessSpaceClips(['Chair_Sit_Down'], null).sit).toBe('Chair_Sit_Down');
+    expect(guessSpaceClips(['Seated_Typing'], null).sit).toBe('Seated_Typing');
+    expect(guessSpaceClips(['Transition', 'Position_Hold'], null).sit).toBeNull();
+  });
   it('handles a file without clips', () => {
-    expect(guessSpaceClips([], null)).toEqual({ idle: null, walk: null, wave: null, cheer: null });
+    expect(guessSpaceClips([], null)).toEqual({ idle: null, walk: null, sit: null, wave: null, cheer: null });
   });
 });
 
@@ -27,7 +33,7 @@ describe('resolveSpaceClips', () => {
   const clips = meshy.map((name) => ({ name, duration: 1 }));
   it('uses saved choices that still exist, and guesses the rest', () => {
     expect(resolveSpaceClips({ clips, default_clip: 'Walking', space_clips: { idle: 'Running', cheer: 'Gone', wave: null } })).toEqual({
-      idle: 'Running', walk: 'Walking', wave: null, cheer: 'Joyful_Dance_with_Hand_Sway',
+      idle: 'Running', walk: 'Walking', sit: null, wave: null, cheer: 'Joyful_Dance_with_Hand_Sway',
     });
   });
   it('works before the columns exist', () => {

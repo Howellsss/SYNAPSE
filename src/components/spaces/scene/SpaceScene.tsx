@@ -5,7 +5,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { pointAlong } from '@/spatial/net/interpolation';
+import { lerpAngle, pointAlong } from '@/spatial/net/interpolation';
 import { shownStatus } from '@/spatial/net/status';
 import { EMOTE_EMOJI } from '@/spatial/net/emotes';
 import type { RemoteStore } from '@/spatial/net/useSpaceChannel';
@@ -20,6 +20,7 @@ import {
   type Floor, type MoveKey,
 } from '@/spatial/scene/floor';
 import type { OfficeLayout } from '@/spatial/scene/offices';
+import { seatApproach, seatAt, seatOnRay, sittingSpot, type Seat } from '@/spatial/scene/seats';
 
 /** What the world toolbar and the people panel can ask the scene to do. */
 export interface SceneControls {
@@ -57,7 +58,8 @@ export interface SpaceSceneProps {
   groups: Group[];
   /** My state, every frame. */
   onLocal: (state: LocalState) => void;
-  startPath: (points: [number, number][], speed: number) => void;
+  /** Click-to-walk; `sitAtEnd` when the route ends in a seat. */
+  startPath: (points: [number, number][], speed: number, sitAtEnd?: boolean) => void;
   endPath: () => void;
   onEmote: (fn: (e: EmoteMsg) => void) => () => void;
   /** My own reactions (others' arrive through onEmote). */
@@ -101,6 +103,51 @@ interface Avatar {
   labelEl: HTMLDivElement;
   labelSig: string;
   bubble: { text: string; until: number } | null;
+  /** Thigh, knee and foot bones of each leg, for the seated pose when there's no sitting clip. */
+  legs: Leg[] | null;
+  /** Was drawn seated last frame (so the legs can be put back when standing up). */
+  seated: boolean;
+}
+
+interface Leg {
+  thigh: THREE.Object3D;
+  knee: THREE.Object3D;
+  foot: THREE.Object3D;
+  restThigh: THREE.Quaternion;
+  restKnee: THREE.Quaternion;
+}
+
+/** Legs of a rigged character, found by the usual bone names (Mixamo, Meshy, Blender). */
+function findLegs(model: THREE.Object3D): Leg[] | null {
+  const legs: Leg[] = [];
+  const firstBone = (o: THREE.Object3D) => o.children.find((c) => (c as THREE.Bone).isBone);
+  model.traverse((o) => {
+    if (!(o as THREE.Bone).isBone || !/up_?leg|thigh|upper_?leg/i.test(o.name) || /twist|roll/i.test(o.name)) return;
+    const knee = firstBone(o);
+    const foot = knee && firstBone(knee);
+    if (knee && foot) legs.push({ thigh: o, knee, foot, restThigh: o.quaternion.clone(), restKnee: knee.quaternion.clone() });
+  });
+  return legs.length === 2 ? legs : null;
+}
+
+const _va = new THREE.Vector3();
+const _vb = new THREE.Vector3();
+const _qa = new THREE.Quaternion();
+const _qb = new THREE.Quaternion();
+const _qc = new THREE.Quaternion();
+/** Turns `bone` so the direction to `child` points along `want` (world space, unit length). */
+function aimBone(bone: THREE.Object3D, child: THREE.Object3D, want: THREE.Vector3) {
+  if (!bone.parent) return;
+  bone.getWorldPosition(_va);
+  child.getWorldPosition(_vb);
+  const cur = _vb.sub(_va);
+  if (cur.lengthSq() < 1e-10) return;
+  cur.normalize();
+  _qa.setFromUnitVectors(cur, want);
+  bone.getWorldQuaternion(_qb);
+  bone.parent.getWorldQuaternion(_qc);
+  bone.quaternion.copy(_qc.invert().multiply(_qa.multiply(_qb)));
+  bone.updateMatrixWorld(true);
 }
 
 const STATUS_DOT: Record<string, string> = {
@@ -373,24 +420,42 @@ export default function SpaceScene(props: SpaceSceneProps) {
     // Appear near the middle (or where you were before a rebuild), never inside furniture.
     const from = myPlace.current ?? spawnPoint(floor);
     const start = freeSpot(map, from.x, from.z);
-    const me = { x: start.x, z: start.z, rot: myPlace.current?.rot ?? Math.PI * 1.25, path: null as null | { points: [number, number][]; startedAt: number } };
+    const me = {
+      x: start.x, z: start.z, rot: myPlace.current?.rot ?? Math.PI * 1.25,
+      path: null as null | { points: [number, number][]; startedAt: number },
+      /** The seat I'm in, and the one I'm walking to. */
+      seat: null as Seat | null,
+      pathSeat: null as Seat | null,
+    };
     target.set(me.x, 0, me.z);
     const held = new Set<MoveKey>();
+    const seats = office?.seats ?? [];
+    /** Seats other people are sitting in (updated every frame). */
+    let occupied = new Set<string>();
 
-    const walkTo = (x: number, z: number) => {
+    /** Walk to (x, z), or to a seat and sit in it. Standing up first if I'm sitting. */
+    const walkTo = (x: number, z: number, seat: Seat | null = null) => {
       // Tapping on furniture walks to the nearest free spot beside it.
-      const goal = freeSpot(map, x, z);
-      const cells = findPath(map.grid, mapCell(map, me.x, me.z), mapCell(map, goal.x, goal.z));
+      const goal = seat ? seatApproach(map, seat) : freeSpot(map, x, z);
+      // Stand up on the free side of my seat, then go from there.
+      const from = me.seat ? seatApproach(map, me.seat) : { x: me.x, z: me.z };
+      const cells = findPath(map.grid, mapCell(map, from.x, from.z), mapCell(map, goal.x, goal.z));
       if (!cells) return false;
       const smooth = smoothPath(map.grid, cells);
       const points: [number, number][] = smooth.map((c) => cellCenter(map, c));
-      points[0] = [me.x, me.z];
+      points[0] = [from.x, from.z];
       if (points.length === 1) points.push([goal.x, goal.z]);
       else points[points.length - 1] = [goal.x, goal.z];
-      const length = points.reduce((s, p, i) => (i ? s + Math.hypot(p[0] - points[i - 1][0], p[1] - points[i - 1][1]) : 0), 0);
-      if (length < 0.05) return false;
-      me.path = { points, startedAt: performance.now() };
-      latest.current.startPath(points, WALK_SPEED);
+      if (me.seat) points.unshift([me.x, me.z]);
+      if (seat) points.push([seat.x, seat.z]);
+      // Drop zero-length steps (e.g. already standing at the seat).
+      const route = points.filter((p, i) => i === 0 || Math.hypot(p[0] - points[i - 1][0], p[1] - points[i - 1][1]) > 1e-3);
+      const length = route.reduce((s, p, i) => (i ? s + Math.hypot(p[0] - route[i - 1][0], p[1] - route[i - 1][1]) : 0), 0);
+      if (length < 0.05 || route.length < 2) return false;
+      me.path = { points: route, startedAt: performance.now() };
+      me.seat = null;
+      me.pathSeat = seat;
+      latest.current.startPath(route, WALK_SPEED, !!seat);
       marker.position.set(goal.x, 0.02, goal.z);
       marker.visible = true;
       markerUntil = performance.now() + 900;
@@ -457,7 +522,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       label.position.set(0, LABEL_HEIGHT, 0);
       root.add(label);
       scene.add(root);
-      return { root, body: null, bodyFor: undefined, clipsSig: '', mixer: null, actions: {}, current: null, emote: null, label, labelEl, labelSig: '', bubble: null };
+      return { root, body: null, bodyFor: undefined, clipsSig: '', mixer: null, actions: {}, current: null, emote: null, label, labelEl, labelSig: '', bubble: null, legs: null, seated: false };
     };
     const setBody = (a: Avatar, userId: string, tpl: Template | null) => {
       if (a.body) {
@@ -468,6 +533,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
       a.mixer = null;
       a.actions = {};
       a.current = null;
+      a.legs = null;
+      a.seated = false;
       a.bodyFor = tpl;
       const names = clipsFor(tpl);
       a.clipsSig = JSON.stringify(names);
@@ -480,6 +547,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
         model.position.y = tpl.lift;
         holder.add(model);
         a.body = holder;
+        a.legs = findLegs(model);
         a.mixer = new THREE.AnimationMixer(model);
         for (const action of AVATAR_ACTIONS) {
           const name = names?.[action];
@@ -501,6 +569,44 @@ export default function SpaceScene(props: SpaceSceneProps) {
       a.labelEl.remove();
       scene.remove(a.root);
       avatars.delete(id);
+    };
+    /**
+     * Seated: lowers the body onto the seat. A character with a sitting clip plays it; otherwise
+     * its legs are bent (thighs forward, shins down) after the clip of the frame has been applied.
+     * A simple figure just sinks into the seat.
+     */
+    const fwd = new THREE.Vector3();
+    const thighDir = new THREE.Vector3();
+    const shinDir = new THREE.Vector3();
+    const poseSeated = (a: Avatar, seat: Seat | null) => {
+      if (!a.body) return;
+      a.label.position.y = seat ? LABEL_HEIGHT - 0.45 : LABEL_HEIGHT;
+      if (!seat) {
+        if (a.seated) {
+          a.body.position.y = 0;
+          // Without a clip driving the legs, put them back.
+          for (const leg of a.legs ?? []) { leg.thigh.quaternion.copy(leg.restThigh); leg.knee.quaternion.copy(leg.restKnee); }
+          a.seated = false;
+        }
+        return;
+      }
+      a.seated = true;
+      if (!a.bodyFor) { a.body.position.y = -(0.95 - seat.y); return; } // simple figure
+      if (a.current === 'sit' || !a.legs) { a.body.position.y = 0; return; }
+      a.body.position.y = 0;
+      a.root.updateMatrixWorld(true);
+      fwd.set(Math.sin(a.root.rotation.y), 0, Math.cos(a.root.rotation.y));
+      thighDir.copy(fwd).multiplyScalar(0.98).add(_va.set(0, -0.12, 0)).normalize();
+      shinDir.copy(fwd).multiplyScalar(0.1).add(_va.set(0, -1, 0)).normalize();
+      let hipY = 0;
+      for (const leg of a.legs) {
+        aimBone(leg.thigh, leg.knee, thighDir);
+        aimBone(leg.knee, leg.foot, shinDir);
+        hipY += leg.thigh.getWorldPosition(_vb).y;
+      }
+      hipY /= a.legs.length;
+      // Hip joints a hand's width above the cushion.
+      a.body.position.y = Math.min(0.3, Math.max(-0.8, seat.y + 0.1 - hipY));
     };
     const play = (a: Avatar, want: AvatarAction | null) => {
       if (want === a.current) return;
@@ -539,8 +645,22 @@ export default function SpaceScene(props: SpaceSceneProps) {
       const rect = renderer.domElement.getBoundingClientRect();
       ndc.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
       raycaster.setFromCamera(ndc, camera);
+      // A chair or sofa place: walk over and sit (unless someone's in it).
+      const seat = seatOnRay(seats, raycaster.ray.origin, raycaster.ray.direction);
+      if (seat && seat === me.seat) return;
+      if (seat && !occupied.has(seat.id)) { walkTo(seat.x, seat.z, seat); return; }
+      if (seat) { const near = seatApproach(map, seat); walkTo(near.x, near.z); return; }
       const hit = raycaster.intersectObject(floorMesh)[0];
       if (hit) walkTo(hit.point.x, hit.point.z);
+    };
+    // A hand over seats you can sit in.
+    const onPointerMove = (e: PointerEvent) => {
+      if (!seats.length || e.pointerType === 'touch') return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      ndc.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+      raycaster.setFromCamera(ndc, camera);
+      const seat = seatOnRay(seats, raycaster.ray.origin, raycaster.ray.direction);
+      renderer.domElement.style.cursor = seat && !occupied.has(seat.id) && seat !== me.seat ? 'pointer' : '';
     };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -559,6 +679,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
     const onBlur = () => held.clear();
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
     renderer.domElement.addEventListener('pointerup', onPointerUp);
+    renderer.domElement.addEventListener('pointermove', onPointerMove);
     renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
@@ -591,7 +712,14 @@ export default function SpaceScene(props: SpaceSceneProps) {
       let moving = false;
       const dir = keyDirection(held);
       if (dir) {
-        if (me.path) { me.path = null; p.endPath(); }
+        if (me.path) { me.path = null; me.pathSeat = null; p.endPath(); }
+        if (me.seat) {
+          // Stand up on the free side of the seat, then walk.
+          const up = seatApproach(map, me.seat);
+          me.x = up.x;
+          me.z = up.z;
+          me.seat = null;
+        }
         const next = stepTo(map, me.x, me.z, dir.x * WALK_SPEED * dt, dir.z * WALK_SPEED * dt);
         moving = Math.hypot(next.x - me.x, next.z - me.z) > 1e-4;
         me.x = next.x;
@@ -604,10 +732,24 @@ export default function SpaceScene(props: SpaceSceneProps) {
         me.z = at.z;
         me.rot = at.rot;
         moving = !at.done;
-        if (at.done) { me.path = null; p.endPath(); }
+        if (at.done) {
+          me.path = null;
+          if (me.pathSeat) {
+            // Arrived: sit down, facing the way the seat faces.
+            me.seat = me.pathSeat;
+            me.x = me.seat.x;
+            me.z = me.seat.z;
+            me.rot = me.seat.rot;
+          }
+          me.pathSeat = null;
+          p.endPath();
+        }
       }
-      myPlace.current = { x: me.x, z: me.z, rot: me.rot };
-      p.onLocal({ x: me.x, z: me.z, rot: me.rot, anim: moving ? 'walk' : 'idle' });
+      // Kept for a scene rebuild: standing beside my seat if I'm in one.
+      const place = me.seat ? seatApproach(map, me.seat) : me;
+      myPlace.current = { x: place.x, z: place.z, rot: me.rot };
+      const myAnim = moving ? 'walk' : me.seat ? 'sit' : 'idle';
+      p.onLocal({ x: me.x, z: me.z, rot: me.rot, anim: myAnim });
 
       // Emotes that arrived since the last frame.
       for (const e of emotesRef.current.splice(0)) {
@@ -623,23 +765,35 @@ export default function SpaceScene(props: SpaceSceneProps) {
       // Rebuild bodies when the character (or its clip choices) changes.
       const needsBody = (a: Avatar, tpl: Template | null) => a.bodyFor !== tpl || a.clipsSig !== JSON.stringify(clipsFor(tpl));
 
+      // Place, turn, animate and (if sitting) seat one avatar.
+      const turn = 1 - Math.exp(-dt * 14);
+      const nowOccupied = new Set<string>();
+      const drawAvatar = (a: Avatar, pose: { x: number; z: number; rot: number; anim: string }, seat: Seat | null) => {
+        const spot = seat ? sittingSpot(seat) : pose;
+        a.root.position.set(spot.x, 0, spot.z);
+        a.root.rotation.y = lerpAngle(a.root.rotation.y, seat ? seat.rot : pose.rot, turn);
+        if (a.emote && (a.emote.until <= now || pose.anim === 'walk')) a.emote = null;
+        const want: AvatarAction = a.emote ? a.emote.action : pose.anim === 'walk' ? 'walk' : seat && a.actions.sit ? 'sit' : 'idle';
+        play(a, a.actions[want] ? want : a.actions.idle ? 'idle' : null);
+        a.mixer?.update(dt);
+        poseSeated(a, seat);
+      };
+
       // Everyone present (me included).
       const present = new Set<string>();
       for (const person of p.people) {
         const isMe = person.userId === p.meId;
-        const pose = isMe ? { x: me.x, z: me.z, rot: me.rot, anim: moving ? 'walk' : 'idle' } : p.remotes.pose(person.userId, now);
+        const pose = isMe ? { x: me.x, z: me.z, rot: me.rot, anim: myAnim } : p.remotes.pose(person.userId, now);
         if (!pose) continue; // not placed yet
         present.add(person.userId);
         let a = avatars.get(person.userId);
         if (!a) { a = makeAvatar(); avatars.set(person.userId, a); }
         const tpl = templateFor(isMe ? p.myCharacterId : person.characterId);
         if (needsBody(a, tpl)) setBody(a, person.userId, tpl);
-        a.root.position.set(pose.x, 0, pose.z);
-        a.root.rotation.y = pose.rot;
-        if (a.emote && (a.emote.until <= now || pose.anim === 'walk')) a.emote = null;
-        const want: AvatarAction = a.emote ? a.emote.action : pose.anim === 'walk' ? 'walk' : 'idle';
-        play(a, a.actions[want] ? want : a.actions.idle ? 'idle' : null);
-        a.mixer?.update(dt);
+        // Others sitting: find the seat from where they are (everyone has the same office).
+        const seat = pose.anim !== 'sit' ? null : isMe ? me.seat : seatAt(seats, pose.x, pose.z);
+        if (seat && !isMe) nowOccupied.add(seat.id);
+        drawAvatar(a, pose, seat);
         updateLabel(a, person, isMe, now);
       }
       // Draw me even before presence lists me.
@@ -648,13 +802,11 @@ export default function SpaceScene(props: SpaceSceneProps) {
         if (!a) { a = makeAvatar(); avatars.set(p.meId, a); }
         const tpl = templateFor(p.myCharacterId);
         if (needsBody(a, tpl)) setBody(a, p.meId, tpl);
-        a.root.position.set(me.x, 0, me.z);
-        a.root.rotation.y = me.rot;
-        play(a, moving && a.actions.walk ? 'walk' : a.actions.idle ? 'idle' : null);
-        a.mixer?.update(dt);
+        drawAvatar(a, { x: me.x, z: me.z, rot: me.rot, anim: myAnim }, me.seat);
         updateLabel(a, undefined, true, now);
         present.add(p.meId);
       }
+      occupied = nowOccupied;
       for (const id of [...avatars.keys()]) if (!present.has(id)) removeAvatar(id);
 
       // Conversation rings.
@@ -696,6 +848,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       observer.disconnect();
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
       renderer.domElement.removeEventListener('pointerup', onPointerUp);
+      renderer.domElement.removeEventListener('pointermove', onPointerMove);
       renderer.domElement.removeEventListener('wheel', onWheel);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);

@@ -5,6 +5,7 @@
  * `obstacles` are furniture and wall footprints from the Blender scene, used for walking.
  */
 import type { Floor } from './floor';
+import type { Seat } from './seats';
 
 export interface Rect { x0: number; x1: number; z0: number; z1: number }
 
@@ -26,9 +27,12 @@ export interface OfficeLayout {
    * their floor set it so live shadows (people) fall the same way as the baked ones.
    */
   sun?: { x: number; y: number; z: number };
+  /** Chairs, sofa places and armchairs people can sit in (tap one to walk over and sit). */
+  seats?: Seat[];
 }
 
 const r = (x0: number, x1: number, z0: number, z1: number): Rect => ({ x0, x1, z0, z1 });
+const st = (id: string, x: number, z: number, rot: number, y: number, kind: Seat['kind'] = 'chair'): Seat => ({ id, x, z, rot, y, kind });
 
 /** SYNAPSE Office 01: work area, glass meeting room, lounge and café (Blender project "SYNAPSE Office 01", revision 4). */
 export const OFFICE_01: OfficeLayout = {
@@ -62,10 +66,11 @@ export const OFFICE_01: OfficeLayout = {
 };
 
 /**
- * SYNAPSE Office 02: the realistic office. Oak floor, carpeted work and meeting areas, terrazzo
- * café, garden outside the windows; sunlight and soft shadows are baked into the floor in Blender
- * (Cycles). Blender project "SYNAPSE Office 01", revision 11. Every chair is its own footprint so
- * seats can be used later.
+ * SYNAPSE Office 02: the realistic office. Oak floor, carpeted work, meeting and café areas, a
+ * gold-ringed centre circle, on a dark plinth with shrub planters; soft overhead light and contact
+ * shadows are baked into the floor in Blender
+ * (Cycles). Blender project "SYNAPSE Office 01", revision 13. Every chair is its own footprint and
+ * a seat people can sit in.
  */
 export const OFFICE_02: OfficeLayout = {
   id: 'office-02',
@@ -73,8 +78,24 @@ export const OFFICE_02: OfficeLayout = {
   url: '/assets/spatial/offices/office-02.glb',
   floor: { width: 20, depth: 16 },
   spawn: { x: 10, z: 8 },
-  blurb: 'Realistic lighting. A furnished 20 × 16 m office with windows onto a garden: six-desk work area, glass meeting room, lounge, coffee bar and café.',
-  sun: { x: 0.4467, y: 0.4963, z: -0.7444 },
+  blurb: 'Realistic lighting. A furnished 20 × 16 m office: six-desk work area, glass meeting room, lounge, coffee bar and café. Tap a chair or the sofa to sit.',
+  sun: { x: 0.3491, y: 0.8479, z: 0.399 },
+  seats: [
+    // Work area: row facing the back wall, then the row facing the front.
+    st('desk-1', 13.295, 2.28, 0.03, 0.48), st('desk-2', 15.142, 2.28, -0.017, 0.48), st('desk-3', 16.901, 2.28, 0.044, 0.48),
+    st('desk-4', 13.268, 4.57, -3.135, 0.48), st('desk-5', 15.113, 4.57, -2.995, 0.48), st('desk-6', 16.859, 4.57, 3.043, 0.48),
+    // Meeting room.
+    st('meet-1', 2.592, 2.42, 0.135, 0.48), st('meet-2', 3.609, 2.42, -0.023, 0.48), st('meet-3', 4.619, 2.42, -0.017, 0.48),
+    st('meet-4', 2.589, 4.38, 3.017, 0.48), st('meet-5', 3.603, 4.38, 3.031, 0.48), st('meet-6', 4.622, 4.38, 3.128, 0.48),
+    st('meet-7', 1.6, 3.4, 1.571, 0.48),
+    // Lounge: three places on the sofa, two armchairs.
+    st('sofa-1', 0.85, 10.75, 1.571, 0.45, 'sofa'), st('sofa-2', 0.85, 11.4, 1.571, 0.45, 'sofa'), st('sofa-3', 0.85, 12.05, 1.571, 0.45, 'sofa'),
+    st('armchair-1', 5.55, 10.3, -1.116, 0.42, 'armchair'), st('armchair-2', 5.55, 12.5, -2.026, 0.42, 'armchair'),
+    // Café: three chairs round each table.
+    st('cafe-1', 13.745, 11.932, -2.641, 0.49), st('cafe-2', 13.777, 10.687, -0.551, 0.49), st('cafe-3', 12.68, 11.277, 1.539, 0.49),
+    st('cafe-4', 17.364, 11.448, -2.241, 0.49), st('cafe-5', 16.909, 10.288, -0.151, 0.49), st('cafe-6', 16.128, 11.259, 1.939, 0.49),
+    st('cafe-7', 15.794, 13.593, -1.841, 0.49), st('cafe-8', 14.923, 12.702, 0.249, 0.49), st('cafe-9', 14.582, 13.9, 2.339, 0.49),
+  ],
   obstacles: [
     // Walls with their window sills, and the meeting room's glass walls (door gap x 5.64–6.95).
     r(0, 20, 0, 0.22), r(10.35, 19.65, 0.2, 0.32), r(0, 0.22, 0, 16), r(0.2, 0.32, 8.95, 13.65),
