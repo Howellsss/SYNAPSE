@@ -122,7 +122,7 @@ export function SpaceSettingsDrawer({ space, onClose, onSaved }: { space: Space;
 function OfficePicker({ value, onChange }: { value: string | null; onChange: (id: string | null) => void }) {
   const options = [
     { id: null, name: 'Open floor', text: 'A plain floor sized to your team. Nothing to walk around.' },
-    ...Object.values(OFFICES).map((o) => ({ id: o.id as string | null, name: o.name, text: `Preview. A furnished ${o.floor.width} × ${o.floor.depth} m office: work area, glass meeting room, lounge and café. You walk around the furniture.` })),
+    ...Object.values(OFFICES).map((o) => ({ id: o.id as string | null, name: o.name, text: o.blurb })),
   ];
   return (
     <div role="radiogroup" aria-label="3D office" className="space-y-3">

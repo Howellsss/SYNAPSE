@@ -225,7 +225,10 @@ export default function SpaceScene(props: SpaceSceneProps) {
     scene.add(sun);
     if (shadows) {
       // Light the whole floor from the same direction, with a shadow camera that covers it.
-      sun.position.set(floor.width / 2 + 9, 18, floor.depth / 2 + 12);
+      // Where the sun shines from: the office's own (to match light baked into its floor), else front-right.
+      const from = office.sun ?? { x: 9, y: 18, z: 12 };
+      const len = Math.hypot(from.x, from.y, from.z) || 1;
+      sun.position.set(floor.width / 2 + (from.x / len) * 24, (from.y / len) * 24, floor.depth / 2 + (from.z / len) * 24);
       sun.target.position.set(floor.width / 2, 0, floor.depth / 2);
       scene.add(sun.target);
       sun.castShadow = true;
@@ -267,10 +270,26 @@ export default function SpaceScene(props: SpaceSceneProps) {
           if (disposed) return;
           gltf.scene.updateMatrixWorld(true);
           const byMaterial = new Map<THREE.Material, THREE.BufferGeometry[]>();
+          // BAKED_* meshes carry light rendered in Blender (sun, lamps, soft shadows) in their
+          // texture: shown as-is. Furniture shadows are then already on the floor, so only people
+          // cast live ones, onto a see-through layer just above it. SRC_* are the unbaked sources.
+          let baked = false;
+          gltf.scene.traverse((o) => { if ((o as THREE.Mesh).isMesh && o.name.startsWith('BAKED_')) baked = true; });
           gltf.scene.traverse((o) => {
             const mesh = o as THREE.Mesh;
-            if (!mesh.isMesh) return;
+            if (!mesh.isMesh || mesh.name.startsWith('SRC_')) return;
             const mat = mesh.material as THREE.Material;
+            if (mesh.name.startsWith('BAKED_')) {
+              const map = (mat as THREE.MeshStandardMaterial).map ?? null;
+              const geo = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
+              // Just above y = 0, under the soft shadow drawn at each person's feet.
+              geo.computeBoundingBox();
+              geo.translate(0, 0.002 - (geo.boundingBox?.max.y ?? 0), 0);
+              const flat = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map, toneMapped: false }));
+              mat.dispose();
+              officeRoot.add(flat);
+              return;
+            }
             let geo = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
             for (const name of Object.keys(geo.attributes)) if (name !== 'position' && name !== 'normal') geo.deleteAttribute(name);
             if (geo.index) geo = geo.toNonIndexed();
@@ -284,9 +303,16 @@ export default function SpaceScene(props: SpaceSceneProps) {
             if (!merged) continue;
             if (mat.transparent) { mat.depthWrite = false; mat.side = THREE.DoubleSide; }
             const mesh = new THREE.Mesh(merged, mat);
-            mesh.castShadow = shadows && !mat.transparent;
+            mesh.castShadow = shadows && !mat.transparent && !baked;
             mesh.receiveShadow = shadows;
             officeRoot.add(mesh);
+          }
+          if (baked && shadows) {
+            const catcher = new THREE.Mesh(new THREE.PlaneGeometry(W, D), new THREE.ShadowMaterial({ opacity: 0.28 }));
+            catcher.rotation.x = -Math.PI / 2;
+            catcher.position.set(W / 2, 0.005, D / 2);
+            catcher.receiveShadow = true;
+            officeRoot.add(catcher);
           }
           // Lights and cameras from Blender are left out: the scene has its own.
           gltf.scene.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
@@ -454,7 +480,6 @@ export default function SpaceScene(props: SpaceSceneProps) {
         model.position.y = tpl.lift;
         holder.add(model);
         a.body = holder;
-        if (shadows) model.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
         a.mixer = new THREE.AnimationMixer(model);
         for (const action of AVATAR_ACTIONS) {
           const name = names?.[action];
@@ -465,6 +490,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
           a.actions[action] = act;
         }
       }
+      if (shadows) a.body.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
       a.root.add(a.body);
     };
     const removeAvatar = (id: string) => {

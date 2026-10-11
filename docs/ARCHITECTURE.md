@@ -299,6 +299,15 @@ What you see inside a space, until the art kit brings rooms and furniture:
   and cameras from Blender are ignored) and gets real shadows except on Low.
   **SYNAPSE Office 01** (20 × 16 m) was built in Blender (hosted 3D Jutsu project "SYNAPSE Office 01",
   revision 4): metres, Y up, origin at the floor's back corner, no textures, about 21k triangles.
+  **SYNAPSE Office 02** (20 × 16 m, listed first) is the realistic one, from the same Blender project
+  (revision 11, about 70k triangles, 2.3 MB). Its sunlight and soft furniture shadows are baked
+  into one floor texture: a top-down Cycles render of the floors with the furniture hidden from
+  the camera but still casting shadows, saved as JPEG on the `BAKED_floor` mesh. In the app a
+  `BAKED_*` mesh is drawn unlit as-is, `SRC_*` meshes (the unbaked floors kept for re-baking) are
+  skipped, furniture stops casting live shadows (they are in the bake) and people cast theirs onto
+  a see-through shadow layer, from the office's `sun` direction so both fall the same way.
+  To re-bake after moving furniture, render the same orthographic view (centre x 8.5, z 6.5,
+  23 m wide, covering x −3..20, z −3..16) and replace the image, then update the footprints.
 
 ## Checks
 
