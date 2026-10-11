@@ -5,12 +5,13 @@
  */
 import type { Character } from '@/types';
 
-export type AvatarAction = 'idle' | 'walk' | 'wave' | 'cheer';
-export const AVATAR_ACTIONS: AvatarAction[] = ['idle', 'walk', 'wave', 'cheer'];
+export type AvatarAction = 'idle' | 'walk' | 'sit' | 'wave' | 'cheer';
+export const AVATAR_ACTIONS: AvatarAction[] = ['idle', 'walk', 'sit', 'wave', 'cheer'];
 
 export const AVATAR_ACTION_LABELS: Record<AvatarAction, { label: string; hint: string }> = {
   idle: { label: 'Standing', hint: 'Plays while someone stands still' },
   walk: { label: 'Walking', hint: 'Plays while someone walks' },
+  sit: { label: 'Sitting', hint: 'Plays while someone sits in a chair. Without one, the legs are bent into a seated pose' },
   wave: { label: 'Wave', hint: 'Plays once for the 👋 reaction' },
   cheer: { label: 'Cheer', hint: 'Plays once for the 🎉 reaction' },
 };
@@ -21,6 +22,8 @@ export type SpaceClips = Record<AvatarAction, string | null>;
 const PATTERNS: Record<AvatarAction, RegExp[]> = {
   idle: [/idle/i, /stand/i, /breath/i],
   walk: [/walk/i, /jog/i, /run/i],
+  // "sit" as its own word ("Sitting_Idle", "sit-down"), not inside another ("Transition").
+  sit: [/(^|[^a-z])sit(s|ting)?([^a-z]|$)/i, /seated/i],
   wave: [/wave/i, /greet/i, /hello/i, /\bhi\b/i],
   cheer: [/cheer/i, /celebrat/i, /victory/i, /clap/i, /joy/i, /dance/i],
 };
@@ -44,6 +47,7 @@ export function guessSpaceClips(clipNames: string[], defaultClip: string | null 
   return {
     idle: firstMatch(clipNames, PATTERNS.idle) ?? fallbackIdle,
     walk,
+    sit: firstMatch(clipNames, PATTERNS.sit),
     wave: firstMatch(clipNames, PATTERNS.wave),
     cheer: firstMatch(clipNames, PATTERNS.cheer),
   };
