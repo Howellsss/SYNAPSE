@@ -4,7 +4,8 @@
  * use the same units (1 tile = 1 metre).
  */
 import type { SizeBand } from '@/types';
-import { makeGrid, type Cell, type NavGrid } from './pathfinding';
+import { isWalkable, makeGrid, nearestWalkable, type Cell, type NavGrid } from './pathfinding';
+import type { Rect } from './offices';
 
 export interface Floor {
   width: number;
@@ -52,6 +53,76 @@ export function cellAt(floor: Floor, x: number, z: number): Cell {
     x: Math.min(Math.ceil(floor.width) - 1, Math.max(0, Math.floor(x))),
     z: Math.min(Math.ceil(floor.depth) - 1, Math.max(0, Math.floor(z))),
   };
+}
+
+/**
+ * Where you can walk: a grid over the floor with furniture and walls blocked. The open floor uses
+ * 1 m cells and nothing blocked; a built office uses finer cells so doorways and aisles stay open.
+ * `clearance` keeps the avatar's body (about its radius) away from obstacles.
+ */
+export interface WalkMap {
+  floor: Floor;
+  grid: NavGrid;
+  /** Cell size in metres. */
+  cell: number;
+}
+
+export function walkMap(floor: Floor, obstacles: Rect[] = [], cell = 1, clearance = 0): WalkMap {
+  const w = Math.ceil(floor.width / cell);
+  const d = Math.ceil(floor.depth / cell);
+  const blocked: Cell[] = [];
+  for (const o of obstacles) {
+    const x0 = Math.max(0, Math.floor((o.x0 - clearance) / cell));
+    const x1 = Math.min(w - 1, Math.ceil((o.x1 + clearance) / cell) - 1);
+    const z0 = Math.max(0, Math.floor((o.z0 - clearance) / cell));
+    const z1 = Math.min(d - 1, Math.ceil((o.z1 + clearance) / cell) - 1);
+    for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) blocked.push({ x, z });
+  }
+  return { floor, grid: makeGrid(w, d, blocked), cell };
+}
+
+/** The cell a floor position is in (clamped to the grid). */
+export function mapCell(map: WalkMap, x: number, z: number): Cell {
+  return {
+    x: Math.min(map.grid.width - 1, Math.max(0, Math.floor(x / map.cell))),
+    z: Math.min(map.grid.depth - 1, Math.max(0, Math.floor(z / map.cell))),
+  };
+}
+
+/** The middle of a cell, in metres. */
+export function cellCenter(map: WalkMap, c: Cell): [number, number] {
+  return [(c.x + 0.5) * map.cell, (c.z + 0.5) * map.cell];
+}
+
+/** True when someone can stand here: on the floor and not in furniture or a wall. */
+export function isFree(map: WalkMap, x: number, z: number): boolean {
+  const c = clampToFloor(map.floor, x, z);
+  if (Math.abs(c.x - x) > 1e-9 || Math.abs(c.z - z) > 1e-9) return false;
+  return isWalkable(map.grid, mapCell(map, x, z));
+}
+
+/** The nearest place someone can stand, for spawning or restoring a place after a layout change. */
+export function freeSpot(map: WalkMap, x: number, z: number): { x: number; z: number } {
+  const p = clampToFloor(map.floor, x, z);
+  if (isFree(map, p.x, p.z)) return p;
+  const c = nearestWalkable(map.grid, mapCell(map, p.x, p.z), Math.ceil(4 / map.cell));
+  if (!c) return p;
+  const [cx, cz] = cellCenter(map, c);
+  return clampToFloor(map.floor, cx, cz);
+}
+
+/**
+ * One keyboard step: where you end up trying to move from (x, z) by (dx, dz). Blocked moves slide
+ * along walls and furniture (x only or z only), as players expect; otherwise you stay put.
+ */
+export function stepTo(map: WalkMap, x: number, z: number, dx: number, dz: number): { x: number; z: number } {
+  const tries = [[dx, dz], [dx, 0], [0, dz]] as const;
+  for (const [tx, tz] of tries) {
+    if (!tx && !tz) continue;
+    const n = clampToFloor(map.floor, x + tx, z + tz);
+    if (isWalkable(map.grid, mapCell(map, n.x, n.z))) return n;
+  }
+  return { x, z };
 }
 
 export type MoveKey = 'up' | 'down' | 'left' | 'right';

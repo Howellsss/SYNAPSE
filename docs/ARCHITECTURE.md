@@ -290,6 +290,15 @@ What you see inside a space, until the art kit brings rooms and furniture:
   reaction for 3 s), and a gold ring on the floor around each conversation group.
 - **Graphics quality:** Low renders at 1× pixel ratio without antialiasing. Changing it rebuilds
   the scene but keeps your place and zoom.
+- **Built offices:** a space can show a furnished office instead of the open floor
+  (Workspace settings → **3D office**, saved as `spaces.config.scene`). Layouts live in
+  `spatial/scene/offices.ts`: the GLB under `public/assets/spatial/offices/`, its floor size and the
+  furniture and wall footprints. Walking uses a 25 cm grid with clearance around footprints
+  (`walkMap` in `floor.ts`): taps on furniture walk to the nearest free spot, the arrow keys slide
+  along walls, and you appear in a free spot. The GLB is merged by material when it loads (lights
+  and cameras from Blender are ignored) and gets real shadows except on Low.
+  **SYNAPSE Office 01** (20 × 16 m) was built in Blender (hosted 3D Jutsu project "SYNAPSE Office 01",
+  revision 4): metres, Y up, origin at the floor's back corner, no textures, about 21k triangles.
 
 ## Checks
 

@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { pointAlong } from '@/spatial/net/interpolation';
 import { shownStatus } from '@/spatial/net/status';
 import { EMOTE_EMOJI } from '@/spatial/net/emotes';
@@ -15,9 +16,10 @@ import type { GraphicsQuality } from '@/spatial/quality';
 import { findPath, smoothPath } from '@/spatial/scene/pathfinding';
 import { AVATAR_ACTIONS, type AvatarAction, type SpaceClips } from '@/spatial/scene/avatarClips';
 import {
-  cellAt, clampToFloor, facing, floorGrid, keyDirection, moveKeyFor, pinRootMotion, spawnPoint, WALK_SPEED,
+  cellCenter, facing, freeSpot, keyDirection, mapCell, moveKeyFor, pinRootMotion, spawnPoint, stepTo, walkMap, WALK_SPEED,
   type Floor, type MoveKey,
 } from '@/spatial/scene/floor';
+import type { OfficeLayout } from '@/spatial/scene/offices';
 
 /** What the world toolbar and the people panel can ask the scene to do. */
 export interface SceneControls {
@@ -43,6 +45,8 @@ export interface SpaceSceneProps {
   /** The character I chose (others' choices arrive with their presence). */
   myCharacterId: string | null;
   floor: Floor;
+  /** A built office to show and walk around in, or null for the open floor. */
+  office?: OfficeLayout | null;
   quality: GraphicsQuality;
   meId: string;
   /** Everyone present, including me. */
@@ -70,6 +74,9 @@ const VIEW_HEIGHT = 12; // metres of floor visible top to bottom at zoom 1
 const MIN_ZOOM = 0.45;
 const MAX_ZOOM = 2.6;
 const EMOTE_BUBBLE_MS = 3000;
+/** Walking grid inside a built office: fine enough for doorways, with room for the avatar's body. */
+const OFFICE_CELL = 0.25;
+const OFFICE_CLEARANCE = 0.28;
 const ONE_SHOT: AvatarAction[] = ['wave', 'cheer'];
 
 interface Template {
@@ -161,6 +168,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
   const myPlace = useRef<{ x: number; z: number; rot: number } | null>(null);
   const zoomRef = useRef(1);
   const { quality, floor } = props;
+  const office = props.office ?? null;
 
   // Free the loaded characters when leaving the space.
   useEffect(() => {
@@ -184,12 +192,19 @@ export default function SpaceScene(props: SpaceSceneProps) {
     const mount = mountRef.current;
     if (!mount) return;
     const low = quality === 'low';
+    let disposed = false;
 
     const renderer = new THREE.WebGLRenderer({ antialias: !low, powerPreference: low ? 'low-power' : 'high-performance' });
     renderer.setPixelRatio(low ? 1 : Math.min(window.devicePixelRatio, 2));
     renderer.toneMapping = THREE.NeutralToneMapping;
     renderer.domElement.style.display = 'block';
     renderer.domElement.style.touchAction = 'none';
+    // Real shadows inside a built office (not on Low).
+    const shadows = !!office && !low;
+    if (shadows) {
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    }
     mount.appendChild(renderer.domElement);
 
     const labels = new CSS2DRenderer();
@@ -208,6 +223,19 @@ export default function SpaceScene(props: SpaceSceneProps) {
     const sun = new THREE.DirectionalLight('#ffffff', 1.4);
     sun.position.set(6, 12, 8);
     scene.add(sun);
+    if (shadows) {
+      // Light the whole floor from the same direction, with a shadow camera that covers it.
+      sun.position.set(floor.width / 2 + 9, 18, floor.depth / 2 + 12);
+      sun.target.position.set(floor.width / 2, 0, floor.depth / 2);
+      scene.add(sun.target);
+      sun.castShadow = true;
+      sun.shadow.mapSize.set(2048, 2048);
+      const half = Math.max(floor.width, floor.depth) * 0.8;
+      Object.assign(sun.shadow.camera, { left: -half, right: half, top: half, bottom: -half, near: 1, far: 70 });
+      sun.shadow.bias = -0.0004;
+      sun.shadow.normalBias = 0.03;
+      sun.shadow.radius = 3;
+    }
 
     // Floor, grid lines and a gold edge.
     const { width: W, depth: D } = floor;
@@ -227,6 +255,49 @@ export default function SpaceScene(props: SpaceSceneProps) {
     ]);
     const edge = new THREE.LineLoop(edgeGeo, new THREE.LineBasicMaterial({ color: '#E4A93C' }));
     scene.add(edge);
+
+    // A built office: one GLB, merged by material so it draws in a few dozen batches.
+    const officeRoot = new THREE.Group();
+    officeRoot.name = 'office';
+    scene.add(officeRoot);
+    if (office) {
+      new GLTFLoader().load(
+        office.url,
+        (gltf) => {
+          if (disposed) return;
+          gltf.scene.updateMatrixWorld(true);
+          const byMaterial = new Map<THREE.Material, THREE.BufferGeometry[]>();
+          gltf.scene.traverse((o) => {
+            const mesh = o as THREE.Mesh;
+            if (!mesh.isMesh) return;
+            const mat = mesh.material as THREE.Material;
+            let geo = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
+            for (const name of Object.keys(geo.attributes)) if (name !== 'position' && name !== 'normal') geo.deleteAttribute(name);
+            if (geo.index) geo = geo.toNonIndexed();
+            const list = byMaterial.get(mat) ?? [];
+            list.push(geo);
+            byMaterial.set(mat, list);
+          });
+          for (const [mat, geos] of byMaterial) {
+            const merged = mergeGeometries(geos);
+            for (const g of geos) g.dispose();
+            if (!merged) continue;
+            if (mat.transparent) { mat.depthWrite = false; mat.side = THREE.DoubleSide; }
+            const mesh = new THREE.Mesh(merged, mat);
+            mesh.castShadow = shadows && !mat.transparent;
+            mesh.receiveShadow = shadows;
+            officeRoot.add(mesh);
+          }
+          // Lights and cameras from Blender are left out: the scene has its own.
+          gltf.scene.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
+          grid.visible = false;
+          edge.visible = false;
+          (floorMesh.material as THREE.Material).visible = false; // still catches clicks
+        },
+        undefined,
+        () => { latest.current.onCharacterError?.("Couldn't load the office; showing the open floor instead."); },
+      );
+    }
 
     const shadowTex = shadowTexture();
     const shadowMat = new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false });
@@ -272,18 +343,21 @@ export default function SpaceScene(props: SpaceSceneProps) {
     observer.observe(mount);
 
     // Me.
-    const navGrid = floorGrid(floor);
-    const start = myPlace.current ? clampToFloor(floor, myPlace.current.x, myPlace.current.z) : spawnPoint(floor);
+    const map = office ? walkMap(floor, office.obstacles, OFFICE_CELL, OFFICE_CLEARANCE) : walkMap(floor);
+    // Appear near the middle (or where you were before a rebuild), never inside furniture.
+    const from = myPlace.current ?? spawnPoint(floor);
+    const start = freeSpot(map, from.x, from.z);
     const me = { x: start.x, z: start.z, rot: myPlace.current?.rot ?? Math.PI * 1.25, path: null as null | { points: [number, number][]; startedAt: number } };
     target.set(me.x, 0, me.z);
     const held = new Set<MoveKey>();
 
     const walkTo = (x: number, z: number) => {
-      const goal = clampToFloor(floor, x, z);
-      const cells = findPath(navGrid, cellAt(floor, me.x, me.z), cellAt(floor, goal.x, goal.z));
+      // Tapping on furniture walks to the nearest free spot beside it.
+      const goal = freeSpot(map, x, z);
+      const cells = findPath(map.grid, mapCell(map, me.x, me.z), mapCell(map, goal.x, goal.z));
       if (!cells) return false;
-      const smooth = smoothPath(navGrid, cells);
-      const points: [number, number][] = smooth.map((c) => [c.x + 0.5, c.z + 0.5]);
+      const smooth = smoothPath(map.grid, cells);
+      const points: [number, number][] = smooth.map((c) => cellCenter(map, c));
       points[0] = [me.x, me.z];
       if (points.length === 1) points.push([goal.x, goal.z]);
       else points[points.length - 1] = [goal.x, goal.z];
@@ -380,6 +454,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
         model.position.y = tpl.lift;
         holder.add(model);
         a.body = holder;
+        if (shadows) model.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
         a.mixer = new THREE.AnimationMixer(model);
         for (const action of AVATAR_ACTIONS) {
           const name = names?.[action];
@@ -491,7 +566,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       const dir = keyDirection(held);
       if (dir) {
         if (me.path) { me.path = null; p.endPath(); }
-        const next = clampToFloor(floor, me.x + dir.x * WALK_SPEED * dt, me.z + dir.z * WALK_SPEED * dt);
+        const next = stepTo(map, me.x, me.z, dir.x * WALK_SPEED * dt, dir.z * WALK_SPEED * dt);
         moving = Math.hypot(next.x - me.x, next.z - me.z) > 1e-4;
         me.x = next.x;
         me.z = next.z;
@@ -588,7 +663,10 @@ export default function SpaceScene(props: SpaceSceneProps) {
     });
 
     return () => {
+      disposed = true;
       renderer.setAnimationLoop(null);
+      for (const child of [...officeRoot.children]) disposeObject(child);
+      officeRoot.clear();
       observer.disconnect();
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
       renderer.domElement.removeEventListener('pointerup', onPointerUp);
@@ -618,7 +696,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       renderer.domElement.remove();
       labels.domElement.remove();
     };
-  }, [quality, floor]);
+  }, [quality, floor, office]);
 
   return (
     <div
