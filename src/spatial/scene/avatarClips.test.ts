@@ -18,11 +18,9 @@ describe('guessSpaceClips', () => {
     expect(guessSpaceClips(['Walking', 'Running'], 'Walking').idle).toBeNull();
     expect(guessSpaceClips(['Walking', 'Running'], 'Running').idle).toBeNull();
   });
-  it('finds a sitting clip, but not inside other words', () => {
-    expect(guessSpaceClips(['Sitting_Idle', 'Walking'], null).sit).toBe('Sitting_Idle');
-    expect(guessSpaceClips(['Chair_Sit_Down'], null).sit).toBe('Chair_Sit_Down');
-    expect(guessSpaceClips(['Seated_Typing'], null).sit).toBe('Seated_Typing');
-    expect(guessSpaceClips(['Transition', 'Position_Hold'], null).sit).toBeNull();
+  it('never guesses a sitting clip (they sink into chairs); it must be chosen', () => {
+    expect(guessSpaceClips(['Sitting_Idle', 'Walking'], null).sit).toBeNull();
+    expect(guessSpaceClips(['Chair_Sit_Down'], null).sit).toBeNull();
   });
   it('handles a file without clips', () => {
     expect(guessSpaceClips([], null)).toEqual({ idle: null, walk: null, sit: null, wave: null, cheer: null });

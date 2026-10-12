@@ -150,13 +150,13 @@ function AppContent() {
     return <Dashboard />;
   };
 
-  // Inside a space the world fills the screen next to the sidebar: no top bar, no padding.
+  // Inside a space the world is the whole screen: no sidebar, no top bar, no padding.
+  // Leave (in the call controls) goes back to the workspaces.
   const inSpace = /^\/workspace\/[a-z0-9-]+(?:[/?]|$)/.test(path);
   if (inSpace) {
     return (
-      <div className="h-[100dvh] overflow-hidden bg-white">
-        <Sidebar currentPath={path} onNavigate={navigate} />
-        <main className="h-full lg:ml-[240px]">{renderPage()}</main>
+      <div className="h-[100dvh] overflow-hidden bg-navy-900">
+        <main className="h-full">{renderPage()}</main>
       </div>
     );
   }

@@ -69,14 +69,14 @@ export const OFFICE_01: OfficeLayout = {
  * SYNAPSE Office 02: the realistic office. Oak floor, carpeted work, meeting and café areas, a
  * gold-ringed centre circle, on a dark plinth with shrub planters; soft overhead light and contact
  * shadows are baked into the floor in Blender
- * (Cycles). Blender project "SYNAPSE Office 01", revision 14. Every chair is its own footprint and
+ * (Cycles). Blender project "SYNAPSE Office 01", revision 15. Every chair is its own footprint and
  * a seat people can sit in.
  */
 export const OFFICE_02: OfficeLayout = {
   id: 'office-02',
   name: 'SYNAPSE Office 02',
   // ?v= changes with every new export, so browsers never show an old copy.
-  url: '/assets/spatial/offices/office-02.glb?v=14',
+  url: '/assets/spatial/offices/office-02.glb?v=15',
   floor: { width: 20, depth: 16 },
   spawn: { x: 10, z: 8 },
   blurb: 'Realistic lighting. A furnished 20 × 16 m office: six-desk work area, glass meeting room, lounge, coffee bar and café. Tap a chair or the sofa to sit.',

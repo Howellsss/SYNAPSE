@@ -5,6 +5,10 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { lerpAngle, pointAlong } from '@/spatial/net/interpolation';
 import { shownStatus } from '@/spatial/net/status';
 import { EMOTE_EMOJI } from '@/spatial/net/emotes';
@@ -103,31 +107,43 @@ interface Avatar {
   labelEl: HTMLDivElement;
   labelSig: string;
   bubble: { text: string; until: number } | null;
-  /** Thigh, knee and foot bones of each leg, for the seated pose when there's no sitting clip. */
-  legs: Leg[] | null;
-  /** Was drawn seated last frame (so the legs can be put back when standing up). */
+  /** Bones for the seated pose (when the character has no sitting clip of its own). */
+  rig: Rig | null;
+  /** Was drawn seated last frame (so the body can be put back when standing up). */
   seated: boolean;
 }
 
-interface Leg {
-  thigh: THREE.Object3D;
-  knee: THREE.Object3D;
-  foot: THREE.Object3D;
-  restThigh: THREE.Quaternion;
-  restKnee: THREE.Quaternion;
+interface Limb { root: THREE.Object3D; mid: THREE.Object3D; end: THREE.Object3D }
+interface Rig {
+  legs: Limb[];
+  arms: Limb[];
+  /** Every bone's natural (standing) pose, from the file. */
+  rest: { bone: THREE.Object3D; q: THREE.Quaternion; p: THREE.Vector3 }[];
 }
 
-/** Legs of a rigged character, found by the usual bone names (Mixamo, Meshy, Blender). */
-function findLegs(model: THREE.Object3D): Leg[] | null {
-  const legs: Leg[] = [];
-  const firstBone = (o: THREE.Object3D) => o.children.find((c) => (c as THREE.Bone).isBone);
+/** Legs and arms of a rigged character, found by the usual bone names (Mixamo, Meshy, Blender). */
+function findRig(model: THREE.Object3D): Rig | null {
+  const legs: Limb[] = [];
+  const arms: Limb[] = [];
+  const rest: Rig['rest'] = [];
+  const isBone = (o: THREE.Object3D | null | undefined): o is THREE.Object3D => !!o && !!(o as THREE.Bone).isBone;
+  const firstBone = (o: THREE.Object3D) => o.children.find(isBone);
   model.traverse((o) => {
-    if (!(o as THREE.Bone).isBone || !/up_?leg|thigh|upper_?leg/i.test(o.name) || /twist|roll/i.test(o.name)) return;
-    const knee = firstBone(o);
-    const foot = knee && firstBone(knee);
-    if (knee && foot) legs.push({ thigh: o, knee, foot, restThigh: o.quaternion.clone(), restKnee: knee.quaternion.clone() });
+    if (!isBone(o)) return;
+    rest.push({ bone: o, q: o.quaternion.clone(), p: o.position.clone() });
+    if (/twist|roll/i.test(o.name)) return;
+    if (/up_?leg|thigh|upper_?leg/i.test(o.name)) {
+      const mid = firstBone(o);
+      const end = mid && firstBone(mid);
+      if (mid && end) legs.push({ root: o, mid, end });
+    } else if (/hand$/i.test(o.name.replace(/[._-]?[lr]$/i, '').replace(/^.*[:|]/, '')) || /(^|[^a-z])hand([^a-z]|$)/i.test(o.name)) {
+      // Hand → forearm → upper arm.
+      const mid = o.parent;
+      const root = mid?.parent;
+      if (isBone(mid) && isBone(root) && arms.every((a) => a.end !== o)) arms.push({ root, mid, end: o });
+    }
   });
-  return legs.length === 2 ? legs : null;
+  return legs.length === 2 ? { legs, arms: arms.length === 2 ? arms : [], rest } : null;
 }
 
 const _va = new THREE.Vector3();
@@ -184,6 +200,24 @@ function shadowTexture(): THREE.Texture {
   g.fillStyle = grad;
   g.fillRect(0, 0, 64, 64);
   return new THREE.CanvasTexture(c);
+}
+
+/** Ground around a built office: dark slate under the office, darker towards the edges. */
+const GROUND_CENTER = '#262C37';
+const GROUND_EDGE = '#12151B';
+function groundTexture(): THREE.Texture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d')!;
+  const grad = g.createRadialGradient(128, 128, 6, 128, 128, 128);
+  grad.addColorStop(0, GROUND_CENTER);
+  grad.addColorStop(0.18, GROUND_CENTER);
+  grad.addColorStop(1, GROUND_EDGE);
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 256, 256);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 
 function disposeObject(obj: THREE.Object3D, keepShared = false) {
@@ -261,7 +295,15 @@ export default function SpaceScene(props: SpaceSceneProps) {
     mount.appendChild(labels.domElement);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#0D1C3B');
+    scene.background = new THREE.Color(office ? GROUND_EDGE : '#0D1C3B');
+    // A built office stands on a dark ground that fades out, never floating in an empty sky.
+    let ground: THREE.Mesh | null = null;
+    if (office) {
+      ground = new THREE.Mesh(new THREE.PlaneGeometry(260, 260), new THREE.MeshBasicMaterial({ map: groundTexture(), toneMapped: false }));
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.set(floor.width / 2, -0.52, floor.depth / 2);
+      scene.add(ground);
+    }
     const pmrem = new THREE.PMREMGenerator(renderer);
     const envMap = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     scene.environment = envMap;
@@ -402,10 +444,23 @@ export default function SpaceScene(props: SpaceSceneProps) {
       camera.lookAt(target);
       camera.updateProjectionMatrix();
     };
+    // High quality in a built office: soft contact shadows where things meet (ambient occlusion).
+    let composer: EffectComposer | null = null;
+    if (office && !low) {
+      composer = new EffectComposer(renderer);
+      composer.addPass(new RenderPass(scene, camera));
+      const ao = new GTAOPass(scene, camera, mount.clientWidth || 1, mount.clientHeight || 1);
+      ao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.5, thickness: 1.2, scale: 1, samples: 12 });
+      ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
+      ao.blendIntensity = 0.85;
+      composer.addPass(ao);
+      composer.addPass(new OutputPass());
+    }
     const resize = () => {
       const w = mount.clientWidth || 1;
       const h = mount.clientHeight || 1;
       renderer.setSize(w, h, false);
+      composer?.setSize(w, h);
       renderer.domElement.style.width = '100%';
       renderer.domElement.style.height = '100%';
       labels.setSize(w, h);
@@ -522,7 +577,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       label.position.set(0, LABEL_HEIGHT, 0);
       root.add(label);
       scene.add(root);
-      return { root, body: null, bodyFor: undefined, clipsSig: '', mixer: null, actions: {}, current: null, emote: null, label, labelEl, labelSig: '', bubble: null, legs: null, seated: false };
+      return { root, body: null, bodyFor: undefined, clipsSig: '', mixer: null, actions: {}, current: null, emote: null, label, labelEl, labelSig: '', bubble: null, rig: null, seated: false };
     };
     const setBody = (a: Avatar, userId: string, tpl: Template | null) => {
       if (a.body) {
@@ -533,7 +588,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       a.mixer = null;
       a.actions = {};
       a.current = null;
-      a.legs = null;
+      a.rig = null;
       a.seated = false;
       a.bodyFor = tpl;
       const names = clipsFor(tpl);
@@ -547,7 +602,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
         model.position.y = tpl.lift;
         holder.add(model);
         a.body = holder;
-        a.legs = findLegs(model);
+        a.rig = findRig(model);
         a.mixer = new THREE.AnimationMixer(model);
         for (const action of AVATAR_ACTIONS) {
           const name = names?.[action];
@@ -571,42 +626,61 @@ export default function SpaceScene(props: SpaceSceneProps) {
       avatars.delete(id);
     };
     /**
-     * Seated: lowers the body onto the seat. A character with a sitting clip plays it; otherwise
-     * its legs are bent (thighs forward, shins down) after the clip of the frame has been applied.
-     * A simple figure just sinks into the seat.
+     * Seated. A character with a sitting clip chosen on the Characters page plays it. Otherwise it
+     * sits from its natural standing pose: back straight, thighs forward along the cushion, shins
+     * down, hands resting forward on the lap, and the hips lowered onto the cushion. Done after the
+     * frame's clips so nothing else moves the body. A simple figure sinks into the seat.
      */
     const fwd = new THREE.Vector3();
-    const thighDir = new THREE.Vector3();
-    const shinDir = new THREE.Vector3();
+    const side = new THREE.Vector3();
+    const dirA = new THREE.Vector3();
+    const dirB = new THREE.Vector3();
+    const toRest = (rig: Rig) => { for (const r of rig.rest) { r.bone.quaternion.copy(r.q); r.bone.position.copy(r.p); } };
     const poseSeated = (a: Avatar, seat: Seat | null) => {
       if (!a.body) return;
       a.label.position.y = seat ? LABEL_HEIGHT - 0.45 : LABEL_HEIGHT;
       if (!seat) {
         if (a.seated) {
           a.body.position.y = 0;
-          // Without a clip driving the legs, put them back.
-          for (const leg of a.legs ?? []) { leg.thigh.quaternion.copy(leg.restThigh); leg.knee.quaternion.copy(leg.restKnee); }
+          if (a.rig) toRest(a.rig); // the standing clips take over from here
           a.seated = false;
         }
         return;
       }
       a.seated = true;
       if (!a.bodyFor) { a.body.position.y = -(0.95 - seat.y); return; } // simple figure
-      if (a.current === 'sit' || !a.legs) { a.body.position.y = 0; return; }
+      if (a.current === 'sit' || !a.rig) { a.body.position.y = 0; return; }
+      const rig = a.rig;
+      toRest(rig);
       a.body.position.y = 0;
       a.root.updateMatrixWorld(true);
       fwd.set(Math.sin(a.root.rotation.y), 0, Math.cos(a.root.rotation.y));
-      thighDir.copy(fwd).multiplyScalar(0.98).add(_va.set(0, -0.12, 0)).normalize();
-      shinDir.copy(fwd).multiplyScalar(0.1).add(_va.set(0, -1, 0)).normalize();
+      // Thighs along the cushion (slightly down to the knee), shins straight down to the floor.
+      dirA.copy(fwd).add(_va.set(0, -0.08, 0)).normalize();
+      dirB.copy(fwd).multiplyScalar(0.08).add(_va.set(0, -1, 0)).normalize();
       let hipY = 0;
-      for (const leg of a.legs) {
-        aimBone(leg.thigh, leg.knee, thighDir);
-        aimBone(leg.knee, leg.foot, shinDir);
-        hipY += leg.thigh.getWorldPosition(_vb).y;
+      let hipX = 0;
+      let hipZ = 0;
+      for (const leg of rig.legs) {
+        aimBone(leg.root, leg.mid, dirA);
+        aimBone(leg.mid, leg.end, dirB);
+        leg.root.getWorldPosition(_vb);
+        hipY += _vb.y; hipX += _vb.x; hipZ += _vb.z;
       }
-      hipY /= a.legs.length;
-      // Hip joints a hand's width above the cushion.
-      a.body.position.y = Math.min(0.3, Math.max(-0.8, seat.y + 0.1 - hipY));
+      hipY /= rig.legs.length; hipX /= rig.legs.length; hipZ /= rig.legs.length;
+      // Upper arms down by the sides, forearms forward so the hands rest on the thighs.
+      for (const arm of rig.arms) {
+        arm.root.getWorldPosition(_vb);
+        side.set(_vb.x - hipX, 0, _vb.z - hipZ);
+        side.addScaledVector(fwd, -side.dot(fwd));
+        if (side.lengthSq() > 1e-6) side.normalize();
+        dirA.copy(fwd).multiplyScalar(0.18).addScaledVector(side, 0.12).add(_va.set(0, -1, 0)).normalize();
+        aimBone(arm.root, arm.mid, dirA);
+        dirB.copy(fwd).multiplyScalar(0.9).addScaledVector(side, -0.08).add(_va.set(0, -0.42, 0)).normalize();
+        aimBone(arm.mid, arm.end, dirB);
+      }
+      // Hip joints just above the cushion.
+      a.body.position.y = Math.min(0.3, Math.max(-0.9, seat.y + 0.07 - hipY));
     };
     const play = (a: Avatar, want: AvatarAction | null) => {
       if (want === a.current) return;
@@ -621,7 +695,9 @@ export default function SpaceScene(props: SpaceSceneProps) {
       const st = p ? shownStatus(p) : null;
       const hand = latest.current.raisedHands.has(p?.userId ?? '');
       const bubble = a.bubble && a.bubble.until > now ? a.bubble.text : '';
-      const name = isMe ? 'You' : p?.name ?? '';
+      // First names, like people call each other in an office (mine too, not "You").
+      const full = p?.name ?? (isMe ? latest.current.people.find((x) => x.userId === latest.current.meId)?.name : '') ?? '';
+      const name = full.trim().split(/\s+/)[0] || (isMe ? 'You' : '');
       const sig = `${name}|${st?.dot}|${p?.away}|${hand}|${bubble}`;
       if (sig === a.labelSig) return;
       a.labelSig = sig;
@@ -773,8 +849,9 @@ export default function SpaceScene(props: SpaceSceneProps) {
         a.root.position.set(spot.x, 0, spot.z);
         a.root.rotation.y = lerpAngle(a.root.rotation.y, seat ? seat.rot : pose.rot, turn);
         if (a.emote && (a.emote.until <= now || pose.anim === 'walk')) a.emote = null;
-        const want: AvatarAction = a.emote ? a.emote.action : pose.anim === 'walk' ? 'walk' : seat && a.actions.sit ? 'sit' : 'idle';
-        play(a, a.actions[want] ? want : a.actions.idle ? 'idle' : null);
+        const want: AvatarAction | null = a.emote ? a.emote.action : pose.anim === 'walk' ? 'walk'
+          : seat ? (a.actions.sit ? 'sit' : a.rig ? null : 'idle') : 'idle';
+        play(a, want && a.actions[want] ? want : want && a.actions.idle ? 'idle' : null);
         a.mixer?.update(dt);
         poseSeated(a, seat);
       };
@@ -831,12 +908,16 @@ export default function SpaceScene(props: SpaceSceneProps) {
 
       // Follow me.
       const k = 1 - Math.exp(-dt * 5);
-      target.x += (me.x - target.x) * k;
-      target.z += (me.z - target.z) * k;
+      // In an office the view stays over the office, so its edge never fills the screen.
+      const fx = office ? Math.min(Math.max(me.x, Math.min(W / 2, 6)), Math.max(W / 2, W - 6)) : me.x;
+      const fz = office ? Math.min(Math.max(me.z, Math.min(D / 2, 4.5)), Math.max(D / 2, D - 4.5)) : me.z;
+      target.x += (fx - target.x) * k;
+      target.z += (fz - target.z) * k;
       camera.position.copy(target).add(CAMERA_OFFSET);
       camera.lookAt(target);
 
-      renderer.render(scene, camera);
+      if (composer) composer.render(dt);
+      else renderer.render(scene, camera);
       labels.render(scene, camera);
     });
 
@@ -870,6 +951,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
       marker.geometry.dispose();
       (marker.material as THREE.Material).dispose();
       envMap.dispose();
+      composer?.dispose();
+      if (ground) disposeObject(ground);
       pmrem.dispose();
       renderer.dispose();
       renderer.domElement.remove();
