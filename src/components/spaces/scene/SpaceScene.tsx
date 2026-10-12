@@ -908,9 +908,12 @@ export default function SpaceScene(props: SpaceSceneProps) {
 
       // Follow me.
       const k = 1 - Math.exp(-dt * 5);
-      // In an office the view stays over the office, so its edge never fills the screen.
-      const fx = office ? Math.min(Math.max(me.x, Math.min(W / 2, 6)), Math.max(W / 2, W - 6)) : me.x;
-      const fz = office ? Math.min(Math.max(me.z, Math.min(D / 2, 4.5)), Math.max(D / 2, D - 4.5)) : me.z;
+      // In an office the view stays over the office, so its edge never fills the screen. Zoomed
+      // in, the margin shrinks with the view, so you always stay on screen.
+      const mx = Math.min(W / 2, 6 / zoom);
+      const mz = Math.min(D / 2, 4.5 / zoom);
+      const fx = office ? Math.min(Math.max(me.x, mx), W - mx) : me.x;
+      const fz = office ? Math.min(Math.max(me.z, mz), D - mz) : me.z;
       target.x += (fx - target.x) * k;
       target.z += (fz - target.z) * k;
       camera.position.copy(target).add(CAMERA_OFFSET);
