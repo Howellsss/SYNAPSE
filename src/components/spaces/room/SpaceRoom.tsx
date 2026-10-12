@@ -262,13 +262,11 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
 
   return (
     <div className="flex h-[100dvh] min-h-0 w-full overflow-hidden">
-      <aside className="hidden w-[262px] shrink-0 border-r border-navy-50 lg:flex" aria-label="People">{panel('w-full')}</aside>
-
       <section className="relative min-w-0 flex-1 overflow-hidden bg-navy-900" aria-label={`${space.name} office`}>
         {/* The world */}
         <div className="absolute inset-0" data-quality={quality}>
-          <TypeArt info={info} eager className="scale-105 opacity-60 blur-[2px]" />
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(13,28,59,0.35),rgba(13,28,59,0.92))]" />
+          {!office && <TypeArt info={info} eager className="scale-105 opacity-60 blur-[2px]" />}
+          {!office && <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(13,28,59,0.35),rgba(13,28,59,0.92))]" />}
           {user && library.loaded && (
             <Suspense fallback={<div className="absolute inset-0 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-ivory-300" /></div>}>
               <SpaceScene
@@ -399,7 +397,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
         )}
 
         <div className="absolute bottom-24 left-3 flex flex-col items-start gap-2 sm:left-4 lg:bottom-auto lg:top-4">
-          <div className="lg:hidden"><PeopleCountButton count={shown.length} onClick={() => setSheetOpen(true)} /></div>
+          <PeopleCountButton count={shown.length} onClick={() => setSheetOpen(true)} />
           <ConnectionPill state={connection} call={call.state} quality={call.connectionQuality} />
         </div>
 
@@ -417,12 +415,12 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
         </div>
       </section>
 
-      {/* Phones: the people panel slides up as a sheet */}
+      {/* The people panel opens over the world: a sheet on phones, a floating panel on wider screens */}
       {sheetOpen && (
-        <div className="fixed inset-0 z-[70] lg:hidden" role="dialog" aria-modal="true" aria-label="People">
-          <div className="absolute inset-0 bg-navy-900/40 animate-backdrop-in" onClick={() => setSheetOpen(false)} />
-          <div className="absolute inset-x-0 bottom-0 flex max-h-[80dvh] flex-col overflow-hidden rounded-t-3xl bg-white shadow-popover">
-            <div className="flex items-center justify-between px-4 pt-3">
+        <div className="fixed inset-0 z-[70]" role="dialog" aria-modal="true" aria-label="People">
+          <div className="absolute inset-0 bg-navy-900/40 animate-backdrop-in lg:bg-navy-900/10" onClick={() => setSheetOpen(false)} />
+          <div className="absolute inset-x-0 bottom-0 flex max-h-[80dvh] flex-col overflow-hidden rounded-t-3xl bg-white shadow-popover lg:inset-x-auto lg:bottom-auto lg:left-4 lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:w-[300px] lg:rounded-3xl">
+            <div className="flex items-center justify-between px-4 pt-3 lg:hidden">
               <span className="mx-auto h-1.5 w-10 rounded-full bg-navy-100" aria-hidden="true" />
             </div>
             <button type="button" onClick={() => setSheetOpen(false)} aria-label="Close people" className="absolute right-3 top-3 rounded-lg p-1.5 text-ivory-700 hover:bg-ivory-50">

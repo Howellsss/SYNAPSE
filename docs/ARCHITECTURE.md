@@ -317,9 +317,15 @@ What you see inside a space, until the art kit brings rooms and furniture:
   `sitAtEnd: true` and the resting `move` has `anim: 'sit'` and the seat's facing. Receivers find
   the seat from the position (everyone has the same office), so nothing new goes over the network.
   A seat someone is in can't be taken. Arrow keys or a tap elsewhere stand you up. A character's
-  "Sitting" clip (Characters page) plays if it has one; otherwise its thigh and knee bones are
-  turned each frame so the thighs point forward and the shins down, and the body is lowered onto
-  the cushion. Simple figures sink into the seat.
+  "Sitting" clip plays only if one is chosen on the Characters page (never guessed from clip names:
+  "sitting" clips are often on the floor). Otherwise the character sits from its natural standing
+  pose: every bone back to the file's pose, thighs aimed forward along the cushion, shins down,
+  upper arms down and forearms forward onto the lap, then the hips lowered onto the cushion.
+  Simple figures sink into the seat.
+- **Inside a space** the world is the whole screen: no sidebar or top bar (Leave goes back), and
+  the people panel opens over the world from the People button. A built office stands on a dark
+  ground that fades out (not an empty sky), the camera stays over the office, labels show first
+  names (yours too), and on High quality ambient occlusion (`GTAOPass`) adds soft contact shadows.
 
 ## Checks
 
