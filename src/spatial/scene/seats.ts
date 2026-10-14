@@ -61,22 +61,32 @@ export function seatForward(seat: Pick<Seat, 'rot'>): { x: number; z: number } {
   return { x: Math.sin(seat.rot), z: Math.cos(seat.rot) };
 }
 
+/** Directions to try standing in, relative to the way the seat faces: front first, back last. */
+const APPROACH_ANGLES = [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2, (3 * Math.PI) / 4, (-3 * Math.PI) / 4, Math.PI];
+const APPROACH_DISTANCES = [0.6, 0.75, 0.9, 1.05, 1.2];
+
 /**
- * Where to walk to before sitting down (and where you stand up to): behind a chair (its front
- * is under a desk or table), in front of a sofa or armchair (their backs are against a wall or
- * face away). Falls back to the other side, then to the nearest free spot.
+ * Where to walk to before sitting down (and where you stand up to): in front of the seat, so you
+ * turn and sit like a person does, never through its back. When the front is taken (a chair
+ * tucked under a desk), the nearest free side is used, and only then behind it.
  */
 export function seatApproach(map: WalkMap, seat: Seat): { x: number; z: number } {
-  const f = seatForward(seat);
-  const sides = seat.kind === 'chair' ? [-1, 1] : [1, -1];
-  for (const side of sides) {
-    for (const dist of [0.7, 0.85, 1.0]) {
-      const x = seat.x + f.x * dist * side;
-      const z = seat.z + f.z * dist * side;
+  for (const angle of APPROACH_ANGLES) {
+    const dir = { x: Math.sin(seat.rot + angle), z: Math.cos(seat.rot + angle) };
+    for (const dist of APPROACH_DISTANCES) {
+      const x = seat.x + dir.x * dist;
+      const z = seat.z + dir.z * dist;
       if (isFree(map, x, z)) return { x, z };
     }
   }
-  return freeSpot(map, seat.x - f.x * 0.7, seat.z - f.z * 0.7);
+  const f = seatForward(seat);
+  return freeSpot(map, seat.x + f.x * 0.7, seat.z + f.z * 0.7);
+}
+
+/** Which way the stand-up spot is from the seat, as an angle from where the seat faces (0 = front). */
+export function approachAngle(seat: Seat, spot: { x: number; z: number }): number {
+  const a = Math.atan2(spot.x - seat.x, spot.z - seat.z) - seat.rot;
+  return Math.abs(Math.atan2(Math.sin(a), Math.cos(a)));
 }
 
 /** Where a sitting person's feet point is drawn: the seat, a little back from its centre. */

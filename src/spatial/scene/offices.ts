@@ -22,6 +22,8 @@ export interface OfficeLayout {
   spawn: { x: number; z: number };
   /** One line for the office picker. */
   blurb: string;
+  /** A picture of the office from the space's own camera, for workspace cards. */
+  picture: string;
   /**
    * Direction the sunlight comes from (towards the sun, y up). Offices with lighting baked into
    * their floor set it so live shadows (people) fall the same way as the baked ones.
@@ -29,6 +31,8 @@ export interface OfficeLayout {
   sun?: { x: number; y: number; z: number };
   /** Chairs, sofa places and armchairs people can sit in (tap one to walk over and sit). */
   seats?: Seat[];
+  /** Standing in front of the office door (on the left wall) opens the way to other spaces. */
+  door?: { x: number; z: number };
 }
 
 const r = (x0: number, x1: number, z0: number, z1: number): Rect => ({ x0, x1, z0, z1 });
@@ -39,8 +43,10 @@ export const OFFICE_01: OfficeLayout = {
   id: 'office-01',
   name: 'SYNAPSE Office 01',
   url: '/assets/spatial/offices/office-01.glb',
+  picture: '/assets/spatial/offices/office-01.jpg',
   floor: { width: 20, depth: 16 },
   spawn: { x: 10, z: 8 },
+  door: { x: 0.75, z: 7.6 },
   blurb: 'A furnished 20 × 16 m office: work area, glass meeting room, lounge and café. You walk around the furniture.',
   obstacles: [
     // Walls (back z = 0, side x = 0) and the meeting room's glass walls (door gap x 5.64–6.95).
@@ -77,8 +83,10 @@ export const OFFICE_02: OfficeLayout = {
   name: 'SYNAPSE Office 02',
   // ?v= changes with every new export, so browsers never show an old copy.
   url: '/assets/spatial/offices/office-02.glb?v=17',
+  picture: '/assets/spatial/offices/office-02.jpg?v=17',
   floor: { width: 20, depth: 16 },
   spawn: { x: 10, z: 8 },
+  door: { x: 0.75, z: 7.6 },
   blurb: 'Realistic lighting. A furnished 20 × 16 m office: six-desk work area, glass meeting room, lounge, coffee bar and café. Tap a chair or the sofa to sit.',
   sun: { x: 0.3491, y: 0.8479, z: 0.399 },
   seats: [

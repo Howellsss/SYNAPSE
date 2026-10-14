@@ -109,7 +109,7 @@ All of this lives in `AuthContext.tsx` and is exposed through `useAuth()`:
    - if the user has neither, it runs first-time account setup (profile, first workspace, owner
      membership, demo data via the `seed_workspace_demo_data` RPC), then loads again.
 3. `signIn` also accepts pending `team_invitations` for the email, which adds memberships.
-4. `role` is `membership.role` (`owner` | `admin` | `member`); `canManageTeam` is owner/admin.
+4. `role` is `membership.role` (`owner` | `admin` | `supervisor` | `member`); `canManageTeam` is owner/admin.
 
 A user sees **one current workspace** (the oldest membership). There is no workspace switcher
 yet. Pages read `workspace.id` from `useAuth()` and filter every query by it. Row-level security
@@ -121,11 +121,74 @@ Calendars, calendar groups, forms, booking links/locks, appointments and some me
 made to work **without** a workspace: `workspace_id` is nullable there and an `owner_id` column
 is the fallback. New work should still scope by `workspace_id`.
 
+## Company accounts: roles, departments, invitations
+
+Migration `20261014090000_company_foundations.sql`; client code in `src/lib/team.ts`,
+`src/components/team/` (Settings → Team Members and Departments) and `AcceptInvitePage.tsx`.
+
+- **Roles**: `owner` (the account holder, only `workspaces.owner_id`), `admin` (everything),
+  `supervisor` (leads departments), `member` (experts/staff). `is_workspace_admin()` = owner or admin.
+- **Departments**: `departments` (unique name per workspace, colour) and `department_members`
+  (`is_lead` marks a department's supervisors; `is_department_lead(dept)`). Admins create, edit
+  and delete departments and set leads; a lead can add and remove non-lead people in their own
+  department. A trigger keeps memberships inside the department's workspace.
+- **Directory**: RPC `workspace_directory(workspace)` returns members with names, avatars, title,
+  department ids and lead department ids (emails only for admins), so the Team page handles
+  hundreds of people in one call. Teammates can read each other's profiles.
+- **Invitations**: bulk invite by pasted emails or CSV (`email, role, department, title`; synonyms
+  accepted), inserted 100 at a time. Invitees read their invite through RPC `get_invitation(token)`
+  and join through `accept_invitation(token)`, which checks the signed-in email, adds the member
+  and their department (as lead when supervisor). The old public select of all invitations is gone.
+- **Guards**: `wm_insert_self` lets someone add only themselves and only with a matching pending
+  invitation (or as the owner / by an admin); trigger `workspace_members_guard` stops anyone but
+  admins/owner from changing role, status or title, and keeps `owner` for the account holder.
+
+## Company rooms (`src/lib/rooms.ts`, `RoomsPage.tsx`)
+
+Migration `20261015090000_company_rooms.sql` (after company foundations).
+
+- `company_rooms`: standing video rooms, optionally in a department, `open_to_department` lets
+  the whole department use one. Admins and supervisors create them (supervisors only in
+  departments they lead); experts can't. `company_room_assignees` says who may use a room.
+- A link an expert makes in a room is a `meetings` row with `room_id` and `for_whom`; trigger
+  `meetings_room_guard` only allows that for people who may use the room (`can_use_room`).
+- Busy: the meeting page calls `room_heartbeat(meeting)` every 45 s during a room call
+  (busy for 90 s) and `room_release` on leaving; busy columns can't be written directly.
+
+## Spaces at 50 people
+
+Movement, emotes and knocks go over the space call's LiveKit data channel once connected
+(`SPACE_TOPIC`, sender identity checked), and over Supabase broadcast only while someone present
+isn't in the call (`needsRealtime`). Supabase still carries presence. The office door
+(`office.door`) lists the account's other spaces grouped by `space.config.department_id`.
+
+## Conversations (`src/lib/chat.ts`, `ConversationsPage.tsx`)
+
+Migration `20261016090000_conversations.sql`.
+
+- `chat_channels` (channels and direct messages, `dm_key` = sorted user ids), `chat_members`
+  (`last_read_at` for unread counts via `chat_unread`), `chat_messages` (`parent_id` = thread reply,
+  `source` user/webhook/system), `chat_webhooks` (secret token per link). Created through the RPCs
+  `create_channel` and `open_dm`. Live updates: `postgres_changes` on `chat_messages` (RLS applies).
+- Edge Function `chat-webhook` (verify_jwt off; the token is the key): Zapier, Airtable, Modal or
+  any app POSTs JSON/form/text to `/functions/v1/chat-webhook/<token>`; 30 posts a minute per link.
+- Email replies: `send-email` stores the Gmail `threadId` (`messages.provider_thread_id`); its
+  once-a-minute scheduler run also checks up to 40 recent threads (`reply_checked_at` order) and saves
+  new replies as inbound `messages` on the same contact (`send-email/replies.ts`). Needs the
+  `gmail.readonly` scope, so accounts connected before need reconnecting.
+
+## Streams (`src/lib/streams.ts`, `StreamsPage`, `StreamStudioPage`, `WatchPage`)
+
+Migration `20261017090000_streams.sql`. A stream is LiveKit room `stream_<id>`: the host sends,
+viewers get watch-only tokens (`canPublish: false`) from `livekit-token` with `{ streamCode, watch }`,
+and only while `status = 'live'` (425 before). The public watch page `/live/CODE?watch=<token>` reads
+`stream_by_watch`; chat and reactions go over the data channel (`STREAM_TOPICS`).
+
 ## Tables by module
 
 | Module | Tables |
 | --- | --- |
-| Workspace & team | `workspaces`, `workspace_members`, `profiles`, `team_invitations`, `workspace_settings` (per-category JSON settings), `audit_logs` |
+| Workspace & team | `workspaces`, `workspace_members` (+ `title`), `profiles`, `team_invitations` (+ `title`, `department_id`), `departments`, `department_members` (`is_lead`), `workspace_settings` (per-category JSON settings), `audit_logs` |
 | Contacts (CRM) | `contacts`, `tags`, `contact_tags`, `smart_lists`, `notes` |
 | Calendars & booking | `calendars`, `calendar_hosts`, `calendar_groups`, `calendar_group_members`, `calendar_group_analytics`, `availability_rules`, `availability_overrides`, `host_availability_rules`, `external_busy_periods`, `booking_links`, `booking_locks`, `appointments`, `appointment_participants`, `notification_rules` |
 | Forms | `forms`, `form_fields`, `form_field_conditions`, `form_submissions`, `form_notification_logs`, `form_activity_timeline` |

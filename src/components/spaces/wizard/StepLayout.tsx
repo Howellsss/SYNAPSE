@@ -1,6 +1,6 @@
 import { LayoutGrid } from 'lucide-react';
 import { templatesFor, BLANK_TEMPLATE_KEY } from '@/spatial/data/templates';
-import { spaceTypeInfo } from '@/spatial/data/spaceTypes';
+import { spaceTypeInfo, typePicture } from '@/spatial/data/spaceTypes';
 import { SpacePreview } from '../SpacePreview';
 import { StepTitle, SelectedMark } from './ui';
 import { optionClass } from './styles';
@@ -27,7 +27,7 @@ export function StepLayout({ state, dispatch }: { state: WizardState; dispatch: 
               className={`${optionClass(selected)} flex flex-col p-2.5`}
             >
               <span className="relative block">
-                <SpacePreview title={t.name} icon={type.icon} size="sm" showLabel={false} />
+                <SpacePreview title={t.name} icon={type.icon} picture={typePicture(type.key)} size="sm" showLabel={false} />
                 {i === 0 && (
                   <span className="absolute left-2 top-2 rounded-md bg-gold-400 px-2 py-0.5 text-[11px] font-bold text-navy-900">Recommended</span>
                 )}

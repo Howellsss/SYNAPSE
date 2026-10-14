@@ -39,7 +39,7 @@ export interface SpaceTypeInfo {
 }
 
 const STAFF: SpacePermissions['edit_office'] = ['owner', 'admin'];
-const EVERYONE: SpacePermissions['edit_office'] = ['owner', 'admin', 'member'];
+const EVERYONE: SpacePermissions['edit_office'] = ['owner', 'admin', 'supervisor', 'member'];
 const BASE_PERMISSIONS: SpacePermissions = { edit_office: STAFF, lock_rooms: STAFF, broadcast: STAFF, invite: STAFF };
 
 const IMG = (file: string) => `/assets/spatial/type-cards/${file}.webp`;

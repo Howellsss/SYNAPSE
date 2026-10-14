@@ -15,6 +15,8 @@ export interface TokenGrant {
   identity: string;
   name: string;
   ttl: string;
+  /** Send video and sound (default true). Stream viewers only watch, chat and react. */
+  canPublish?: boolean;
 }
 
 export type AdmissionStatus = "waiting" | "admitted" | "denied" | "removed";
@@ -44,7 +46,18 @@ export interface MeetingRow {
   breakout?: Breakout | null;
 }
 
+/** A stream (streams table) by code. */
+export interface StreamRow {
+  id: string;
+  workspaceId: string;
+  hostId: string;
+  status: "scheduled" | "live" | "ended";
+  watchToken: string;
+}
+
 export interface Deps {
+  /** A stream by code, or null. Left out before the streams database update. */
+  getStream?(code: string): Promise<StreamRow | null>;
   /** The signed-in user for this JWT, or null. */
   getUser(jwt: string): Promise<{ id: string; email?: string | null } | null>;
   /** The space's owning tenant (workspaces.id), or null if there's no such space. */
@@ -78,6 +91,10 @@ export function json(body: unknown, status = 200): Response {
 
 export function roomName(spaceId: string): string {
   return `space_${spaceId}`;
+}
+
+export function streamRoomName(streamId: string): string {
+  return `stream_${streamId}`;
 }
 
 export function meetingRoomName(meetingId: string): string {
@@ -129,17 +146,42 @@ const randomId = () => (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Ma
  * meeting refuses new people (423); removed or turned-away people are refused (403).
  * { breakout: n } joins breakout room n when the host has assigned this person to it.
  * Meeting answers also carry { identity, ticket }.
+ *
+ * Streams: { streamCode } (members) or { streamCode, watch, guestName } (watch link). The host
+ * may send; viewers get a watch-only token, and only while the stream is live (425 before).
  */
 export async function handle(req: Request, deps: Deps): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   const jwt = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  const body = await req.json().catch(() => ({})) as { spaceId?: unknown; meetingCode?: unknown; invite?: unknown; guestName?: unknown; ticket?: unknown; breakout?: unknown };
+  const body = await req.json().catch(() => ({})) as { spaceId?: unknown; meetingCode?: unknown; streamCode?: unknown; watch?: unknown; invite?: unknown; guestName?: unknown; ticket?: unknown; breakout?: unknown };
   const invite = typeof body.invite === "string" ? body.invite.trim() : "";
-  // A guest with an invite link has no login; the anon key isn't a user, so getUser gives null.
+  const watch = typeof body.watch === "string" ? body.watch.trim() : "";
+  // A guest with an invite or watch link has no login; the anon key isn't a user, so getUser gives null.
   const user = jwt ? await deps.getUser(jwt) : null;
-  if (!user && !(typeof body.meetingCode === "string" && invite)) return json({ error: "Please sign in again." }, 401);
+  if (!user && !(typeof body.meetingCode === "string" && invite) && !(typeof body.streamCode === "string" && watch)) {
+    return json({ error: "Please sign in again." }, 401);
+  }
+
+  // Streams: the host sends; everyone else (account members, or anyone with the watch link)
+  // only watches, chats and reacts, and only once the host has gone live.
+  if (typeof body.streamCode === "string") {
+    const code = body.streamCode.trim().toUpperCase();
+    if (!CODE_RE.test(code)) return json({ error: "Missing or invalid stream code." }, 400);
+    const stream = deps.getStream ? await deps.getStream(code) : null;
+    const status = user && stream ? await deps.getMembershipStatus(stream.workspaceId, user.id) : null;
+    const allowed = !!stream && (status === "active" || sameToken(watch, stream.watchToken));
+    if (!stream || !allowed) return json({ error: watch ? "This watch link isn't valid." : "You don't have access to this stream." }, 403);
+    if (stream.status === "ended") return json({ error: "This stream has ended." }, 410);
+    const isHost = !!user && user.id === stream.hostId;
+    if (!isHost && stream.status !== "live") return json({ error: "This stream hasn't started yet." }, 425);
+    if (!deps.livekitUrl) throw new Error("Missing secret LIVEKIT_URL");
+    const name = user ? displayName(await deps.getProfileName(user.id), user.email) : guestName(body.guestName);
+    const identity = user ? user.id : `viewer_${randomId()}`;
+    const token = await deps.makeToken({ room: streamRoomName(stream.id), identity, name, ttl: TOKEN_TTL, canPublish: isHost });
+    return json({ token, url: deps.livekitUrl, identity, host: isHost });
+  }
 
   if (typeof body.meetingCode === "string") {
     const code = body.meetingCode.trim().toUpperCase();

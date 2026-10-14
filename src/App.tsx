@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ToastProvider } from '@/context/ToastContext';
 import { useRouter } from '@/lib/router';
@@ -27,6 +27,12 @@ import { BookingPage } from '@/pages/BookingPage';
 import { GroupCalendarSettingsPage } from '@/pages/GroupCalendarSettingsPage';
 import { ComingSoonPage } from '@/pages/ComingSoonPage';
 import { WorkspacesPage } from '@/pages/WorkspacesPage';
+import { RoomsPage } from '@/pages/RoomsPage';
+import { ConversationsPage } from '@/pages/ConversationsPage';
+import { StreamsPage } from '@/pages/StreamsPage';
+import { StreamStudioPage } from '@/pages/StreamStudioPage';
+import { WatchPage } from '@/pages/WatchPage';
+import { watchFromLocation } from '@/lib/streams';
 import { CreateSpaceWizard } from '@/pages/CreateSpaceWizard';
 import { SpacePage } from '@/pages/SpacePage';
 import { GuestJoinPage } from '@/pages/GuestJoinPage';
@@ -36,14 +42,32 @@ import { TicketPage } from '@/pages/events/TicketPage';
 import { EventsPage } from '@/pages/events/EventsPage';
 import { EventBuilder } from '@/pages/events/EventBuilder';
 import { EventManagePage } from '@/pages/events/EventManagePage';
-import { MonitorPlay, MessagesSquare, FolderOpen } from 'lucide-react';
+import { MonitorPlay, FolderOpen } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/States';
+import { SpaceDockContext, type SpaceDock } from '@/context/SpaceDockContext';
+import { cn } from '@/lib/utils';
 
 function AppContent() {
   const { user, loading } = useAuth();
   const [path, navigate] = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   useGmailReturnNotice(path);
+
+  // The workspace you're in (/workspace/<slug>), and the one kept open on the right while you use
+  // the other pages. Only Leave (or signing out) closes it.
+  const spaceMatch = path.match(/^\/workspace\/([a-z0-9-]+)(?:[/?]|$)/);
+  const spaceSlug = spaceMatch && spaceMatch[1] !== 'new' ? spaceMatch[1] : null;
+  const [dockedSpace, setDockedSpace] = useState<string | null>(null);
+  useEffect(() => {
+    if (!loading && !user) setDockedSpace(null);
+    else if (spaceSlug) setDockedSpace(spaceSlug);
+  }, [spaceSlug, user, loading]);
+  const dockApi = useMemo<SpaceDock>(() => ({
+    docked: !spaceSlug && !!dockedSpace,
+    dock: () => navigate('/dashboard'),
+    expand: () => { if (dockedSpace) navigate(`/workspace/${dockedSpace}`); },
+    leave: () => { setDockedSpace(null); navigate('/workspace'); },
+  }), [spaceSlug, dockedSpace, navigate]);
 
   const authPath = path === '/signin' || path === '/signup';
   // Public events pages: /e, /e/<slug>, /e/ticket/<token>. Open to everyone, signed in or not.
@@ -55,7 +79,7 @@ function AppContent() {
   useEffect(() => {
     if (loading) return;
     if (user && authPath) { navigate('/dashboard'); return; }
-    if (!user && !authPath && path !== '/' && !path.startsWith('/book/') && !path.startsWith('/group/') && !path.startsWith('/reset-password') && !path.startsWith('/invite/') && !path.startsWith('/join/') && !isPublicEvents && !meetingInvite) {
+    if (!user && !authPath && path !== '/' && !path.startsWith('/book/') && !path.startsWith('/group/') && !path.startsWith('/reset-password') && !path.startsWith('/invite/') && !path.startsWith('/join/') && !path.startsWith('/live/') && !isPublicEvents && !meetingInvite) {
       navigate('/');
     }
   }, [user, loading, path, authPath, isPublicEvents, meetingInvite, navigate]);
@@ -90,6 +114,13 @@ function AppContent() {
     return <GuestJoinPage token={token} />;
   }
 
+  // Watching a stream: anyone with the watch link, signed in or not.
+  const liveMatch = path.match(/^\/live\/([A-Za-z]{4}-?\d{3})(?:[/?]|$)/);
+  if (liveMatch) {
+    const code = liveMatch[1].toUpperCase().replace(/^([A-Z]{4})(\d{3})$/, '$1-$2');
+    return <WatchPage key={code} code={code} watch={watchFromLocation(path)} />;
+  }
+
   // Invitation acceptance page (no auth required to view, auth to accept)
   if (path.startsWith('/invite/')) {
     const token = path.split('/')[2]?.split('?')[0];
@@ -105,6 +136,13 @@ function AppContent() {
 
   // A meeting room is full screen, without the sidebar and top bar
   if (meetingCode) return <MeetingRoomPage key={meetingCode} code={meetingCode} invite={meetingInvite} />;
+
+  // The stream studio is full screen too
+  const studioMatch = path.match(/^\/streams\/([A-Za-z]{4}-?\d{3})(?:[/?]|$)/);
+  if (studioMatch) {
+    const code = studioMatch[1].toUpperCase().replace(/^([A-Z]{4})(\d{3})$/, '$1-$2');
+    return <StreamStudioPage key={code} code={code} />;
+  }
 
   // Create-a-workspace wizard is full screen, without the sidebar and top bar
   if (path === '/workspace/new' || path.startsWith('/workspace/new?')) {
@@ -136,44 +174,55 @@ function AppContent() {
     if (path.startsWith('/characters')) return <CharactersPage />;
     if (path.startsWith('/ai-hub')) return <AIAgentPage />;
     if (path.startsWith('/settings')) return <SettingsPage />;
+    if (path.startsWith('/rooms')) return <RoomsPage />;
+    if (path.startsWith('/streams')) return <StreamsPage />;
     if (path.startsWith('/meetings')) return <MeetingsPage />;
     if (path === '/events/new') return <EventBuilder />;
     const eventMatch = path.match(/^\/events\/([0-9a-f-]{36})(\/edit)?(?:[/?]|$)/);
     if (eventMatch) return eventMatch[2] ? <EventBuilder key={eventMatch[1]} eventId={eventMatch[1]} /> : <EventManagePage key={eventMatch[1]} eventId={eventMatch[1]} />;
     if (path.startsWith('/events')) return <EventsPage />;
     if (path.startsWith('/webinars')) return <ComingSoonPage title="Webinars" description="Host live and on-demand webinars" icon={MonitorPlay} />;
-    if (path.startsWith('/conversations')) return <ComingSoonPage title="Conversations" description="Manage messages across channels" icon={MessagesSquare} />;
+    if (path.startsWith('/conversations')) return <ConversationsPage />;
     if (path.startsWith('/media-library')) return <ComingSoonPage title="Media Library" description="Store and organize your media assets" icon={FolderOpen} />;
-    const spaceMatch = path.match(/^\/workspace\/([a-z0-9-]+)(?:[/?]|$)/);
-    if (spaceMatch) return <SpacePage key={spaceMatch[1]} slug={spaceMatch[1]} />;
     if (/^\/workspaces?(?:[/?]|$)/.test(path)) return <WorkspacesPage />;
     return <Dashboard />;
   };
 
   // Inside a space the world is the whole screen: no sidebar, no top bar, no padding.
-  // Leave (in the call controls) goes back to the workspaces.
-  const inSpace = /^\/workspace\/[a-z0-9-]+(?:[/?]|$)/.test(path);
-  if (inSpace) {
-    return (
-      <div className="h-[100dvh] overflow-hidden bg-navy-900">
-        <main className="h-full">{renderPage()}</main>
-      </div>
-    );
-  }
-
+  // "Back to SYNAPSE" keeps the space open as a panel on the right while you use the other pages;
+  // the space stays in the same place in the tree, so the call and your place in it carry on.
+  const shownSpace = spaceSlug ?? dockedSpace;
+  const docked = !spaceSlug && !!dockedSpace;
   return (
-    <div className="min-h-screen bg-white">
-      <Sidebar currentPath={path} onNavigate={navigate} />
-      <div className="lg:ml-[240px] flex flex-col min-h-screen">
-        <TopBar
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          onQuickCreate={() => navigate('/calendars')}
-        />
-        {/* Each section fades in with a slight rise when you move to it. */}
-        <main key={path.split(/[/?]/)[1] || 'dashboard'} className="flex-1 px-4 lg:px-6 py-5 lg:py-6 animate-page-in">{renderPage()}</main>
-      </div>
-    </div>
+    <SpaceDockContext.Provider value={dockApi}>
+      {spaceSlug ? null : (
+        <div className="min-h-screen bg-white">
+          <Sidebar currentPath={path} onNavigate={navigate} />
+          <div className={cn('lg:ml-[240px] flex flex-col min-h-screen', docked && 'lg:mr-[380px]')}>
+            <TopBar
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              onQuickCreate={() => navigate('/calendars')}
+            />
+            {/* Each section fades in with a slight rise when you move to it. */}
+            <main key={path.split(/[/?]/)[1] || 'dashboard'} className="flex-1 px-4 lg:px-6 py-5 lg:py-6 animate-page-in">{renderPage()}</main>
+          </div>
+        </div>
+      )}
+      {shownSpace && (
+        <div
+          className={cn(
+            'z-40 overflow-hidden bg-navy-900',
+            docked
+              ? 'fixed bottom-3 right-3 h-[280px] w-[min(92vw,360px)] rounded-2xl shadow-popover ring-1 ring-navy-100 lg:bottom-0 lg:right-0 lg:top-0 lg:h-auto lg:w-[380px] lg:rounded-none lg:ring-0'
+              : 'fixed inset-0',
+          )}
+          aria-label={docked ? 'Your workspace' : undefined}
+        >
+          <SpacePage key={shownSpace} slug={shownSpace} />
+        </div>
+      )}
+    </SpaceDockContext.Provider>
   );
 }
 

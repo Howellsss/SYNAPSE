@@ -56,3 +56,35 @@ export interface SpeechRecognitionLike {
   onerror: ((e: { error: string }) => void) | null;
   onend: (() => void) | null;
 }
+
+/**
+ * Who was talking, device by device. Speech recognition hears the raw microphone, which also
+ * picks up other people's voices from your speakers. The call's own audio (echo cancelled)
+ * says which device is really talking, so a caption is only sent as yours when your device was
+ * the one talking while the words were said.
+ */
+export class VoiceTimeline {
+  private samples: { at: number; me: boolean; others: boolean }[] = [];
+
+  constructor(private keepMs = 60_000) {}
+
+  add(at: number, me: boolean, others: boolean) {
+    this.samples.push({ at, me, others });
+    const cut = at - this.keepMs;
+    let drop = 0;
+    while (drop < this.samples.length && this.samples[drop].at < cut) drop++;
+    if (drop) this.samples.splice(0, drop);
+  }
+
+  /** Did this device do the talking between `from` and `to`? */
+  mine(from: number, to: number): boolean {
+    let me = 0;
+    let othersOnly = 0;
+    for (const s of this.samples) {
+      if (s.at < from || s.at > to) continue;
+      if (s.me) me++;
+      else if (s.others) othersOnly++;
+    }
+    return me >= 2 && me * 2 >= othersOnly;
+  }
+}

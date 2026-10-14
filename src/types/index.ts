@@ -24,7 +24,7 @@ export type LocationType =
 export type WorkflowStatus = 'draft' | 'active' | 'paused' | 'archived';
 export type FormStatus = 'draft' | 'published' | 'inactive' | 'archived';
 
-export type UserRole = 'owner' | 'admin' | 'member';
+export type UserRole = 'owner' | 'admin' | 'supervisor' | 'member';
 
 export type Channel = 'email' | 'sms';
 export type MessageStatus =
@@ -166,6 +166,8 @@ export interface WorkspaceMember {
   user_id: string;
   role: UserRole;
   status: 'invited' | 'active' | 'suspended';
+  /** Job title, e.g. "GHL Tech Expert". */
+  title?: string | null;
   created_at: string;
 }
 
@@ -262,6 +264,8 @@ export interface SpaceConfig {
   rooms?: SpaceRoom[];
   /** A built 3D office (see spatial/scene/offices.ts), or absent for the open floor. */
   scene?: string | null;
+  /** The department this space belongs to (its door lists spaces by department). */
+  department_id?: string | null;
 }
 
 /** solo = 1, small = 2–10, medium = 11–25, large = 26–50, xl = 50+ people. */

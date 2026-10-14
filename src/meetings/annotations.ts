@@ -6,7 +6,8 @@
  * the sender's identity comes from LiveKit, never from the message.
  */
 
-export type DrawTool = 'pen' | 'highlighter';
+/** An arrow is a stroke of two points: where the drag started and where it ended (the head). */
+export type DrawTool = 'pen' | 'highlighter' | 'arrow';
 export type Tool = 'none' | DrawTool | 'text' | 'laser' | 'eraser';
 
 export type Point = [number, number];
@@ -40,7 +41,8 @@ export type AnnotMsg =
   | { t: 'text'; id: string; color: string; x: number; y: number; text: string }
   | { t: 'erase'; id: string }
   | { t: 'clear'; scope: 'all' | 'mine' }
-  | { t: 'laser'; x: number; y: number }
+  /** A laser dot, or (k: 'pointer') someone's arrow pointer as they hover. */
+  | { t: 'laser'; x: number; y: number; k?: 'pointer' }
   | { t: 'perm'; allowed: boolean }
   | { t: 'sync-req' }
   /** A copy of everything, in parts: the first part replaces, later parts append. */
@@ -48,7 +50,7 @@ export type AnnotMsg =
 
 export const TOPIC = 'synapse.annotate';
 export const COLORS = ['#E4A93C', '#EF4444', '#22C55E', '#3B82F6', '#FFFFFF', '#0D1C3B'];
-export const WIDTHS: Record<DrawTool, number> = { pen: 0.004, highlighter: 0.018 };
+export const WIDTHS: Record<DrawTool, number> = { pen: 0.004, highlighter: 0.018, arrow: 0.005 };
 export const MAX_ITEMS = 2000;
 const MAX_POINTS_PER_STROKE = 5000;
 const MAX_POINTS_PER_MSG = 300;
@@ -65,7 +67,7 @@ const point = (v: unknown): Point | null => {
   const x = unit(v[0]); const y = unit(v[1]);
   return x === null || y === null ? null : [x, y];
 };
-const tool = (v: unknown): DrawTool | null => (v === 'pen' || v === 'highlighter' ? v : null);
+const tool = (v: unknown): DrawTool | null => (v === 'pen' || v === 'highlighter' || v === 'arrow' ? v : null);
 const width = (v: unknown) => (typeof v === 'number' && v > 0 && v <= 0.05 ? v : null);
 
 function parseItem(raw: unknown): Item | null {
@@ -108,7 +110,11 @@ export function parseMsg(raw: unknown): AnnotMsg | null {
     }
     case 'erase': { const i = id(raw.id); return i ? { t: 'erase', id: i } : null; }
     case 'clear': return raw.scope === 'all' || raw.scope === 'mine' ? { t: 'clear', scope: raw.scope } : null;
-    case 'laser': { const x = unit(raw.x); const y = unit(raw.y); return x !== null && y !== null ? { t: 'laser', x, y } : null; }
+    case 'laser': {
+      const x = unit(raw.x); const y = unit(raw.y);
+      if (x === null || y === null) return null;
+      return raw.k === 'pointer' ? { t: 'laser', x, y, k: 'pointer' } : { t: 'laser', x, y };
+    }
     case 'perm': return typeof raw.allowed === 'boolean' ? { t: 'perm', allowed: raw.allowed } : null;
     case 'sync-req': return { t: 'sync-req' };
     case 'sync': {
@@ -219,6 +225,16 @@ export function hitTest(items: Item[], p: Point, tolerance = 0.015): Item | null
     for (let j = 1; j < i.points.length; j++) if (segDist(p, i.points[j - 1], i.points[j]) < tol) return i;
   }
   return null;
+}
+
+/** The two short lines of an arrow's head at `to`, in pixels. */
+export function arrowHead(from: [number, number], to: [number, number], size: number): [[number, number], [number, number]] {
+  const ang = Math.atan2(to[1] - from[1], to[0] - from[0]);
+  const a = Math.PI / 7;
+  return [
+    [to[0] - size * Math.cos(ang - a), to[1] - size * Math.sin(ang - a)],
+    [to[0] - size * Math.cos(ang + a), to[1] - size * Math.sin(ang + a)],
+  ];
 }
 
 /** Split a sync into messages small enough for the data channel (~12 KB each). */

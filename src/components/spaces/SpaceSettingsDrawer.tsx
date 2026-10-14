@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { loadDepartments, type Department } from '@/lib/team';
 import { LayoutGrid, ShieldCheck, CalendarClock, Palette, Loader2, Building2, Check } from 'lucide-react';
 import { Drawer } from '@/components/ui/Drawer';
 import { useAuth } from '@/context/AuthContext';
@@ -40,6 +41,9 @@ export function SpaceSettingsDrawer({ space, onClose, onSaved }: { space: Space;
   const [schedule, setSchedule] = useState<SpaceSchedule>(space.schedule ?? DEFAULT_SCHEDULE(browserTz()));
   const [branding, setBranding] = useState(space.branding ?? {});
   const [sceneId, setSceneId] = useState<string | null>(officeFor(space.config?.scene)?.id ?? null);
+  const [departmentId, setDepartmentId] = useState<string | null>(space.config?.department_id ?? null);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  useEffect(() => { loadDepartments(space.workspace_id).then((r) => setDepartments(r.data)); }, [space.workspace_id]);
   const [calendars, setCalendars] = useState<{ id: string; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -52,7 +56,7 @@ export function SpaceSettingsDrawer({ space, onClose, onSaved }: { space: Space;
     if (problem) { toast(problem, 'error'); return; }
     setSaving(true);
     const { data, error } = await updateSpace(space.id, {
-      config: { ...space.config, rooms, scene: sceneId },
+      config: { ...space.config, rooms, scene: sceneId, department_id: departmentId },
       access_mode: accessMode,
       guest_link_token: accessMode === 'guest_link' ? token : null,
       permissions,
@@ -97,7 +101,19 @@ export function SpaceSettingsDrawer({ space, onClose, onSaved }: { space: Space;
         ))}
       </div>
       {tab === 'rooms' && <RoomsEditor rooms={rooms} onChange={setRooms} />}
-      {tab === 'office' && <OfficePicker value={sceneId} onChange={setSceneId} />}
+      {tab === 'office' && (
+        <>
+          <OfficePicker value={sceneId} onChange={setSceneId} />
+          <label className="mt-6 grid gap-1.5 text-sm font-semibold text-navy-800">
+            Department
+            <select value={departmentId ?? ''} onChange={(e) => setDepartmentId(e.target.value || null)} className="input-field">
+              <option value="">None</option>
+              {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+            <span className="text-xs font-normal text-ivory-700">The office door lists your spaces by department, so people walk from one department to another.</span>
+          </label>
+        </>
+      )}
       {tab === 'access' && (
         <AccessEditor
           mode={accessMode}

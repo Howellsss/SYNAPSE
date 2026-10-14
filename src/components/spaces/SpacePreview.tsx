@@ -12,6 +12,7 @@ export function SpacePreview({
   size = 'md',
   showLabel = true,
   wallScreen,
+  picture,
   className,
 }: {
   title: string;
@@ -22,20 +23,29 @@ export function SpacePreview({
   showLabel?: boolean;
   /** Draw the office wall screen with the workspace logo and accent colour. */
   wallScreen?: { logoUrl?: string | null; accent?: string | null };
+  /** A picture of the workspace type, shown instead of the drawn floor. */
+  picture?: string;
   className?: string;
 }) {
   return (
     <div
       className={cn(
-        'relative overflow-hidden rounded-2xl bg-gradient-to-br from-navy-700 via-navy-800 to-navy-950 ring-1 ring-inset ring-white/10',
+        'relative overflow-hidden rounded-2xl ring-1 ring-inset',
+        picture ? 'bg-white ring-navy-100' : 'bg-gradient-to-br from-navy-700 via-navy-800 to-navy-950 ring-white/10',
         size === 'sm' ? 'aspect-[16/10]' : size === 'lg' ? 'aspect-[4/3]' : 'aspect-[16/10]',
         className,
       )}
       role="img"
       aria-label={subtitle ? `${title}, ${subtitle}` : title}
     >
-      <IsoFloor className="absolute inset-x-[8%] top-[10%] h-[70%] w-[84%]" />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_40%,rgba(228,169,60,0.16),transparent_60%)]" />
+      {picture ? (
+        <img src={picture} alt="" decoding="async" className="absolute inset-0 h-full w-full object-contain" />
+      ) : (
+        <>
+          <IsoFloor className="absolute inset-x-[8%] top-[10%] h-[70%] w-[84%]" />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_40%,rgba(228,169,60,0.16),transparent_60%)]" />
+        </>
+      )}
       {wallScreen && (
         <span
           className="absolute left-1/2 top-[7%] flex aspect-video w-[34%] -translate-x-1/2 items-center justify-center overflow-hidden rounded-md bg-navy-950 shadow-lg shadow-black/40"
@@ -47,7 +57,7 @@ export function SpacePreview({
             : <span className="text-[10px] font-semibold uppercase tracking-wider text-ivory-600">Your logo</span>}
         </span>
       )}
-      {Icon && (
+      {Icon && !picture && (
         <span className={cn(
           'absolute left-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-2xl bg-gold-400 text-navy-900 shadow-lg shadow-black/30',
           wallScreen ? 'top-[55%]' : 'top-[42%]',

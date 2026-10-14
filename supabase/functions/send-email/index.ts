@@ -6,9 +6,11 @@
 //
 //   POST with header x-synapse-mailer: <key>   (the workflow scheduler, every minute)
 //   -> sends queued workflow emails; the key lives in the database (wf_private.settings)
+//   -> then brings back replies to sent emails (see replies.ts)
 //
 // Secrets: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, TOKEN_ENCRYPTION_KEY
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.45.0";
+import { LOOKBACK_DAYS, READ_SCOPE, THREADS_PER_RUN, newReplies, replyRow, type GmailMessage } from "./replies.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -279,6 +281,7 @@ Deno.serve(async (req: Request) => {
 
     let status: "sent" | "failed" = "sent";
     let providerId: string | null = null;
+    let threadId: string | null = null;
     let errorText: string | null = null;
     try {
       const accessToken = await accessTokenFor(db, account.id);
@@ -295,6 +298,7 @@ Deno.serve(async (req: Request) => {
         throw new Error(msg);
       }
       providerId = out.id ?? null;
+      threadId = out.threadId ?? null;
       if (account.status !== "active") {
         await db.from("email_accounts").update({ status: "active", last_error: null }).eq("id", account.id);
       }
@@ -312,6 +316,7 @@ Deno.serve(async (req: Request) => {
     const outcome = {
       status,
       provider_message_id: providerId,
+      ...(threadId ? { provider_thread_id: threadId } : {}),
       error: errorText,
       sent_at: status === "sent" ? new Date().toISOString() : null,
     };
@@ -370,6 +375,7 @@ async function sendQueued(key: string): Promise<Response> {
       if (!claimed?.length) continue;
       let status: "sent" | "failed" = "sent";
       let providerId: string | null = null;
+      let threadId: string | null = null;
       let errorText: string | null = null;
       try {
         const { data: account } = await db.from("email_accounts").select("id, email, display_name, status").eq("id", m.email_account_id).maybeSingle();
@@ -392,6 +398,7 @@ async function sendQueued(key: string): Promise<Response> {
           throw new Error(msg);
         }
         providerId = out.id ?? null;
+        threadId = out.threadId ?? null;
       } catch (e) {
         status = "failed";
         errorText = (e as Error).message;
@@ -402,13 +409,64 @@ async function sendQueued(key: string): Promise<Response> {
       await db.from("messages").update({
         status, provider_message_id: providerId, error: errorText, sent_at: status === "sent" ? new Date().toISOString() : null,
       }).eq("id", m.id);
+      // Separately, so a database without the column still records the send.
+      if (threadId) await db.from("messages").update({ provider_thread_id: threadId }).eq("id", m.id);
       if (status === "sent") sent++; else failed++;
     }
-    return json({ sent, failed });
+    let replies = 0;
+    try { replies = await syncReplies(db); } catch (e) { console.error("reply sync", e); }
+    return json({ sent, failed, replies });
   } catch (e) {
     console.error("workflow mailer", e);
     return json({ error: (e as Error).message }, 500);
   }
+}
+
+/** Bring back replies to recently sent emails (a few threads each run; see replies.ts). */
+async function syncReplies(db: SupabaseClient): Promise<number> {
+  const since = new Date(Date.now() - LOOKBACK_DAYS * 86_400_000).toISOString();
+  const { data: rows, error } = await db
+    .from("messages")
+    .select("id, workspace_id, contact_id, email_account_id, subject, provider_thread_id")
+    .eq("direction", "outbound")
+    .eq("channel", "email")
+    .not("provider_thread_id", "is", null)
+    .not("email_account_id", "is", null)
+    .gte("sent_at", since)
+    .order("reply_checked_at", { ascending: true, nullsFirst: true })
+    .limit(THREADS_PER_RUN);
+  if (error) return 0; // before the conversations database update
+  const threads = new Map<string, NonNullable<typeof rows>[number]>();
+  for (const r of rows ?? []) if (!threads.has(r.provider_thread_id)) threads.set(r.provider_thread_id, r);
+
+  const accounts = new Map<string, { email: string; ok: boolean; token?: string }>();
+  let saved = 0;
+  for (const [threadId, out] of threads) {
+    await db.from("messages").update({ reply_checked_at: new Date().toISOString() }).eq("provider_thread_id", threadId).eq("direction", "outbound");
+    let account = accounts.get(out.email_account_id);
+    if (!account) {
+      const { data } = await db.from("email_accounts").select("id, email, status, scopes").eq("id", out.email_account_id).maybeSingle();
+      const ok = !!data && data.status === "active" && Array.isArray(data.scopes) && data.scopes.includes(READ_SCOPE);
+      account = { email: data?.email ?? "", ok };
+      if (ok) account.token = await accessTokenFor(db, out.email_account_id).catch(() => undefined);
+      if (!account.token) account.ok = false;
+      accounts.set(out.email_account_id, account);
+    }
+    if (!account.ok) continue;
+    const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(threadId)}?format=full`, {
+      headers: { Authorization: `Bearer ${account.token}` },
+    });
+    if (!res.ok) continue;
+    const thread = await res.json().catch(() => ({}));
+    const { data: knownRows } = await db.from("messages").select("provider_message_id").eq("workspace_id", out.workspace_id).eq("provider_thread_id", threadId);
+    const known = new Set((knownRows ?? []).map((k) => String(k.provider_message_id)));
+    for (const m of newReplies((thread.messages ?? []) as GmailMessage[], account.email, known)) {
+      const { error: insertError } = await db.from("messages").insert(replyRow(m, out, account.email));
+      if (!insertError) saved++;
+      else if (insertError.code !== "23505") console.error("reply insert failed", insertError.message);
+    }
+  }
+  return saved;
 }
 
 /** Compare without stopping at the first different character. */

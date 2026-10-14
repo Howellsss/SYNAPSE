@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { HowellsLogo } from '@/components/layout/Sidebar';
 import { supabase } from '@/lib/supabase';
-import { CheckCircle2, Clock, AlertCircle, Mail } from 'lucide-react';
+import { CheckCircle2, Clock, AlertCircle, Mail, Briefcase } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/States';
 
 interface InvitationData {
@@ -10,10 +10,46 @@ interface InvitationData {
   workspace_id: string;
   email: string;
   role: string;
+  title?: string | null;
+  department_name?: string | null;
   status: string;
   expires_at: string;
   workspaces: { name: string } | null;
 }
+
+/** The database function is missing until the company-foundations update is applied. */
+const missingFunction = (e: { code?: string; message?: string } | null) =>
+  !!e && (e.code === 'PGRST202' || /could not find the function/i.test(e.message ?? ''));
+
+/** One invitation by its token (server-side, so invitations can't be listed). */
+async function fetchInvitation(token: string): Promise<InvitationData | null> {
+  const { data, error } = await supabase.rpc('get_invitation', { p_token: token });
+  if (!missingFunction(error)) {
+    const row = (data as { id: string; workspace_id: string; workspace_name: string; email: string; role: string; title: string | null; department_name: string | null; status: string; expires_at: string }[] | null)?.[0];
+    return row ? { ...row, workspaces: { name: row.workspace_name } } : null;
+  }
+  const old = await supabase.from('team_invitations')
+    .select('id, workspace_id, email, role, status, expires_at, workspaces(name)').eq('token', token).maybeSingle();
+  return (old.data as unknown as InvitationData | null) ?? null;
+}
+
+/** Join the workspace with the invited role, title and department (server-side). */
+async function acceptInvite(token: string, invitation: InvitationData, userId: string): Promise<string | null> {
+  const { error } = await supabase.rpc('accept_invitation', { p_token: token });
+  if (!missingFunction(error)) return error?.message ?? null;
+  const { error: memberErr } = await supabase.from('workspace_members').insert({
+    workspace_id: invitation.workspace_id, user_id: userId, role: invitation.role, status: 'active',
+  });
+  if (memberErr && memberErr.code !== '23505') return memberErr.message;
+  await supabase.from('team_invitations').update({ status: 'accepted', accepted_at: new Date().toISOString() }).eq('id', invitation.id);
+  return null;
+}
+
+const ROLE_INTRO: Record<string, string> = {
+  admin: "As an admin, you'll manage workspace settings, team members, departments and all operational resources.",
+  supervisor: "As a supervisor, you'll lead your department: manage its people and the rooms they use.",
+  member: "As a member, you'll have access to the calendars, rooms and resources assigned to you.",
+};
 
 export function AcceptInvitePage({ token }: { token: string }) {
   const { user, signIn, signUp } = useAuth();
@@ -29,19 +65,13 @@ export function AcceptInvitePage({ token }: { token: string }) {
 
   useEffect(() => {
     (async () => {
-      const { data, error } = await supabase
-        .from('team_invitations')
-        .select('id, workspace_id, email, role, status, expires_at, workspaces(name)')
-        .eq('token', token)
-        .maybeSingle();
-
-      if (error || !data) {
+      const inv = await fetchInvitation(token);
+      if (!inv) {
         setError('This invitation could not be found or has been revoked.');
         setLoading(false);
         return;
       }
 
-      const inv = data as unknown as InvitationData;
       if (inv.status !== 'pending') {
         setError('This invitation has already been used or revoked.');
         setLoading(false);
@@ -89,28 +119,12 @@ export function AcceptInvitePage({ token }: { token: string }) {
       return;
     }
 
-    // Insert workspace member
-    const { error: memberErr } = await supabase.from('workspace_members').insert({
-      workspace_id: invitation.workspace_id,
-      user_id: userData.user.id,
-      role: invitation.role,
-      status: 'active',
-    });
-
-    if (memberErr) {
-      // Might already be a member
-      if (memberErr.code !== '23505') {
-        setError(memberErr.message);
-        setSubmitting(false);
-        return;
-      }
+    const acceptErr = await acceptInvite(token, invitation, userData.user.id);
+    if (acceptErr) {
+      setError(acceptErr);
+      setSubmitting(false);
+      return;
     }
-
-    // Mark invitation as accepted
-    await supabase
-      .from('team_invitations')
-      .update({ status: 'accepted', accepted_at: new Date().toISOString() })
-      .eq('id', invitation.id);
 
     setAccepted(true);
     setSubmitting(false);
@@ -183,11 +197,15 @@ export function AcceptInvitePage({ token }: { token: string }) {
               You've been invited to join {invitation.workspaces?.name ?? 'a workspace'}
             </h1>
             <p className="text-ivory-500 mt-4 text-lg leading-relaxed max-w-md">
-              {invitation.role === 'admin'
-                ? 'As an admin, you\'ll be able to manage workspace settings, team members, and all operational resources.'
-                : 'As a member, you\'ll have access to the calendars and resources assigned to you.'}
+              {ROLE_INTRO[invitation.role] ?? ROLE_INTRO.member}
             </p>
           </div>
+          {(invitation.department_name || invitation.title) && (
+            <div className="flex items-center gap-3 text-ivory-300">
+              <Briefcase className="w-5 h-5 text-gold-400" />
+              <span className="text-sm">{[invitation.title, invitation.department_name].filter(Boolean).join(' · ')}</span>
+            </div>
+          )}
           <div className="flex items-center gap-3 text-ivory-300">
             <Mail className="w-5 h-5 text-gold-400" />
             <span className="text-sm">{invitation.email}</span>
@@ -224,21 +242,12 @@ export function AcceptInvitePage({ token }: { token: string }) {
               <button
                 onClick={async () => {
                   setSubmitting(true);
-                  const { error: memberErr } = await supabase.from('workspace_members').insert({
-                    workspace_id: invitation.workspace_id,
-                    user_id: user.id,
-                    role: invitation.role,
-                    status: 'active',
-                  });
-                  if (memberErr && memberErr.code !== '23505') {
-                    setError(memberErr.message);
+                  const acceptErr = await acceptInvite(token, invitation, user.id);
+                  if (acceptErr) {
+                    setError(acceptErr);
                     setSubmitting(false);
                     return;
                   }
-                  await supabase
-                    .from('team_invitations')
-                    .update({ status: 'accepted', accepted_at: new Date().toISOString() })
-                    .eq('id', invitation.id);
                   setAccepted(true);
                   setTimeout(() => {
                     window.location.hash = '/dashboard';

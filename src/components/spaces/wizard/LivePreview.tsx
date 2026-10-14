@@ -1,5 +1,5 @@
 import { Armchair, DoorClosed, Sofa, Users, MicOff, VideoOff, Link2, Lock, Hand, ShieldCheck, CalendarClock, FileJson } from 'lucide-react';
-import { spaceTypeInfo, typeChoiceInfo } from '@/spatial/data/spaceTypes';
+import { spaceTypeInfo, typeChoiceInfo, typePicture } from '@/spatial/data/spaceTypes';
 import { templateInfo } from '@/spatial/data/templates';
 import { SIZE_OPTIONS, setupSummary } from '@/spatial/data/sizing';
 import { buildRooms, roomTypeLabel } from '@/spatial/data/rooms';
@@ -34,6 +34,7 @@ export function LivePreview({ state, userName }: { state: WizardState; userName:
           title={afterLayout && template ? template.name : name}
           subtitle={afterLayout ? name : `${type.name}${state.step === 'size' && size ? ` · ${size.people}` : ''}`}
           icon={type.icon}
+          picture={typePicture(type.key)}
           size="lg"
           wallScreen={state.step === 'configure' ? { logoUrl: state.branding.logo_url, accent: state.branding.accent } : undefined}
         />

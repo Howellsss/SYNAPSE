@@ -8,13 +8,13 @@ export const PERMISSION_ROWS: { key: SpacePermissionKey; label: string }[] = [
   { key: 'invite', label: 'Invite people' },
 ];
 
-export const ROLES: UserRole[] = ['owner', 'admin', 'member'];
+export const ROLES: UserRole[] = ['owner', 'admin', 'supervisor', 'member'];
 
 export const DEFAULT_PERMISSIONS: SpacePermissions = {
   edit_office: ['owner', 'admin'],
-  lock_rooms: ['owner', 'admin'],
+  lock_rooms: ['owner', 'admin', 'supervisor'],
   broadcast: ['owner', 'admin'],
-  invite: ['owner', 'admin'],
+  invite: ['owner', 'admin', 'supervisor'],
 };
 
 /** Turn a role on or off for one permission. Owners always keep every permission. */
