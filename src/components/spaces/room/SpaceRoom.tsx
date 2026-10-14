@@ -1,8 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Clock, X, Loader2, WifiOff, Gauge, Footprints } from 'lucide-react';
+import { Clock, X, Loader2, WifiOff, Gauge, Footprints, ArrowLeft, Maximize2, Mic, MicOff, Video, VideoOff, PhoneOff } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from '@/lib/router';
+import { useSpaceDock } from '@/context/SpaceDockContext';
 import { listSpaces } from '@/lib/spaces';
 import { characterFileUrls, listCharacters, saveMyCharacter } from '@/lib/characters';
 import { usePlatformAdmin } from '@/lib/platformAdmin';
@@ -37,6 +38,7 @@ import { PeoplePanel, PeopleCountButton } from './PeoplePanel';
 import { ConnectionPill, ControlBar, WorldToolbar } from './Overlay';
 import { InviteToSpace } from './InviteToSpace';
 import type { Character, Space } from '@/types';
+import { cn } from '@/lib/utils';
 
 // three.js is large; load the 3D world only inside a space.
 const SpaceScene = lazy(() => import('@/components/spaces/scene/SpaceScene'));
@@ -52,6 +54,7 @@ const POS_STEP = 0.25;
  * character (Characters page), until the art kit brings rooms and furniture.
  */
 export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; closedNote: string | null; onSpaceChange: (s: Space) => void }) {
+  const dock = useSpaceDock();
   const { user, profile, role, workspace, refreshProfile } = useAuth();
   const [, navigate] = useRouter();
   const [status, setStatus] = useState<PresenceStatus>(loadStatus);
@@ -261,7 +264,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
   );
 
   return (
-    <div className="flex h-[100dvh] min-h-0 w-full overflow-hidden">
+    <div className="flex h-full min-h-0 w-full overflow-hidden">
       <section className="relative min-w-0 flex-1 overflow-hidden bg-navy-900" aria-label={`${space.name} office`}>
         {/* The world */}
         <div className="absolute inset-0" data-quality={quality}>
@@ -295,6 +298,16 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
         </div>
         <h1 className="sr-only">{space.name} · {info.name}{template ? ` · ${template.name}` : ''}</h1>
 
+        {dock.docked ? (
+          <DockedBar
+            name={space.name}
+            call={call}
+            people={shown.length}
+            onExpand={dock.expand}
+            onLeave={dock.leave}
+          />
+        ) : (
+          <>
         {hintOpen && (
           <div className="absolute inset-x-0 bottom-36 z-10 flex justify-center px-3 lg:bottom-24">
             <p className="flex max-w-md items-center gap-2 rounded-2xl bg-white/95 px-4 py-2 text-sm text-navy-800 shadow-popover backdrop-blur">
@@ -398,6 +411,16 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
         )}
 
         <div className="absolute bottom-24 left-3 flex flex-col items-start gap-2 sm:left-4 lg:bottom-auto lg:top-4">
+          {/* Back to the rest of SYNAPSE, with this space kept open on the right. */}
+          <button
+            type="button"
+            onClick={dock.dock}
+            aria-label="Back to SYNAPSE"
+            title="Use the rest of SYNAPSE while staying in this workspace"
+            className="inline-flex h-10 items-center gap-1.5 rounded-full bg-white/95 px-3 text-sm font-semibold text-navy-800 shadow-popover backdrop-blur hover:bg-white"
+          >
+            <ArrowLeft className="h-4 w-4" /> <span className="hidden sm:inline">Back to SYNAPSE</span>
+          </button>
           <PeopleCountButton count={shown.length} onClick={() => setSheetOpen(true)} />
           <ConnectionPill state={connection} call={call.state} quality={call.connectionQuality} />
         </div>
@@ -407,13 +430,16 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
         <div className="absolute inset-x-0 bottom-4 flex justify-center px-3">
           <ControlBar
             call={call}
-            onLeave={() => navigate('/workspace')}
+            onLeave={dock.leave}
             onSettings={() => setDevicesOpen(true)}
             onReact={react}
             handRaised={handRaised}
             onHand={raiseHand}
           />
         </div>
+
+          </>
+        )}
       </section>
 
       {/* The people panel opens over the world: a sheet on phones, a floating panel on wider screens */}
@@ -450,5 +476,38 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
         />
       )}
     </div>
+  );
+}
+
+/** The space as a side panel: who's here, your mic and camera, open it again or leave. */
+function DockedBar({ name, call, people, onExpand, onLeave }: {
+  name: string;
+  call: { micOn: boolean; camOn: boolean; toggleMic: () => unknown; toggleCam: () => unknown };
+  people: number;
+  onExpand: () => void;
+  onLeave: () => void;
+}) {
+  const btn = 'flex h-9 w-9 items-center justify-center rounded-full transition';
+  return (
+    <>
+      <div className="absolute inset-x-2 top-2 z-10 flex items-center gap-2 rounded-full bg-white/95 py-1 pl-3 pr-1 text-navy-800 shadow-popover backdrop-blur">
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold">{name}</span>
+        <span className="shrink-0 text-xs text-ivory-700">{people} here</span>
+        <button type="button" onClick={onExpand} aria-label="Open the workspace full screen" title="Open full screen" className={cn(btn, 'bg-navy-800 text-white hover:bg-navy-700')}>
+          <Maximize2 className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="absolute inset-x-0 bottom-3 z-10 flex justify-center gap-2" role="toolbar" aria-label="Call controls">
+        <button type="button" onClick={() => void call.toggleMic()} aria-pressed={call.micOn} aria-label={call.micOn ? 'Mute microphone' : 'Unmute microphone'} className={cn(btn, call.micOn ? 'bg-white text-navy-800' : 'bg-burgundy-500 text-white')}>
+          {call.micOn ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+        </button>
+        <button type="button" onClick={() => void call.toggleCam()} aria-pressed={call.camOn} aria-label={call.camOn ? 'Turn camera off' : 'Turn camera on'} className={cn(btn, call.camOn ? 'bg-white text-navy-800' : 'bg-burgundy-500 text-white')}>
+          {call.camOn ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+        </button>
+        <button type="button" onClick={onLeave} aria-label="Leave the workspace" title="Leave" className={cn(btn, 'bg-[#C42B1C] text-white hover:bg-[#A82518]')}>
+          <PhoneOff className="h-4 w-4" />
+        </button>
+      </div>
+    </>
   );
 }

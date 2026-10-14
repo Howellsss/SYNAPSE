@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ToastProvider } from '@/context/ToastContext';
 import { useRouter } from '@/lib/router';
@@ -38,12 +38,30 @@ import { EventBuilder } from '@/pages/events/EventBuilder';
 import { EventManagePage } from '@/pages/events/EventManagePage';
 import { MonitorPlay, MessagesSquare, FolderOpen } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/States';
+import { SpaceDockContext, type SpaceDock } from '@/context/SpaceDockContext';
+import { cn } from '@/lib/utils';
 
 function AppContent() {
   const { user, loading } = useAuth();
   const [path, navigate] = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   useGmailReturnNotice(path);
+
+  // The workspace you're in (/workspace/<slug>), and the one kept open on the right while you use
+  // the other pages. Only Leave (or signing out) closes it.
+  const spaceMatch = path.match(/^\/workspace\/([a-z0-9-]+)(?:[/?]|$)/);
+  const spaceSlug = spaceMatch && spaceMatch[1] !== 'new' ? spaceMatch[1] : null;
+  const [dockedSpace, setDockedSpace] = useState<string | null>(null);
+  useEffect(() => {
+    if (!loading && !user) setDockedSpace(null);
+    else if (spaceSlug) setDockedSpace(spaceSlug);
+  }, [spaceSlug, user, loading]);
+  const dockApi = useMemo<SpaceDock>(() => ({
+    docked: !spaceSlug && !!dockedSpace,
+    dock: () => navigate('/dashboard'),
+    expand: () => { if (dockedSpace) navigate(`/workspace/${dockedSpace}`); },
+    leave: () => { setDockedSpace(null); navigate('/workspace'); },
+  }), [spaceSlug, dockedSpace, navigate]);
 
   const authPath = path === '/signin' || path === '/signup';
   // Public events pages: /e, /e/<slug>, /e/ticket/<token>. Open to everyone, signed in or not.
@@ -144,36 +162,45 @@ function AppContent() {
     if (path.startsWith('/webinars')) return <ComingSoonPage title="Webinars" description="Host live and on-demand webinars" icon={MonitorPlay} />;
     if (path.startsWith('/conversations')) return <ComingSoonPage title="Conversations" description="Manage messages across channels" icon={MessagesSquare} />;
     if (path.startsWith('/media-library')) return <ComingSoonPage title="Media Library" description="Store and organize your media assets" icon={FolderOpen} />;
-    const spaceMatch = path.match(/^\/workspace\/([a-z0-9-]+)(?:[/?]|$)/);
-    if (spaceMatch) return <SpacePage key={spaceMatch[1]} slug={spaceMatch[1]} />;
     if (/^\/workspaces?(?:[/?]|$)/.test(path)) return <WorkspacesPage />;
     return <Dashboard />;
   };
 
   // Inside a space the world is the whole screen: no sidebar, no top bar, no padding.
-  // Leave (in the call controls) goes back to the workspaces.
-  const inSpace = /^\/workspace\/[a-z0-9-]+(?:[/?]|$)/.test(path);
-  if (inSpace) {
-    return (
-      <div className="h-[100dvh] overflow-hidden bg-navy-900">
-        <main className="h-full">{renderPage()}</main>
-      </div>
-    );
-  }
-
+  // "Back to SYNAPSE" keeps the space open as a panel on the right while you use the other pages;
+  // the space stays in the same place in the tree, so the call and your place in it carry on.
+  const shownSpace = spaceSlug ?? dockedSpace;
+  const docked = !spaceSlug && !!dockedSpace;
   return (
-    <div className="min-h-screen bg-white">
-      <Sidebar currentPath={path} onNavigate={navigate} />
-      <div className="lg:ml-[240px] flex flex-col min-h-screen">
-        <TopBar
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          onQuickCreate={() => navigate('/calendars')}
-        />
-        {/* Each section fades in with a slight rise when you move to it. */}
-        <main key={path.split(/[/?]/)[1] || 'dashboard'} className="flex-1 px-4 lg:px-6 py-5 lg:py-6 animate-page-in">{renderPage()}</main>
-      </div>
-    </div>
+    <SpaceDockContext.Provider value={dockApi}>
+      {spaceSlug ? null : (
+        <div className="min-h-screen bg-white">
+          <Sidebar currentPath={path} onNavigate={navigate} />
+          <div className={cn('lg:ml-[240px] flex flex-col min-h-screen', docked && 'lg:mr-[380px]')}>
+            <TopBar
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              onQuickCreate={() => navigate('/calendars')}
+            />
+            {/* Each section fades in with a slight rise when you move to it. */}
+            <main key={path.split(/[/?]/)[1] || 'dashboard'} className="flex-1 px-4 lg:px-6 py-5 lg:py-6 animate-page-in">{renderPage()}</main>
+          </div>
+        </div>
+      )}
+      {shownSpace && (
+        <div
+          className={cn(
+            'z-40 overflow-hidden bg-navy-900',
+            docked
+              ? 'fixed bottom-3 right-3 h-[280px] w-[min(92vw,360px)] rounded-2xl shadow-popover ring-1 ring-navy-100 lg:bottom-0 lg:right-0 lg:top-0 lg:h-auto lg:w-[380px] lg:rounded-none lg:ring-0'
+              : 'fixed inset-0',
+          )}
+          aria-label={docked ? 'Your workspace' : undefined}
+        >
+          <SpacePage key={shownSpace} slug={shownSpace} />
+        </div>
+      )}
+    </SpaceDockContext.Provider>
   );
 }
 

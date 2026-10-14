@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { ArrowLeft, SearchX, Clock } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { useRouter } from '@/lib/router';
+import { useSpaceDock } from '@/context/SpaceDockContext';
 import { getSpaceBySlug, hasEntered, markEntered } from '@/lib/spaces';
 import { opensLabel, describeSchedule } from '@/spatial/schedule';
 import { GetReadyScreen } from '@/components/spaces/DeviceCheck';
@@ -12,7 +12,8 @@ import type { Space } from '@/types';
 /** /workspace/<slug>: checks the person may enter, shows "Get ready" on a first visit, then the room. */
 export function SpacePage({ slug }: { slug: string }) {
   const { user, canManageTeam } = useAuth();
-  const [, navigate] = useRouter();
+  // Going back closes the space (it isn't kept open on the side).
+  const { leave } = useSpaceDock();
   const [space, setSpace] = useState<Space | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -53,7 +54,7 @@ export function SpacePage({ slug }: { slug: string }) {
         <SearchX className="mx-auto h-10 w-10 text-ivory-600" />
         <h1 className="mt-4 text-xl font-bold text-navy-800">Workspace not found</h1>
         <p className="mt-2 text-sm text-ivory-700">It may have been removed, or it belongs to a team you're not part of yet. Ask for an invite link.</p>
-        <button onClick={() => navigate('/workspace')} className="btn-primary mt-6"><ArrowLeft className="h-4 w-4" /> Back to workspaces</button>
+        <button onClick={() => leave()} className="btn-primary mt-6"><ArrowLeft className="h-4 w-4" /> Back to workspaces</button>
       </Padded>
     );
   }
@@ -65,7 +66,7 @@ export function SpacePage({ slug }: { slug: string }) {
         <Clock className="mx-auto h-10 w-10 text-gold-600" />
         <h1 className="mt-4 text-xl font-bold text-navy-800">{space.name} is closed right now</h1>
         <p className="mt-2 text-sm text-ivory-700">{opens}. {space.schedule ? describeSchedule(space.schedule) : ''}</p>
-        <button onClick={() => navigate('/workspace')} className="btn-primary mt-6"><ArrowLeft className="h-4 w-4" /> Back to workspaces</button>
+        <button onClick={() => leave()} className="btn-primary mt-6"><ArrowLeft className="h-4 w-4" /> Back to workspaces</button>
       </Padded>
     );
   }
@@ -74,7 +75,7 @@ export function SpacePage({ slug }: { slug: string }) {
     return (
       <GetReadyScreen
         spaceName={space.name}
-        onBack={() => navigate('/workspace')}
+        onBack={() => leave()}
         onEnter={async () => { await markEntered(space.id, user.id); setEntered(true); }}
       />
     );
