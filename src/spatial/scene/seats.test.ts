@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { isFree, walkMap } from './floor';
 import { OFFICE_02 } from './offices';
-import { seatApproach, seatAt, seatForward, seatOnRay, sittingSpot, type Seat } from './seats';
+import { approachAngle, seatApproach, seatAt, seatForward, seatOnRay, sittingSpot, type Seat } from './seats';
 
 const seats = OFFICE_02.seats!;
 const map = walkMap(OFFICE_02.floor, OFFICE_02.obstacles, 0.25, 0.28);
@@ -29,11 +29,17 @@ describe('Office 02 seats', () => {
     const toTable = { x: 13.4 - cafe.x, z: 11.3 - cafe.z };
     expect(f.x * toTable.x + f.z * toTable.z).toBeGreaterThan(0);
   });
-  it('stands you up behind a chair and in front of the sofa', () => {
+  it('never sits you down through the back of a seat', () => {
+    for (const s of seats) expect(approachAngle(s, seatApproach(map, s))).toBeLessThanOrEqual(Math.PI * 0.75 + 1e-6);
+    // Chairs tucked under a desk: from the side, not over the desk.
     const desk = seats.find((s) => s.id === 'desk-1')!;
-    expect(seatApproach(map, desk).z).toBeLessThan(desk.z); // behind, away from the desk
-    const sofa = seats.find((s) => s.id === 'sofa-2')!;
-    expect(seatApproach(map, sofa).x).toBeGreaterThan(sofa.x); // in front, away from the wall
+    expect(approachAngle(desk, seatApproach(map, desk))).toBeCloseTo(Math.PI / 2, 3);
+  });
+  it('comes to the sofa and armchairs from the front', () => {
+    for (const id of ['sofa-1', 'sofa-2', 'sofa-3', 'armchair-1', 'armchair-2']) {
+      const s = seats.find((x) => x.id === id)!;
+      expect(approachAngle(s, seatApproach(map, s))).toBeLessThanOrEqual(Math.PI / 4 + 1e-6);
+    }
   });
 });
 
