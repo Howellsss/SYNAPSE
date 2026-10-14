@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chunkSync, contentRect, emptyState, hitTest, parseMsg, reduce, type AnnotState, type Item, type Roles } from './annotations';
+import { arrowHead, chunkSync, contentRect, emptyState, hitTest, parseMsg, reduce, type AnnotState, type Item, type Roles } from './annotations';
 
 const roles: Roles = { presenter: 'pres', host: 'host' };
 const run = (state: AnnotState, from: string, raw: unknown) => { const m = parseMsg(raw); return m ? reduce(state, m, from, roles) : state; };
@@ -70,5 +70,20 @@ describe('geometry', () => {
     const items: Item[] = [{ kind: 'stroke', id: 'a', by: 'x', tool: 'pen', color: '#EF4444', width: 0.004, points: [[0.1, 0.1], [0.5, 0.1]] }];
     expect(hitTest(items, [0.3, 0.105])?.id).toBe('a');
     expect(hitTest(items, [0.3, 0.3])).toBeNull();
+  });
+});
+
+describe('arrows and pointers', () => {
+  it('accepts arrow strokes and hover pointers', () => {
+    expect(parseMsg({ t: 'begin', id: 'a1', tool: 'arrow', color: '#EF4444', width: 0.005, p: [0.1, 0.2] }))
+      .toEqual({ t: 'begin', id: 'a1', tool: 'arrow', color: '#EF4444', width: 0.005, p: [0.1, 0.2] });
+    expect(parseMsg({ t: 'laser', x: 0.5, y: 0.5, k: 'pointer' })).toEqual({ t: 'laser', x: 0.5, y: 0.5, k: 'pointer' });
+    expect(parseMsg({ t: 'laser', x: 0.5, y: 0.5, k: 'other' })).toEqual({ t: 'laser', x: 0.5, y: 0.5 });
+  });
+  it('puts the arrow head behind the tip, either side of the line', () => {
+    const [l, r] = arrowHead([0, 0], [100, 0], 10);
+    expect(l[0]).toBeLessThan(100);
+    expect(r[0]).toBeLessThan(100);
+    expect(Math.sign(l[1])).toBe(-Math.sign(r[1]));
   });
 });

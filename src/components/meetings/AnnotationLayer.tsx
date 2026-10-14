@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { MousePointer2, Pen, Highlighter, Type, Eraser, Undo2, Trash2, X, Users, Zap } from 'lucide-react';
+import { MousePointer2, Pen, Highlighter, Type, Eraser, Undo2, Trash2, X, Users, Zap, MoveUpRight } from 'lucide-react';
 import {
-  COLORS, TOPIC as DEFAULT_TOPIC, WIDTHS, chunkSync, contentRect, emptyState, hitTest, mayAnnotate, newId, parseMsg, reduce,
+  COLORS, TOPIC as DEFAULT_TOPIC, WIDTHS, arrowHead, chunkSync, contentRect, emptyState, hitTest, mayAnnotate, newId, parseMsg, reduce,
   type AnnotMsg, type AnnotState, type Item, type Point, type Roles, type Tool,
 } from '@/meetings/annotations';
 import type { MeetingBus } from '@/meetings/useMeetingBus';
@@ -32,6 +32,8 @@ interface Props {
 }
 
 const LASER_MS = 1500;
+/** Someone's hover pointer stays this long after they stop moving. */
+const POINTER_MS = 3000;
 const FLUSH_MS = 40;
 
 /** Annotations drawn over a shared screen, shared live with everyone in the meeting. */
@@ -47,8 +49,8 @@ export function AnnotationLayer({ bus, me, roles, video = null, surface = null, 
   const [textAt, setTextAt] = useState<Point | null>(null);
   const [textValue, setTextValue] = useState('');
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const lasers = useRef(new Map<string, { x: number; y: number; t: number }>());
-  const drawing = useRef<{ id: string; pending: Point[]; last: number } | null>(null);
+  const lasers = useRef(new Map<string, { x: number; y: number; t: number; pointer?: boolean }>());
+  const drawing = useRef<{ id: string; pending: Point[]; last: number; arrow?: { from: Point; to: Point } } | null>(null);
   const [, force] = useState(0);
   const activeTool: Tool = open ? tool : 'none';
   const allowedForMe = mayAnnotate(me, state, roles);
@@ -69,7 +71,7 @@ export function AnnotationLayer({ bus, me, roles, video = null, surface = null, 
     const msg = parseMsg(raw);
     if (!msg) return;
     if (msg.t === 'laser') {
-      lasers.current.set(from, { x: msg.x, y: msg.y, t: performance.now() });
+      lasers.current.set(from, { x: msg.x, y: msg.y, t: performance.now(), pointer: msg.k === 'pointer' });
       force((n) => n + 1);
       return;
     }
@@ -94,7 +96,7 @@ export function AnnotationLayer({ bus, me, roles, video = null, surface = null, 
     if (!surface) return;
     const measure = () => setRect({ x: 0, y: 0, w: surface.clientWidth, h: surface.clientHeight });
     measure();
-    const ro = new ResizeObserver(measure);
+    const ro = new (surface.ownerDocument.defaultView ?? window).ResizeObserver(measure);
     ro.observe(surface);
     return () => ro.disconnect();
   }, [surface]);
@@ -109,7 +111,7 @@ export function AnnotationLayer({ bus, me, roles, video = null, surface = null, 
       setRect({ x: box.left - parent.left + r.x, y: box.top - parent.top + r.y, w: r.w, h: r.h });
     };
     measure();
-    const ro = new ResizeObserver(measure);
+    const ro = new (video.ownerDocument.defaultView ?? window).ResizeObserver(measure);
     ro.observe(video);
     video.addEventListener('loadedmetadata', measure);
     video.addEventListener('resize', measure);
@@ -122,7 +124,8 @@ export function AnnotationLayer({ bus, me, roles, video = null, surface = null, 
     if (!canvas || !rect.w) return;
     let raf = 0;
     const paint = () => {
-      const dpr = window.devicePixelRatio || 1;
+      const view = canvas.ownerDocument.defaultView ?? window;
+      const dpr = view.devicePixelRatio || 1;
       if (canvas.width !== Math.round(rect.w * dpr) || canvas.height !== Math.round(rect.h * dpr)) {
         canvas.width = Math.round(rect.w * dpr);
         canvas.height = Math.round(rect.h * dpr);
@@ -131,20 +134,30 @@ export function AnnotationLayer({ bus, me, roles, video = null, surface = null, 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, rect.w, rect.h);
       for (const item of stateRef.current.items) drawItem(ctx, item, rect.w, rect.h, !surface);
-      // Laser pointers fade after a moment.
+      // The arrow being dragged out, before it's sent.
+      const d = drawing.current;
+      if (d?.arrow) {
+        drawItem(ctx, { kind: 'stroke', id: d.id, by: me, tool: 'arrow', color, width: WIDTHS.arrow, points: [d.arrow.from, d.arrow.to] }, rect.w, rect.h, !surface);
+      }
+      // Laser dots fade after a moment; hover pointers stay a little longer.
       const now = performance.now();
       let live = false;
       for (const [who, l] of lasers.current) {
         const age = now - l.t;
-        if (age > LASER_MS) { lasers.current.delete(who); continue; }
+        const life = l.pointer ? POINTER_MS : LASER_MS;
+        if (age > life) { lasers.current.delete(who); continue; }
         live = true;
-        const a = 1 - age / LASER_MS;
+        const a = l.pointer ? Math.min(1, (life - age) / 500) : 1 - age / LASER_MS;
         const x = l.x * rect.w; const y = l.y * rect.h;
         ctx.globalAlpha = a;
-        ctx.fillStyle = 'rgba(239,68,68,0.35)';
-        ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#EF4444';
-        ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fill();
+        if (l.pointer) {
+          drawPointer(ctx, x, y);
+        } else {
+          ctx.fillStyle = 'rgba(239,68,68,0.35)';
+          ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#EF4444';
+          ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fill();
+        }
         const label = who === me ? 'You' : names[who] ?? 'Guest';
         ctx.font = '600 12px Inter, system-ui, sans-serif';
         ctx.fillStyle = 'rgba(13,28,59,0.85)';
@@ -182,7 +195,10 @@ export function AnnotationLayer({ bus, me, roles, video = null, surface = null, 
     if (activeTool === 'none' || !allowedForMe) return;
     const p = toPoint(e);
     e.currentTarget.setPointerCapture(e.pointerId);
-    if (activeTool === 'pen' || activeTool === 'highlighter') {
+    if (activeTool === 'arrow') {
+      drawing.current = { id: newId(), pending: [], last: performance.now(), arrow: { from: p, to: p } };
+      force((n) => n + 1);
+    } else if (activeTool === 'pen' || activeTool === 'highlighter') {
       const id = newId();
       drawing.current = { id, pending: [], last: performance.now() };
       send({ t: 'begin', id, tool: activeTool, color, width: WIDTHS[activeTool], p });
@@ -211,14 +227,49 @@ export function AnnotationLayer({ bus, me, roles, video = null, surface = null, 
     if (activeTool === 'eraser' && e.buttons) { eraseAt(toPoint(e)); return; }
     const d = drawing.current;
     if (!d) return;
+    if (d.arrow) { d.arrow.to = toPoint(e); force((n) => n + 1); return; }
     d.pending.push(toPoint(e));
     if (performance.now() - d.last > FLUSH_MS) flush();
   };
 
   const onUp = () => {
+    const d = drawing.current;
+    if (d?.arrow) {
+      drawing.current = null;
+      const { from, to } = d.arrow;
+      // A click without a drag isn't an arrow.
+      if (Math.hypot(to[0] - from[0], to[1] - from[1]) > 0.01) {
+        send({ t: 'begin', id: d.id, tool: 'arrow', color, width: WIDTHS.arrow, p: from });
+        send({ t: 'pts', id: d.id, pts: [to] });
+      }
+      force((n) => n + 1);
+      return;
+    }
     flush();
     drawing.current = null;
   };
+
+  // Pointer mode: while the tools are open, everyone sees where you point (no clicking needed).
+  const pointerOn = open && tool === 'none';
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!pointerOn || !canvas) return;
+    const doc = canvas.ownerDocument;
+    let last = 0;
+    const onHover = (e: PointerEvent) => {
+      const r = canvas.getBoundingClientRect();
+      if (!r.width || e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
+      const now = performance.now();
+      if (now - last < 40) return;
+      last = now;
+      const x = (e.clientX - r.left) / r.width; const y = (e.clientY - r.top) / r.height;
+      lasers.current.set(me, { x, y, t: now, pointer: true });
+      bus.send(TOPIC, { t: 'laser', x, y, k: 'pointer' }, { reliable: false });
+      force((n) => n + 1);
+    };
+    doc.addEventListener('pointermove', onHover);
+    return () => doc.removeEventListener('pointermove', onHover);
+  }, [pointerOn, bus, me, TOPIC]);
 
   const commitText = () => {
     if (textAt && textValue.trim()) send({ t: 'text', id: newId(), color, x: textAt[0], y: textAt[1], text: textValue.trim() });
@@ -232,8 +283,9 @@ export function AnnotationLayer({ bus, me, roles, video = null, surface = null, 
   };
 
   const tools: { id: Tool; label: string; icon: typeof Pen }[] = [
-    { id: 'none', label: 'Mouse (stop drawing)', icon: MousePointer2 },
+    { id: 'none', label: 'Pointer (others see where you point)', icon: MousePointer2 },
     { id: 'pen', label: 'Draw', icon: Pen },
+    { id: 'arrow', label: 'Arrow (drag to draw)', icon: MoveUpRight },
     { id: 'highlighter', label: 'Highlight', icon: Highlighter },
     { id: 'text', label: 'Text', icon: Type },
     { id: 'laser', label: 'Spotlight (laser pointer)', icon: Zap },
@@ -355,7 +407,16 @@ function drawItem(ctx: CanvasRenderingContext2D, item: Item, w: number, h: numbe
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   const [first, ...rest] = item.points;
-  if (!rest.length) {
+  if (item.tool === 'arrow' && rest.length) {
+    const from: [number, number] = [first[0] * w, first[1] * h];
+    const last = rest[rest.length - 1];
+    const to: [number, number] = [last[0] * w, last[1] * h];
+    const [l, r] = arrowHead(from, to, Math.max(10, ctx.lineWidth * 4));
+    ctx.beginPath();
+    ctx.moveTo(from[0], from[1]); ctx.lineTo(to[0], to[1]);
+    ctx.moveTo(l[0], l[1]); ctx.lineTo(to[0], to[1]); ctx.lineTo(r[0], r[1]);
+    ctx.stroke();
+  } else if (!rest.length) {
     ctx.beginPath(); ctx.arc(first[0] * w, first[1] * h, ctx.lineWidth / 2, 0, Math.PI * 2); ctx.fill();
   } else {
     ctx.beginPath();
@@ -364,4 +425,22 @@ function drawItem(ctx: CanvasRenderingContext2D, item: Item, w: number, h: numbe
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
+}
+
+/** An arrow cursor with its tip at (x, y). */
+function drawPointer(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x, y + 18);
+  ctx.lineTo(x + 4.5, y + 14);
+  ctx.lineTo(x + 8, y + 21);
+  ctx.lineTo(x + 11, y + 19.5);
+  ctx.lineTo(x + 7.5, y + 12.8);
+  ctx.lineTo(x + 13, y + 12.8);
+  ctx.closePath();
+  ctx.fillStyle = '#E4A93C';
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = '#0D1C3B';
+  ctx.stroke();
 }

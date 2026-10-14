@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowLeft, Check, ChevronDown, Copy, RefreshCw, Smartphone, Hand, Info, LayoutGrid, MessageSquare, Mic, MicOff, MonitorUp, MoreHorizontal, PenLine, PhoneOff,
   SearchX, Settings2, SmilePlus, Users, Video, VideoOff, Camera, X, Clock, LogOut, Maximize2, Minimize2, PictureInPicture2, Pin, PinOff, Shield, ShieldCheck, XCircle,
@@ -28,6 +29,7 @@ import { AudioButton, ToolButton, VideoButton, darkItem, darkPanel } from '@/com
 import { BackgroundsPanel, CaptionsOverlay, ChatPanel, ParticipantsPanel, PollsPanel, TranscriptPanel, type ChatLine } from '@/components/meetings/MeetingPanels';
 import { useCaptions } from '@/meetings/useCaptions';
 import { useRecorder } from '@/meetings/useRecorder';
+import { documentPip, openPopout } from '@/meetings/popout';
 import { transcriptText } from '@/meetings/captions';
 import { BreakoutPanel } from '@/components/meetings/BreakoutPanel';
 import { parseBreakout, roomOf, timeLeft } from '@/meetings/breakouts';
@@ -480,6 +482,8 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
   const [annotating, setAnnotating] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [shareVideo, setShareVideo] = useState<HTMLVideoElement | null>(null);
+  /** The always-on-top annotation window, while it's open. */
+  const [annotWindow, setAnnotWindow] = useState<Window | null>(null);
   const [chat, setChat] = useState<ChatLine[]>([]);
   const [unread, setUnread] = useState(0);
   const [reactions, setReactions] = useState<Record<string, { e: Reaction; at: number }>>({});
@@ -552,6 +556,9 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
   const namesRef = useRef(names);
   namesRef.current = names;
   const sharer = tiles.find((t) => t.screen);
+  // The annotation window goes when the sharing stops or you leave.
+  useEffect(() => { if (!sharer && annotWindow) annotWindow.close(); }, [sharer, annotWindow]);
+  useEffect(() => () => { documentPip()?.window?.close(); }, []);
   const count = tiles.length;
 
   // Only the host can end the meeting for everyone, or stop someone's screen share.
@@ -764,26 +771,51 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
 
   let stage: React.ReactNode;
   if (sharer) {
-    const fit = shareZoom === 'fit';
+    const fit = shareZoom === 'fit' || !!annotWindow;
+    // A new share (another tab or screen) starts with a clean page.
+    const shareKey = sharer.screen?.sid ?? sharer.id;
+    const annotation = fit && (
+      <AnnotationLayer
+        key={shareKey}
+        bus={bus}
+        me={you.id}
+        roles={{ presenter: sharer.id, host: meeting.host_id }}
+        video={shareVideo}
+        open={annotating || !!annotWindow}
+        onClose={() => { setAnnotating(false); annotWindow?.close(); }}
+        closeLabel={annotWindow ? 'Close the annotation window' : undefined}
+        names={names}
+      />
+    );
     stage = (
       <div className="flex h-full flex-col gap-1.5 lg:flex-row">
         <div className={cn('relative min-h-0 flex-1 rounded-lg bg-navy-900', fit ? 'overflow-hidden' : 'overflow-auto')} data-share-stage>
-          <TrackVideo
-            track={sharer.screen}
-            onVideo={setShareVideo}
-            className={fit ? 'h-full w-full object-contain' : 'max-w-none'}
-            style={fit || !shareVideo?.videoWidth ? undefined : { width: shareVideo.videoWidth * (shareZoom as number), height: 'auto' }}
-          />
-          {fit && (
-            <AnnotationLayer
-              bus={bus}
-              me={you.id}
-              roles={{ presenter: sharer.id, host: meeting.host_id }}
-              video={shareVideo}
-              open={annotating}
-              onClose={() => setAnnotating(false)}
-              names={names}
-            />
+          {annotWindow ? (
+            <>
+              {createPortal(
+                <div className="relative h-full w-full bg-navy-900">
+                  <TrackVideo key={shareKey} track={sharer.screen} onVideo={setShareVideo} className="h-full w-full object-contain" />
+                  {annotation}
+                </div>,
+                annotWindow.document.body,
+              )}
+              <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-white">
+                <PenLine className="h-8 w-8 text-gold-400" />
+                <p className="max-w-sm text-sm">Annotating in the floating window. It stays on top of every tab, so you can draw while you work in the tab you're sharing.</p>
+                <button type="button" onClick={() => annotWindow.close()} className="rounded-md bg-white px-3 py-1.5 text-sm font-semibold text-navy-900 hover:bg-ivory-100">Bring it back here</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <TrackVideo
+                key={shareKey}
+                track={sharer.screen}
+                onVideo={setShareVideo}
+                className={fit ? 'h-full w-full object-contain' : 'max-w-none'}
+                style={fit || !shareVideo?.videoWidth ? undefined : { width: shareVideo.videoWidth * (shareZoom as number), height: 'auto' }}
+              />
+              {annotation}
+            </>
           )}
         </div>
         <div className="flex shrink-0 gap-1.5 overflow-auto lg:w-60 lg:flex-col">
@@ -818,6 +850,16 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
     );
   }
 
+  const annotateFromAnyTab = async () => {
+    try {
+      const w = await openPopout();
+      if (!w) { toast('Annotating from any tab needs Chrome or Edge on a computer. You can still annotate here.', 'info'); return; }
+      w.addEventListener('pagehide', () => setAnnotWindow(null));
+      setShareZoom('fit');
+      setAnnotating(true);
+      setAnnotWindow(w);
+    } catch { toast('The annotation window couldn’t open.', 'error'); }
+  };
   const popOut = async () => {
     try { await shareVideo?.requestPictureInPicture(); } catch { toast('Pop out isn’t available in this browser.', 'info'); }
   };
@@ -876,6 +918,7 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
                   ))}
                   <div className="my-1 h-px bg-sand" />
                   <button role="menuitem" className={darkItem} onClick={() => { close(); setShareZoom('fit'); setAnnotating(true); }}><PenLine className="h-4 w-4" /> Annotate</button>
+                  {documentPip() && <button role="menuitem" className={darkItem} onClick={() => { close(); void annotateFromAnyTab(); }}><PenLine className="h-4 w-4" /> Annotate from any tab</button>}
                   {isHost && !sharer.local && <button role="menuitem" className={cn(darkItem, '!text-burgundy-600')} onClick={() => { close(); stopTheirShare(); }}><X className="h-4 w-4" /> Stop participant’s sharing</button>}
                   {sharer.local && <button role="menuitem" className={cn(darkItem, '!text-burgundy-600')} onClick={() => { close(); void call.stopScreenShare(); }}><X className="h-4 w-4" /> Stop sharing</button>}
                   <div className="my-1 h-px bg-sand" />
