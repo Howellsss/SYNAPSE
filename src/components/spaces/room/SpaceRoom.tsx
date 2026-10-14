@@ -78,7 +78,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
     userId: user.id, name, avatarUrl: profile?.avatar_url ?? null, avatarHash: null, status,
     zoneId: myZone, deskId: null, conversation: myGroup, locks: myLocks, characterId: chosenCharacterId(profile?.avatar_config),
   } : null), [user, name, profile?.avatar_url, profile?.avatar_config, status, myZone, myGroup, myLocks]);
-  const { people, connection, remotes, updateLocal, startPath, endPath, sendEmote, onEmote, sendKnock, sendAdmit, onRoomSignal } = useSpaceChannel(space.id, me, away);
+  const { people, connection, remotes, updateLocal, startPath, endPath, sendEmote, onEmote, sendKnock, sendAdmit, onRoomSignal, setCallRoom } = useSpaceChannel(space.id, me, away);
 
   // The scene reports where I am every frame: the network sender decides what to send, and
   // proximity hears about it when I've moved a little.
@@ -199,6 +199,8 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
   const [, updatePrefs] = useMediaPrefs();
   const call = useLiveKitRoom(space.id, { prefs: media, onNotice: (m, tone) => toast(m, tone ?? 'info') });
   useCallShortcuts({ mic: () => { void call.toggleMic(); }, cam: () => { void call.toggleCam(); } });
+  // Movement rides on the call once it's connected (see useSpaceChannel).
+  useEffect(() => { setCallRoom(call.state === 'connected' ? call.room : null); }, [call.state, call.room, setCallRoom]);
   const canInvite = can(space.permissions, 'invite', role);
   const canEdit = can(space.permissions, 'edit_office', role);
   const info = spaceTypeInfo(space.space_type);

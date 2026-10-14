@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { Room } from 'livekit-client';
 import { supabase } from '@/lib/supabase';
 import { MoveSender, type LocalState } from './moveSender';
 import { RemoteMover } from './interpolation';
@@ -12,6 +13,21 @@ import type { ConnectionState } from './status';
 export type MeInput = Omit<PresenceMeta, 'joinedAt' | 'away'>;
 
 type RealtimeChannel = ReturnType<typeof supabase.channel>;
+type SpaceEvent = 'move' | 'path' | 'emote' | 'knock' | 'admit';
+
+/** LiveKit data topic for movement and signals inside a space. */
+export const SPACE_TOPIC = 'synapse.space';
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+
+/**
+ * Who still needs a message over the realtime channel: people present in the space who aren't
+ * connected to its call (everyone else gets it over the call's data channel).
+ */
+export function needsRealtime(present: Iterable<string>, inCall: Set<string>, me: string): boolean {
+  for (const id of present) if (id !== me && !inCall.has(id)) return true;
+  return false;
+}
 
 /** Remote people's movers, kept outside React state so 10 updates a second don't re-render the page. */
 export class RemoteStore {
@@ -34,6 +50,11 @@ export class RemoteStore {
 /**
  * The realtime channel for one space (`space:<spaceId>`): presence for who's here, broadcast for
  * movement and emotes. Tracks you on join, re-tracks after a reconnect, untracks on leave.
+ *
+ * Once the space's call is connected (`setCallRoom`), movement, emotes and knocks go over the
+ * call's data channel instead: Supabase counts every broadcast once per receiver (100 a second on
+ * the free plan), LiveKit doesn't, so a 50-person space stays within the free plan. The realtime
+ * channel still carries presence, and anything for people who aren't in the call.
  */
 export function useSpaceChannel(spaceId: string | null, me: MeInput | null, away: boolean) {
   const [people, setPeople] = useState<PresenceMeta[]>([]);
@@ -46,9 +67,25 @@ export function useSpaceChannel(spaceId: string | null, me: MeInput | null, away
   const roomListeners = useRef(new Set<(e: { knock?: KnockMsg; admit?: AdmitMsg }) => void>());
   const lastLocal = useRef<LocalState | null>(null);
   const userId = me?.userId ?? null;
+  const userIdRef = useRef(userId);
+  userIdRef.current = userId;
+  // Emotes and knocks can arrive over both channels (when someone isn't in the call): once each.
+  const seenSignals = useRef(new Set<string>());
   const payload = useMemo(() => (me ? JSON.stringify({ ...me, away }) : null), [me, away]);
 
-  const send = useCallback((event: 'move' | 'path' | 'emote' | 'knock' | 'admit', body: MoveMsg | PathMsg | EmoteMsg | KnockMsg | AdmitMsg) => {
+  const [callRoom, setCallRoom] = useState<Room | null>(null);
+  const callRef = useRef<Room | null>(null);
+  callRef.current = callRoom;
+
+  const send = useCallback((event: SpaceEvent, body: MoveMsg | PathMsg | EmoteMsg | KnockMsg | AdmitMsg) => {
+    const room = callRef.current;
+    if (room && room.state === 'connected') {
+      room.localParticipant
+        .publishData(enc.encode(JSON.stringify({ e: event, p: body })), { reliable: event !== 'move', topic: SPACE_TOPIC })
+        .catch(() => { /* reconnecting: the next update or heartbeat catches up */ });
+      const inCall = new Set([...room.remoteParticipants.values()].map((x) => x.identity));
+      if (!needsRealtime(presentIds.current, inCall, userIdRef.current ?? '')) return;
+    }
     const ch = channelRef.current;
     if (!ch) return;
     ch.send({ type: 'broadcast', event, payload: body }).catch(() => {});
@@ -61,6 +98,53 @@ export function useSpaceChannel(spaceId: string | null, me: MeInput | null, away
   const senderRef = useRef(sender);
   senderRef.current = sender;
 
+  /** One incoming message, from either channel. `from` is the call identity when it came over the call. */
+  const handle = (event: SpaceEvent, raw: unknown, from?: string) => {
+    // Only accept messages from people who are present, never for yourself, and over the call
+    // only from the person they claim to be from.
+    const accept = (id: string) => id !== userId && presentIds.current.has(id) && (from === undefined || from === id);
+    const once = (key: string) => {
+      if (seenSignals.current.has(key)) return false;
+      seenSignals.current.add(key);
+      if (seenSignals.current.size > 500) seenSignals.current = new Set([...seenSignals.current].slice(-250));
+      return true;
+    };
+    if (event === 'move') {
+      const m = parseMove(raw);
+      if (m && accept(m.userId)) remotes.get(m.userId).receiveMove(m, performance.now());
+    } else if (event === 'path') {
+      const p = parsePath(raw);
+      if (p && accept(p.userId)) remotes.get(p.userId).receivePath(p, performance.now());
+    } else if (event === 'emote') {
+      const e = parseEmote(raw);
+      if (!e || !accept(e.userId) || (e.to && e.to !== userId) || !once(`e:${e.userId}:${e.t}:${e.kind}`)) return;
+      emoteListeners.current.forEach((fn) => fn(e));
+    } else if (event === 'knock') {
+      const k = parseKnock(raw);
+      if (k && accept(k.userId) && once(`k:${k.userId}:${k.t}`)) roomListeners.current.forEach((fn) => fn({ knock: k }));
+    } else if (event === 'admit') {
+      const a = parseAdmit(raw);
+      if (a && accept(a.userId) && a.to === userId && once(`a:${a.userId}:${a.t}`)) roomListeners.current.forEach((fn) => fn({ admit: a }));
+    }
+  };
+  const handleRef = useRef(handle);
+  handleRef.current = handle;
+
+  // Movement over the call's data channel.
+  useEffect(() => {
+    if (!callRoom) return;
+    const onData = (payload: Uint8Array, participant?: { identity: string }, _kind?: unknown, topic?: string) => {
+      if (topic !== SPACE_TOPIC || !participant) return;
+      let msg: { e?: unknown; p?: unknown };
+      try { msg = JSON.parse(dec.decode(payload)); } catch { return; }
+      if (msg.e === 'move' || msg.e === 'path' || msg.e === 'emote' || msg.e === 'knock' || msg.e === 'admit') handleRef.current(msg.e, msg.p, participant.identity);
+    };
+    callRoom.on('dataReceived', onData);
+    // Joined the call: send where you are so people place you straight away.
+    if (lastLocal.current) senderRef.current?.flush(lastLocal.current);
+    return () => { callRoom.off('dataReceived', onData); };
+  }, [callRoom]);
+
   useEffect(() => {
     if (!spaceId || !userId) return;
     setConnection('connecting');
@@ -69,9 +153,6 @@ export function useSpaceChannel(spaceId: string | null, me: MeInput | null, away
       config: { presence: { key: userId }, broadcast: { self: false, ack: false } },
     });
     channelRef.current = channel;
-
-    // Only accept movement from people who are present, and never for yourself.
-    const accept = (id: string) => id !== userId && presentIds.current.has(id);
 
     channel
       .on('presence', { event: 'sync' }, () => {
@@ -85,27 +166,11 @@ export function useSpaceChannel(spaceId: string | null, me: MeInput | null, away
         remotes.keepOnly(presentIds.current);
         setPeople(list);
       })
-      .on('broadcast', { event: 'move' }, ({ payload: raw }) => {
-        const m = parseMove(raw);
-        if (m && accept(m.userId)) remotes.get(m.userId).receiveMove(m, performance.now());
-      })
-      .on('broadcast', { event: 'path' }, ({ payload: raw }) => {
-        const p = parsePath(raw);
-        if (p && accept(p.userId)) remotes.get(p.userId).receivePath(p, performance.now());
-      })
-      .on('broadcast', { event: 'emote' }, ({ payload: raw }) => {
-        const e = parseEmote(raw);
-        if (!e || !accept(e.userId) || (e.to && e.to !== userId)) return;
-        emoteListeners.current.forEach((fn) => fn(e));
-      })
-      .on('broadcast', { event: 'knock' }, ({ payload: raw }) => {
-        const k = parseKnock(raw);
-        if (k && accept(k.userId)) roomListeners.current.forEach((fn) => fn({ knock: k }));
-      })
-      .on('broadcast', { event: 'admit' }, ({ payload: raw }) => {
-        const a = parseAdmit(raw);
-        if (a && accept(a.userId) && a.to === userId) roomListeners.current.forEach((fn) => fn({ admit: a }));
-      })
+      .on('broadcast', { event: 'move' }, ({ payload }) => handleRef.current('move', payload))
+      .on('broadcast', { event: 'path' }, ({ payload }) => handleRef.current('path', payload))
+      .on('broadcast', { event: 'emote' }, ({ payload }) => handleRef.current('emote', payload))
+      .on('broadcast', { event: 'knock' }, ({ payload }) => handleRef.current('knock', payload))
+      .on('broadcast', { event: 'admit' }, ({ payload }) => handleRef.current('admit', payload))
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           subscribed = true;
@@ -173,5 +238,5 @@ export function useSpaceChannel(spaceId: string | null, me: MeInput | null, away
     return () => { roomListeners.current.delete(fn); };
   }, []);
 
-  return { people, connection, remotes, updateLocal, startPath, endPath, sendEmote, onEmote, sendKnock, sendAdmit, onRoomSignal };
+  return { people, connection, remotes, updateLocal, startPath, endPath, sendEmote, onEmote, sendKnock, sendAdmit, onRoomSignal, setCallRoom };
 }

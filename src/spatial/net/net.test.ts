@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 import { MoveSender, type LocalState } from './moveSender';
 import { RemoteMover, lerpAngle, pointAlong } from './interpolation';
 import { mergePresence, parseEmote, parseMove, parsePath, parsePresence, HEARTBEAT_MS, type MoveMsg, type PathMsg } from './protocol';
@@ -126,5 +128,14 @@ describe('message volume estimate', () => {
     const v = estimateVolume({ users: 25, keyboardMovers: 0, pathWalkers: 0, heartbeatMs: 5000, presenceUpdatesPerHour: 0, emotesPerHour: 0 });
     expect(v.sentPerSecond).toBeCloseTo(5);
     expect(v.deliveredPerSecond).toBeCloseTo(5 * 24);
+  });
+});
+
+describe('which channel movement goes over', () => {
+  it('needs the realtime channel only for people present but not in the call', async () => {
+    const { needsRealtime } = await import('./useSpaceChannel');
+    expect(needsRealtime(['me', 'a', 'b'], new Set(['a', 'b']), 'me')).toBe(false);
+    expect(needsRealtime(['me', 'a', 'b'], new Set(['a']), 'me')).toBe(true);
+    expect(needsRealtime(['me'], new Set(), 'me')).toBe(false);
   });
 });
