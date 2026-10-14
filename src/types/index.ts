@@ -266,6 +266,8 @@ export interface SpaceConfig {
   scene?: string | null;
   /** The department this space belongs to (its door lists spaces by department). */
   department_id?: string | null;
+  /** SYNAPSE Campus: pieces added in build mode, and layout pieces taken away. */
+  campus?: { added?: { id: string; kind: string; x: number; z: number; rot: number }[]; removed?: string[] };
 }
 
 /** solo = 1, small = 2–10, medium = 11–25, large = 26–50, xl = 50+ people. */

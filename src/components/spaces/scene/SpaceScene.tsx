@@ -25,6 +25,9 @@ import {
 } from '@/spatial/scene/floor';
 import type { OfficeLayout } from '@/spatial/scene/offices';
 import { seatApproach, seatAt, seatOnRay, sittingSpot, type Seat } from '@/spatial/scene/seats';
+import { applyEdits, NO_EDITS, type CampusEdits } from '@/spatial/scene/campus/office';
+import { campusObstacles, campusSeats } from '@/spatial/scene/campus/layout';
+import { createCampusWorld, type CampusWorld } from './campusWorld';
 import { characterBytes } from '@/spatial/scene/characterCache';
 
 /** What the world toolbar and the people panel can ask the scene to do. */
@@ -76,11 +79,26 @@ export interface SpaceSceneProps {
   controls: MutableRefObject<SceneControls | null>;
   /** A character file couldn't be loaded; simple figures are used instead. */
   onCharacterError?: (message: string) => void;
+  /** Campus only: pieces added or taken away in build mode (applied live, no reload). */
+  campusEdits?: CampusEdits;
+  /** Looking down from above (default) or from the corner at an angle. */
+  view?: SceneView;
 }
+
+export type SceneView = 'top' | 'angled';
 
 const AVATAR_HEIGHT = 1.7;
 const LABEL_HEIGHT = 2.0;
-const CAMERA_OFFSET = new THREE.Vector3(10, 9.9, 10); // looks down at about 35°, from the +x/+z corner
+/** Where the camera sits relative to what it looks at. */
+const CAMERA_OFFSETS: Record<SceneView, THREE.Vector3> = {
+  // From above, tilted so people and furniture still read as 3D (about 50° down).
+  top: new THREE.Vector3(0, 13.5, 11),
+  // From the +x/+z corner, about 35° down.
+  angled: new THREE.Vector3(10, 9.9, 10),
+};
+/** Walking cells on the campus (it's six times the size of an office). */
+const CAMPUS_CELL = 0.5;
+const CAMPUS_MIN_ZOOM = 0.32;
 const VIEW_HEIGHT = 12; // metres of floor visible top to bottom at zoom 1
 const MIN_ZOOM = 0.45;
 const OFFICE_MIN_ZOOM = 0.6;
@@ -259,6 +277,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
   /** Where I am, kept when the scene is rebuilt (e.g. a graphics quality change). */
   const myPlace = useRef<{ x: number; z: number; rot: number } | null>(null);
   const zoomRef = useRef(1);
+  const zoomedOnce = useRef(false);
   const { quality, floor } = props;
   const office = props.office ?? null;
 
@@ -340,6 +359,22 @@ export default function SpaceScene(props: SpaceSceneProps) {
       sun.shadow.radius = 3;
     }
 
+    // SYNAPSE Campus: the whole world around the office, drawn from its layout.
+    const campus = office?.campus ?? null;
+    let appliedEdits = latest.current.campusEdits ?? NO_EDITS;
+    let campusLayout = campus ? applyEdits(campus, appliedEdits) : null;
+    let campusWorld: CampusWorld | null = null;
+    if (campus && campusLayout) {
+      campusWorld = createCampusWorld(campusLayout, { shadows });
+      scene.add(campusWorld.root);
+      if (ground) ground.visible = false;
+      if (shadows) {
+        // The shadow box follows the view (campusWorld.follow) instead of covering 120 m at once.
+        Object.assign(sun.shadow.camera, { left: -25, right: 25, top: 25, bottom: -25, near: 1, far: 90 });
+        sun.shadow.camera.updateProjectionMatrix();
+      }
+    }
+
     // Floor, grid lines and a gold edge.
     const { width: W, depth: D } = floor;
     const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshStandardMaterial({ color: '#EDEFF3', roughness: 0.92 }));
@@ -378,6 +413,16 @@ export default function SpaceScene(props: SpaceSceneProps) {
         (gltf) => {
           if (disposed) return;
           gltf.scene.updateMatrixWorld(true);
+          if (campus && campusWorld) {
+            // The kit's furniture comes from this file; then the office itself stands as the HQ,
+            // without its own park (the campus has the grounds).
+            campusWorld.attachKit(gltf);
+            const drop: THREE.Object3D[] = [];
+            gltf.scene.traverse((o) => { if (o.name === 'BAKED_ground' || o.name.startsWith('GRD_')) drop.push(o); });
+            drop.forEach((o) => o.removeFromParent());
+            gltf.scene.updateMatrixWorld(true);
+            officeRoot.position.set(campus.hq.x, 0, campus.hq.z);
+          }
           const byMaterial = new Map<THREE.Material, THREE.BufferGeometry[]>();
           // BAKED_* meshes carry light rendered in Blender (sun, lamps, soft shadows) in their
           // texture: shown as-is. Furniture shadows are then already on the floor, so only people
@@ -419,9 +464,12 @@ export default function SpaceScene(props: SpaceSceneProps) {
             officeRoot.add(mesh);
           }
           if (baked && shadows) {
-            const catcher = new THREE.Mesh(new THREE.PlaneGeometry(W, D), new THREE.ShadowMaterial({ opacity: 0.28 }));
+            // Over the office's floor (on the campus, only the HQ's: the campus ground takes its own).
+            const cw = campus ? 20.5 : W;
+            const cd = campus ? 16.5 : D;
+            const catcher = new THREE.Mesh(new THREE.PlaneGeometry(cw, cd), new THREE.ShadowMaterial({ opacity: 0.28 }));
             catcher.rotation.x = -Math.PI / 2;
-            catcher.position.set(W / 2, 0.005, D / 2);
+            catcher.position.set(cw / 2, 0.005, cd / 2);
             catcher.receiveShadow = true;
             officeRoot.add(catcher);
           }
@@ -450,9 +498,12 @@ export default function SpaceScene(props: SpaceSceneProps) {
 
     // Camera: orthographic, from the +x/+z corner, following me.
     const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 200);
+    const cameraOffset = () => CAMERA_OFFSETS[latest.current.view ?? 'top'];
     // A built office is surrounded by its grounds; don't zoom out past them.
-    const minZoom = office ? OFFICE_MIN_ZOOM : MIN_ZOOM;
-    let zoom = Math.max(minZoom, zoomRef.current);
+    const minZoom = campus ? CAMPUS_MIN_ZOOM : office ? OFFICE_MIN_ZOOM : MIN_ZOOM;
+    // The campus starts a little further out, so you see where you are.
+    let zoom = Math.max(minZoom, campus && !zoomedOnce.current ? 0.75 : zoomRef.current);
+    zoomedOnce.current = true;
     const target = new THREE.Vector3(W / 2, 0, D / 2);
     const applyCamera = () => {
       const w = mount.clientWidth || 1;
@@ -464,7 +515,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       camera.bottom = -VIEW_HEIGHT / 2;
       camera.zoom = zoom;
       zoomRef.current = zoom;
-      camera.position.copy(target).add(CAMERA_OFFSET);
+      camera.position.copy(target).add(cameraOffset());
       camera.lookAt(target);
       camera.updateProjectionMatrix();
     };
@@ -495,7 +546,9 @@ export default function SpaceScene(props: SpaceSceneProps) {
     observer.observe(mount);
 
     // Me.
-    const map = office ? walkMap(floor, office.obstacles, OFFICE_CELL, OFFICE_CLEARANCE) : walkMap(floor);
+    let map = campusLayout
+      ? walkMap(floor, campusObstacles(campusLayout), CAMPUS_CELL, OFFICE_CLEARANCE)
+      : office ? walkMap(floor, office.obstacles, OFFICE_CELL, OFFICE_CLEARANCE) : walkMap(floor);
     // Appear near the middle (or where you were before a rebuild), never inside furniture.
     const from = myPlace.current ?? spawnPoint(floor);
     const start = freeSpot(map, from.x, from.z);
@@ -508,7 +561,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
     };
     target.set(me.x, 0, me.z);
     const held = new Set<MoveKey>();
-    const seats = office?.seats ?? [];
+    let seats = campusLayout ? campusSeats(campusLayout) : office?.seats ?? [];
     /** Seats other people are sitting in (updated every frame). */
     let occupied = new Set<string>();
 
@@ -829,9 +882,20 @@ export default function SpaceScene(props: SpaceSceneProps) {
       const now = performance.now();
       const p = latest.current;
 
+      // Build mode changed the campus: new pieces, new walls to walk around, new seats.
+      if (campus && campusWorld && (p.campusEdits ?? NO_EDITS) !== appliedEdits) {
+        appliedEdits = p.campusEdits ?? NO_EDITS;
+        campusLayout = applyEdits(campus, appliedEdits);
+        campusWorld.setObjects(campusLayout.objects);
+        map = walkMap(floor, campusObstacles(campusLayout), CAMPUS_CELL, OFFICE_CLEARANCE);
+        seats = campusSeats(campusLayout);
+      }
+
       // Move me.
       let moving = false;
-      const dir = keyDirection(held);
+      const off = cameraOffset();
+      const flat = Math.hypot(off.x, off.z) || 1;
+      const dir = keyDirection(held, { x: -off.x / flat, z: -off.z / flat });
       if (dir) {
         if (me.path) { me.path = null; me.pathSeat = null; p.endPath(); }
         if (me.seat) {
@@ -964,8 +1028,9 @@ export default function SpaceScene(props: SpaceSceneProps) {
       const fz = office ? Math.min(Math.max(me.z, mz), D - mz) : me.z;
       target.x += (fx - target.x) * k;
       target.z += (fz - target.z) * k;
-      camera.position.copy(target).add(CAMERA_OFFSET);
+      camera.position.copy(target).add(cameraOffset());
       camera.lookAt(target);
+      campusWorld?.follow(target, sun);
 
       if (composer) composer.render(dt);
       else renderer.render(scene, camera);
@@ -977,6 +1042,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       renderer.setAnimationLoop(null);
       for (const child of [...officeRoot.children]) disposeObject(child);
       officeRoot.clear();
+      campusWorld?.dispose();
       observer.disconnect();
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
       renderer.domElement.removeEventListener('pointerup', onPointerUp);

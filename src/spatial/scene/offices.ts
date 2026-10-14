@@ -6,10 +6,11 @@
  */
 import type { Floor } from './floor';
 import type { Seat } from './seats';
+import type { CampusLayout } from './campus/layout';
 
 export interface Rect { x0: number; x1: number; z0: number; z1: number }
 
-export type OfficeId = 'office-01' | 'office-02';
+export type OfficeId = 'office-01' | 'office-02' | 'campus-01';
 
 export interface OfficeLayout {
   id: OfficeId;
@@ -33,6 +34,11 @@ export interface OfficeLayout {
   seats?: Seat[];
   /** Standing in front of the office door (on the left wall) opens the way to other spaces. */
   door?: { x: number; z: number };
+  /**
+   * A large world built from the kit around this office (SYNAPSE Campus). Its obstacles and seats
+   * come from the layout (campusObstacles / campusSeats), filled in for each workspace.
+   */
+  campus?: CampusLayout;
 }
 
 const r = (x0: number, x1: number, z0: number, z1: number): Rect => ({ x0, x1, z0, z1 });
@@ -136,7 +142,26 @@ export const OFFICE_02: OfficeLayout = {
   ],
 };
 
-export const OFFICES: Record<OfficeId, OfficeLayout> = { 'office-02': OFFICE_02, 'office-01': OFFICE_01 };
+/**
+ * SYNAPSE Campus: a 120 × 96 m world in one workspace. The headquarters (Office 02 as built) plus
+ * an all-hands hall, café and lounge, team areas, glass meeting rooms, focus booths, a garden with
+ * a pond, a game room and a library around a central plaza. Built from the Office 02 kit
+ * (campus/layout.ts); its layout, obstacles and seats are filled in per workspace (campusOffice).
+ */
+export const CAMPUS_01: OfficeLayout = {
+  id: 'campus-01',
+  name: 'SYNAPSE Campus',
+  url: OFFICE_02.url,
+  picture: '/assets/spatial/offices/campus-01.jpg',
+  floor: { width: 120, depth: 96 },
+  spawn: { x: 60.5, z: 56 },
+  blurb: 'A whole campus in one workspace (120 × 96 m): headquarters, all-hands hall, café and lounge, team areas, meeting rooms, focus booths, garden, game room and library. Room for 50+ people; you can add furniture.',
+  sun: OFFICE_02.sun,
+  obstacles: [],
+  seats: [],
+};
+
+export const OFFICES: Record<OfficeId, OfficeLayout> = { 'campus-01': CAMPUS_01, 'office-02': OFFICE_02, 'office-01': OFFICE_01 };
 
 /** The office a space uses (space.config.scene), or null for the open floor. */
 export function officeFor(id: string | null | undefined): OfficeLayout | null {

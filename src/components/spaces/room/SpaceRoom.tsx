@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Clock, X, Loader2, WifiOff, Gauge, Footprints, ArrowLeft, Maximize2, Mic, MicOff, Video, VideoOff, PhoneOff } from 'lucide-react';
+import { Clock, X, Loader2, WifiOff, Gauge, Footprints, ArrowLeft, Maximize2, Mic, MicOff, Video, VideoOff, PhoneOff, MapPin } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from '@/lib/router';
@@ -20,7 +20,7 @@ import type { LocalState } from '@/spatial/net/moveSender';
 import { characterFor, chosenCharacterId, pickSpaceCharacter, resolveSpaceClips } from '@/spatial/scene/avatarClips';
 import { floorFor } from '@/spatial/scene/floor';
 import { officeFor } from '@/spatial/scene/offices';
-import type { SceneCharacter, SceneControls } from '@/components/spaces/scene/SpaceScene';
+import type { SceneCharacter, SceneControls, SceneView } from '@/components/spaces/scene/SpaceScene';
 import { CharacterPicker } from '@/components/spaces/CharacterPicker';
 import { loadQuality, saveQuality, type GraphicsQuality } from '@/spatial/quality';
 import { normalizeMediaPrefs } from '@/spatial/media/devices';
@@ -38,7 +38,11 @@ import { PeoplePanel, PeopleCountButton } from './PeoplePanel';
 import { ConnectionPill, ControlBar, WorldToolbar } from './Overlay';
 import { InviteToSpace } from './InviteToSpace';
 import { DoorCard } from './DoorCard';
-import type { Character, Space } from '@/types';
+import type { Character, Space, SpaceRoom as SpaceRoomConfig } from '@/types';
+import { loadDepartments } from '@/lib/team';
+import { campusOffice, readEdits } from '@/spatial/scene/campus/office';
+import { zoneAt } from '@/spatial/scene/campus/layout';
+import { loadView, saveView } from '@/spatial/view';
 import { cn } from '@/lib/utils';
 
 // three.js is large; load the 3D world only inside a space.
@@ -72,7 +76,8 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
   const away = useAway();
   // Where I am (set by the 3D scene as I walk).
   const [myPos, setMyPos] = useState<{ x: number; z: number } | null>(null);
-  const [myZone] = useState<string | null>(null);
+  // The place I'm in on the campus (set from where I stand).
+  const [myZone, setMyZone] = useState<string | null>(null);
   const [myGroup, setMyGroup] = useState<string[]>([]);
   const [myLocks, setMyLocks] = useState<string[]>([]);
   const me = useMemo<MeInput | null>(() => (user ? {
@@ -134,7 +139,32 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
   const sceneControls = useRef<SceneControls | null>(null);
   const [localEmote, setLocalEmote] = useState<{ kind: EmoteKind; id: number } | null>(null);
   const [hintOpen, setHintOpen] = useState(true);
-  const office = officeFor(space.config?.scene);
+  // SYNAPSE Campus: team areas named after the account's departments, plus build-mode changes.
+  const [deptNames, setDeptNames] = useState<string[]>([]);
+  const baseOffice = officeFor(space.config?.scene);
+  useEffect(() => {
+    if (baseOffice?.id !== 'campus-01' || !workspace) return;
+    let alive = true;
+    loadDepartments(workspace.id).then((r) => { if (alive) setDeptNames(r.data.map((d) => d.name)); });
+    return () => { alive = false; };
+  }, [baseOffice?.id, workspace]);
+  const deptKey = deptNames.join('|');
+  const office = useMemo(() => (baseOffice?.id === 'campus-01' ? campusOffice(deptKey ? deptKey.split('|') : []) : baseOffice), [baseOffice, deptKey]);
+  const campusEdits = useMemo(() => readEdits(space.config?.campus), [space.config?.campus]);
+  const campusZone = office?.campus && myZone ? office.campus.zones.find((z) => z.id === myZone) ?? null : null;
+  useEffect(() => {
+    if (!office?.campus || !myPos) { setMyZone(null); return; }
+    setMyZone(zoneAt(office.campus.zones, myPos.x, myPos.z)?.id ?? null);
+  }, [office, myPos]);
+  // Entering a closed room: say so once.
+  const lastZone = useRef<string | null>(null);
+  useEffect(() => {
+    if (campusZone?.id === lastZone.current) return;
+    lastZone.current = campusZone?.id ?? null;
+    if (campusZone && (campusZone.type === 'meeting_room' || campusZone.type === 'private_office')) toast(`You're in ${campusZone.name}: only people inside hear you.`, 'info');
+  }, [campusZone, toast]);
+  const [view, setView] = useState<SceneView>(loadView);
+  const changeView = (v: SceneView) => { setView(v); saveView(v); };
   // Standing at the office door shows the way to the account's other spaces.
   const atDoor = !!office?.door && !!myPos && Math.hypot(myPos.x - office.door.x, myPos.z - office.door.z) < 1.3;
   const floor = office ? office.floor : floorFor(space.size_band);
@@ -208,7 +238,11 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
   const canEdit = can(space.permissions, 'edit_office', role);
   const info = spaceTypeInfo(space.space_type);
   const template = templateInfo(space.template_key);
-  const rooms = useMemo(() => (space.config?.rooms?.length ? space.config.rooms : buildRooms(space.template_key, space.size_band)), [space.config, space.template_key, space.size_band]);
+  const rooms = useMemo<SpaceRoomConfig[]>(() => {
+    // On the campus the places are the rooms: meeting rooms and booths are closed, the stage carries.
+    if (office?.campus) return office.campus.zones.map((z) => ({ id: z.id, name: z.name, type: z.type, capacity: 50, lockable: !!z.lockable, knock_to_enter: !!z.lockable }));
+    return space.config?.rooms?.length ? space.config.rooms : buildRooms(space.template_key, space.size_band);
+  }, [office, space.config, space.template_key, space.size_band]);
   const canLock = can(space.permissions, 'lock_rooms', role);
 
   const proximity = useProximity({
@@ -297,6 +331,8 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
                 localEmote={localEmote}
                 controls={sceneControls}
                 onCharacterError={(m) => toast(m, 'error')}
+                campusEdits={campusEdits}
+                view={view}
               />
             </Suspense>
           )}
@@ -336,6 +372,14 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
             onGo={(slug) => navigate(`/workspace/${slug}`)}
             onAll={() => navigate('/workspace')}
           />
+        )}
+
+        {campusZone && (
+          <div className="pointer-events-none absolute inset-x-0 top-[4.5rem] z-10 flex justify-center px-16 lg:top-[7.5rem]">
+            <p className="inline-flex items-center gap-1.5 rounded-full bg-navy-900/85 px-3 py-1.5 text-xs font-semibold text-gold-300 shadow-popover backdrop-blur" aria-live="polite">
+              <MapPin className="h-3.5 w-3.5" /> {campusZone.name}
+            </p>
+          </div>
         )}
 
         {/* Video strip (filled by proximity video) */}
@@ -405,6 +449,8 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
             onToggleMap={() => setMapOpen((v) => !v)}
             onEdit={() => setEditOpen(true)}
             onCharacter={library.list.length ? () => setPickerOpen(true) : undefined}
+            view={view}
+            onView={changeView}
           />
         </div>
 
