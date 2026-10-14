@@ -109,7 +109,7 @@ All of this lives in `AuthContext.tsx` and is exposed through `useAuth()`:
    - if the user has neither, it runs first-time account setup (profile, first workspace, owner
      membership, demo data via the `seed_workspace_demo_data` RPC), then loads again.
 3. `signIn` also accepts pending `team_invitations` for the email, which adds memberships.
-4. `role` is `membership.role` (`owner` | `admin` | `member`); `canManageTeam` is owner/admin.
+4. `role` is `membership.role` (`owner` | `admin` | `supervisor` | `member`); `canManageTeam` is owner/admin.
 
 A user sees **one current workspace** (the oldest membership). There is no workspace switcher
 yet. Pages read `workspace.id` from `useAuth()` and filter every query by it. Row-level security
@@ -121,11 +121,33 @@ Calendars, calendar groups, forms, booking links/locks, appointments and some me
 made to work **without** a workspace: `workspace_id` is nullable there and an `owner_id` column
 is the fallback. New work should still scope by `workspace_id`.
 
+## Company accounts: roles, departments, invitations
+
+Migration `20261014090000_company_foundations.sql`; client code in `src/lib/team.ts`,
+`src/components/team/` (Settings → Team Members and Departments) and `AcceptInvitePage.tsx`.
+
+- **Roles**: `owner` (the account holder, only `workspaces.owner_id`), `admin` (everything),
+  `supervisor` (leads departments), `member` (experts/staff). `is_workspace_admin()` = owner or admin.
+- **Departments**: `departments` (unique name per workspace, colour) and `department_members`
+  (`is_lead` marks a department's supervisors; `is_department_lead(dept)`). Admins create, edit
+  and delete departments and set leads; a lead can add and remove non-lead people in their own
+  department. A trigger keeps memberships inside the department's workspace.
+- **Directory**: RPC `workspace_directory(workspace)` returns members with names, avatars, title,
+  department ids and lead department ids (emails only for admins), so the Team page handles
+  hundreds of people in one call. Teammates can read each other's profiles.
+- **Invitations**: bulk invite by pasted emails or CSV (`email, role, department, title`; synonyms
+  accepted), inserted 100 at a time. Invitees read their invite through RPC `get_invitation(token)`
+  and join through `accept_invitation(token)`, which checks the signed-in email, adds the member
+  and their department (as lead when supervisor). The old public select of all invitations is gone.
+- **Guards**: `wm_insert_self` lets someone add only themselves and only with a matching pending
+  invitation (or as the owner / by an admin); trigger `workspace_members_guard` stops anyone but
+  admins/owner from changing role, status or title, and keeps `owner` for the account holder.
+
 ## Tables by module
 
 | Module | Tables |
 | --- | --- |
-| Workspace & team | `workspaces`, `workspace_members`, `profiles`, `team_invitations`, `workspace_settings` (per-category JSON settings), `audit_logs` |
+| Workspace & team | `workspaces`, `workspace_members` (+ `title`), `profiles`, `team_invitations` (+ `title`, `department_id`), `departments`, `department_members` (`is_lead`), `workspace_settings` (per-category JSON settings), `audit_logs` |
 | Contacts (CRM) | `contacts`, `tags`, `contact_tags`, `smart_lists`, `notes` |
 | Calendars & booking | `calendars`, `calendar_hosts`, `calendar_groups`, `calendar_group_members`, `calendar_group_analytics`, `availability_rules`, `availability_overrides`, `host_availability_rules`, `external_busy_periods`, `booking_links`, `booking_locks`, `appointments`, `appointment_participants`, `notification_rules` |
 | Forms | `forms`, `form_fields`, `form_field_conditions`, `form_submissions`, `form_notification_logs`, `form_activity_timeline` |

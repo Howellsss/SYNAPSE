@@ -24,7 +24,7 @@ export type LocationType =
 export type WorkflowStatus = 'draft' | 'active' | 'paused' | 'archived';
 export type FormStatus = 'draft' | 'published' | 'inactive' | 'archived';
 
-export type UserRole = 'owner' | 'admin' | 'member';
+export type UserRole = 'owner' | 'admin' | 'supervisor' | 'member';
 
 export type Channel = 'email' | 'sms';
 export type MessageStatus =
@@ -166,6 +166,8 @@ export interface WorkspaceMember {
   user_id: string;
   role: UserRole;
   status: 'invited' | 'active' | 'suspended';
+  /** Job title, e.g. "GHL Tech Expert". */
+  title?: string | null;
   created_at: string;
 }
 
