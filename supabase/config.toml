@@ -18,3 +18,7 @@ verify_jwt = false
 [functions.livekit-token]
 # Checks the caller's login itself (auth.getUser), like send-email.
 verify_jwt = false
+
+[functions.chat-webhook]
+# Zapier, Airtable and Modal have no SYNAPSE login: the secret token in the link is checked instead.
+verify_jwt = false

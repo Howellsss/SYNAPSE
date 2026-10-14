@@ -23,6 +23,8 @@ const SCOPES = [
   "email",
   "profile",
   "https://www.googleapis.com/auth/gmail.send",
+  // Replies to emails sent from SYNAPSE are brought back into SYNAPSE (send-email/replies.ts).
+  "https://www.googleapis.com/auth/gmail.readonly",
 ];
 const STATE_TTL_SECONDS = 10 * 60;
 

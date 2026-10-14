@@ -162,6 +162,21 @@ Movement, emotes and knocks go over the space call's LiveKit data channel once c
 isn't in the call (`needsRealtime`). Supabase still carries presence. The office door
 (`office.door`) lists the account's other spaces grouped by `space.config.department_id`.
 
+## Conversations (`src/lib/chat.ts`, `ConversationsPage.tsx`)
+
+Migration `20261016090000_conversations.sql`.
+
+- `chat_channels` (channels and direct messages, `dm_key` = sorted user ids), `chat_members`
+  (`last_read_at` for unread counts via `chat_unread`), `chat_messages` (`parent_id` = thread reply,
+  `source` user/webhook/system), `chat_webhooks` (secret token per link). Created through the RPCs
+  `create_channel` and `open_dm`. Live updates: `postgres_changes` on `chat_messages` (RLS applies).
+- Edge Function `chat-webhook` (verify_jwt off; the token is the key): Zapier, Airtable, Modal or
+  any app POSTs JSON/form/text to `/functions/v1/chat-webhook/<token>`; 30 posts a minute per link.
+- Email replies: `send-email` stores the Gmail `threadId` (`messages.provider_thread_id`); its
+  once-a-minute scheduler run also checks up to 40 recent threads (`reply_checked_at` order) and saves
+  new replies as inbound `messages` on the same contact (`send-email/replies.ts`). Needs the
+  `gmail.readonly` scope, so accounts connected before need reconnecting.
+
 ## Tables by module
 
 | Module | Tables |
