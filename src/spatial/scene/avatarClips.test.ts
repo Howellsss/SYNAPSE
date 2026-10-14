@@ -68,3 +68,11 @@ describe('choosing your character', () => {
     expect(characterFor([], 'mo')).toBeNull();
   });
 });
+
+describe('standing by default', () => {
+  it('never picks a sitting clip to stand in', () => {
+    expect(guessSpaceClips(['Sitting_Idle', 'Idle', 'Walk'], null).idle).toBe('Idle');
+    expect(guessSpaceClips(['Sitting Idle', 'Walk'], null).idle).toBeNull();
+    expect(guessSpaceClips(['Walk', 'sit_loop'], 'sit_loop').idle).toBeNull();
+  });
+});

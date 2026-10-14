@@ -1,6 +1,6 @@
 import { useEffect, useRef, type MutableRefObject } from 'react';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
@@ -25,6 +25,7 @@ import {
 } from '@/spatial/scene/floor';
 import type { OfficeLayout } from '@/spatial/scene/offices';
 import { seatApproach, seatAt, seatOnRay, sittingSpot, type Seat } from '@/spatial/scene/seats';
+import { characterBytes } from '@/spatial/scene/characterCache';
 
 /** What the world toolbar and the people panel can ask the scene to do. */
 export interface SceneControls {
@@ -40,6 +41,8 @@ export interface SceneCharacter {
   id: string;
   /** Signed URL of the .glb. */
   url: string;
+  /** Stays the same while the file does (the signed URL changes every visit), for keeping it on this device. */
+  cacheKey?: string;
   clips: SpaceClips;
 }
 
@@ -47,6 +50,8 @@ export interface SpaceSceneProps {
   /** The SYNAPSE character library. Each person appears as the one they chose, else the default. */
   library: SceneCharacter[];
   defaultCharacterId: string | null;
+  /** The character library has arrived (until then nobody is drawn as a stand-in figure). */
+  charactersReady?: boolean;
   /** The character I chose (others' choices arrive with their presence). */
   myCharacterId: string | null;
   floor: Floor;
@@ -82,6 +87,8 @@ const OFFICE_MIN_ZOOM = 0.6;
 const MAX_ZOOM = 2.6;
 const EMOTE_BUBBLE_MS = 3000;
 /** Walking grid inside a built office: fine enough for doorways, with room for the avatar's body. */
+/** How long to wait for a character before showing a simple figure instead. */
+const CHARACTER_WAIT_MS = 15_000;
 const OFFICE_CELL = 0.25;
 const OFFICE_CLEARANCE = 0.28;
 const ONE_SHOT: AvatarAction[] = ['wave', 'cheer'];
@@ -528,41 +535,57 @@ export default function SpaceScene(props: SpaceSceneProps) {
     // Characters load the first time someone appears as them.
     const loadTemplate = (entry: SceneCharacter) => {
       templates.current.set(entry.id, 'loading');
-      new GLTFLoader().load(
-        entry.url,
-        (gltf) => {
-          const box = new THREE.Box3().setFromObject(gltf.scene);
-          const height = box.max.y - box.min.y;
-          const scale = height > 0 ? AVATAR_HEIGHT / height : 1;
-          // Keep every clip in place: the network decides where people are.
-          for (const clip of gltf.animations) {
-            for (const track of clip.tracks) {
-              if (!track.name.endsWith('.position')) continue;
-              const node = gltf.scene.getObjectByName(track.name.slice(0, -'.position'.length));
-              const isRoot = node && (node as THREE.Bone).isBone && !(node.parent as THREE.Bone | null)?.isBone;
-              if (isRoot) pinRootMotion(track.values);
-            }
+      loadStarted.set(entry.id, performance.now());
+      const loaded = (gltf: GLTF) => {
+        const box = new THREE.Box3().setFromObject(gltf.scene);
+        const height = box.max.y - box.min.y;
+        const scale = height > 0 ? AVATAR_HEIGHT / height : 1;
+        // Keep every clip in place: the network decides where people are.
+        for (const clip of gltf.animations) {
+          for (const track of clip.tracks) {
+            if (!track.name.endsWith('.position')) continue;
+            const node = gltf.scene.getObjectByName(track.name.slice(0, -'.position'.length));
+            const isRoot = node && (node as THREE.Bone).isBone && !(node.parent as THREE.Bone | null)?.isBone;
+            if (isRoot) pinRootMotion(track.values);
           }
-          templates.current.set(entry.id, {
-            id: entry.id,
-            scene: gltf.scene,
-            clips: new Map(gltf.animations.map((c) => [c.name, c])),
-            scale,
-            lift: -box.min.y * scale,
-          });
-        },
-        undefined,
-        () => {
-          templates.current.set(entry.id, 'failed');
-          latest.current.onCharacterError?.("Couldn't load a character; showing a simple figure instead.");
-        },
-      );
+        }
+        templates.current.set(entry.id, {
+          id: entry.id,
+          scene: gltf.scene,
+          clips: new Map(gltf.animations.map((c) => [c.name, c])),
+          scale,
+          lift: -box.min.y * scale,
+        });
+      };
+      const failed = () => {
+        templates.current.set(entry.id, 'failed');
+        latest.current.onCharacterError?.("Couldn't load a character; showing a simple figure instead.");
+      };
+      // Kept on this device after the first visit, so characters appear straight away.
+      characterBytes(entry.cacheKey ?? entry.url, entry.url)
+        .then((bytes) => new GLTFLoader().parseAsync(bytes, ''))
+        .then(loaded, failed);
     };
-    /** The loaded character someone appears as, or null (a simple figure) while it loads. */
-    const templateFor = (chosenId: string | null | undefined): Template | null => {
+    const loadStarted = new Map<string, number>();
+    const entryFor = (chosenId: string | null | undefined) => {
       const { library, defaultCharacterId } = latest.current;
-      const entry = (chosenId ? library.find((c) => c.id === chosenId) : undefined)
-        ?? library.find((c) => c.id === defaultCharacterId);
+      return (chosenId ? library.find((c) => c.id === chosenId) : undefined) ?? library.find((c) => c.id === defaultCharacterId);
+    };
+    /**
+     * Nobody is drawn as a stand-in figure while their character is on its way (just their name
+     * shows); the simple figure is only for when there is no character or it can't load.
+     */
+    const waitingFor = (chosenId: string | null | undefined): boolean => {
+      if (latest.current.charactersReady === false) return true;
+      const entry = entryFor(chosenId);
+      if (!entry) return false;
+      const t = templates.current.get(entry.id);
+      if (t !== 'loading' && t !== undefined) return false;
+      return performance.now() - (loadStarted.get(entry.id) ?? performance.now()) < CHARACTER_WAIT_MS;
+    };
+    /** The loaded character someone appears as, or null while it loads (or when there's none). */
+    const templateFor = (chosenId: string | null | undefined): Template | null => {
+      const entry = entryFor(chosenId);
       if (!entry) return null;
       const t = templates.current.get(entry.id);
       if (t === undefined) { loadTemplate(entry); return null; }
@@ -570,6 +593,9 @@ export default function SpaceScene(props: SpaceSceneProps) {
     };
     const clipsFor = (tpl: Template | null): SpaceClips | null =>
       (tpl ? latest.current.library.find((c) => c.id === tpl.id)?.clips : null) ?? null;
+    const bodySig = (tpl: Template | null, waiting: boolean) => (tpl ? JSON.stringify(clipsFor(tpl)) : waiting ? 'waiting' : 'figure');
+    // Start fetching the characters people are most likely to be, before anyone is drawn.
+    for (const id of new Set([latest.current.myCharacterId, latest.current.defaultCharacterId])) templateFor(id);
 
     // Avatars.
     const avatars = new Map<string, Avatar>();
@@ -587,7 +613,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       scene.add(root);
       return { root, body: null, bodyFor: undefined, clipsSig: '', mixer: null, actions: {}, current: null, emote: null, label, labelEl, labelSig: '', bubble: null, rig: null, seated: false };
     };
-    const setBody = (a: Avatar, userId: string, tpl: Template | null) => {
+    const setBody = (a: Avatar, userId: string, tpl: Template | null, waiting = false) => {
       if (a.body) {
         a.mixer?.stopAllAction();
         a.root.remove(a.body);
@@ -600,8 +626,10 @@ export default function SpaceScene(props: SpaceSceneProps) {
       a.seated = false;
       a.bodyFor = tpl;
       const names = clipsFor(tpl);
-      a.clipsSig = JSON.stringify(names);
-      if (!tpl) {
+      a.clipsSig = bodySig(tpl, waiting);
+      if (!tpl && waiting) {
+        a.body = new THREE.Group();
+      } else if (!tpl) {
         a.body = makeFigure(userId);
       } else {
         const holder = new THREE.Group();
@@ -847,7 +875,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       }
 
       // Rebuild bodies when the character (or its clip choices) changes.
-      const needsBody = (a: Avatar, tpl: Template | null) => a.bodyFor !== tpl || a.clipsSig !== JSON.stringify(clipsFor(tpl));
+      const needsBody = (a: Avatar, tpl: Template | null, waiting: boolean) => a.bodyFor !== tpl || a.clipsSig !== bodySig(tpl, waiting);
 
       // Place, turn, animate and (if sitting) seat one avatar.
       const turn = 1 - Math.exp(-dt * 14);
@@ -873,8 +901,10 @@ export default function SpaceScene(props: SpaceSceneProps) {
         present.add(person.userId);
         let a = avatars.get(person.userId);
         if (!a) { a = makeAvatar(); avatars.set(person.userId, a); }
-        const tpl = templateFor(isMe ? p.myCharacterId : person.characterId);
-        if (needsBody(a, tpl)) setBody(a, person.userId, tpl);
+        const chosen = isMe ? p.myCharacterId : person.characterId;
+        const tpl = templateFor(chosen);
+        const waiting = !tpl && waitingFor(chosen);
+        if (needsBody(a, tpl, waiting)) setBody(a, person.userId, tpl, waiting);
         // Others sitting: find the seat from where they are (everyone has the same office).
         const seat = pose.anim !== 'sit' ? null : isMe ? me.seat : seatAt(seats, pose.x, pose.z);
         if (seat && !isMe) nowOccupied.add(seat.id);
@@ -886,7 +916,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
         let a = avatars.get(p.meId);
         if (!a) { a = makeAvatar(); avatars.set(p.meId, a); }
         const tpl = templateFor(p.myCharacterId);
-        if (needsBody(a, tpl)) setBody(a, p.meId, tpl);
+        const waiting = !tpl && waitingFor(p.myCharacterId);
+        if (needsBody(a, tpl, waiting)) setBody(a, p.meId, tpl, waiting);
         drawAvatar(a, { x: me.x, z: me.z, rot: me.rot, anim: myAnim }, me.seat);
         updateLabel(a, undefined, true, now);
         present.add(p.meId);

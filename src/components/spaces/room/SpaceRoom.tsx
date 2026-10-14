@@ -102,7 +102,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
     return () => { alive = false; };
   }, [user]);
   const sceneLibrary = useMemo<SceneCharacter[]>(
-    () => library.list.filter((c) => library.urls[c.id]).map((c) => ({ id: c.id, url: library.urls[c.id], clips: resolveSpaceClips(c) })),
+    () => library.list.filter((c) => library.urls[c.id]).map((c) => ({ id: c.id, url: library.urls[c.id], cacheKey: `${c.storage_path}:${c.size_bytes}`, clips: resolveSpaceClips(c) })),
     [library],
   );
   const defaultCharacterId = useMemo(() => pickSpaceCharacter(library.list)?.id ?? null, [library.list]);
@@ -272,6 +272,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
               <SpaceScene
                 library={sceneLibrary}
                 defaultCharacterId={defaultCharacterId}
+                charactersReady={library.loaded}
                 myCharacterId={myCharacterId}
                 floor={floor}
                 office={office}

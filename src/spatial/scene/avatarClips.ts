@@ -27,9 +27,12 @@ const PATTERNS: Record<AvatarAction, RegExp[]> = {
   cheer: [/cheer/i, /celebrat/i, /victory/i, /clap/i, /joy/i, /dance/i],
 };
 
-const firstMatch = (names: string[], patterns: RegExp[]) => {
+/** Clips that aren't standing up ("Sitting Idle", "sit_loop", "lying"), never used for standing. */
+const NOT_STANDING = /sit|seat|chair|sofa|couch|lying|lie\b|lay|sleep|crouch|kneel|squat|floor/i;
+
+const firstMatch = (names: string[], patterns: RegExp[], skip?: RegExp) => {
   for (const p of patterns) {
-    const hit = names.find((n) => p.test(n));
+    const hit = names.find((n) => p.test(n) && !(skip && skip.test(n)));
     if (hit) return hit;
   }
   return null;
@@ -42,9 +45,10 @@ const firstMatch = (names: string[], patterns: RegExp[]) => {
 export function guessSpaceClips(clipNames: string[], defaultClip: string | null = null): SpaceClips {
   const walk = firstMatch(clipNames, PATTERNS.walk);
   const fallbackIdle = defaultClip && clipNames.includes(defaultClip) && defaultClip !== walk && !PATTERNS.walk.some((p) => p.test(defaultClip))
-    ? defaultClip : null;
+    && !NOT_STANDING.test(defaultClip) ? defaultClip : null;
   return {
-    idle: firstMatch(clipNames, PATTERNS.idle) ?? fallbackIdle,
+    // Everyone stands by default: a "sitting idle" clip is never the standing clip.
+    idle: firstMatch(clipNames, PATTERNS.idle, NOT_STANDING) ?? fallbackIdle,
     walk,
     // Never guessed: a clip named "sitting" is often sitting on the floor or sitting down, which
     // sinks the character into a chair. The seated pose is built for each seat unless one is chosen.
