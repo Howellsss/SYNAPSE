@@ -7,8 +7,10 @@ import { RECORDINGS_BUCKET, extFor, pickMimeType, recordingTitle } from './recor
 export type RecorderState = 'idle' | 'starting' | 'recording' | 'saving';
 
 /**
- * Recording in the browser, the simple way: the host records this meeting tab (picture and
- * everyone's sound, plus their own microphone) with MediaRecorder. When they stop, the file is
+ * Recording in the browser, the simple way: the host records this meeting tab's picture with
+ * MediaRecorder. The sound is mixed straight from the call (everyone's audio as received, plus
+ * the host's microphone) rather than captured from the tab, which ran it through the browser's
+ * voice processing a second time and made it break up. When they stop, the file is
  * saved to Recordings (storage bucket "meeting-recordings") and they can also download a copy.
  * Everyone in the meeting sees that it's being recorded.
  */
@@ -38,7 +40,7 @@ export function useRecorder({ bus, room, isHost, hostId, meetingId, meetingTitle
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [remoteOn, setRemoteOn] = useState(false);
   const [lastFile, setLastFile] = useState<{ url: string; name: string } | null>(null);
-  const parts = useRef<{ rec: MediaRecorder; display: MediaStream; ctx: AudioContext; dest: MediaStreamAudioDestinationNode; mics: Set<string> } | null>(null);
+  const parts = useRef<{ rec: MediaRecorder; display: MediaStream; ctx: AudioContext; dest: MediaStreamAudioDestinationNode; tracks: Set<string> } | null>(null);
   const noticeRef = useRef(notice);
   noticeRef.current = notice;
   const transcriptRef = useRef(transcript);
@@ -64,14 +66,25 @@ export function useRecorder({ bus, room, isHost, hostId, meetingId, meetingTitle
     return () => { room.off('participantConnected', onJoin); };
   }, [room, isHost, bus]);
 
-  // Your microphone joins the recording (again after you switch microphones).
-  const addMic = useCallback((track: MediaStreamTrack | null) => {
+  // A sound joins the mix once: your microphone (again after you switch microphones) and each
+  // person's audio in the call.
+  const addAudio = useCallback((track: MediaStreamTrack | null | undefined) => {
     const p = parts.current;
-    if (!p || !track || p.mics.has(track.id)) return;
-    p.mics.add(track.id);
+    if (!p || !track || track.kind !== 'audio' || p.tracks.has(track.id)) return;
+    p.tracks.add(track.id);
     p.ctx.createMediaStreamSource(new MediaStream([track])).connect(p.dest);
   }, []);
-  useEffect(() => { addMic(micTrack); }, [micTrack, addMic]);
+  useEffect(() => { addAudio(micTrack); }, [micTrack, addAudio]);
+  useEffect(() => {
+    if (!room) return;
+    const onTrack = (track: { mediaStreamTrack?: MediaStreamTrack }) => addAudio(track.mediaStreamTrack);
+    // The host's own shared-screen sound (the microphone comes in through micTrack).
+    const onLocal = (pub: { source?: string; track?: { mediaStreamTrack?: MediaStreamTrack } }) => {
+      if (pub.source === 'screen_share_audio') addAudio(pub.track?.mediaStreamTrack);
+    };
+    room.on('trackSubscribed', onTrack).on('localTrackPublished', onLocal);
+    return () => { room.off('trackSubscribed', onTrack).off('localTrackPublished', onLocal); };
+  }, [room, addAudio]);
 
   const save = useCallback(async (blob: Blob, mime: string, began: number) => {
     const at = new Date(began);
@@ -127,21 +140,23 @@ export function useRecorder({ bus, room, isHost, hostId, meetingId, meetingTitle
     try {
       display = await navigator.mediaDevices.getDisplayMedia({
         video: { frameRate: 24 },
-        audio: true,
-        // Ask the browser to offer this tab first, with its sound.
-        preferCurrentTab: true, selfBrowserSurface: 'include', systemAudio: 'include', surfaceSwitching: 'exclude',
+        // The sound comes from the call itself (below), so the tab's sound isn't needed.
+        audio: false,
+        // Ask the browser to offer this tab first.
+        preferCurrentTab: true, selfBrowserSurface: 'include', surfaceSwitching: 'exclude',
       } as DisplayMediaStreamOptions);
     } catch {
       setState('idle');
-      noticeRef.current('Recording didn’t start. To record, choose this tab and tick “Share tab audio”.', 'info');
+      noticeRef.current('Recording didn’t start. To record, choose this tab and click Share.', 'info');
       return;
     }
-    const ctx = new AudioContext();
+    // A larger audio buffer ('playback') so a busy page doesn't make the sound stutter.
+    const ctx = new AudioContext({ latencyHint: 'playback', sampleRate: 48_000 });
+    void ctx.resume().catch(() => {});
     const dest = ctx.createMediaStreamDestination();
-    for (const t of display.getAudioTracks()) ctx.createMediaStreamSource(new MediaStream([t])).connect(dest);
     const mime = pickMimeType();
     const stream = new MediaStream([...display.getVideoTracks(), ...dest.stream.getAudioTracks()]);
-    const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 700_000, audioBitsPerSecond: 64_000 } : undefined);
+    const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 1_200_000, audioBitsPerSecond: 128_000 } : undefined);
     const chunks: Blob[] = [];
     const began = Date.now();
     rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
@@ -154,16 +169,17 @@ export function useRecorder({ bus, room, isHost, hostId, meetingId, meetingTitle
       const type = rec.mimeType || mime || 'video/webm';
       void save(new Blob(chunks, { type }), type, began).finally(() => setState('idle'));
     };
-    parts.current = { rec, display, ctx, dest, mics: new Set() };
-    addMic(micTrack);
+    parts.current = { rec, display, ctx, dest, tracks: new Set() };
+    addAudio(micTrack);
+    room?.remoteParticipants.forEach((person) => person.audioTrackPublications.forEach((pub) => addAudio(pub.track?.mediaStreamTrack)));
+    room?.localParticipant.audioTrackPublications.forEach((pub) => { if (pub.source === 'screen_share_audio') addAudio(pub.track?.mediaStreamTrack); });
     // The browser's own "Stop sharing" button stops the recording too.
     display.getVideoTracks()[0]?.addEventListener('ended', () => stop());
-    if (!display.getAudioTracks().length) noticeRef.current('Recording without the meeting’s sound: next time tick “Share tab audio”. Your microphone is still recorded.', 'info');
     rec.start(1000);
     setStartedAt(began);
     setState('recording');
     void bus.send(TOPICS.record, { on: true });
-  }, [isHost, supported, micTrack, addMic, bus, save, stop]);
+  }, [isHost, supported, micTrack, addAudio, room, bus, save, stop]);
 
   // Leaving the meeting while recording: finish and save.
   const stopRef = useRef(stop);
