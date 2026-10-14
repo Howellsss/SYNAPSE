@@ -22,6 +22,8 @@ export interface OfficeLayout {
   spawn: { x: number; z: number };
   /** One line for the office picker. */
   blurb: string;
+  /** A picture of the office from the space's own camera, for workspace cards. */
+  picture: string;
   /**
    * Direction the sunlight comes from (towards the sun, y up). Offices with lighting baked into
    * their floor set it so live shadows (people) fall the same way as the baked ones.
@@ -39,6 +41,7 @@ export const OFFICE_01: OfficeLayout = {
   id: 'office-01',
   name: 'SYNAPSE Office 01',
   url: '/assets/spatial/offices/office-01.glb',
+  picture: '/assets/spatial/offices/office-01.jpg',
   floor: { width: 20, depth: 16 },
   spawn: { x: 10, z: 8 },
   blurb: 'A furnished 20 × 16 m office: work area, glass meeting room, lounge and café. You walk around the furniture.',
@@ -77,6 +80,7 @@ export const OFFICE_02: OfficeLayout = {
   name: 'SYNAPSE Office 02',
   // ?v= changes with every new export, so browsers never show an old copy.
   url: '/assets/spatial/offices/office-02.glb?v=17',
+  picture: '/assets/spatial/offices/office-02.jpg?v=17',
   floor: { width: 20, depth: 16 },
   spawn: { x: 10, z: 8 },
   blurb: 'Realistic lighting. A furnished 20 × 16 m office: six-desk work area, glass meeting room, lounge, coffee bar and café. Tap a chair or the sofa to sit.',

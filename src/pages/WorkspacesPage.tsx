@@ -12,7 +12,8 @@ import { spaceTypeInfo } from '@/spatial/data/spaceTypes';
 import { templateInfo } from '@/spatial/data/templates';
 import { buildRooms } from '@/spatial/data/rooms';
 import { readDraft, hasMeaningfulDraft, clearDraft, type WizardState } from '@/components/spaces/wizard/state';
-import { SpacePreview } from '@/components/spaces/SpacePreview';
+import { TypeArt } from '@/components/spaces/TypeArt';
+import { officeFor } from '@/spatial/scene/offices';
 import { parseJoinLink } from '@/spatial/links';
 import { opensLabel } from '@/spatial/schedule';
 import { exportLayout, layoutFileName } from '@/spatial/layoutFile';
@@ -246,7 +247,7 @@ function SpaceCard({ space, online, people, canManage, onEnter, onSettings, onEx
     <div className="card card-hover flex flex-col overflow-hidden !rounded-xl">
       <div className="relative p-3 pb-0">
         <button onClick={onEnter} disabled={blocked} className="block w-full text-left disabled:cursor-not-allowed" aria-label={`Enter ${space.name}`}>
-          <SpacePreview title={template?.name ?? type.name} subtitle={type.name} icon={type.icon} size="sm" />
+          <SpacePicture space={space} />
         </button>
         {canManage && <CardMenu name={space.name} onSettings={onSettings} onExport={onExport} />}
       </div>
@@ -254,7 +255,7 @@ function SpaceCard({ space, online, people, canManage, onEnter, onSettings, onEx
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <h3 className="truncate font-display text-[21px] font-semibold tracking-[-0.018em] text-navy-800">{space.name}</h3>
-            <p className="mt-0.5 flex items-center gap-1.5 text-xs text-ivory-700"><type.icon className="h-3.5 w-3.5" /> {type.name}</p>
+            <p className="mt-0.5 flex items-center gap-1.5 text-xs text-ivory-700"><type.icon className="h-3.5 w-3.5" /> {type.name}{template && template.name !== type.name ? ` · ${template.name}` : ''}</p>
           </div>
           {opens ? (
             <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-gold-50 px-2 py-0.5 text-xs font-semibold text-gold-800">
@@ -283,6 +284,22 @@ function SpaceCard({ space, online, people, canManage, onEnter, onSettings, onEx
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** What the space looks like: its built office, else the picture of its workspace type. */
+function SpacePicture({ space }: { space: SpaceWithMembers }) {
+  const type = spaceTypeInfo(space.space_type);
+  const office = officeFor(space.config?.scene);
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className="relative aspect-[16/10] overflow-hidden rounded-2xl bg-white ring-1 ring-inset ring-navy-100" role="img" aria-label={office ? office.name : type.name}>
+      {office && !failed ? (
+        <img src={office.picture} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} className="h-full w-full object-cover" />
+      ) : (
+        <TypeArt info={type} light />
+      )}
     </div>
   );
 }
