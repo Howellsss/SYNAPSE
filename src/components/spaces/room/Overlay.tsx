@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import {
   LocateFixed, ZoomIn, ZoomOut, Map as MapIcon, Gauge, PencilRuler, Mic, MicOff, Video, VideoOff, MonitorUp,
-  SmilePlus, Hand, MessageSquare, Megaphone, MoreHorizontal, PhoneOff, Settings2, Check, Wifi, WifiOff, Loader2, Shirt,
+  SmilePlus, Hand, MessageSquare, Megaphone, MoreHorizontal, PhoneOff, Settings2, Check, Wifi, WifiOff, Loader2, Shirt, Box, Square, Hammer,
 } from 'lucide-react';
 import type { ConnectionState } from '@/spatial/net/status';
 import { REACTIONS, type ReactionKind } from '@/spatial/net/emotes';
@@ -32,7 +32,7 @@ function ToolButton({ label, onClick, active, children }: { label: string; onCli
   );
 }
 
-export function WorldToolbar({ quality, onQuality, canEdit, onCenter, onZoomIn, onZoomOut, mapOpen, onToggleMap, onEdit, onCharacter }: {
+export function WorldToolbar({ quality, onQuality, canEdit, onCenter, onZoomIn, onZoomOut, mapOpen, onToggleMap, onEdit, onCharacter, view, onView, onBuild, building }: {
   quality: GraphicsQuality;
   onQuality: (q: GraphicsQuality) => void;
   canEdit: boolean;
@@ -44,6 +44,12 @@ export function WorldToolbar({ quality, onQuality, canEdit, onCenter, onZoomIn, 
   onEdit: () => void;
   /** Open "Choose your character" (hidden when there are no characters). */
   onCharacter?: () => void;
+  /** Camera: from above or angled. */
+  view?: 'top' | 'angled';
+  onView?: (v: 'top' | 'angled') => void;
+  /** Campus: add and arrange furniture (people who may edit the office). */
+  onBuild?: () => void;
+  building?: boolean;
 }) {
   return (
     <div role="toolbar" aria-label="View" aria-orientation="vertical" className="flex flex-col gap-1 rounded-2xl border border-navy-100/70 bg-white/95 p-1 shadow-popover backdrop-blur">
@@ -52,6 +58,12 @@ export function WorldToolbar({ quality, onQuality, canEdit, onCenter, onZoomIn, 
       <ToolButton label="Zoom out" onClick={onZoomOut}><ZoomOut className="h-[18px] w-[18px]" /></ToolButton>
       <ToolButton label="Floor map" onClick={onToggleMap} active={mapOpen}><MapIcon className="h-[18px] w-[18px]" /></ToolButton>
       {onCharacter && <ToolButton label="My character" onClick={onCharacter}><Shirt className="h-[18px] w-[18px]" /></ToolButton>}
+      {onView && view && (
+        <ToolButton label={view === 'top' ? 'Angled view' : 'View from above'} onClick={() => onView(view === 'top' ? 'angled' : 'top')}>
+          {view === 'top' ? <Box className="h-[18px] w-[18px]" /> : <Square className="h-[18px] w-[18px]" />}
+        </ToolButton>
+      )}
+      {onBuild && <ToolButton label="Build: add furniture" onClick={onBuild} active={building}><Hammer className="h-[18px] w-[18px]" /></ToolButton>}
       <Popover
         label="Graphics quality"
         panelClassName="right-full top-0 mr-2 w-48"

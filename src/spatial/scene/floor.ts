@@ -142,13 +142,17 @@ export function moveKeyFor(e: Pick<KeyboardEvent, 'key' | 'code'>): MoveKey | nu
  * Direction on the floor for the held keys, as seen from the camera, which looks at the floor
  * from the +x/+z corner (so "up" on screen walks towards -x/-z). Unit length, or null.
  */
-export function keyDirection(held: ReadonlySet<MoveKey>): { x: number; z: number } | null {
+export function keyDirection(
+  held: ReadonlySet<MoveKey>,
+  /** Which way "up" on the screen goes on the floor (the camera's view direction, flattened). */
+  up: { x: number; z: number } = { x: -Math.SQRT1_2, z: -Math.SQRT1_2 },
+): { x: number; z: number } | null {
   const sx = (held.has('right') ? 1 : 0) - (held.has('left') ? 1 : 0);
   const sy = (held.has('up') ? 1 : 0) - (held.has('down') ? 1 : 0);
   if (!sx && !sy) return null;
-  // Screen right = (+1, -1)/√2 on the floor, screen up = (-1, -1)/√2.
-  const x = (sx - sy) / Math.SQRT2;
-  const z = (-sx - sy) / Math.SQRT2;
+  // Screen right is "up" turned a quarter clockwise: (-up.z, up.x).
+  const x = sx * -up.z + sy * up.x;
+  const z = sx * up.x + sy * up.z;
   const len = Math.hypot(x, z);
   return { x: x / len, z: z / len };
 }
