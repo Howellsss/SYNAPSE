@@ -363,6 +363,15 @@ export default function SpaceScene(props: SpaceSceneProps) {
     const officeRoot = new THREE.Group();
     officeRoot.name = 'office';
     scene.add(officeRoot);
+    // A sign over the office door: walk up to it to go to another space.
+    if (office?.door) {
+      const signEl = document.createElement('div');
+      signEl.className = 'pointer-events-none select-none whitespace-nowrap rounded-full bg-navy-900/90 px-2.5 py-1 text-[11px] font-semibold text-gold-300 shadow-popover';
+      signEl.textContent = 'Door · other spaces';
+      const sign = new CSS2DObject(signEl);
+      sign.position.set(0.15, 2.55, office.door.z);
+      officeRoot.add(sign);
+    }
     if (office) {
       new GLTFLoader().load(
         office.url,

@@ -143,6 +143,25 @@ Migration `20261014090000_company_foundations.sql`; client code in `src/lib/team
   invitation (or as the owner / by an admin); trigger `workspace_members_guard` stops anyone but
   admins/owner from changing role, status or title, and keeps `owner` for the account holder.
 
+## Company rooms (`src/lib/rooms.ts`, `RoomsPage.tsx`)
+
+Migration `20261015090000_company_rooms.sql` (after company foundations).
+
+- `company_rooms`: standing video rooms, optionally in a department, `open_to_department` lets
+  the whole department use one. Admins and supervisors create them (supervisors only in
+  departments they lead); experts can't. `company_room_assignees` says who may use a room.
+- A link an expert makes in a room is a `meetings` row with `room_id` and `for_whom`; trigger
+  `meetings_room_guard` only allows that for people who may use the room (`can_use_room`).
+- Busy: the meeting page calls `room_heartbeat(meeting)` every 45 s during a room call
+  (busy for 90 s) and `room_release` on leaving; busy columns can't be written directly.
+
+## Spaces at 50 people
+
+Movement, emotes and knocks go over the space call's LiveKit data channel once connected
+(`SPACE_TOPIC`, sender identity checked), and over Supabase broadcast only while someone present
+isn't in the call (`needsRealtime`). Supabase still carries presence. The office door
+(`office.door`) lists the account's other spaces grouped by `space.config.department_id`.
+
 ## Tables by module
 
 | Module | Tables |

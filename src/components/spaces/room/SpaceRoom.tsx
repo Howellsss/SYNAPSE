@@ -37,6 +37,7 @@ import { FloorMap } from './FloorMap';
 import { PeoplePanel, PeopleCountButton } from './PeoplePanel';
 import { ConnectionPill, ControlBar, WorldToolbar } from './Overlay';
 import { InviteToSpace } from './InviteToSpace';
+import { DoorCard } from './DoorCard';
 import type { Character, Space } from '@/types';
 import { cn } from '@/lib/utils';
 
@@ -134,6 +135,8 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
   const [localEmote, setLocalEmote] = useState<{ kind: EmoteKind; id: number } | null>(null);
   const [hintOpen, setHintOpen] = useState(true);
   const office = officeFor(space.config?.scene);
+  // Standing at the office door shows the way to the account's other spaces.
+  const atDoor = !!office?.door && !!myPos && Math.hypot(myPos.x - office.door.x, myPos.z - office.door.z) < 1.3;
   const floor = office ? office.floor : floorFor(space.size_band);
   // Always list yourself, even before (or without) the presence channel answering.
   const shown = useMemo<PresenceMeta[]>(
@@ -324,6 +327,15 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
               <button type="button" onClick={() => setHintOpen(false)} aria-label="Hide tip" className="rounded-lg p-1 text-ivory-700 hover:bg-ivory-50"><X className="h-4 w-4" /></button>
             </p>
           </div>
+        )}
+
+        {atDoor && (
+          <DoorCard
+            here={space}
+            spaces={otherSpaces}
+            onGo={(slug) => navigate(`/workspace/${slug}`)}
+            onAll={() => navigate('/workspace')}
+          />
         )}
 
         {/* Video strip (filled by proximity video) */}

@@ -264,6 +264,8 @@ export interface SpaceConfig {
   rooms?: SpaceRoom[];
   /** A built 3D office (see spatial/scene/offices.ts), or absent for the open floor. */
   scene?: string | null;
+  /** The department this space belongs to (its door lists spaces by department). */
+  department_id?: string | null;
 }
 
 /** solo = 1, small = 2–10, medium = 11–25, large = 26–50, xl = 50+ people. */
