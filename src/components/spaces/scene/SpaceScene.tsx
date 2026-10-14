@@ -78,6 +78,7 @@ const LABEL_HEIGHT = 2.0;
 const CAMERA_OFFSET = new THREE.Vector3(10, 9.9, 10); // looks down at about 35°, from the +x/+z corner
 const VIEW_HEIGHT = 12; // metres of floor visible top to bottom at zoom 1
 const MIN_ZOOM = 0.45;
+const OFFICE_MIN_ZOOM = 0.6;
 const MAX_ZOOM = 2.6;
 const EMOTE_BUBBLE_MS = 3000;
 /** Walking grid inside a built office: fine enough for doorways, with room for the avatar's body. */
@@ -202,9 +203,12 @@ function shadowTexture(): THREE.Texture {
   return new THREE.CanvasTexture(c);
 }
 
-/** Ground around a built office: dark slate under the office, darker towards the edges. */
-const GROUND_CENTER = '#262C37';
-const GROUND_EDGE = '#12151B';
+/**
+ * Lawn beyond a built office's own grounds (Office 02 brings a park around it): the same green,
+ * darkening far away, so the world never ends in an empty sky.
+ */
+const GROUND_CENTER = '#5E8B3A';
+const GROUND_EDGE = '#3A5A27';
 function groundTexture(): THREE.Texture {
   const c = document.createElement('canvas');
   c.width = c.height = 256;
@@ -296,12 +300,12 @@ export default function SpaceScene(props: SpaceSceneProps) {
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(office ? GROUND_EDGE : '#0D1C3B');
-    // A built office stands on a dark ground that fades out, never floating in an empty sky.
+    // A built office stands on a lawn that runs past the edges of the screen, never in an empty sky.
     let ground: THREE.Mesh | null = null;
     if (office) {
       ground = new THREE.Mesh(new THREE.PlaneGeometry(260, 260), new THREE.MeshBasicMaterial({ map: groundTexture(), toneMapped: false }));
       ground.rotation.x = -Math.PI / 2;
-      ground.position.set(floor.width / 2, -0.52, floor.depth / 2);
+      ground.position.set(floor.width / 2, -0.53, floor.depth / 2);
       scene.add(ground);
     }
     const pmrem = new THREE.PMREMGenerator(renderer);
@@ -371,9 +375,11 @@ export default function SpaceScene(props: SpaceSceneProps) {
             if (mesh.name.startsWith('BAKED_')) {
               const map = (mat as THREE.MeshStandardMaterial).map ?? null;
               const geo = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
-              // Just above y = 0, under the soft shadow drawn at each person's feet.
-              geo.computeBoundingBox();
-              geo.translate(0, 0.002 - (geo.boundingBox?.max.y ?? 0), 0);
+              if (mesh.name === 'BAKED_floor') {
+                // Just above y = 0, under the soft shadow drawn at each person's feet.
+                geo.computeBoundingBox();
+                geo.translate(0, 0.002 - (geo.boundingBox?.max.y ?? 0), 0);
+              }
               const flat = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map, toneMapped: false }));
               mat.dispose();
               officeRoot.add(flat);
@@ -428,7 +434,9 @@ export default function SpaceScene(props: SpaceSceneProps) {
 
     // Camera: orthographic, from the +x/+z corner, following me.
     const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 200);
-    let zoom = zoomRef.current;
+    // A built office is surrounded by its grounds; don't zoom out past them.
+    const minZoom = office ? OFFICE_MIN_ZOOM : MIN_ZOOM;
+    let zoom = Math.max(minZoom, zoomRef.current);
     const target = new THREE.Vector3(W / 2, 0, D / 2);
     const applyCamera = () => {
       const w = mount.clientWidth || 1;
@@ -740,7 +748,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
     };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom * Math.exp(-e.deltaY * 0.0015)));
+      zoom = Math.min(MAX_ZOOM, Math.max(minZoom, zoom * Math.exp(-e.deltaY * 0.0015)));
       applyCamera();
     };
     const isEditable = (el: EventTarget | null) => el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
@@ -764,7 +772,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
     latest.current.controls.current = {
       center: () => { zoom = 1; target.set(me.x, 0, me.z); applyCamera(); },
       zoomIn: () => { zoom = Math.min(MAX_ZOOM, zoom * 1.25); applyCamera(); },
-      zoomOut: () => { zoom = Math.max(MIN_ZOOM, zoom / 1.25); applyCamera(); },
+      zoomOut: () => { zoom = Math.max(minZoom, zoom / 1.25); applyCamera(); },
       walkTo: (userId: string) => {
         const a = avatars.get(userId);
         if (!a || userId === latest.current.meId) return false;
