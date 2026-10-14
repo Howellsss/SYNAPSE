@@ -90,6 +90,18 @@ describe('RemoteMover', () => {
     expect(r.sample(20001)).toMatchObject({ x: 10, anim: 'idle' });
   });
 
+  it('jumps through a door instead of sliding across the map', () => {
+    const r = new RemoteMover(120);
+    r.receiveMove(move(1, 1000, 0, 'idle'), 5000);
+    r.receiveMove(move(2, 1100, 150, 'idle'), 5100); // 150 m away: another room
+    expect(r.sample(5170)!.x).toBe(150);
+    // Mid-walk too.
+    const w = new RemoteMover(0);
+    w.receivePath({ userId: 'u2', points: [[0, 0], [10, 0]], speed: 1, sitAtEnd: false, seq: 1, t: 0 }, 0);
+    w.receiveMove(move(2, 2000, 200, 'idle'), 2000);
+    expect(w.sample(2001)).toMatchObject({ x: 200, anim: 'idle' });
+  });
+
   it('turns the short way round', () => {
     expect(lerpAngle(3, -3, 0.5)).toBeCloseTo(Math.PI, 1);
     expect(pointAlong([[0, 0], [0, 2]], 1)).toMatchObject({ x: 0, z: 1, done: false });

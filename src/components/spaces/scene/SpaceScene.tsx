@@ -18,7 +18,7 @@ import type { EmoteKind, EmoteMsg, PresenceMeta } from '@/spatial/net/protocol';
 import type { Group } from '@/spatial/media/proximity';
 import type { GraphicsQuality } from '@/spatial/quality';
 import { findPath, smoothPath } from '@/spatial/scene/pathfinding';
-import { AVATAR_ACTIONS, type AvatarAction, type SpaceClips } from '@/spatial/scene/avatarClips';
+import { AVATAR_ACTIONS, type AvatarAction, type SpaceClips, type WalkStyle } from '@/spatial/scene/avatarClips';
 import {
   cellCenter, facing, freeSpot, keyDirection, mapCell, moveKeyFor, pinRootMotion, spawnPoint, stepTo, walkMap, WALK_SPEED,
   type Floor, type MoveKey,
@@ -30,6 +30,7 @@ import { campusObstacles, campusSeats } from '@/spatial/scene/campus/layout';
 import { fitsAt, pieceAt, placedBounds } from '@/spatial/scene/campus/kit';
 import type { Rect } from '@/spatial/scene/offices';
 import { createCampusWorld, type CampusWorld } from './campusWorld';
+import { aimBone, beginPose, endPose, feminineGait, findRig, relaxPosture, type Rig } from './posture';
 import { characterBytes } from '@/spatial/scene/characterCache';
 
 /** What the world toolbar and the people panel can ask the scene to do. */
@@ -49,6 +50,8 @@ export interface SceneCharacter {
   /** Stays the same while the file does (the signed URL changes every visit), for keeping it on this device. */
   cacheKey?: string;
   clips: SpaceClips;
+  /** Feminine: narrower steps, a gentle hip sway, softer arms. */
+  style?: WalkStyle;
 }
 
 export interface SpaceSceneProps {
@@ -148,64 +151,16 @@ interface Avatar {
   labelEl: HTMLDivElement;
   labelSig: string;
   bubble: { text: string; until: number } | null;
-  /** Bones for the seated pose (when the character has no sitting clip of its own). */
+  /** Bones for the seated pose (when the character has no sitting clip of its own) and posture fixes. */
   rig: Rig | null;
+  /** The character's walk style (from the library). */
+  style: WalkStyle;
   /** Was drawn seated last frame (so the body can be put back when standing up). */
   seated: boolean;
 }
 
-interface Limb { root: THREE.Object3D; mid: THREE.Object3D; end: THREE.Object3D }
-interface Rig {
-  legs: Limb[];
-  arms: Limb[];
-  /** Every bone's natural (standing) pose, from the file. */
-  rest: { bone: THREE.Object3D; q: THREE.Quaternion; p: THREE.Vector3 }[];
-}
-
-/** Legs and arms of a rigged character, found by the usual bone names (Mixamo, Meshy, Blender). */
-function findRig(model: THREE.Object3D): Rig | null {
-  const legs: Limb[] = [];
-  const arms: Limb[] = [];
-  const rest: Rig['rest'] = [];
-  const isBone = (o: THREE.Object3D | null | undefined): o is THREE.Object3D => !!o && !!(o as THREE.Bone).isBone;
-  const firstBone = (o: THREE.Object3D) => o.children.find(isBone);
-  model.traverse((o) => {
-    if (!isBone(o)) return;
-    rest.push({ bone: o, q: o.quaternion.clone(), p: o.position.clone() });
-    if (/twist|roll/i.test(o.name)) return;
-    if (/up_?leg|thigh|upper_?leg/i.test(o.name)) {
-      const mid = firstBone(o);
-      const end = mid && firstBone(mid);
-      if (mid && end) legs.push({ root: o, mid, end });
-    } else if (/hand$/i.test(o.name.replace(/[._-]?[lr]$/i, '').replace(/^.*[:|]/, '')) || /(^|[^a-z])hand([^a-z]|$)/i.test(o.name)) {
-      // Hand → forearm → upper arm.
-      const mid = o.parent;
-      const root = mid?.parent;
-      if (isBone(mid) && isBone(root) && arms.every((a) => a.end !== o)) arms.push({ root, mid, end: o });
-    }
-  });
-  return legs.length === 2 ? { legs, arms: arms.length === 2 ? arms : [], rest } : null;
-}
-
 const _va = new THREE.Vector3();
 const _vb = new THREE.Vector3();
-const _qa = new THREE.Quaternion();
-const _qb = new THREE.Quaternion();
-const _qc = new THREE.Quaternion();
-/** Turns `bone` so the direction to `child` points along `want` (world space, unit length). */
-function aimBone(bone: THREE.Object3D, child: THREE.Object3D, want: THREE.Vector3) {
-  if (!bone.parent) return;
-  bone.getWorldPosition(_va);
-  child.getWorldPosition(_vb);
-  const cur = _vb.sub(_va);
-  if (cur.lengthSq() < 1e-10) return;
-  cur.normalize();
-  _qa.setFromUnitVectors(cur, want);
-  bone.getWorldQuaternion(_qb);
-  bone.parent.getWorldQuaternion(_qc);
-  bone.quaternion.copy(_qc.invert().multiply(_qa.multiply(_qb)));
-  bone.updateMatrixWorld(true);
-}
 
 const STATUS_DOT: Record<string, string> = {
   'bg-green-500': '#22c55e', 'bg-gold-500': '#D49826', 'bg-indigo-500': '#6366f1', 'bg-burgundy-500': '#8B2530',
@@ -670,7 +625,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
     };
     const clipsFor = (tpl: Template | null): SpaceClips | null =>
       (tpl ? latest.current.library.find((c) => c.id === tpl.id)?.clips : null) ?? null;
-    const bodySig = (tpl: Template | null, waiting: boolean) => (tpl ? JSON.stringify(clipsFor(tpl)) : waiting ? 'waiting' : 'figure');
+    const bodySig = (tpl: Template | null, waiting: boolean) => (tpl ? JSON.stringify([clipsFor(tpl), latest.current.library.find((c) => c.id === tpl.id)?.style]) : waiting ? 'waiting' : 'figure');
     // Start fetching the characters people are most likely to be, before anyone is drawn.
     for (const id of new Set([latest.current.myCharacterId, latest.current.defaultCharacterId])) templateFor(id);
 
@@ -688,7 +643,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       label.position.set(0, LABEL_HEIGHT, 0);
       root.add(label);
       scene.add(root);
-      return { root, body: null, bodyFor: undefined, clipsSig: '', mixer: null, actions: {}, current: null, emote: null, label, labelEl, labelSig: '', bubble: null, rig: null, seated: false };
+      return { root, body: null, bodyFor: undefined, clipsSig: '', mixer: null, actions: {}, current: null, emote: null, label, labelEl, labelSig: '', bubble: null, rig: null, style: 'standard', seated: false };
     };
     const setBody = (a: Avatar, userId: string, tpl: Template | null, waiting = false) => {
       if (a.body) {
@@ -701,6 +656,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       a.current = null;
       a.rig = null;
       a.seated = false;
+      a.style = (tpl ? latest.current.library.find((c) => c.id === tpl.id)?.style : null) ?? 'standard';
       a.bodyFor = tpl;
       const names = clipsFor(tpl);
       a.clipsSig = bodySig(tpl, waiting);
@@ -794,6 +750,18 @@ export default function SpaceScene(props: SpaceSceneProps) {
       }
       // Hip joints just above the cushion.
       a.body.position.y = Math.min(0.3, Math.max(-0.9, seat.y + 0.07 - hipY));
+    };
+    /** After the clips: shoulders down, arms by the sides, and the feminine walk where chosen. */
+    const standTall = (a: Avatar, rig: Rig, body: THREE.Object3D) => {
+      const walking = a.current === 'walk';
+      if (a.current === 'wave' || a.current === 'cheer') return; // gestures play as made
+      if (!a.current) toRest(rig); // no clip at all: start from the file's pose every frame
+      const feminine = a.style === 'feminine';
+      const walk = a.actions.walk;
+      if (feminine && walking && walk) feminineGait(rig, body, (walk.time / Math.max(0.01, walk.getClip().duration)) % 1);
+      relaxPosture(rig, body, walking ? 'walk' : a.current ? 'stand' : 'still');
+      // Standing: a relaxed weight shift onto one hip.
+      if (feminine && !walking) feminineGait(rig, body, 0.25, 0.3);
     };
     const play = (a: Avatar, want: AvatarAction | null) => {
       if (want === a.current) return;
@@ -1040,6 +1008,11 @@ export default function SpaceScene(props: SpaceSceneProps) {
           : seat ? (a.actions.sit ? 'sit' : a.rig ? null : 'idle') : 'idle';
         play(a, want && a.actions[want] ? want : want && a.actions.idle ? 'idle' : null);
         a.mixer?.update(dt);
+        if (a.rig && a.body) {
+          beginPose(a.rig);
+          if (!seat) standTall(a, a.rig, a.body);
+          endPose(a.rig);
+        }
         poseSeated(a, seat);
       };
 

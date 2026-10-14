@@ -76,3 +76,14 @@ describe('standing by default', () => {
     expect(guessSpaceClips(['Walk', 'sit_loop'], 'sit_loop').idle).toBeNull();
   });
 });
+
+describe('walk style', () => {
+  it('uses the saved choice, else guesses from the name', async () => {
+    const { resolveWalkStyle } = await import('./avatarClips');
+    expect(resolveWalkStyle({ name: 'Business Woman', space_clips: {} })).toBe('feminine');
+    expect(resolveWalkStyle({ name: 'Female_Office_01', space_clips: null })).toBe('feminine');
+    expect(resolveWalkStyle({ name: 'Xbot', space_clips: {} })).toBe('standard');
+    expect(resolveWalkStyle({ name: 'Business Woman', space_clips: { style: 'standard' } })).toBe('standard');
+    expect(resolveWalkStyle({ name: 'Alex', space_clips: { style: 'feminine' } })).toBe('feminine');
+  });
+});

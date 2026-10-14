@@ -17,7 +17,7 @@ import { useAway } from '@/spatial/net/useAway';
 import { EMOTE_EMOJI } from '@/spatial/net/emotes';
 import type { EmoteKind, EmoteMsg, PresenceMeta } from '@/spatial/net/protocol';
 import type { LocalState } from '@/spatial/net/moveSender';
-import { characterFor, chosenCharacterId, pickSpaceCharacter, resolveSpaceClips } from '@/spatial/scene/avatarClips';
+import { characterFor, chosenCharacterId, pickSpaceCharacter, resolveSpaceClips, resolveWalkStyle } from '@/spatial/scene/avatarClips';
 import { floorFor } from '@/spatial/scene/floor';
 import { officeFor } from '@/spatial/scene/offices';
 import type { BuildState, SceneCharacter, SceneControls, SceneView } from '@/components/spaces/scene/SpaceScene';
@@ -112,7 +112,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
     return () => { alive = false; };
   }, [user]);
   const sceneLibrary = useMemo<SceneCharacter[]>(
-    () => library.list.filter((c) => library.urls[c.id]).map((c) => ({ id: c.id, url: library.urls[c.id], cacheKey: `${c.storage_path}:${c.size_bytes}`, clips: resolveSpaceClips(c) })),
+    () => library.list.filter((c) => library.urls[c.id]).map((c) => ({ id: c.id, url: library.urls[c.id], cacheKey: `${c.storage_path}:${c.size_bytes}`, clips: resolveSpaceClips(c), style: resolveWalkStyle(c) })),
     [library],
   );
   const defaultCharacterId = useMemo(() => pickSpaceCharacter(library.list)?.id ?? null, [library.list]);
