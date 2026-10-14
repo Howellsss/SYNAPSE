@@ -323,8 +323,10 @@ What you see inside a space, until the art kit brings rooms and furniture:
   upper arms down and forearms forward onto the lap, then the hips lowered onto the cushion.
   Simple figures sink into the seat.
 - **Inside a space** the world is the whole screen: no sidebar or top bar (Leave goes back), and
-  the people panel opens over the world from the People button. A built office stands on a dark
-  ground that fades out (not an empty sky), the camera stays over the office, labels show first
+  the people panel opens over the world from the People button. Office 02 stands in a park
+  (lawn, stone paths, trees, lamp posts, benches; its light and tree shadows baked into
+  `BAKED_ground`, which keeps its own height, unlike `BAKED_floor`) that runs past every edge of the
+  screen, never an empty sky; zooming out stops at 0.6 so the park always fills the view, the camera stays over the office, labels show first
   names (yours too), and on High quality ambient occlusion (`GTAOPass`) adds soft contact shadows.
 
 ## Checks
