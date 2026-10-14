@@ -177,6 +177,13 @@ Migration `20261016090000_conversations.sql`.
   new replies as inbound `messages` on the same contact (`send-email/replies.ts`). Needs the
   `gmail.readonly` scope, so accounts connected before need reconnecting.
 
+## Streams (`src/lib/streams.ts`, `StreamsPage`, `StreamStudioPage`, `WatchPage`)
+
+Migration `20261017090000_streams.sql`. A stream is LiveKit room `stream_<id>`: the host sends,
+viewers get watch-only tokens (`canPublish: false`) from `livekit-token` with `{ streamCode, watch }`,
+and only while `status = 'live'` (425 before). The public watch page `/live/CODE?watch=<token>` reads
+`stream_by_watch`; chat and reactions go over the data channel (`STREAM_TOPICS`).
+
 ## Tables by module
 
 | Module | Tables |

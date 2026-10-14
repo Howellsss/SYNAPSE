@@ -54,6 +54,13 @@ Deno.serve(async (req: Request) => {
           : null;
       },
 
+      async getStream(code) {
+        const { data, error } = await admin().from("streams").select("id, workspace_id, host_id, status, watch_token").eq("code", code).maybeSingle();
+        if (error) return missingTable(error) ? null : fail(error);
+        const row = data as { id: string; workspace_id: string; host_id: string; status: "scheduled" | "live" | "ended"; watch_token: string } | null;
+        return row ? { id: row.id, workspaceId: row.workspace_id, hostId: row.host_id, status: row.status, watchToken: row.watch_token } : null;
+      },
+
       async getAdmission(ticket) {
         const { data, error } = await admin().from("meeting_admissions").select("ticket, meeting_id, identity, status").eq("ticket", ticket).maybeSingle();
         if (error) return missingTable(error) ? undefined : fail(error);
@@ -101,9 +108,9 @@ Deno.serve(async (req: Request) => {
         return (data as { first_name: string | null; last_name: string | null } | null) ?? null;
       },
 
-      async makeToken({ room, identity, name, ttl }) {
+      async makeToken({ room, identity, name, ttl, canPublish = true }) {
         const at = new AccessToken(env("LIVEKIT_API_KEY"), env("LIVEKIT_API_SECRET"), { identity, name, ttl });
-        at.addGrant({ room, roomJoin: true, canPublish: true, canSubscribe: true, canPublishData: true });
+        at.addGrant({ room, roomJoin: true, canPublish, canSubscribe: true, canPublishData: true });
         return await at.toJwt();
       },
     });

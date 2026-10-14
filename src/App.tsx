@@ -29,6 +29,10 @@ import { ComingSoonPage } from '@/pages/ComingSoonPage';
 import { WorkspacesPage } from '@/pages/WorkspacesPage';
 import { RoomsPage } from '@/pages/RoomsPage';
 import { ConversationsPage } from '@/pages/ConversationsPage';
+import { StreamsPage } from '@/pages/StreamsPage';
+import { StreamStudioPage } from '@/pages/StreamStudioPage';
+import { WatchPage } from '@/pages/WatchPage';
+import { watchFromLocation } from '@/lib/streams';
 import { CreateSpaceWizard } from '@/pages/CreateSpaceWizard';
 import { SpacePage } from '@/pages/SpacePage';
 import { GuestJoinPage } from '@/pages/GuestJoinPage';
@@ -75,7 +79,7 @@ function AppContent() {
   useEffect(() => {
     if (loading) return;
     if (user && authPath) { navigate('/dashboard'); return; }
-    if (!user && !authPath && path !== '/' && !path.startsWith('/book/') && !path.startsWith('/group/') && !path.startsWith('/reset-password') && !path.startsWith('/invite/') && !path.startsWith('/join/') && !isPublicEvents && !meetingInvite) {
+    if (!user && !authPath && path !== '/' && !path.startsWith('/book/') && !path.startsWith('/group/') && !path.startsWith('/reset-password') && !path.startsWith('/invite/') && !path.startsWith('/join/') && !path.startsWith('/live/') && !isPublicEvents && !meetingInvite) {
       navigate('/');
     }
   }, [user, loading, path, authPath, isPublicEvents, meetingInvite, navigate]);
@@ -110,6 +114,13 @@ function AppContent() {
     return <GuestJoinPage token={token} />;
   }
 
+  // Watching a stream: anyone with the watch link, signed in or not.
+  const liveMatch = path.match(/^\/live\/([A-Za-z]{4}-?\d{3})(?:[/?]|$)/);
+  if (liveMatch) {
+    const code = liveMatch[1].toUpperCase().replace(/^([A-Z]{4})(\d{3})$/, '$1-$2');
+    return <WatchPage key={code} code={code} watch={watchFromLocation(path)} />;
+  }
+
   // Invitation acceptance page (no auth required to view, auth to accept)
   if (path.startsWith('/invite/')) {
     const token = path.split('/')[2]?.split('?')[0];
@@ -125,6 +136,13 @@ function AppContent() {
 
   // A meeting room is full screen, without the sidebar and top bar
   if (meetingCode) return <MeetingRoomPage key={meetingCode} code={meetingCode} invite={meetingInvite} />;
+
+  // The stream studio is full screen too
+  const studioMatch = path.match(/^\/streams\/([A-Za-z]{4}-?\d{3})(?:[/?]|$)/);
+  if (studioMatch) {
+    const code = studioMatch[1].toUpperCase().replace(/^([A-Z]{4})(\d{3})$/, '$1-$2');
+    return <StreamStudioPage key={code} code={code} />;
+  }
 
   // Create-a-workspace wizard is full screen, without the sidebar and top bar
   if (path === '/workspace/new' || path.startsWith('/workspace/new?')) {
@@ -157,6 +175,7 @@ function AppContent() {
     if (path.startsWith('/ai-hub')) return <AIAgentPage />;
     if (path.startsWith('/settings')) return <SettingsPage />;
     if (path.startsWith('/rooms')) return <RoomsPage />;
+    if (path.startsWith('/streams')) return <StreamsPage />;
     if (path.startsWith('/meetings')) return <MeetingsPage />;
     if (path === '/events/new') return <EventBuilder />;
     const eventMatch = path.match(/^\/events\/([0-9a-f-]{36})(\/edit)?(?:[/?]|$)/);

@@ -167,3 +167,38 @@ describe('livekit-token handler', () => {
     });
   });
 });
+
+describe('streams', () => {
+  const stream = (status: 'scheduled' | 'live' | 'ended') => ({ id: 's1', workspaceId: 'ws1', hostId: 'u1', status, watchToken: 'w'.repeat(32) });
+  const grants: { canPublish?: boolean; room: string; identity: string; name: string }[] = [];
+  const sdeps = (status: 'scheduled' | 'live' | 'ended', over: Partial<Deps> = {}) => deps({
+    getStream: async (code) => (code === 'LIVE-001' ? stream(status) : null),
+    makeToken: async (g) => { grants.push(g); return 'tok'; },
+    ...over,
+  });
+  it('lets the host prepare before going live, with sending allowed', async () => {
+    const res = await handle(post({ streamCode: 'LIVE-001' }), sdeps('scheduled'));
+    expect(res.status).toBe(200);
+    expect(grants.pop()).toMatchObject({ room: 'stream_s1', identity: 'u1', canPublish: true });
+  });
+  it('keeps viewers out until the stream is live, then lets them only watch', async () => {
+    const viewer = (status: 'scheduled' | 'live') => handle(new Request('http://x', { method: 'POST', body: JSON.stringify({ streamCode: 'LIVE-001', watch: 'w'.repeat(32), guestName: 'Jane' }) }), sdeps(status));
+    expect((await viewer('scheduled')).status).toBe(425);
+    const res = await viewer('live');
+    expect(res.status).toBe(200);
+    const g = grants.pop()!;
+    expect(g.canPublish).toBe(false);
+    expect(g.identity).toMatch(/^viewer_/);
+    expect(g.name).toBe('Jane (Guest)');
+  });
+  it('refuses a wrong watch link and ended streams', async () => {
+    const wrong = await handle(new Request('http://x', { method: 'POST', body: JSON.stringify({ streamCode: 'LIVE-001', watch: 'x'.repeat(32) }) }), sdeps('live'));
+    expect(wrong.status).toBe(403);
+    expect((await handle(post({ streamCode: 'LIVE-001' }), sdeps('ended'))).status).toBe(410);
+  });
+  it('lets account members watch without the link (not send)', async () => {
+    const res = await handle(post({ streamCode: 'LIVE-001' }), sdeps('live', { getStream: async () => ({ ...stream('live'), hostId: 'someone-else' }) }));
+    expect(res.status).toBe(200);
+    expect(grants.pop()).toMatchObject({ identity: 'u1', canPublish: false });
+  });
+});
