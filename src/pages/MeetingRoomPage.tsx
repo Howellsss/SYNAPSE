@@ -30,6 +30,7 @@ import { BackgroundsPanel, CaptionsOverlay, ChatPanel, ParticipantsPanel, PollsP
 import { useCaptions } from '@/meetings/useCaptions';
 import { useRecorder } from '@/meetings/useRecorder';
 import { documentPip, openPopout } from '@/meetings/popout';
+import { roomHeartbeat, roomRelease } from '@/lib/rooms';
 import { transcriptText } from '@/meetings/captions';
 import { BreakoutPanel } from '@/components/meetings/BreakoutPanel';
 import { parseBreakout, roomOf, timeLeft } from '@/meetings/breakouts';
@@ -546,6 +547,14 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
   handsRef.current = hands;
 
   useEffect(() => { if (call.state === 'connected' && startedAt === null) setStartedAt(Date.now()); }, [call.state, startedAt]);
+  // A call in a company room keeps the room showing "Busy" for everyone, and frees it after.
+  const inRoomCall = !!meeting.room_id && !guestCtx.isGuest && call.state === 'connected';
+  useEffect(() => {
+    if (!inRoomCall) return;
+    void roomHeartbeat(meeting.id);
+    const t = window.setInterval(() => { void roomHeartbeat(meeting.id); }, 45_000);
+    return () => { window.clearInterval(t); void roomRelease(meeting.id); };
+  }, [inRoomCall, meeting.id]);
   useEffect(() => {
     const top = call.activeSpeakers.find((id) => id !== you.id);
     if (top) setLastSpeaker(top);

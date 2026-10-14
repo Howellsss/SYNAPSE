@@ -25,6 +25,10 @@ export interface Meeting {
   locked?: boolean;
   /** The host's breakout rooms while they are open. */
   breakout?: BreakoutState | null;
+  /** The company room this meeting is in (a link an expert made in their room). */
+  room_id?: string | null;
+  /** Who the link was made for ("Jane, client"). */
+  for_whom?: string | null;
 }
 
 export interface BreakoutRoom { n: number; name: string }
@@ -101,6 +105,9 @@ export interface NewMeeting {
   scheduledAt?: Date | null;
   durationMin?: number;
   nickname?: string | null;
+  /** Put the meeting in a company room (only people who may use the room can). */
+  roomId?: string | null;
+  forWhom?: string | null;
 }
 
 export async function createMeeting(m: NewMeeting): Promise<{ data: Meeting | null; error: string | null }> {
@@ -117,6 +124,7 @@ export async function createMeeting(m: NewMeeting): Promise<{ data: Meeting | nu
         kind: m.kind,
         scheduled_at: m.scheduledAt ? m.scheduledAt.toISOString() : null,
         duration_min: m.durationMin ?? 30,
+        ...(m.roomId ? { room_id: m.roomId, for_whom: m.forWhom?.trim().slice(0, 120) || null } : {}),
       })
       .select(MEETING_COLS)
       .single();

@@ -27,6 +27,7 @@ import { BookingPage } from '@/pages/BookingPage';
 import { GroupCalendarSettingsPage } from '@/pages/GroupCalendarSettingsPage';
 import { ComingSoonPage } from '@/pages/ComingSoonPage';
 import { WorkspacesPage } from '@/pages/WorkspacesPage';
+import { RoomsPage } from '@/pages/RoomsPage';
 import { CreateSpaceWizard } from '@/pages/CreateSpaceWizard';
 import { SpacePage } from '@/pages/SpacePage';
 import { GuestJoinPage } from '@/pages/GuestJoinPage';
@@ -154,6 +155,7 @@ function AppContent() {
     if (path.startsWith('/characters')) return <CharactersPage />;
     if (path.startsWith('/ai-hub')) return <AIAgentPage />;
     if (path.startsWith('/settings')) return <SettingsPage />;
+    if (path.startsWith('/rooms')) return <RoomsPage />;
     if (path.startsWith('/meetings')) return <MeetingsPage />;
     if (path === '/events/new') return <EventBuilder />;
     const eventMatch = path.match(/^\/events\/([0-9a-f-]{36})(\/edit)?(?:[/?]|$)/);

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ChevronRight, Menu, X } from 'lucide-react';
 import {
   ArrowRightStartOnRectangleIcon, BoltIcon, CubeIcon, CalendarDaysIcon, ChatBubbleLeftRightIcon, Cog6ToothIcon, DocumentTextIcon,
-  FolderIcon, HomeIcon, MicrophoneIcon, PresentationChartBarIcon, SparklesIcon, Squares2X2Icon, TicketIcon, UserIcon, VideoCameraIcon,
+  FolderIcon, HomeIcon, BuildingOffice2Icon, MicrophoneIcon, PresentationChartBarIcon, SparklesIcon, Squares2X2Icon, TicketIcon, UserIcon, VideoCameraIcon,
 } from '@heroicons/react/24/solid';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
@@ -22,6 +22,7 @@ const navGroups = [
     { label: 'Contacts', icon: UserIcon, path: '/contacts' },
     { label: 'Calendars', icon: CalendarDaysIcon, path: '/calendars' },
     { label: 'Meetings', icon: VideoCameraIcon, path: '/meetings' },
+    { label: 'Rooms', icon: BuildingOffice2Icon, path: '/rooms' },
     { label: 'Workspaces', icon: Squares2X2Icon, path: '/workspace' },
     { label: 'Events', icon: TicketIcon, path: '/events' },
   ],
