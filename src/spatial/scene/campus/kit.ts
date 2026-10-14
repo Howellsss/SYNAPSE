@@ -137,9 +137,9 @@ export const KIT: KitItem[] = [
   { id: 'boulder', name: 'Boulder', category: 'outdoor', proc: 'boulder', w: 1.2, d: 1.0 },
   { id: 'lamp_post', name: 'Lamp post', category: 'lighting', proc: 'lamp_post', w: 0.4, d: 0.4 },
   { id: 'rug_navy', name: 'Navy rug', category: 'decor', proc: 'rug', w: 3.0, d: 2.0, walkable: true, color: '#1E3A6E' },
-  { id: 'rug_gold', name: 'Gold rug', category: 'decor', proc: 'rug', w: 3.0, d: 2.0, walkable: true, color: '#C9952F' },
+  { id: 'rug_gold', name: 'Gold rug', category: 'decor', proc: 'rug', w: 3.0, d: 2.0, walkable: true, color: '#B5832A' },
   { id: 'rug_green', name: 'Green rug', category: 'decor', proc: 'rug', w: 3.0, d: 2.0, walkable: true, color: '#2F6B4F' },
-  { id: 'stage', name: 'Stage', category: 'decor', proc: 'stage', w: 8.0, d: 3.0, walkable: true, hidden: true },
+  { id: 'stage', name: 'Stage', category: 'decor', proc: 'stage', w: 12.0, d: 3.5, walkable: true, hidden: true },
   { id: 'big_screen', name: 'Big screen', category: 'decor', proc: 'big_screen', w: 6.0, d: 0.3 },
   { id: 'podium', name: 'Podium', category: 'decor', proc: 'podium', w: 0.7, d: 0.5 },
   { id: 'pool_table', name: 'Pool table', category: 'tables', proc: 'pool_table', w: 2.4, d: 1.3 },
@@ -224,4 +224,36 @@ export function itemSize(item: KitItem, rot = 0): { w: number; d: number } {
   const all = item.blocks.length ? item.blocks : [{ x0: item.c[0] - 0.5, x1: item.c[0] + 0.5, z0: item.c[1] - 0.5, z1: item.c[1] + 0.5 }];
   const b = all.map((x) => rectToWorld(item, { id: '', kind: item.id, x: 0, z: 0, rot }, x));
   return { w: Math.max(...b.map((q) => q.x1)) - Math.min(...b.map((q) => q.x0)), d: Math.max(...b.map((q) => q.z1)) - Math.min(...b.map((q) => q.z0)) };
+}
+
+/** The ground a placed piece covers (its whole footprint, rugs and canopies included). */
+export function placedBounds(p: Placed): Rect | null {
+  const item = KIT_BY_ID.get(p.kind);
+  if (!item) return null;
+  const parts = isGlb(item)
+    ? (item.blocks.length ? item.blocks : [r(item.c[0] - 0.5, item.c[0] + 0.5, item.c[1] - 0.5, item.c[1] + 0.5)]).map((b) => rectToWorld(item, p, b))
+    : [rectToWorld(item, p, r(-item.w / 2, item.w / 2, -item.d / 2, item.d / 2))];
+  return r(Math.min(...parts.map((b) => b.x0)), Math.max(...parts.map((b) => b.x1)), Math.min(...parts.map((b) => b.z0)), Math.max(...parts.map((b) => b.z1)));
+}
+
+/** Build mode: the piece under a point (the smallest, so a lamp beats the rug it stands on). Layout-only pieces can't be picked. */
+export function pieceAt(objects: Placed[], x: number, z: number): Placed | null {
+  let best: Placed | null = null;
+  let bestArea = Infinity;
+  for (const p of objects) {
+    if (KIT_BY_ID.get(p.kind)?.hidden) continue;
+    const b = placedBounds(p);
+    if (!b || x < b.x0 || x > b.x1 || z < b.z0 || z > b.z1) continue;
+    const area = (b.x1 - b.x0) * (b.z1 - b.z0);
+    if (area < bestArea) { best = p; bestArea = area; }
+  }
+  return best;
+}
+
+/** Build mode: whether a piece can go here (inside the grounds, clear of walls, water and other furniture). */
+export function fitsAt(obstacles: Rect[], p: Placed, width: number, depth: number): boolean {
+  const b = placedBounds(p);
+  if (!b || b.x0 < 0.5 || b.z0 < 0.5 || b.x1 > width - 0.5 || b.z1 > depth - 0.5) return false;
+  const mine = placedBlocks(p);
+  return !mine.some((m) => obstacles.some((o) => m.x0 < o.x1 - 0.02 && m.x1 > o.x0 + 0.02 && m.z0 < o.z1 - 0.02 && m.z1 > o.z0 + 0.02));
 }

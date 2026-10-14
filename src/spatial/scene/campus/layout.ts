@@ -106,6 +106,7 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
         add(`ah-chair-${row}-${col}`, 'office_chair', 50.5 + col * 1.85, 12.5 + row * 2.2, PI);
       }
     }
+    for (let i = 0; i < 4; i++) add(`ah-runner-${i}`, 'rug_gold', 60.5, 12.6 + i * 3, HALF);
     add('ah-plant-a', 'monstera_tall', 46.5, 5.5);
     add('ah-plant-b', 'monstera_tall', 74.5, 5.5);
     add('ah-plant-c', 'palm_pot', 46.5, 24.5);
@@ -124,6 +125,8 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
     for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) add(`cafe-set-${i}-${j}`, 'cafe_set', 87.5 + i * 4.2, 10 + j * 4.6, j % 2 ? 0.6 : 0);
     add('cafe-plant-a', 'monstera', 85.2, 24.8);
     add('cafe-plant-b', 'planter_small', 98.8, 5.2);
+    // A soft line of plants between the café and the lounge.
+    for (let i = 0; i < 4; i++) add(`cafe-divide-${i}`, i % 2 ? 'monstera' : 'planter_small', 100, 9 + i * 4.2);
     // Lounge: two sofa groups around coffee tables, armchairs, lamps, books.
     add('lounge-rug-a', 'rug_navy', 108, 10, 0);
     add('lounge-sofa-a', 'sofa', 105.1, 10, HALF);

@@ -27,6 +27,8 @@ import type { OfficeLayout } from '@/spatial/scene/offices';
 import { seatApproach, seatAt, seatOnRay, sittingSpot, type Seat } from '@/spatial/scene/seats';
 import { applyEdits, NO_EDITS, type CampusEdits } from '@/spatial/scene/campus/office';
 import { campusObstacles, campusSeats } from '@/spatial/scene/campus/layout';
+import { fitsAt, pieceAt, placedBounds } from '@/spatial/scene/campus/kit';
+import type { Rect } from '@/spatial/scene/offices';
 import { createCampusWorld, type CampusWorld } from './campusWorld';
 import { characterBytes } from '@/spatial/scene/characterCache';
 
@@ -83,6 +85,19 @@ export interface SpaceSceneProps {
   campusEdits?: CampusEdits;
   /** Looking down from above (default) or from the corner at an angle. */
   view?: SceneView;
+  /** Campus build mode: clicks place or pick pieces instead of walking. */
+  build?: BuildState | null;
+}
+
+export interface BuildState {
+  /** The piece being placed (from the catalog, or one being moved), or null to pick pieces. */
+  kind: string | null;
+  rot: number;
+  /** The piece being moved (left out when checking where the new spot fits). */
+  moving: string | null;
+  selected: string | null;
+  onPlace: (x: number, z: number) => void;
+  onSelect: (id: string | null) => void;
 }
 
 export type SceneView = 'top' | 'angled';
@@ -819,6 +834,18 @@ export default function SpaceScene(props: SpaceSceneProps) {
       const rect = renderer.domElement.getBoundingClientRect();
       ndc.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
       raycaster.setFromCamera(ndc, camera);
+      const build = latest.current.build;
+      if (build && campusLayout) {
+        const hit = raycaster.intersectObject(floorMesh)[0];
+        if (!hit) return;
+        if (build.kind) {
+          const at = snap(hit.point.x, hit.point.z);
+          if (fitsAt(buildObstacles(build.moving), { id: 'ghost', kind: build.kind, ...at, rot: build.rot }, floor.width, floor.depth)) build.onPlace(at.x, at.z);
+        } else {
+          build.onSelect(pieceAt(campusLayout.objects, hit.point.x, hit.point.z)?.id ?? null);
+        }
+        return;
+      }
       // A chair or sofa place: walk over and sit (unless someone's in it).
       const seat = seatOnRay(seats, raycaster.ray.origin, raycaster.ray.direction);
       if (seat && seat === me.seat) return;
@@ -829,13 +856,48 @@ export default function SpaceScene(props: SpaceSceneProps) {
     };
     // A hand over seats you can sit in.
     const onPointerMove = (e: PointerEvent) => {
-      if (!seats.length || e.pointerType === 'touch') return;
       const rect = renderer.domElement.getBoundingClientRect();
       ndc.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
       raycaster.setFromCamera(ndc, camera);
+      const build = latest.current.build;
+      if (build && campusWorld) {
+        const hit = raycaster.intersectObject(floorMesh)[0];
+        if (build.kind && hit) {
+          const at = snap(hit.point.x, hit.point.z);
+          ghostAt = at;
+          showGhost(build);
+        } else {
+          ghostAt = null;
+          renderer.domElement.style.cursor = hit && campusLayout && pieceAt(campusLayout.objects, hit.point.x, hit.point.z) ? 'pointer' : '';
+        }
+        return;
+      }
+      if (!seats.length || e.pointerType === 'touch') return;
       const seat = seatOnRay(seats, raycaster.ray.origin, raycaster.ray.direction);
       renderer.domElement.style.cursor = seat && !occupied.has(seat.id) && seat !== me.seat ? 'pointer' : '';
     };
+    // Build mode: pieces sit on a 25 cm grid; the preview is checked against everything but the piece being moved.
+    const snap = (x: number, z: number) => ({ x: Math.round(x * 4) / 4, z: Math.round(z * 4) / 4 });
+    let ghostAt: { x: number; z: number } | null = null;
+    let obstaclesKey = '';
+    let obstaclesCache: Rect[] = [];
+    const buildObstacles = (moving: string | null): Rect[] => {
+      const key = `${moving ?? ''}`;
+      if (!campusLayout) return [];
+      if (key !== obstaclesKey || !obstaclesCache.length) {
+        obstaclesKey = key;
+        obstaclesCache = campusObstacles(moving ? { ...campusLayout, objects: campusLayout.objects.filter((o) => o.id !== moving) } : campusLayout);
+      }
+      return obstaclesCache;
+    };
+    const showGhost = (build: BuildState) => {
+      if (!campusWorld) return;
+      if (!build.kind || !ghostAt) { campusWorld.setGhost(null, false); return; }
+      const p = { id: 'ghost', kind: build.kind, ...ghostAt, rot: build.rot };
+      campusWorld.setGhost(p, fitsAt(buildObstacles(build.moving), p, floor.width, floor.depth));
+    };
+    let shownBuild: BuildState | null | undefined;
+    let shownSelection = '';
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       zoom = Math.min(MAX_ZOOM, Math.max(minZoom, zoom * Math.exp(-e.deltaY * 0.0015)));
@@ -889,6 +951,22 @@ export default function SpaceScene(props: SpaceSceneProps) {
         campusWorld.setObjects(campusLayout.objects);
         map = walkMap(floor, campusObstacles(campusLayout), CAMPUS_CELL, OFFICE_CLEARANCE);
         seats = campusSeats(campusLayout);
+        obstaclesCache = [];
+        shownSelection = '';
+      }
+      // Build mode: keep the preview and the selection outline in step with what's chosen.
+      if (campusWorld && p.build !== shownBuild) {
+        shownBuild = p.build;
+        if (p.build) showGhost(p.build); else { campusWorld.setGhost(null, false); ghostAt = null; }
+        renderer.domElement.style.cursor = p.build?.kind ? 'crosshair' : '';
+      }
+      if (campusWorld && campusLayout) {
+        const sel = p.build?.selected && !p.build.kind ? p.build.selected : '';
+        if (sel !== shownSelection) {
+          shownSelection = sel;
+          const piece = sel ? campusLayout.objects.find((o) => o.id === sel) : null;
+          campusWorld.setSelected(piece ? placedBounds(piece) : null);
+        }
       }
 
       // Move me.
@@ -1030,7 +1108,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       target.z += (fz - target.z) * k;
       camera.position.copy(target).add(cameraOffset());
       camera.lookAt(target);
-      campusWorld?.follow(target, sun);
+      campusWorld?.follow(target, sun, camera);
 
       if (composer) composer.render(dt);
       else renderer.render(scene, camera);

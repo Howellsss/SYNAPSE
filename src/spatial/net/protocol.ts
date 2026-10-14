@@ -77,6 +77,12 @@ export interface AdmitMsg {
   t: number;
 }
 
+/** Build mode saved a change to the campus: everyone reloads the layout. */
+export interface LayoutMsg {
+  userId: string;
+  t: number;
+}
+
 export type EmoteKind = 'wave' | 'cheer' | 'heart' | 'raise_hand' | 'lower_hand';
 export const EMOTES: EmoteKind[] = ['wave', 'cheer', 'heart', 'raise_hand', 'lower_hand'];
 
@@ -160,6 +166,13 @@ export function parseKnock(raw: unknown): KnockMsg | null {
   const zoneId = str(raw.zoneId);
   const t = num(raw.t, Number.MAX_SAFE_INTEGER);
   return userId && zoneId && t !== null ? { userId, zoneId, t } : null;
+}
+
+export function parseLayout(raw: unknown): LayoutMsg | null {
+  if (!isObj(raw)) return null;
+  const userId = str(raw.userId);
+  const t = num(raw.t, Number.MAX_SAFE_INTEGER);
+  return userId && t !== null ? { userId, t } : null;
 }
 
 export function parseAdmit(raw: unknown): AdmitMsg | null {

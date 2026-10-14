@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { isFree, walkMap } from '../floor';
 import { findPath } from '../pathfinding';
 import { mapCell } from '../floor';
-import { KIT, KIT_BY_ID, isGlb, itemSize, placedBlocks, placedSeats } from './kit';
+import { KIT, KIT_BY_ID, fitsAt, isGlb, itemSize, pieceAt, placedBlocks, placedSeats } from './kit';
+import { addPiece, applyEdits, movePiece, NO_EDITS, readEdits, removePiece } from './office';
 import { buildCampus, campusObstacles, campusSeats, wallSegments, zoneAt } from './layout';
 
 const c = buildCampus(['Video', 'Tech']);
@@ -74,5 +75,48 @@ describe('campus layout', () => {
   it('keeps pieces added in build mode', () => {
     const more = buildCampus([], [{ id: 'mine-1', kind: 'tree', x: 70, z: 50, rot: 0 }]);
     expect(more.objects.some((o) => o.id === 'mine-1')).toBe(true);
+  });
+});
+
+describe('build mode', () => {
+  const obstacles = campusObstacles(c);
+  it('places pieces on open ground, not in walls, water or other furniture', () => {
+    expect(fitsAt(obstacles, { id: 'g', kind: 'bench', x: 60.5, z: 56, rot: 0 }, c.width, c.depth)).toBe(true);
+    expect(fitsAt(obstacles, { id: 'g', kind: 'bench', x: 60.5, z: 79, rot: 0 }, c.width, c.depth)).toBe(false); // the pond
+    expect(fitsAt(obstacles, { id: 'g', kind: 'bench', x: 45.1, z: 15, rot: 0 }, c.width, c.depth)).toBe(false); // the hall's wall
+    expect(fitsAt(obstacles, { id: 'g', kind: 'bench', x: 0.2, z: 15, rot: 0 }, c.width, c.depth)).toBe(false); // off the grounds
+    // A rug can go under things.
+    expect(fitsAt(obstacles, { id: 'g', kind: 'rug_navy', x: 60.5, z: 15, rot: 0 }, c.width, c.depth)).toBe(true);
+  });
+
+  it('picks the smallest piece under a point and never layout-only ones', () => {
+    const objects = [...c.objects, { id: 'r', kind: 'rug_gold', x: 60.5, z: 50, rot: 0 }, { id: 'p', kind: 'planter_small', x: 60.5, z: 50, rot: 0 }];
+    expect(pieceAt(objects, 60.5, 50)?.id).toBe('p');
+    expect(pieceAt(objects, 61.6, 50)?.id).toBe('r');
+    expect(pieceAt(c.objects, 60.5, 46.75)).toBeNull(); // the grand fountain is part of the layout
+  });
+
+  it('adds, moves, turns and removes pieces, and the result survives saving', () => {
+    const base = c.objects.find((o) => o.kind === 'bench')!;
+    let e = addPiece(NO_EDITS, { id: 'u1', kind: 'monstera', x: 50, z: 50, rot: 0 });
+    e = movePiece(e, c.objects, 'u1', { x: 51, z: 50, rot: Math.PI / 2 });
+    expect(e.added).toEqual([{ id: 'u1', kind: 'monstera', x: 51, z: 50, rot: Math.PI / 2 }]);
+    // A layout piece moved becomes an added copy, and the original is taken away.
+    e = movePiece(e, c.objects, base.id, { x: 52, z: 52, rot: 0 }, 'u2');
+    expect(e.removed).toEqual([base.id]);
+    expect(e.added.find((p) => p.id === 'u2')).toMatchObject({ kind: base.kind, x: 52, z: 52 });
+    e = removePiece(e, 'u1');
+    expect(e.added.map((p) => p.id)).toEqual(['u2']);
+    const saved = readEdits(JSON.parse(JSON.stringify(e)));
+    expect(saved).toEqual(e);
+    const out = applyEdits(c, saved);
+    expect(out.objects.some((o) => o.id === base.id)).toBe(false);
+    expect(out.objects.some((o) => o.id === 'u2')).toBe(true);
+  });
+
+  it('drops anything unsafe in saved edits', () => {
+    const e = readEdits({ added: [{ id: 'bad id!', kind: 'bench', x: 1, z: 1, rot: 0 }, { id: 'ok', kind: 'nope', x: 1, z: 1, rot: 0 }, { id: 'u3', kind: 'bench', x: 9999, z: 5, rot: 0 }], removed: [5, 'x'] });
+    expect(e.added).toEqual([{ id: 'u3', kind: 'bench', x: c.width, z: 5, rot: 0 }]);
+    expect(e.removed).toEqual(['x']);
   });
 });

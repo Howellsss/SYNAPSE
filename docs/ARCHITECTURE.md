@@ -391,6 +391,29 @@ What you see inside a space, until the art kit brings rooms and furniture:
   `BAKED_ground`, which keeps its own height, unlike `BAKED_floor`) that runs past every edge of the
   screen, never an empty sky; zooming out stops at 0.6 so the park always fills the view, the camera stays over the office, labels show first
   names (yours too), and on High quality ambient occlusion (`GTAOPass`) adds soft contact shadows.
+- **SYNAPSE Campus** (`campus-01`, listed first in Workspace settings → 3D office): one large
+  workspace (120 × 96 m) with many places in it, so walking through a door never leaves the
+  workspace. `spatial/scene/campus/layout.ts` is pure data: Office 02 as the headquarters, an
+  all-hands hall with a stage, a café and lounge, four team areas named after the account's
+  departments (`team.ts` → `loadDepartments`), four glass meeting rooms, focus booths, a game room,
+  a library, a garden with a pond and a central plaza, joined by avenues. Each named area is a
+  `Zone`: its type feeds proximity like a room (meeting rooms and booths are closed, the stage
+  carries, quiet zones are quiet) and the location pill shows where you are. Furniture comes from
+  `campus/kit.ts`: pieces cut out of `office-02.glb` by node name (pivot, facing, footprints,
+  seats) plus pieces drawn in code (trees, benches, fountains, rugs, stage…). The renderer
+  (`components/spaces/scene/campusWorld.ts`) draws one `InstancedMesh` per part per kind, canvas
+  textures for the lawn, pavers and floors, glass or solid walls with door gaps, and a sign per
+  area that faces the camera; the sun's shadow box follows the view. Walking uses a 50 cm grid.
+- **Views:** from above (default, about 50° down) or angled from the corner, switched in the
+  right toolbar and remembered on the device (`spatial/view.ts`).
+- **Build mode** (campus, people who can edit the office): the hammer in the right toolbar opens
+  the catalog. Pick a piece and click the floor (a gold preview where it fits, red where a wall,
+  water or furniture is in the way; R turns it), or click a piece to turn, move or remove it.
+  Changes are saved in `spaces.config.campus` as `{ added, removed }` (`campus/office.ts`:
+  `readEdits` checks ids, kinds and bounds; a layout piece that's moved or turned becomes an added
+  copy and its id goes in `removed`). The change shows at once, each save starts from the latest
+  saved layout so two builders don't undo each other, and a `layout` message on the space channel
+  tells everyone else to reload it. No database change was needed (`config` is jsonb).
 
 ## Checks
 

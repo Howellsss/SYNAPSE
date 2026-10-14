@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { KIT_BY_ID, isGlb, type Placed, type ProcItem, type ProcKind } from '@/spatial/scene/campus/kit';
+import type { Rect } from '@/spatial/scene/offices';
 import { WALL_T, wallSegments, type CampusLayout, type FloorFinish, type Zone } from '@/spatial/scene/campus/layout';
 
 interface Part { geo: THREE.BufferGeometry; mat: THREE.Material; local: THREE.Matrix4; shadow: boolean }
@@ -30,6 +31,21 @@ function canvasTex(size: number, draw: (g: CanvasRenderingContext2D, s: number) 
 }
 
 /** Deterministic noise so the textures look the same for everyone. */
+/** A woven rug: the colour, a soft weave, and a border in navy (or gold on a navy rug). */
+function rugTex(color: string): THREE.CanvasTexture {
+  return canvasTex(256, (g, s) => {
+    g.fillStyle = color;
+    g.fillRect(0, 0, s, s);
+    speckle(g, s, ['rgba(0,0,0,0.10)', 'rgba(255,255,255,0.06)'], 2200, [1, 2], 23);
+    const edge = color.toUpperCase() === '#1E3A6E' ? GOLD : '#1B2A4A';
+    g.strokeStyle = edge;
+    g.lineWidth = 14;
+    g.strokeRect(14, 14, s - 28, s - 28);
+    g.lineWidth = 3;
+    g.strokeRect(34, 34, s - 68, s - 68);
+  });
+}
+
 function rng(seed: number) {
   let s = seed >>> 0;
   return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
@@ -133,9 +149,9 @@ const M = {
   pine: new THREE.MeshStandardMaterial({ color: '#2F6B3A', roughness: 0.85, flatShading: true }),
   blossom: new THREE.MeshStandardMaterial({ color: '#F2A7C3', roughness: 0.8, flatShading: true }),
   blossomDeep: new THREE.MeshStandardMaterial({ color: '#E27FA6', roughness: 0.8, flatShading: true }),
-  stone: new THREE.MeshStandardMaterial({ color: '#9DA3AE', roughness: 0.85 }),
-  stoneDark: new THREE.MeshStandardMaterial({ color: '#6F7684', roughness: 0.9 }),
-  water: new THREE.MeshStandardMaterial({ color: '#3FA9D6', roughness: 0.08, metalness: 0.1, emissive: '#0E4F78', emissiveIntensity: 0.25 }),
+  stone: new THREE.MeshStandardMaterial({ color: '#A8824F', roughness: 0.8 }),
+  stoneDark: new THREE.MeshStandardMaterial({ color: '#545E70', roughness: 0.9 }),
+  water: new THREE.MeshStandardMaterial({ color: '#2A8BC2', roughness: 0.08, metalness: 0.1, emissive: '#0B3F66', emissiveIntensity: 0.3 }),
   metal: new THREE.MeshStandardMaterial({ color: '#1C2333', roughness: 0.45, metalness: 0.6 }),
   gold: new THREE.MeshStandardMaterial({ color: GOLD, roughness: 0.35, metalness: 0.7 }),
   wood: new THREE.MeshStandardMaterial({ color: '#9A6B42', roughness: 0.7 }),
@@ -207,9 +223,16 @@ function procParts(kind: ProcKind, item: ProcItem): Part[] {
     case 'boulder':
       return [P(G.ico, M.stoneDark, mx(0, 0.3, 0, 1.2, 0.7, 1.0)), P(G.ico, M.stone, mx(0.35, 0.25, 0.2, 0.6, 0.45, 0.55))];
     case 'rug':
-      return [P(G.box, new THREE.MeshStandardMaterial({ color: item.color ?? '#1E3A6E', roughness: 1 }), mx(0, 0.012, 0, 3, 0.02, 2), false)];
+      // Just above a building's floor.
+      return [P(G.box, new THREE.MeshStandardMaterial({ map: rugTex(item.color ?? '#1E3A6E'), roughness: 1 }), mx(0, 0.072, 0, 3, 0.02, 2), false)];
     case 'stage':
-      return [P(G.box, M.stageTop, mx(0, 0.18, 0, 8, 0.36, 3)), P(G.box, M.gold, mx(0, 0.37, 1.48, 8, 0.03, 0.05), false)];
+      return [
+        P(G.box, M.navy, mx(0, 0.08, 0, 12, 0.16, 3.5)),
+        // a gold inlay just inside the edge
+        P(G.box, M.gold, mx(0, 0.165, -1.45, 11.2, 0.01, 0.05), false), P(G.box, M.gold, mx(0, 0.165, 1.45, 11.2, 0.01, 0.05), false),
+        P(G.box, M.gold, mx(-5.6, 0.165, 0, 0.05, 0.01, 2.95), false), P(G.box, M.gold, mx(5.6, 0.165, 0, 0.05, 0.01, 2.95), false),
+        P(G.box, M.gold, mx(0, 0.17, 1.73, 12, 0.03, 0.06), false), P(G.box, M.gold, mx(0, 0.08, 1.76, 12, 0.04, 0.02), false),
+      ];
     case 'big_screen':
       return [P(G.box, M.navy, mx(0, 2.0, 0, 6.2, 2.6, 0.12)), P(G.box, M.screen, mx(0, 2.0, 0.07, 5.9, 2.35, 0.02), false), P(G.box, M.gold, mx(0, 0.72, 0.02, 6.2, 0.04, 0.16), false)];
     case 'podium':
@@ -231,8 +254,13 @@ export interface CampusWorld {
   attachKit(gltf: GLTF): void;
   /** Re-place the pieces (after build mode changes). */
   setObjects(objects: Placed[]): void;
+  /** Build mode: a see-through preview of a piece, gold where it fits and red where it doesn't. */
+  setGhost(p: Placed | null, ok: boolean): void;
+  /** Build mode: outline the chosen piece's footprint. */
+  setSelected(bounds: Rect | null): void;
   /** Keep the sun's shadow box over where the camera looks. */
-  follow(target: THREE.Vector3, sun: THREE.DirectionalLight): void;
+  /** …and turn the place signs to face the camera. */
+  follow(target: THREE.Vector3, sun: THREE.DirectionalLight, camera: THREE.Camera): void;
   dispose(): void;
 }
 
@@ -356,7 +384,8 @@ export function createCampusWorld(layout: CampusLayout, { shadows }: { shadows: 
 
   // Names of places, on the floor.
   // (A stage's name would sit under the stage: the hall's name covers it.)
-  for (const z of layout.zones) if (z.type !== 'stage') root.add(zoneLabel(z, keep));
+  const signs = layout.zones.filter((z) => z.type !== 'stage').map((z) => zoneLabel(z, keep));
+  signs.forEach((m) => root.add(m));
 
   // Pieces: instanced, one InstancedMesh per part of each kit item.
   const partsByKind = new Map<string, Part[]>();
@@ -390,6 +419,19 @@ export function createCampusWorld(layout: CampusLayout, { shadows }: { shadows: 
   };
   place();
 
+  // Build mode: the preview and the selection outline.
+  const ghostOk = keep(new THREE.MeshBasicMaterial({ color: '#E9B949', transparent: true, opacity: 0.55, depthWrite: false }));
+  const ghostBad = keep(new THREE.MeshBasicMaterial({ color: '#D9483B', transparent: true, opacity: 0.55, depthWrite: false }));
+  const ghost = new THREE.Group();
+  ghost.renderOrder = 3;
+  root.add(ghost);
+  let ghostKind: string | null = null;
+  const outlineMat = keep(new THREE.MeshBasicMaterial({ color: '#F4C66B', depthTest: false, transparent: true }));
+  const outline = new THREE.Group();
+  outline.renderOrder = 4;
+  root.add(outline);
+  const bar = keep(new THREE.BoxGeometry(1, 0.04, 1));
+
   return {
     root,
     attachKit(gltf) {
@@ -421,13 +463,48 @@ export function createCampusWorld(layout: CampusLayout, { shadows }: { shadows: 
         }
         partsByKind.set(item.id, parts);
       }
+      ghostKind = null;
       place();
     },
     setObjects(objects) {
       current = objects;
       place();
     },
-    follow(target, sun) {
+    setGhost(p, ok) {
+      if (!p) { ghost.visible = false; return; }
+      if (ghostKind !== p.kind) {
+        ghost.clear();
+        ghostKind = p.kind;
+        for (const part of partsByKind.get(p.kind) ?? []) {
+          const m = new THREE.Mesh(part.geo, ghostOk);
+          m.matrixAutoUpdate = false;
+          m.matrix.copy(part.local);
+          ghost.add(m);
+        }
+      }
+      for (const m of ghost.children as THREE.Mesh[]) m.material = ok ? ghostOk : ghostBad;
+      ghost.position.set(p.x, 0.01, p.z);
+      ghost.rotation.y = p.rot;
+      ghost.visible = true;
+    },
+    setSelected(b) {
+      outline.clear();
+      if (!b) return;
+      const t = 0.08;
+      const y = 0.12;
+      const w = b.x1 - b.x0 + 0.3;
+      const d = b.z1 - b.z0 + 0.3;
+      const cx = (b.x0 + b.x1) / 2;
+      const cz = (b.z0 + b.z1) / 2;
+      for (const [x, z, sx, sz] of [[cx, cz - d / 2, w, t], [cx, cz + d / 2, w, t], [cx - w / 2, cz, t, d], [cx + w / 2, cz, t, d]]) {
+        const m = new THREE.Mesh(bar, outlineMat);
+        m.position.set(x, y, z);
+        m.scale.set(sx, 1, sz);
+        outline.add(m);
+      }
+    },
+    follow(target, sun, camera) {
+      for (const m of signs) m.quaternion.copy(camera.quaternion);
       // A shadow box about 50 m across, centred on the view, moved in whole texels so edges don't shimmer.
       const step = 50 / 2048;
       const tx = Math.round(target.x / step) * step;
@@ -465,12 +542,12 @@ function zoneLabel(z: Zone, keep: <T extends { dispose(): void }>(x: T) => T): T
   const tex = keep(new THREE.CanvasTexture(c));
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
-  const height = z.type === 'meeting_room' || z.type === 'private_office' ? 0.6 : 0.95;
+  const height = z.type === 'meeting_room' || z.type === 'private_office' ? 0.7 : 1.05;
   const width = (height * c.width) / c.height;
-  const mesh = new THREE.Mesh(keep(new THREE.PlaneGeometry(width, height)), keep(new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false })));
-  mesh.rotation.x = -Math.PI / 2;
+  const mesh = new THREE.Mesh(keep(new THREE.PlaneGeometry(width, height)), keep(new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false, toneMapped: false })));
+  // A sign hanging above the room's back wall, facing the camera (see follow), so furniture never covers it.
   const { x0, x1, z0 } = z.rect;
-  mesh.position.set((x0 + x1) / 2, 0.06, z0 + height * 0.5 + 0.45);
+  mesh.position.set((x0 + x1) / 2, 2.7, z0 + 2.6);
   mesh.renderOrder = 2;
   return mesh;
 }

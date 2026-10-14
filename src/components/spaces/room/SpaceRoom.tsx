@@ -4,7 +4,7 @@ import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from '@/lib/router';
 import { useSpaceDock } from '@/context/SpaceDockContext';
-import { listSpaces } from '@/lib/spaces';
+import { getSpaceBySlug, listSpaces, updateSpace } from '@/lib/spaces';
 import { characterFileUrls, listCharacters, saveMyCharacter } from '@/lib/characters';
 import { usePlatformAdmin } from '@/lib/platformAdmin';
 import { spaceTypeInfo } from '@/spatial/data/spaceTypes';
@@ -20,7 +20,7 @@ import type { LocalState } from '@/spatial/net/moveSender';
 import { characterFor, chosenCharacterId, pickSpaceCharacter, resolveSpaceClips } from '@/spatial/scene/avatarClips';
 import { floorFor } from '@/spatial/scene/floor';
 import { officeFor } from '@/spatial/scene/offices';
-import type { SceneCharacter, SceneControls, SceneView } from '@/components/spaces/scene/SpaceScene';
+import type { BuildState, SceneCharacter, SceneControls, SceneView } from '@/components/spaces/scene/SpaceScene';
 import { CharacterPicker } from '@/components/spaces/CharacterPicker';
 import { loadQuality, saveQuality, type GraphicsQuality } from '@/spatial/quality';
 import { normalizeMediaPrefs } from '@/spatial/media/devices';
@@ -38,9 +38,10 @@ import { PeoplePanel, PeopleCountButton } from './PeoplePanel';
 import { ConnectionPill, ControlBar, WorldToolbar } from './Overlay';
 import { InviteToSpace } from './InviteToSpace';
 import { DoorCard } from './DoorCard';
+import { BuildPanel } from './BuildPanel';
 import type { Character, Space, SpaceRoom as SpaceRoomConfig } from '@/types';
 import { loadDepartments } from '@/lib/team';
-import { campusOffice, readEdits } from '@/spatial/scene/campus/office';
+import { addPiece, campusOffice, movePiece, newPieceId, readEdits, removePiece, type CampusEdits } from '@/spatial/scene/campus/office';
 import { zoneAt } from '@/spatial/scene/campus/layout';
 import { loadView, saveView } from '@/spatial/view';
 import { cn } from '@/lib/utils';
@@ -84,7 +85,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
     userId: user.id, name, avatarUrl: profile?.avatar_url ?? null, avatarHash: null, status,
     zoneId: myZone, deskId: null, conversation: myGroup, locks: myLocks, characterId: chosenCharacterId(profile?.avatar_config),
   } : null), [user, name, profile?.avatar_url, profile?.avatar_config, status, myZone, myGroup, myLocks]);
-  const { people, connection, remotes, updateLocal, startPath, endPath, sendEmote, onEmote, sendKnock, sendAdmit, onRoomSignal, setCallRoom } = useSpaceChannel(space.id, me, away);
+  const { people, connection, remotes, updateLocal, startPath, endPath, sendEmote, onEmote, sendKnock, sendAdmit, onRoomSignal, sendLayout, onLayout, setCallRoom } = useSpaceChannel(space.id, me, away);
 
   // The scene reports where I am every frame: the network sender decides what to send, and
   // proximity hears about it when I've moved a little.
@@ -150,7 +151,10 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
   }, [baseOffice?.id, workspace]);
   const deptKey = deptNames.join('|');
   const office = useMemo(() => (baseOffice?.id === 'campus-01' ? campusOffice(deptKey ? deptKey.split('|') : []) : baseOffice), [baseOffice, deptKey]);
-  const campusEdits = useMemo(() => readEdits(space.config?.campus), [space.config?.campus]);
+  const savedEdits = useMemo(() => readEdits(space.config?.campus), [space.config?.campus]);
+  // Build mode shows a change straight away, before it's saved.
+  const [pendingEdits, setPendingEdits] = useState<CampusEdits | null>(null);
+  const campusEdits = pendingEdits ?? savedEdits;
   const campusZone = office?.campus && myZone ? office.campus.zones.find((z) => z.id === myZone) ?? null : null;
   useEffect(() => {
     if (!office?.campus || !myPos) { setMyZone(null); return; }
@@ -236,6 +240,93 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
   useEffect(() => { setCallRoom(call.state === 'connected' ? call.room : null); }, [call.state, call.room, setCallRoom]);
   const canInvite = can(space.permissions, 'invite', role);
   const canEdit = can(space.permissions, 'edit_office', role);
+
+  // ---- Build mode (campus): add, turn, move and remove pieces, saved to the workspace for everyone.
+  const canBuild = !!office?.campus && canEdit;
+  const [building, setBuilding] = useState(false);
+  const [placing, setPlacing] = useState<{ kind: string; rot: number; moving: string | null } | null>(null);
+  const [selectedPiece, setSelectedPiece] = useState<string | null>(null);
+  const [savingBuild, setSavingBuild] = useState(false);
+  const spaceRef = useRef(space);
+  spaceRef.current = space;
+  const saveChain = useRef<Promise<void>>(Promise.resolve());
+  const saveEdits = useCallback((change: (e: CampusEdits) => CampusEdits) => {
+    setPendingEdits((cur) => change(cur ?? readEdits(spaceRef.current.config?.campus)));
+    setSavingBuild(true);
+    // One save at a time, each starting from what's saved now, so two people building don't undo each other.
+    saveChain.current = saveChain.current.then(async () => {
+      const latest = (await getSpaceBySlug(spaceRef.current.slug)).data ?? spaceRef.current;
+      const next = change(readEdits(latest.config?.campus));
+      const { data, error } = await updateSpace(latest.id, { config: { ...latest.config, campus: next } });
+      if (error || !data) toast(`Couldn't save that change. ${error ?? ''}`.trim(), 'error');
+      else { onSpaceChange(data); sendLayout(); }
+    });
+    const mine = saveChain.current;
+    void mine.then(() => {
+      if (saveChain.current !== mine) return;
+      setPendingEdits(null);
+      setSavingBuild(false);
+    });
+  }, [onSpaceChange, sendLayout, toast]);
+  // Someone else changed the campus: load it.
+  useEffect(() => onLayout(() => {
+    void getSpaceBySlug(spaceRef.current.slug).then(({ data }) => { if (data) onSpaceChange(data); });
+  }), [onLayout, onSpaceChange]);
+  const layoutObjects = office?.campus?.objects;
+  const piece = useCallback((id: string | null) => {
+    if (!id || !office?.campus) return null;
+    return campusEdits.added.find((p) => p.id === id) ?? (campusEdits.removed.includes(id) ? null : office.campus.objects.find((p) => p.id === id) ?? null);
+  }, [office, campusEdits]);
+  const selected = piece(selectedPiece);
+  const stopBuilding = useCallback(() => { setBuilding(false); setPlacing(null); setSelectedPiece(null); }, []);
+  const turnBuild = useCallback(() => {
+    if (placing) { setPlacing({ ...placing, rot: (placing.rot + Math.PI / 2) % (Math.PI * 2) }); return; }
+    if (!selected || !layoutObjects) return;
+    const rot = (selected.rot + Math.PI / 2) % (Math.PI * 2);
+    // A layout piece that's turned becomes an added copy with a new id: keep it selected.
+    const id = selected.id;
+    const copyId = campusEdits.added.some((p) => p.id === id) ? id : newPieceId();
+    saveEdits((e) => movePiece(e, layoutObjects, id, { x: selected.x, z: selected.z, rot }, copyId));
+    setSelectedPiece(copyId);
+  }, [placing, selected, layoutObjects, saveEdits, campusEdits]);
+  const removeBuild = useCallback(() => {
+    if (!selected) return;
+    const id = selected.id;
+    saveEdits((e) => removePiece(e, id));
+    setSelectedPiece(null);
+  }, [selected, saveEdits]);
+  const build = useMemo<BuildState | null>(() => (building ? {
+    kind: placing?.kind ?? null,
+    rot: placing?.rot ?? 0,
+    moving: placing?.moving ?? null,
+    selected: selectedPiece,
+    onPlace: (x, z) => {
+      if (!placing || !layoutObjects) return;
+      const { kind, rot, moving } = placing;
+      // Ids are made here, once, so the change shown straight away and the one saved match.
+      const id = newPieceId();
+      if (moving) {
+        saveEdits((e) => movePiece(e, layoutObjects, moving, { x, z, rot }, id));
+        setPlacing(null);
+      } else {
+        saveEdits((e) => addPiece(e, { id, kind, x, z, rot }));
+      }
+    },
+    onSelect: setSelectedPiece,
+  } : null), [building, placing, selectedPiece, layoutObjects, saveEdits]);
+  // Keys while building: R turns, Delete removes, Esc steps back.
+  useEffect(() => {
+    if (!building) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || (e.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))) return;
+      if (e.key === 'r' || e.key === 'R') { e.preventDefault(); turnBuild(); }
+      else if ((e.key === 'Delete' || e.key === 'Backspace') && selected && !placing) { e.preventDefault(); removeBuild(); }
+      else if (e.key === 'Escape') { if (placing) setPlacing(null); else if (selectedPiece) setSelectedPiece(null); else stopBuilding(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [building, placing, selected, selectedPiece, turnBuild, removeBuild, stopBuilding]);
+  useEffect(() => { if (!canBuild) stopBuilding(); }, [canBuild, stopBuilding]);
   const info = spaceTypeInfo(space.space_type);
   const template = templateInfo(space.template_key);
   const rooms = useMemo<SpaceRoomConfig[]>(() => {
@@ -333,6 +424,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
                 onCharacterError={(m) => toast(m, 'error')}
                 campusEdits={campusEdits}
                 view={view}
+                build={build}
               />
             </Suspense>
           )}
@@ -451,8 +543,26 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
             onCharacter={library.list.length ? () => setPickerOpen(true) : undefined}
             view={view}
             onView={changeView}
+            onBuild={canBuild ? () => (building ? stopBuilding() : setBuilding(true)) : undefined}
+            building={building}
           />
         </div>
+
+        {building && (
+          <div className="pointer-events-none absolute left-3 top-40 z-10 sm:left-4">
+            <BuildPanel
+              picking={placing ? { kind: placing.kind, moving: !!placing.moving } : null}
+              selected={selected ? { kind: selected.kind } : null}
+              saving={savingBuild}
+              onPick={(kind) => { setSelectedPiece(null); setPlacing(kind ? { kind, rot: 0, moving: null } : null); }}
+              onTurn={turnBuild}
+              onMove={() => { if (selected) { setPlacing({ kind: selected.kind, rot: selected.rot, moving: selected.id }); setSelectedPiece(null); } }}
+              onRemove={removeBuild}
+              onDeselect={() => setSelectedPiece(null)}
+              onClose={stopBuilding}
+            />
+          </div>
+        )}
 
         {mapOpen && (
           <FloorMap

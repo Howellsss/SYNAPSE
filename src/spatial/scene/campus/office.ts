@@ -44,3 +44,28 @@ export function campusOffice(teamNames: string[] = []): OfficeLayout {
   const campus = buildCampus(teamNames);
   return { ...CAMPUS_01, campus, obstacles: campusObstacles(campus), seats: campusSeats(campus) };
 }
+
+/** A new id for a piece someone adds (safe in readEdits). */
+export function newPieceId(): string {
+  return `u${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
+}
+
+/** Build mode: add a piece. */
+export function addPiece(e: CampusEdits, p: Placed): CampusEdits {
+  return { added: [...e.added, p].slice(-MAX_ADDED), removed: e.removed };
+}
+
+/** Build mode: take a piece away (one someone added is forgotten; a layout piece is remembered as removed). */
+export function removePiece(e: CampusEdits, id: string): CampusEdits {
+  if (e.added.some((p) => p.id === id)) return { added: e.added.filter((p) => p.id !== id), removed: e.removed };
+  return e.removed.includes(id) ? e : { added: e.added, removed: [...e.removed, id] };
+}
+
+/** Build mode: put a piece somewhere else, or turn it (a layout piece becomes an added copy). */
+export function movePiece(e: CampusEdits, layoutObjects: Placed[], id: string, to: { x: number; z: number; rot: number }, copyId = newPieceId()): CampusEdits {
+  const own = e.added.find((p) => p.id === id);
+  if (own) return { added: e.added.map((p) => (p.id === id ? { ...p, ...to } : p)), removed: e.removed };
+  const base = layoutObjects.find((p) => p.id === id);
+  if (!base) return e;
+  return addPiece(removePiece(e, id), { id: copyId, kind: base.kind, ...to });
+}

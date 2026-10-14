@@ -4,8 +4,8 @@ import { supabase } from '@/lib/supabase';
 import { MoveSender, type LocalState } from './moveSender';
 import { RemoteMover } from './interpolation';
 import {
-  mergePresence, parseAdmit, parseEmote, parseKnock, parseMove, parsePath,
-  type AdmitMsg, type EmoteKind, type EmoteMsg, type KnockMsg, type MoveMsg, type PathMsg, type PresenceMeta,
+  mergePresence, parseAdmit, parseEmote, parseKnock, parseLayout, parseMove, parsePath,
+  type AdmitMsg, type EmoteKind, type EmoteMsg, type KnockMsg, type LayoutMsg, type MoveMsg, type PathMsg, type PresenceMeta,
 } from './protocol';
 import type { ConnectionState } from './status';
 
@@ -13,7 +13,7 @@ import type { ConnectionState } from './status';
 export type MeInput = Omit<PresenceMeta, 'joinedAt' | 'away'>;
 
 type RealtimeChannel = ReturnType<typeof supabase.channel>;
-type SpaceEvent = 'move' | 'path' | 'emote' | 'knock' | 'admit';
+type SpaceEvent = 'move' | 'path' | 'emote' | 'knock' | 'admit' | 'layout';
 
 /** LiveKit data topic for movement and signals inside a space. */
 export const SPACE_TOPIC = 'synapse.space';
@@ -65,6 +65,7 @@ export function useSpaceChannel(spaceId: string | null, me: MeInput | null, away
   const presentIds = useRef(new Set<string>());
   const emoteListeners = useRef(new Set<(e: EmoteMsg) => void>());
   const roomListeners = useRef(new Set<(e: { knock?: KnockMsg; admit?: AdmitMsg }) => void>());
+  const layoutListeners = useRef(new Set<() => void>());
   const lastLocal = useRef<LocalState | null>(null);
   const userId = me?.userId ?? null;
   const userIdRef = useRef(userId);
@@ -77,7 +78,7 @@ export function useSpaceChannel(spaceId: string | null, me: MeInput | null, away
   const callRef = useRef<Room | null>(null);
   callRef.current = callRoom;
 
-  const send = useCallback((event: SpaceEvent, body: MoveMsg | PathMsg | EmoteMsg | KnockMsg | AdmitMsg) => {
+  const send = useCallback((event: SpaceEvent, body: MoveMsg | PathMsg | EmoteMsg | KnockMsg | AdmitMsg | LayoutMsg) => {
     const room = callRef.current;
     if (room && room.state === 'connected') {
       room.localParticipant
@@ -125,6 +126,9 @@ export function useSpaceChannel(spaceId: string | null, me: MeInput | null, away
     } else if (event === 'admit') {
       const a = parseAdmit(raw);
       if (a && accept(a.userId) && a.to === userId && once(`a:${a.userId}:${a.t}`)) roomListeners.current.forEach((fn) => fn({ admit: a }));
+    } else if (event === 'layout') {
+      const l = parseLayout(raw);
+      if (l && accept(l.userId) && once(`l:${l.userId}:${l.t}`)) layoutListeners.current.forEach((fn) => fn());
     }
   };
   const handleRef = useRef(handle);
@@ -137,7 +141,7 @@ export function useSpaceChannel(spaceId: string | null, me: MeInput | null, away
       if (topic !== SPACE_TOPIC || !participant) return;
       let msg: { e?: unknown; p?: unknown };
       try { msg = JSON.parse(dec.decode(payload)); } catch { return; }
-      if (msg.e === 'move' || msg.e === 'path' || msg.e === 'emote' || msg.e === 'knock' || msg.e === 'admit') handleRef.current(msg.e, msg.p, participant.identity);
+      if (msg.e === 'move' || msg.e === 'path' || msg.e === 'emote' || msg.e === 'knock' || msg.e === 'admit' || msg.e === 'layout') handleRef.current(msg.e, msg.p, participant.identity);
     };
     callRoom.on('dataReceived', onData);
     // Joined the call: send where you are so people place you straight away.
@@ -171,6 +175,7 @@ export function useSpaceChannel(spaceId: string | null, me: MeInput | null, away
       .on('broadcast', { event: 'emote' }, ({ payload }) => handleRef.current('emote', payload))
       .on('broadcast', { event: 'knock' }, ({ payload }) => handleRef.current('knock', payload))
       .on('broadcast', { event: 'admit' }, ({ payload }) => handleRef.current('admit', payload))
+      .on('broadcast', { event: 'layout' }, ({ payload }) => handleRef.current('layout', payload))
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           subscribed = true;
@@ -238,5 +243,14 @@ export function useSpaceChannel(spaceId: string | null, me: MeInput | null, away
     return () => { roomListeners.current.delete(fn); };
   }, []);
 
-  return { people, connection, remotes, updateLocal, startPath, endPath, sendEmote, onEmote, sendKnock, sendAdmit, onRoomSignal, setCallRoom };
+  /** Build mode: tell everyone the campus changed (they reload it). */
+  const sendLayout = useCallback(() => {
+    if (userId) send('layout', { userId, t: Date.now() });
+  }, [send, userId]);
+  const onLayout = useCallback((fn: () => void) => {
+    layoutListeners.current.add(fn);
+    return () => { layoutListeners.current.delete(fn); };
+  }, []);
+
+  return { people, connection, remotes, updateLocal, startPath, endPath, sendEmote, onEmote, sendKnock, sendAdmit, onRoomSignal, sendLayout, onLayout, setCallRoom };
 }
