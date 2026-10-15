@@ -3,6 +3,7 @@ import { isFree, walkMap } from '../floor';
 import { findPath } from '../pathfinding';
 import { mapCell } from '../floor';
 import { KIT, KIT_BY_ID, fitsAt, isGlb, itemSize, pieceAt, placedBlocks, placedSeats } from './kit';
+import { canCircle, reachable, strandedPatches } from './reach';
 import { addPiece, applyEdits, movePiece, NO_EDITS, readEdits, removePiece } from './office';
 import { buildCampus, campusObstacles, campusSeats, wallSegments, zoneAt } from './layout';
 
@@ -118,5 +119,17 @@ describe('build mode', () => {
     const e = readEdits({ added: [{ id: 'bad id!', kind: 'bench', x: 1, z: 1, rot: 0 }, { id: 'ok', kind: 'nope', x: 1, z: 1, rot: 0 }, { id: 'u3', kind: 'bench', x: 9999, z: 5, rot: 0 }], removed: [5, 'x'] });
     expect(e.added).toEqual([{ id: 'u3', kind: 'bench', x: c.width, z: 5, rot: 0 }]);
     expect(e.removed).toEqual(['x']);
+  });
+});
+
+describe('getting everywhere on the campus', () => {
+  it('leaves no open floor you cannot get to (bigger than a corner behind furniture)', () => {
+    const seen = reachable(map.grid, mapCell(map, c.spawn.x, c.spawn.z));
+    expect(strandedPatches(map.grid, seen, 0.5, { x0: 0, x1: c.width, z0: 0, z1: c.depth }, 20)).toEqual([]);
+  });
+
+  it('lets you walk all the way round the fountain, past the front of the benches', () => {
+    const f = c.objects.find((o) => o.id === 'plaza-fountain')!;
+    expect(canCircle(map.grid, 0.5, f.x, f.z, 3.2, 6.2)).toBe(true);
   });
 });

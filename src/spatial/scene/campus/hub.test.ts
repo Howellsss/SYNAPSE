@@ -3,6 +3,7 @@ import { isFree, mapCell, walkMap } from '../floor';
 import { findPath } from '../pathfinding';
 import { buildHub, HUB_D, HUB_W } from './hub';
 import { campusObstacles, campusSeats, portalAt, wingAt, zoneAt } from './layout';
+import { canCircle, reachable, strandedPatches } from './reach';
 
 const hub = buildHub();
 const map = walkMap({ width: HUB_W, depth: HUB_D }, campusObstacles(hub), 0.5, 0.28);
@@ -66,5 +67,18 @@ describe('SYNAPSE Hub', () => {
     expect(zoneAt(hub.zones, 185, 10)?.name).toBe('Boardroom');
     expect(zoneAt(hub.zones, 165, 100)?.name).toBe('Library');
     expect(campusSeats(hub).length).toBeGreaterThan(500);
+  });
+
+  it('leaves no open floor you cannot get to, in any place', () => {
+    for (const w of hub.wings!) {
+      const start = w.id === 'court' ? hub.spawn : hub.portals!.find((p) => p.id === `to-${w.id}`)!.to;
+      const seen = reachable(map.grid, mapCell(map, start.x, start.z));
+      expect(strandedPatches(map.grid, seen, 0.5, w.rect, 12), w.id).toEqual([]);
+    }
+  });
+
+  it('lets you walk all the way round the fountain, past the front of the benches', () => {
+    const f = hub.objects.find((o) => o.id === 'court-fountain')!;
+    expect(canCircle(map.grid, 0.5, f.x, f.z, 3.2, 6.2)).toBe(true);
   });
 });

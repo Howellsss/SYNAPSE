@@ -255,17 +255,60 @@ function rectToWorld(item: KitItem, p: Placed, b: Rect): Rect {
   return { x0: Math.min(...pts.map((q) => q[0])), x1: Math.max(...pts.map((q) => q[0])), z0: Math.min(...pts.map((q) => q[1])), z1: Math.max(...pts.map((q) => q[1])) };
 }
 
+/** Pieces that are round from above: they block a circle, not a square. */
+const ROUND: ProcKind[] = ['fountain', 'big_fountain', 'fire_pit', 'flowers_round', 'planter_tree', 'umbrella_set', 'dining_set', 'beanbag'];
+
+/**
+ * A rectangle of the piece, in the world. Turned square to the floor it's one box; turned at an
+ * angle, its box would be far bigger than the piece (a bench at 45° would block a square 1.8 m
+ * across), so it's cut into short pieces along its length, each boxed on its own.
+ */
+function blockRects(item: KitItem, p: Placed, b: Rect): Rect[] {
+  const a = (((p.rot - (isGlb(item) ? item.rot0 : 0)) % (Math.PI / 2)) + Math.PI / 2) % (Math.PI / 2);
+  const square = a < 0.02 || a > Math.PI / 2 - 0.02;
+  const w = b.x1 - b.x0;
+  const d = b.z1 - b.z0;
+  if (square || Math.max(w, d) < 0.6) return [rectToWorld(item, p, b)];
+  const out: Rect[] = [];
+  const along = w >= d;
+  const short = Math.max(0.25, along ? d : w);
+  const n = Math.ceil((along ? w : d) / short);
+  for (let i = 0; i < n; i++) {
+    const t0 = i / n;
+    const t1 = (i + 1) / n;
+    out.push(rectToWorld(item, p, along
+      ? { x0: b.x0 + w * t0, x1: b.x0 + w * t1, z0: b.z0, z1: b.z1 }
+      : { x0: b.x0, x1: b.x1, z0: b.z0 + d * t0, z1: b.z0 + d * t1 }));
+  }
+  return out;
+}
+
+/** A circle as a few strips (for walking). */
+function circleRects(cx: number, cz: number, r: number): Rect[] {
+  const out: Rect[] = [];
+  const n = Math.max(3, Math.ceil(r / 0.35));
+  for (let i = 0; i < n; i++) {
+    const z0 = -r + (2 * r * i) / n;
+    const z1 = -r + (2 * r * (i + 1)) / n;
+    const zm = Math.min(Math.abs(z0), Math.abs(z1)) * (z0 * z1 < 0 ? 0 : 1);
+    const hw = Math.sqrt(Math.max(0, r * r - zm * zm));
+    out.push({ x0: cx - hw, x1: cx + hw, z0: cz + z0, z1: cz + z1 });
+  }
+  return out;
+}
+
 /** What a placed piece blocks for walking. */
 export function placedBlocks(p: Placed): Rect[] {
   const item = KIT_BY_ID.get(p.kind);
   if (!item) return [];
-  if (isGlb(item)) return item.blocks.map((b) => rectToWorld(item, p, b));
+  if (isGlb(item)) return item.blocks.flatMap((b) => blockRects(item, p, b));
   if (item.walkable) return [];
+  if (ROUND.includes(item.proc)) return circleRects(p.x, p.z, Math.min(item.w, item.d) / 2);
   // Trees and posts block their trunk, not their whole canopy.
   const shrink = ['tree', 'blossom', 'pine', 'lamp_post', 'oak', 'palm', 'potted_tree'].includes(item.proc) ? 0.4 : 1;
   const hw = (item.w * shrink) / 2;
   const hd = (item.d * shrink) / 2;
-  return [rectToWorld(item, p, { x0: -hw, x1: hw, z0: -hd, z1: hd })];
+  return blockRects(item, p, { x0: -hw, x1: hw, z0: -hd, z1: hd });
 }
 
 /** The seats a placed piece offers. */

@@ -308,7 +308,7 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
     for (const [i, a] of [0, HALF, PI, -HALF].entries()) {
       // Benches round the fountain, facing it, between the walks.
       const b = a + PI / 4;
-      add(`plaza-bench-${i}`, 'bench', cx + Math.sin(b) * 5.6, cz + Math.cos(b) * 5.6, b + PI);
+      add(`plaza-bench-${i}`, 'bench', cx + Math.sin(b) * 6.6, cz + Math.cos(b) * 6.6, b + PI);
     }
     // Walks out to the avenues, gently winding, and a loop round the park.
     walks.push({ width: 2.4, points: [[cx, cz - 7], [cx - 1.2, cz - 9.5], [cx + 0.6, cz - 11.5], [cx, 33.4]] });
@@ -326,7 +326,7 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
     }
     // Flower beds and bushes on the lawns inside the loop.
     for (const [i, a] of [PI / 4, (3 * PI) / 4, (5 * PI) / 4, (7 * PI) / 4].entries()) {
-      add(`park-bed-${i}`, 'flowers_round', cx + Math.cos(a) * 8.6, cz + Math.sin(a) * 6.4);
+      add(`park-bed-${i}`, 'flowers_round', cx + Math.cos(a) * 9.6, cz + Math.sin(a) * 7.4);
       add(`park-bush-${i}`, i % 2 ? 'bush_flower' : 'bush', cx + Math.cos(a + 0.35) * 12.6, cz + Math.sin(a + 0.35) * 9.8);
     }
     // Lamps along the loop.
