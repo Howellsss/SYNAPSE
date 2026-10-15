@@ -341,10 +341,10 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
     add('park-lights', 'string_lights', 50, 35.2);
     add('park-bench-ne', 'bench', 74.5, 36.6, -HALF);
     // Cars on the avenue and bikes by the park: click one to ride somewhere.
-    add('park-car-a', 'car_navy', 46, 61.75, HALF);
-    add('park-car-b', 'car_red', 50.6, 61.75, HALF);
-    for (const [i, x] of [68, 69, 70].entries()) add(`park-bike-${i}`, i % 2 ? 'bike_navy' : 'bike_teal', x, 59.3, 0);
-    add('park-palm-a', 'palm', 45.4, 57.8);
+    add('park-bike-park', 'bike_park', 70, 58.7, 0);
+    ['bike_teal', 'bike_red', 'bike_navy', 'bike_gold', 'bike_plum', 'bike_teal'].forEach((k, i) => add(`park-bike-${i}`, k, 67.75 + i * 0.9, 58.8, 0));
+    add('park-car-park', 'car_park', 50, 58.3, 0);
+    ['car_navy', 'car_red', 'car_gold', 'car_teal', 'car_white', 'car_blue'].forEach((k, i) => add(`park-car-${i}`, k, 45.25 + i * 1.9, 58.45, 0));
     add('park-palm-b', 'palm', 75.8, 34.8);
   }
 

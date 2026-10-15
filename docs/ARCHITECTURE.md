@@ -433,9 +433,13 @@ What you see inside a space, until the art kit brings rooms and furniture:
   guessed from clip names or chosen on the Characters page; without them a faster walk, the cheer
   on a loop, or a bounce stands in. A route (`PathMsg`) carries its `gait`, so others see you
   walk, run, drive or ride.
-- **Cars and bikes** (kit `car_*`, `bike_*`, drawn in `kitParts.ts`): click a parked one, or
-  Action → Ride a bike / Drive a car, and pick a place (campus areas, or the Hub's doorways); you
-  ride there seated in the vehicle at 7 or 10 m/s, and everyone sees the vehicle under you.
+- **Cars and scooters** (kit `car_*`, `bike_*`, small two-seat city cars and scooters drawn in
+  `kitParts.ts`) stand in a car park and a scooter park (`car_park`, `bike_park`) in the Hub
+  courtyard and on the Campus. Click one on foot: you walk to it and get in. Then click where to
+  go, or use the arrow keys, at 10 m/s (car) or 7 m/s (scooter); E or "Get out" leaves it, and
+  clicking a seat gets you out first. Everyone sees the vehicle under you (`gait` drive/ride).
+- **Looking around:** hold and drag on the floor to slide the view (it eases back to you when you
+  move; the locate button recentres it).
 - **Getting everywhere:** pieces turned at an angle block their real shape (cut into short boxes),
   round ones a circle, so you can walk past the front of the benches round a fountain. Tests check
   that no open floor in the Campus or any Hub place is unreachable and that you can walk right
@@ -453,15 +457,16 @@ What you see inside a space, until the art kit brings rooms and furniture:
 
 ## Layout: every feature full screen
 
-The main menu (`Sidebar`) is tucked away by default: every page fills the screen, with the
-features as small icons in a dock along the bottom (`FeatureDock`, sections in `layout/nav.ts`).
-The arrow at the start of the dock opens the menu (and the top bar) from the left; whatever you're
-in moves over beside it. Inside a workspace the world fills the screen above the dock (a navy
-strip); "Back to SYNAPSE" opens the menu with the world still showing; picking a page keeps the
-workspace as a panel on the right, and Leave closes it. Full-screen editors use `--nav-w` and
-fill-the-screen pages `--top-h` (set by `App.tsx`).
+SYNAPSE opens on the dashboard with the menu (`Sidebar`) on the left and the top bar; there is no
+dock. Opening any feature (or loading straight into one) tucks the menu away: the feature fills the
+screen with every feature as small icons in a dock along the bottom (`FeatureDock`, sections in
+`layout/nav.ts`). Clicking another icon opens that feature full screen; only the dock's arrow
+brings the menu back. Only one feature shows at a time: a workspace you step out of stays
+connected but hidden (mic, camera and sharing off), and its dock icon gets a green dot and takes
+you back. Inside a workspace the world fills the screen above the dock (a navy strip). Full-screen
+editors use `--nav-w`, fill-the-screen pages `--top-h` and `--dock-h` (set by `App.tsx`).
 
-**Conversations** is laid out like Slack: a rail (Home, DMs, Activity, Email), the conversation
+**Conversations** is laid out like Slack, in SYNAPSE's white with navy and gold: a rail (Home, DMs, Activity, Email), the conversation
 list (starred, channels, direct messages; collapsible), and the open conversation with Messages
 and Links tabs, date pills, search in the conversation, threads alongside, and a composer with a
 formatting bar (bold, italic, strike, link, lists, quote, code, code block), emoji and @mention

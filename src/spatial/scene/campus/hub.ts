@@ -163,9 +163,11 @@ export function buildHub(): CampusLayout {
     C.add('gazebo', 'gazebo', 46, 39);
     C.add('lights-b', 'string_lights', 32, 12.5);
     // By the entrance: cars and bikes to ride to the doorways (click one).
-    C.add('car-a', 'car_navy', 42, 49.8, HALF);
-    C.add('car-b', 'car_gold', 46.6, 49.8, HALF);
-    for (const [i, x] of [21.6, 22.6, 23.6, 24.6].entries()) C.add(`bike-${i}`, i % 2 ? 'bike_red' : 'bike_teal', x, 50.1, 0);
+    // By the entrance: a car park and a scooter park. Walk to one, get in, and drive to work.
+    C.add('car-park', 'car_park', 13.7, 48.7, 0);
+    ['car_navy', 'car_red', 'car_gold', 'car_teal', 'car_white', 'car_blue'].forEach((k, i) => C.add(`car-${i}`, k, 8.95 + i * 1.9, 48.85, 0));
+    C.add('bike-park', 'bike_park', 43, 49.4, 0);
+    ['bike_teal', 'bike_red', 'bike_navy', 'bike_gold', 'bike_plum', 'bike_teal'].forEach((k, i) => C.add(`bike-${i}`, k, 40.75 + i * 0.9, 49.5, 0));
   }
 
   // ---------------------------------------------------------------- the auditorium

@@ -143,10 +143,10 @@ export function ConversationsPage() {
 
   return (
     // The whole screen above the feature dock (and below the top bar when the menu is open).
-    <div className="-mx-4 -mt-5 -mb-[84px] flex h-[calc(100dvh-60px-var(--top-h,0px))] min-h-[480px] overflow-hidden bg-[#141C2E] lg:-mx-6 lg:-mt-6">
+    <div className="-mx-4 -mt-5 -mb-[calc(var(--dock-h,0px)+24px)] flex h-[calc(100dvh-var(--dock-h,0px)-var(--top-h,0px))] min-h-[480px] overflow-hidden bg-white lg:-mx-6 lg:-mt-6">
       {/* The rail */}
-      <nav aria-label="Conversation views" className="hidden w-[72px] shrink-0 flex-col items-center gap-1 bg-[#0B1120] py-3 sm:flex">
-        <span className="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-gold-400 text-sm font-bold text-navy-900" title={workspace?.name ?? ''}>
+      <nav aria-label="Conversation views" className="hidden w-[72px] shrink-0 flex-col items-center gap-1 border-r border-navy-100 bg-white py-3 sm:flex">
+        <span className="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-navy-800 text-sm font-bold text-gold-400" title={workspace?.name ?? ''}>
           {(workspace?.name ?? 'S').trim().slice(0, 1).toUpperCase()}
         </span>
         <RailButton label="Home" active={view === 'home'} onClick={() => setView('home')}><Home className="h-5 w-5" /></RailButton>
@@ -154,28 +154,28 @@ export function ConversationsPage() {
         <RailButton label="Activity" active={view === 'activity'} badge={activity.length} dot onClick={() => setView('activity')}><Bell className="h-5 w-5" /></RailButton>
         <RailButton label="Email" active={sel?.kind === 'email'} onClick={() => setSel({ kind: 'email' })}><Mail className="h-5 w-5" /></RailButton>
         <div className="flex-1" />
-        <button type="button" onClick={() => setModal('dm')} aria-label="New message" title="New message" className="mb-2 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"><Plus className="h-5 w-5" /></button>
+        <button type="button" onClick={() => setModal('dm')} aria-label="New message" title="New message" className="mb-2 flex h-9 w-9 items-center justify-center rounded-full bg-navy-50 text-navy-800 hover:bg-navy-100"><Plus className="h-5 w-5" /></button>
         <Avatar firstName={profile?.first_name} lastName={profile?.last_name} src={profile?.avatar_url} size="sm" className="!rounded-lg" />
       </nav>
 
       {/* The list */}
-      <aside className={cn('w-full shrink-0 flex-col border-r border-white/10 bg-[#141C2E] text-white sm:flex sm:w-[280px]', sel ? 'hidden' : 'flex')} aria-label="Conversations">
+      <aside className={cn('w-full shrink-0 flex-col border-r border-navy-100 bg-white text-navy-800 sm:flex sm:w-[280px]', sel ? 'hidden' : 'flex')} aria-label="Conversations">
         <div className="flex items-center gap-2 px-4 pb-2 pt-4">
-          <h1 className="min-w-0 flex-1 truncate text-lg font-bold">
+          <h1 className="min-w-0 flex-1 truncate text-lg font-bold text-navy-900">
             {view === 'dms' ? 'Direct messages' : view === 'activity' ? 'Activity' : workspace?.name ?? 'Conversations'}
           </h1>
           {/* Phones: no rail, so switch views here. */}
-          <select value={view} onChange={(e) => setView(e.target.value as View)} aria-label="View" className="rounded-md border-0 bg-white/10 px-2 py-1 text-xs text-white sm:hidden">
+          <select value={view} onChange={(e) => setView(e.target.value as View)} aria-label="View" className="rounded-md border border-navy-100 bg-white px-2 py-1 text-xs text-navy-800 sm:hidden">
             <option value="home">Home</option><option value="dms">DMs</option><option value="activity">Activity</option>
           </select>
-          <button type="button" onClick={() => setModal('dm')} aria-label="New message" title="New message" className="rounded-md p-1.5 text-white/80 hover:bg-white/10 hover:text-white"><PenSquare className="h-4 w-4" /></button>
+          <button type="button" onClick={() => setModal('dm')} aria-label="New message" title="New message" className="rounded-md p-1.5 text-navy-700 hover:bg-navy-50 hover:text-navy-900"><PenSquare className="h-4 w-4" /></button>
         </div>
         {view !== 'activity' && (
           <label className="relative mx-3 mb-2 block">
             <span className="sr-only">Find a conversation</span>
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/50" />
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ivory-600" />
             <input value={find} onChange={(e) => setFind(e.target.value)} placeholder={view === 'dms' ? 'Find a DM…' : 'Find a conversation…'}
-              className="h-8 w-full rounded-md border border-white/15 bg-white/5 pl-8 pr-2 text-sm text-white placeholder:text-white/45 focus:border-gold-400 focus:outline-none" />
+              className="h-8 w-full rounded-md border border-navy-100 bg-white pl-8 pr-2 text-sm text-navy-800 placeholder:text-ivory-600 focus:border-gold-400 focus:outline-none" />
           </label>
         )}
 
@@ -193,15 +193,15 @@ export function ConversationsPage() {
                 {named.filter((c) => !starred.includes(c.id) && match(c)).map((c) => (
                   <SideItem key={c.id} active={isActive(c)} unread={unread[c.id] ?? 0} onClick={() => open(c.id)} icon={channelIcon(c)} label={c.name ?? ''} />
                 ))}
-                <button type="button" onClick={() => setModal('browse')} className="mt-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1 text-sm text-white/60 hover:bg-white/10 hover:text-white">
-                  <span className="flex h-5 w-5 items-center justify-center rounded bg-white/10"><Plus className="h-3 w-3" /></span> Browse channels
+                <button type="button" onClick={() => setModal('browse')} className="mt-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1 text-sm text-navy-600 hover:bg-navy-50 hover:text-navy-900">
+                  <span className="flex h-5 w-5 items-center justify-center rounded bg-navy-50"><Plus className="h-3 w-3" /></span> Browse channels
                 </button>
               </Section>
               <Section label="Direct messages" onAdd={() => setModal('dm')} addLabel="New direct message">
                 {dms.filter((c) => !starred.includes(c.id) && match(c)).map((c) => (
                   <SideItem key={c.id} active={isActive(c)} unread={unread[c.id] ?? 0} onClick={() => open(c.id)} icon={dmIcon(c)} label={title(c)} />
                 ))}
-                {dms.length === 0 && <p className="px-2 py-1 text-xs text-white/55">Message anyone in your team.</p>}
+                {dms.length === 0 && <p className="px-2 py-1 text-xs text-ivory-700">Message anyone in your team.</p>}
               </Section>
               <Section label="Email">
                 <SideItem active={sel?.kind === 'email'} unread={0} onClick={() => setSel({ kind: 'email' })} icon={<Mail className="h-3.5 w-3.5" />} label="Email replies" />
@@ -210,32 +210,32 @@ export function ConversationsPage() {
           )}
 
           {view === 'dms' && (
-            <ul className="-mx-2 divide-y divide-white/10 border-t border-white/10">
+            <ul className="-mx-2 divide-y divide-navy-100 border-t border-navy-100">
               {dms.filter(match).map((c) => {
                 const last = latest.get(c.id);
                 const who = last?.user_id === me ? 'You: ' : '';
                 return (
                   <li key={c.id}>
-                    <button type="button" onClick={() => open(c.id)} className={cn('flex w-full gap-3 px-4 py-3 text-left hover:bg-white/5', isActive(c) && 'bg-white/10')}>
+                    <button type="button" onClick={() => open(c.id)} className={cn('flex w-full gap-3 px-4 py-3 text-left hover:bg-navy-50', isActive(c) && 'bg-gold-50')}>
                       <span className="mt-0.5 shrink-0">{dmIcon(c)}</span>
                       <span className="min-w-0 flex-1">
                         <span className="flex items-baseline gap-2">
-                          <span className={cn('min-w-0 flex-1 truncate text-sm', unread[c.id] ? 'font-bold text-white' : 'font-semibold text-white/90')}>{title(c)}</span>
-                          <span className="shrink-0 text-xs text-white/50">{ago(last?.created_at ?? c.last_message_at ?? c.created_at)}</span>
+                          <span className={cn('min-w-0 flex-1 truncate text-sm', unread[c.id] ? 'font-bold text-navy-900' : 'font-semibold text-navy-800')}>{title(c)}</span>
+                          <span className="shrink-0 text-xs text-ivory-700">{ago(last?.created_at ?? c.last_message_at ?? c.created_at)}</span>
                         </span>
-                        <span className="line-clamp-2 text-sm text-white/60">{last ? `${who}${last.body}` : 'No messages yet'}</span>
+                        <span className="line-clamp-2 text-sm text-ivory-700">{last ? `${who}${last.body}` : 'No messages yet'}</span>
                       </span>
                     </button>
                   </li>
                 );
               })}
-              {dms.length === 0 && <li className="px-4 py-6 text-sm text-white/55">No direct messages yet. Start one with the pencil above.</li>}
+              {dms.length === 0 && <li className="px-4 py-6 text-sm text-ivory-700">No direct messages yet. Start one with the pencil above.</li>}
             </ul>
           )}
 
           {view === 'activity' && (
             <ul className="space-y-2 pt-1">
-              {activity.length === 0 && <li className="px-2 py-6 text-sm text-white/55">Nothing yet. When someone @mentions you or replies to your thread, it shows here.</li>}
+              {activity.length === 0 && <li className="px-2 py-6 text-sm text-ivory-700">Nothing yet. When someone @mentions you or replies to your thread, it shows here.</li>}
               {activity.slice(0, 80).map((m) => {
                 const c = byChannel.get(m.channel_id);
                 const p = m.user_id ? byId.get(m.user_id) : undefined;
@@ -243,13 +243,13 @@ export function ConversationsPage() {
                 const kind = m.parent_id ? 'Thread reply' : 'Mention';
                 return (
                   <li key={m.id}>
-                    <button type="button" onClick={() => open(m.channel_id, m.parent_id)} className="w-full rounded-lg border border-white/10 bg-white/5 p-3 text-left hover:border-gold-400/60 hover:bg-white/10">
+                    <button type="button" onClick={() => open(m.channel_id, m.parent_id)} className="w-full rounded-lg border border-navy-100 bg-white p-3 text-left shadow-sm hover:border-gold-400">
                       <span className="flex items-baseline gap-2">
-                        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-white">{name}</span>
-                        <span className="shrink-0 text-xs text-white/50">{ago(m.created_at)}</span>
+                        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-navy-900">{name}</span>
+                        <span className="shrink-0 text-xs text-ivory-700">{ago(m.created_at)}</span>
                       </span>
-                      <span className="mt-0.5 block truncate text-xs text-white/55">{kind} in {c ? (c.kind === 'dm' ? title(c) : `#${c.name}`) : 'a conversation'}</span>
-                      <span className="mt-1 line-clamp-2 text-sm text-white/80"><Body text={m.body} dark /></span>
+                      <span className="mt-0.5 block truncate text-xs text-ivory-700">{kind} in {c ? (c.kind === 'dm' ? title(c) : `#${c.name}`) : 'a conversation'}</span>
+                      <span className="mt-1 line-clamp-2 text-sm text-navy-800"><Body text={m.body} /></span>
                     </button>
                   </li>
                 );
@@ -337,14 +337,14 @@ export function ConversationsPage() {
 
 function RailButton({ label, active, badge = 0, dot, onClick, children }: { label: string; active: boolean; badge?: number; dot?: boolean; onClick: () => void; children: ReactNode }) {
   return (
-    <button type="button" onClick={onClick} aria-current={active ? 'page' : undefined} className="group flex w-full flex-col items-center gap-0.5 py-1 text-[11px] font-semibold text-white/80">
-      <span className={cn('relative flex h-9 w-9 items-center justify-center rounded-xl transition', active ? 'bg-white/20 text-white' : 'group-hover:bg-white/10')}>
+    <button type="button" onClick={onClick} aria-current={active ? 'page' : undefined} className="group flex w-full flex-col items-center gap-0.5 py-1 text-[11px] font-semibold text-navy-700">
+      <span className={cn('relative flex h-9 w-9 items-center justify-center rounded-xl transition', active ? 'bg-navy-800 text-gold-400' : 'group-hover:bg-navy-50')}>
         {children}
         {badge > 0 && (dot
           ? <span className="absolute -right-1 -top-1 rounded-full bg-burgundy-500 px-1 text-[10px] font-bold leading-4 text-white">{badge > 99 ? '99+' : badge}</span>
           : <span className="absolute -right-1 -top-1 rounded-full bg-gold-400 px-1 text-[10px] font-bold leading-4 text-navy-900">{badge > 99 ? '99+' : badge}</span>)}
       </span>
-      <span className={active ? 'text-white' : 'text-white/70'}>{label}</span>
+      <span className={active ? 'text-navy-900' : 'text-navy-600'}>{label}</span>
     </button>
   );
 }
@@ -354,10 +354,10 @@ function Section({ label, onAdd, addLabel, children }: { label: string; onAdd?: 
   return (
     <div className="mt-3">
       <div className="group flex items-center gap-1 px-1 pb-0.5">
-        <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-0.5 text-sm font-medium text-white/70 hover:bg-white/10">
+        <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-0.5 text-xs font-bold uppercase tracking-wider text-ivory-700 hover:bg-navy-50">
           <ChevronDown className={cn('h-3.5 w-3.5 transition', !open && '-rotate-90')} /> {label}
         </button>
-        {onAdd && <button type="button" onClick={onAdd} aria-label={addLabel} title={addLabel} className="rounded p-0.5 text-white/60 hover:bg-white/10 hover:text-white"><Plus className="h-4 w-4" /></button>}
+        {onAdd && <button type="button" onClick={onAdd} aria-label={addLabel} title={addLabel} className="rounded p-0.5 text-ivory-700 hover:bg-navy-50 hover:text-navy-900"><Plus className="h-4 w-4" /></button>}
       </div>
       {open && <div className="space-y-px">{children}</div>}
     </div>
@@ -367,10 +367,10 @@ function Section({ label, onAdd, addLabel, children }: { label: string; onAdd?: 
 function SideItem({ active, unread, onClick, icon, label }: { active: boolean; unread: number; onClick: () => void; icon: ReactNode; label: string }) {
   return (
     <button type="button" onClick={onClick} aria-current={active ? 'page' : undefined}
-      className={cn('flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[15px] transition', active ? 'bg-gold-400 text-navy-900' : unread ? 'font-bold text-white hover:bg-white/10' : 'text-white/75 hover:bg-white/10 hover:text-white')}>
-      <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center', active ? 'text-navy-900' : 'text-white/70')}>{icon}</span>
+      className={cn('flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[15px] transition', active ? 'bg-navy-800 font-semibold text-white' : unread ? 'font-bold text-navy-900 hover:bg-navy-50' : 'text-navy-700 hover:bg-navy-50 hover:text-navy-900')}>
+      <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center', active ? 'text-gold-400' : 'text-navy-600')}>{icon}</span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      {unread > 0 && !active && <span className="rounded-full bg-burgundy-500 px-1.5 text-[11px] font-bold text-white">{unread > 99 ? '99+' : unread}</span>}
+      {unread > 0 && !active && <span className="rounded-full bg-gold-400 px-1.5 text-[11px] font-bold text-navy-900">{unread > 99 ? '99+' : unread}</span>}
     </button>
   );
 }
@@ -841,7 +841,7 @@ function Composer({ placeholder, people, onSend, compact }: { placeholder: strin
           )}
           <span className="ml-auto hidden text-[11px] text-ivory-600 md:inline">Shift + Enter for a new line</span>
           <button type="button" onClick={submit} disabled={!text.trim() || busy} aria-label="Send" title="Send (Enter)"
-            className={cn('ml-2 rounded-md p-1.5 transition', text.trim() ? 'bg-[#1F7A4D] text-white hover:bg-[#19663F]' : 'text-ivory-500')}><SendHorizontal className="h-4 w-4" /></button>
+            className={cn('ml-2 rounded-md p-1.5 transition', text.trim() ? 'bg-navy-800 text-gold-300 hover:bg-navy-700' : 'text-ivory-500')}><SendHorizontal className="h-4 w-4" /></button>
         </div>
       </div>
     </div>

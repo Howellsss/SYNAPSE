@@ -12,12 +12,15 @@ export const DOCK_STRIP = 'h-[60px]';
  * Every feature, as small icons along the bottom of the screen, so whatever you're in fills the
  * screen above. The arrow at the start opens the full menu from the left.
  */
-export function FeatureDock({ currentPath, onNavigate, onOpenMenu, dark = false }: {
+export function FeatureDock({ currentPath, onNavigate, onOpenMenu, dark = false, liveSpace = null, onBackToSpace }: {
   currentPath: string;
   onNavigate: (to: string) => void;
   onOpenMenu: () => void;
   /** Under a workspace: navy, like the world's controls. */
   dark?: boolean;
+  /** A workspace you're still in (out of sight): its icon gets a dot and takes you back. */
+  liveSpace?: string | null;
+  onBackToSpace?: () => void;
 }) {
   const isPlatformAdmin = usePlatformAdmin() === true;
   const groups = [...navGroups.map((g) => g.filter((n) => n.path !== '/characters' || isPlatformAdmin)), [{ label: 'Settings', icon: Cog6ToothIcon, path: '/settings' }]];
@@ -43,9 +46,12 @@ export function FeatureDock({ currentPath, onNavigate, onOpenMenu, dark = false 
           <span aria-hidden="true" className={cn('mx-1 h-5 w-px shrink-0', dark ? 'bg-white/15' : 'bg-navy-100')} />
           {g.map(({ label, icon: Icon, path }) => {
             const active = isNavActive(currentPath, path);
+            const live = path === '/workspace' && !!liveSpace;
             return (
-              <button key={path} type="button" onClick={() => onNavigate(path)} aria-label={label} title={label} aria-current={active ? 'page' : undefined} className={btn(active)}>
+              <button key={path} type="button" onClick={() => (live && onBackToSpace ? onBackToSpace() : onNavigate(path))} aria-label={live ? 'Back to your workspace' : label}
+                title={live ? "Back to your workspace (you're still in it)" : label} aria-current={active ? 'page' : undefined} className={cn(btn(active), 'relative')}>
                 <Icon aria-hidden="true" className="h-[18px] w-[18px]" />
+                {live && <span aria-hidden="true" className="absolute right-1 top-1 h-2 w-2 rounded-full bg-green-500 ring-2 ring-white" />}
               </button>
             );
           })}
