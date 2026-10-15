@@ -63,7 +63,11 @@ function AppContent() {
   // you're in fills the screen. Remembered on this device.
   const [navOpen, setNavOpenState] = useState(() => { try { return localStorage.getItem('synapse.navOpen') === '1'; } catch { return false; } });
   // Full-screen editors (workflows, events) sit beside the menu when it's open.
-  useEffect(() => { document.documentElement.style.setProperty('--nav-w', navOpen ? '240px' : '0px'); }, [navOpen]);
+  useEffect(() => {
+    document.documentElement.style.setProperty('--nav-w', navOpen ? '240px' : '0px');
+    // Pages that fill the screen (Conversations) leave room for the top bar when the menu is open.
+    document.documentElement.style.setProperty('--top-h', navOpen ? '64px' : '0px');
+  }, [navOpen]);
   const setNavOpen = useCallback((open: boolean) => {
     setNavOpenState(open);
     try { localStorage.setItem('synapse.navOpen', open ? '1' : '0'); } catch { /* private mode */ }

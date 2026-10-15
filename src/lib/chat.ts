@@ -83,18 +83,44 @@ export function webhookUrl(token: string, base = import.meta.env.VITE_SUPABASE_U
 }
 
 /** Split text into plain runs, **bold** runs and links, for display (never as HTML). */
-export type Run = { t: 'text' | 'bold' | 'link'; v: string };
+export type Run = { t: 'text' | 'bold' | 'italic' | 'strike' | 'code' | 'link' | 'mention'; v: string };
+/**
+ * A message's text as runs to draw (never HTML): **bold**, _italic_, ~strike~, `code`, links and
+ * @mentions (@Name, @here, @channel).
+ */
 export function formatRuns(text: string): Run[] {
   const out: Run[] = [];
-  const re = /(\*\*[^*\n]+\*\*)|(https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"])/g;
+  const re = /(\*\*[^*\n]+\*\*)|(https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"])|(`[^`\n]+`)|((?<![\w*])_[^_\n]+_(?!\w))|((?<![\w~])~[^~\n]+~(?!\w))|((?<![\w@])@(?:here|channel|everyone|[A-Za-z][\w.'-]*(?: [A-Z][\w.'-]*)?))/g;
   let last = 0;
   for (let m = re.exec(text); m; m = re.exec(text)) {
     if (m.index > last) out.push({ t: 'text', v: text.slice(last, m.index) });
     if (m[1]) out.push({ t: 'bold', v: m[1].slice(2, -2) });
-    else out.push({ t: 'link', v: m[2] });
+    else if (m[2]) out.push({ t: 'link', v: m[2] });
+    else if (m[3]) out.push({ t: 'code', v: m[3].slice(1, -1) });
+    else if (m[4]) out.push({ t: 'italic', v: m[4].slice(1, -1) });
+    else if (m[5]) out.push({ t: 'strike', v: m[5].slice(1, -1) });
+    else out.push({ t: 'mention', v: m[6] });
     last = m.index + m[0].length;
   }
   if (last < text.length) out.push({ t: 'text', v: text.slice(last) });
+  return out;
+}
+
+/** Does this message mention someone called `name` (or everyone, with @here / @channel)? */
+export function mentions(body: string, name: string): boolean {
+  const first = name.trim().split(/\s+/)[0];
+  if (/(^|[^\w@])@(here|channel|everyone)\b/i.test(body)) return true;
+  if (!first) return false;
+  return new RegExp(`(^|[^\\w@])@${first.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(body);
+}
+
+/** Every link in a set of messages, newest first (the channel's Links tab). */
+export function linksIn(messages: ChatMessage[]): { url: string; message: ChatMessage }[] {
+  const out: { url: string; message: ChatMessage }[] = [];
+  for (const m of [...messages].reverse()) {
+    if (m.deleted_at) continue;
+    for (const r of formatRuns(m.body)) if (r.t === 'link' && !out.some((o) => o.url === r.v)) out.push({ url: r.v, message: m });
+  }
   return out;
 }
 
@@ -241,4 +267,21 @@ export async function listEmailReplies(workspaceId: string): Promise<{ data: Ema
     .order('created_at', { ascending: false })
     .limit(100);
   return { data: (data ?? []) as unknown as EmailReply[], error: error?.message ?? null };
+}
+
+/**
+ * Recent messages in the conversations you're in (newest first): for the Activity view (mentions
+ * of you, replies in threads you started) and for each direct message's latest line.
+ */
+export async function listRecent(workspaceId: string, limit = 300): Promise<ChatMessage[]> {
+  const { data } = await supabase.from('chat_messages').select('*').eq('workspace_id', workspaceId).is('deleted_at', null)
+    .order('created_at', { ascending: false }).limit(limit);
+  return (data ?? []) as ChatMessage[];
+}
+
+/** The messages you wrote among some ids (to find replies to your threads). */
+export async function myMessagesAmong(ids: string[], userId: string): Promise<Set<string>> {
+  if (!ids.length) return new Set();
+  const { data } = await supabase.from('chat_messages').select('id').in('id', ids.slice(0, 200)).eq('user_id', userId);
+  return new Set(((data ?? []) as { id: string }[]).map((r) => r.id));
 }
