@@ -39,11 +39,10 @@ import { ConnectionPill, ControlBar, WorldToolbar } from './Overlay';
 import { InviteToSpace } from './InviteToSpace';
 import { DoorCard } from './DoorCard';
 import { BuildPanel } from './BuildPanel';
-import { RidePicker, type RideTarget } from './RidePicker';
 import type { Character, Space, SpaceRoom as SpaceRoomConfig } from '@/types';
 import { loadDepartments } from '@/lib/team';
 import { addPiece, movePiece, newPieceId, readEdits, removePiece, worldOffice, type CampusEdits } from '@/spatial/scene/campus/office';
-import { wingAt, zoneAt } from '@/spatial/scene/campus/layout';
+import { zoneAt } from '@/spatial/scene/campus/layout';
 import { loadView, saveView } from '@/spatial/view';
 import { cn } from '@/lib/utils';
 
@@ -172,26 +171,8 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
   // Walking or running by default (remembered on this device), dancing, and rides.
   const [moveMode, setMoveMode] = useState<MoveMode>(() => { try { return localStorage.getItem('synapse.moveMode') === 'run' ? 'run' : 'walk'; } catch { return 'walk'; } });
   const changeMoveMode = (m: MoveMode) => { setMoveMode(m); try { localStorage.setItem('synapse.moveMode', m); } catch { /* private mode */ } };
+  // In a car or on a scooter (from the parks in the courtyard): show how to get out.
   const [riding, setRiding] = useState<VehicleKind | null>(null);
-  const rideTargets = useMemo<RideTarget[]>(() => {
-    const c = office?.campus;
-    if (!c) return [];
-    const mid = (r: { x0: number; x1: number; z0: number; z1: number }) => ({ x: (r.x0 + r.x1) / 2, z: (r.z0 + r.z1) / 2 });
-    if (c.wings?.length) {
-      // The Hub: from the courtyard to any doorway; from a place, back to the courtyard.
-      const here = myPos ? wingAt(c, myPos.x, myPos.z)?.id ?? 'court' : 'court';
-      const portals = c.portals ?? [];
-      if (here === 'court') return portals.filter((p) => p.id.startsWith('to-')).map((p) => ({ id: p.id, name: p.label.replace(/^→\s*/, ''), ...mid(p.rect) }));
-      const back = portals.find((p) => p.id === `from-${here}`);
-      return back ? [{ id: back.id, name: 'Courtyard', ...mid(back.rect) }] : [];
-    }
-    return c.zones.filter((z) => z.type !== 'stage').map((z) => ({ id: z.id, name: z.name, ...mid(z.rect) }));
-  }, [office, myPos]);
-  const ride = (t: RideTarget) => {
-    const kind = riding;
-    setRiding(null);
-    if (kind && !sceneControls.current?.ride(kind, t)) toast(`Couldn't find a way to ${t.name}.`, 'error');
-  };
   const [view, setView] = useState<SceneView>(loadView);
   const changeView = (v: SceneView) => { setView(v); saveView(v); };
   // Standing at the office door shows the way to the account's other spaces.
@@ -261,6 +242,14 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
   const [, updatePrefs] = useMediaPrefs();
   const call = useLiveKitRoom(space.id, { prefs: media, onNotice: (m, tone) => toast(m, tone ?? 'info') });
   useCallShortcuts({ mic: () => { void call.toggleMic(); }, cam: () => { void call.toggleCam(); } });
+  // Stepping away to another feature: you stay in the workspace, out of sight, so your
+  // microphone and camera turn off (nobody hears or sees you without knowing it).
+  useEffect(() => {
+    if (!dock.docked) return;
+    if (call.micOn) void call.toggleMic();
+    if (call.camOn) void call.toggleCam();
+    if (call.screenOn) void call.stopScreenShare();
+  }, [dock.docked]); // eslint-disable-line react-hooks/exhaustive-deps
   // Movement rides on the call once it's connected (see useSpaceChannel).
   useEffect(() => { setCallRoom(call.state === 'connected' ? call.room : null); }, [call.state, call.room, setCallRoom]);
   const canInvite = can(space.permissions, 'invite', role);
@@ -451,7 +440,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
                 view={view}
                 build={build}
                 moveMode={moveMode}
-                onVehicle={office?.campus ? setRiding : undefined}
+                onVehicle={setRiding}
               />
             </Suspense>
           )}
@@ -575,7 +564,16 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
           />
         </div>
 
-        {riding && <RidePicker kind={riding} targets={rideTargets} onPick={ride} onClose={() => setRiding(null)} />}
+        {riding && (
+          <div className="pointer-events-none absolute inset-x-0 top-16 z-10 flex justify-center px-3">
+            <div className="pointer-events-auto flex items-center gap-3 rounded-full bg-navy-900/90 py-1.5 pl-4 pr-1.5 text-sm text-white shadow-popover backdrop-blur">
+              <span>{riding === 'car' ? 'Driving' : 'Riding'}: click where to go, or use the arrow keys.</span>
+              <button type="button" onClick={() => sceneControls.current?.getOut()} className="rounded-full bg-gold-400 px-3 py-1 font-semibold text-navy-900 hover:bg-gold-300">
+                Get out <kbd className="ml-1 rounded bg-navy-900/15 px-1 text-[10px]">E</kbd>
+              </button>
+            </div>
+          </div>
+        )}
 
         {building && (
           <div className="pointer-events-none absolute left-3 top-40 z-10 sm:left-4">
@@ -637,7 +635,6 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
             moveMode={moveMode}
             onMoveMode={changeMoveMode}
             onDance={() => sceneControls.current?.dance()}
-            onRide={office?.campus ? setRiding : undefined}
           />
         </div>
 

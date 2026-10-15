@@ -19,7 +19,7 @@ export type ProcKind =
   | 'oak' | 'palm' | 'bush_flower' | 'flowers_round' | 'reeds' | 'lilies' | 'string_lights' | 'pergola' | 'umbrella_set'
   | 'gazebo' | 'picnic' | 'fire_pit' | 'planter_tree' | 'led_wall' | 'truss' | 'theatre_seat' | 'sofa_p' | 'lounge_chair'
   | 'dining_set' | 'bar_counter' | 'bar_stool' | 'bottle_wall' | 'fireplace' | 'booth' | 'reception' | 'bookcase'
-  | 'conference' | 'ping_pong' | 'potted_tree' | 'doorway' | 'car' | 'bike';
+  | 'conference' | 'ping_pong' | 'potted_tree' | 'doorway' | 'car' | 'bike' | 'car_park' | 'bike_park';
 
 interface Base {
   id: string;
@@ -172,11 +172,13 @@ export const KIT: KitItem[] = [
   // Events.
   { id: 'led_wall', name: 'LED wall', category: 'events', proc: 'led_wall', w: 10, d: 0.4 },
   // Transport: click one to ride it somewhere.
-  ...([['car_navy', 'Car (navy)', '#24406E'], ['car_red', 'Car (red)', '#A3302A'], ['car_gold', 'Car (gold)', '#C9952F'], ['car_white', 'Car (pearl)', '#C9CED6']] as const).map(([id, name, color]): ProcItem => ({
-    id, name, category: 'transport', proc: 'car', w: 1.9, d: 4.0, color,
+  { id: 'car_park', name: 'Car park', category: 'transport', proc: 'car_park', w: 11.4, d: 3.4, walkable: true },
+  { id: 'bike_park', name: 'Scooter park', category: 'transport', proc: 'bike_park', w: 5.4, d: 2.2, walkable: true },
+  ...([['car_navy', 'Car (navy)', '#24406E'], ['car_red', 'Car (red)', '#B8443A'], ['car_gold', 'Car (gold)', '#D9A43A'], ['car_white', 'Car (pearl)', '#DCE0E6'], ['car_teal', 'Car (teal)', '#2F8A8F'], ['car_blue', 'Car (blue)', '#3A6FD0']] as const).map(([id, name, color]): ProcItem => ({
+    id, name, category: 'transport', proc: 'car', w: 1.4, d: 2.35, color,
   })),
-  ...([['bike_teal', 'Bike (teal)', '#2F7F86'], ['bike_red', 'Bike (red)', '#A3302A'], ['bike_navy', 'Bike (navy)', '#24406E']] as const).map(([id, name, color]): ProcItem => ({
-    id, name, category: 'transport', proc: 'bike', w: 0.6, d: 1.8, color,
+  ...([['bike_teal', 'Scooter (teal)', '#2F8A8F'], ['bike_red', 'Scooter (red)', '#B8443A'], ['bike_navy', 'Scooter (navy)', '#24406E'], ['bike_gold', 'Scooter (gold)', '#D9A43A'], ['bike_plum', 'Scooter (plum)', '#7A4FA0']] as const).map(([id, name, color]): ProcItem => ({
+    id, name, category: 'transport', proc: 'bike', w: 0.5, d: 1.5, color,
   })),
   { id: 'stage_large', name: 'Large stage', category: 'events', proc: 'stage', w: 16, d: 5, walkable: true, hidden: true },
   { id: 'tv_wall', name: 'Wall screen', category: 'meeting', proc: 'led_wall', w: 3.2, d: 0.3 },

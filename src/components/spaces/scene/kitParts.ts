@@ -875,54 +875,75 @@ function doorway(w: number): Part[] {
 
 // ---------------------------------------------------------------- vehicles
 
-/** A small electric car (faces +z), about 2 × 4 m. */
+/**
+ * A little two-seat city car (faces +z), about 1.35 × 2.3 m: rounded, glossy, open-topped so the
+ * driver shows from above. Small enough next to a person that driving it looks like fun, not work.
+ */
 export function carParts(color: string): Part[] {
   const { M, G } = kitShared();
   const body = new Painter(rng(3));
-  // An open-top car, so whoever drives shows from above.
-  body.add(G.rounded, mx(0, 0.45, 0, 1.8, 0.45, 3.9), color, { shade: 0.35, jitter: 0.02 });
-  body.add(G.rounded, mx(0, 0.75, 1.3, 1.7, 0.22, 1.2), color, { shade: 0.2, jitter: 0.02 });
-  body.add(G.rounded, mx(0, 0.75, -1.45, 1.7, 0.22, 0.9), color, { shade: 0.2, jitter: 0.02 });
-  for (const x of [-0.42, 0.42]) {
-    body.add(G.rounded, mx(x, 0.62, -0.25, 0.62, 0.14, 0.6), '#3A2A22', { shade: 0.2 });
-    body.add(G.rounded, mx(x, 0.95, -0.6, 0.62, 0.6, 0.14, 0, -0.15), '#3A2A22', { shade: 0.25 });
+  // Rounded tub, bonnet and boot.
+  body.add(G.rounded, mx(0, 0.36, 0, 1.3, 0.34, 2.25), color, { shade: 0.35, jitter: 0.02 });
+  body.add(G.blob, mx(0, 0.5, 0.78, 1.24, 0.34, 0.72), color, { shade: 0.25, jitter: 0.02 });
+  body.add(G.blob, mx(0, 0.5, -0.86, 1.24, 0.34, 0.6), color, { shade: 0.25, jitter: 0.02 });
+  // A cream stripe and bumpers.
+  body.add(G.box, mx(0, 0.47, 0, 1.32, 0.05, 2.0), '#E4B44C', { shade: 0, jitter: 0 });
+  body.add(G.rounded, mx(0, 0.26, 1.12, 1.2, 0.12, 0.12), '#2A2F3A', { shade: 0.1 });
+  body.add(G.rounded, mx(0, 0.26, -1.12, 1.2, 0.12, 0.12), '#2A2F3A', { shade: 0.1 });
+  // Seats.
+  for (const x of [-0.28, 0.28]) {
+    body.add(G.rounded, mx(x, 0.52, -0.25, 0.46, 0.12, 0.42), '#3A2A22', { shade: 0.2 });
+    body.add(G.rounded, mx(x, 0.78, -0.47, 0.46, 0.46, 0.12, 0, -0.12), '#3A2A22', { shade: 0.25 });
   }
   const glass = new Painter(rng(4));
-  glass.add(G.box, mx(0, 1.02, 0.66, 1.5, 0.42, 0.04, 0, -0.45), '#2C3E52', { shade: 0 });
-  glass.add(G.cyl8, mx(-0.38, 0.95, 0.35, 0.36, 0.05, 0.36, 0, -0.9), '#15171C', { shade: 0 });
+  glass.add(G.box, mx(0, 0.82, 0.38, 1.1, 0.34, 0.04, 0, -0.5), '#2C3E52', { shade: 0 });
+  glass.add(G.cyl8, mx(-0.28, 0.72, 0.15, 0.3, 0.04, 0.3, 0, -0.9), '#15171C', { shade: 0 });
   const lights = new Painter(rng(5));
-  for (const x of [-0.6, 0.6]) {
-    lights.add(G.box, mx(x, 0.62, 1.95, 0.32, 0.1, 0.04), new THREE.Color(1, 0.95, 0.8), { shade: 0, hdr: 2.6 });
-    lights.add(G.box, mx(x, 0.62, -1.95, 0.32, 0.08, 0.04), new THREE.Color(1, 0.15, 0.1), { shade: 0, hdr: 2.2 });
+  for (const x of [-0.42, 0.42]) {
+    lights.add(G.sphere, mx(x, 0.5, 1.12, 0.2, 0.16, 0.08), new THREE.Color(1, 0.95, 0.8), { shade: 0, hdr: 2.6 });
+    lights.add(G.box, mx(x, 0.48, -1.14, 0.2, 0.08, 0.04), new THREE.Color(1, 0.15, 0.1), { shade: 0, hdr: 2.2 });
   }
-  const wheel = new THREE.CylinderGeometry(0.36, 0.36, 0.26, 18).rotateZ(Math.PI / 2);
+  const wheel = new THREE.CylinderGeometry(0.22, 0.22, 0.18, 16).rotateZ(Math.PI / 2);
   const wheels = new Painter(rng(6));
-  for (const [x, z] of [[-0.85, 1.25], [0.85, 1.25], [-0.85, -1.25], [0.85, -1.25]]) wheels.add(wheel, mx(x, 0.36, z), '#15171C', { shade: 0.1 });
+  for (const [x, z] of [[-0.6, 0.72], [0.6, 0.72], [-0.6, -0.72], [0.6, -0.72]]) wheels.add(wheel, mx(x, 0.22, z), '#15171C', { shade: 0.1 });
   wheel.dispose();
   return [P(body.done(), M.gloss), P(glass.done(), M.gloss, undefined, false), P(lights.done(), M.bulbs, undefined, false), P(wheels.done(), M.fabric)];
 }
 
-/** A city bike (faces +z), about 0.6 × 1.8 m. */
+/** A little city scooter (faces +z), about 0.5 × 1.5 m, with a step-through body and a basket. */
 export function bikeParts(color: string): Part[] {
   const { M, G } = kitShared();
-  const frame = new Painter(rng(7));
-  const tube = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, r = 0.035) => {
-    const len = Math.hypot(x1 - x0, y1 - y0, z1 - z0);
-    const g = new THREE.CylinderGeometry(r, r, len, 6);
-    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(x1 - x0, y1 - y0, z1 - z0).normalize());
-    frame.add(g, new THREE.Matrix4().compose(new THREE.Vector3((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), q, new THREE.Vector3(1, 1, 1)), color, { shade: 0.1 });
-    g.dispose();
-  };
-  tube(0, 0.36, -0.55, 0, 0.75, -0.1); tube(0, 0.36, -0.55, 0, 0.42, 0.25); tube(0, 0.42, 0.25, 0, 0.82, 0.45);
-  tube(0, 0.75, -0.1, 0, 0.82, 0.45); tube(0, 0.82, 0.45, 0, 0.36, 0.6); tube(0, 0.36, -0.55, 0, 0.75, -0.18);
-  tube(-0.28, 1.0, 0.42, 0.28, 1.0, 0.42, 0.025); tube(0, 0.82, 0.45, 0, 1.0, 0.42);
-  frame.add(G.rounded, mx(0, 0.82, -0.14, 0.18, 0.06, 0.28), '#2A2420', { shade: 0.1 });
-  const wheel = new THREE.TorusGeometry(0.33, 0.03, 6, 24).rotateY(Math.PI / 2);
+  const body = new Painter(rng(7));
+  body.add(G.rounded, mx(0, 0.36, -0.15, 0.36, 0.3, 0.8), color, { shade: 0.3, jitter: 0.02 });
+  body.add(G.rounded, mx(0, 0.24, 0.25, 0.32, 0.1, 0.5), color, { shade: 0.2 });
+  body.add(G.rounded, mx(0, 0.62, 0.42, 0.36, 0.7, 0.16, 0, 0.25), color, { shade: 0.3 });
+  body.add(G.rounded, mx(0, 0.58, -0.3, 0.32, 0.1, 0.52), '#2A2420', { shade: 0.1 });
+  body.add(G.cyl8, mx(0, 0.98, 0.5, 0.05, 0.3, 0.05, 0, 0.25), '#2A2F3A');
+  body.add(G.cyl8, mx(0, 1.1, 0.53, 0.04, 0.62, 0.04, 0, 0, Math.PI / 2), '#2A2F3A');
+  body.add(G.rounded, mx(0, 0.93, 0.68, 0.3, 0.2, 0.22), '#B98A52', { shade: 0.2 });
+  const wheel = new THREE.CylinderGeometry(0.2, 0.2, 0.12, 14).rotateZ(Math.PI / 2);
   const wheels = new Painter(rng(8));
-  for (const z of [-0.55, 0.6]) wheels.add(wheel, mx(0, 0.36, z), '#15171C', { shade: 0 });
+  for (const z of [-0.5, 0.55]) wheels.add(wheel, mx(0, 0.2, z), '#15171C', { shade: 0 });
   wheel.dispose();
-  const lamp = new Painter(rng(9)).add(G.bulb, mx(0, 0.95, 0.52, 0.09, 0.09, 0.09), new THREE.Color(1, 0.95, 0.8), { shade: 0, hdr: 2.6 }).done();
-  return [P(frame.done(), M.gloss), P(wheels.done(), M.fabric), P(lamp, M.bulbs, undefined, false)];
+  const lamp = new Painter(rng(9)).add(G.sphere, mx(0, 0.86, 0.52, 0.12, 0.1, 0.06), new THREE.Color(1, 0.95, 0.8), { shade: 0, hdr: 2.6 }).done();
+  return [P(body.done(), M.gloss), P(wheels.done(), M.fabric), P(lamp, M.bulbs, undefined, false)];
+}
+
+/** Painted parking bays on asphalt: `bay` m wide, the lines across the piece's depth. */
+function parkingParts(w: number, d: number, bay: number): Part[] {
+  const tex = canvasTex(512, (g, s) => {
+    g.fillStyle = '#3A3D44';
+    g.fillRect(0, 0, s, s);
+    speckle(g, s, ['#2C2F35', '#4A4E57', '#55595F'], 9000, [1, 2], 31, [0.3, 0.7]);
+  });
+  tex.repeat.set(w / 4, d / 4);
+  const lines = new THREE.MeshBasicMaterial({ color: '#F4F1E6' });
+  const { G } = kitShared();
+  const parts: Part[] = [P(G.box, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 }), mx(0, 0.015, 0, w, 0.02, d), false)];
+  const n = Math.round(w / bay);
+  for (let i = 0; i <= n; i++) parts.push(P(G.box, lines, mx(-w / 2 + (i * w) / n, 0.03, 0.15, 0.08, 0.005, d - 0.3), false));
+  parts.push(P(G.box, lines, mx(0, 0.03, d / 2 - 0.2, w, 0.005, 0.08), false));
+  return parts;
 }
 
 // ---------------------------------------------------------------- the rest
@@ -1005,6 +1026,8 @@ export function procParts(kind: ProcKind, item: ProcItem): Part[] {
     case 'doorway': return doorway(item.w);
     case 'car': return carParts(color);
     case 'bike': return bikeParts(color);
+    case 'car_park': return parkingParts(item.w, item.d, 1.9);
+    case 'bike_park': return parkingParts(item.w, item.d, 0.9);
   }
 }
 

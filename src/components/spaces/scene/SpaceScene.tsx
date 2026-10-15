@@ -44,8 +44,8 @@ export interface SceneControls {
   walkTo: (userId: string) => boolean;
   /** Start or stop dancing (also Ctrl+Z). */
   dance: () => void;
-  /** Ride a car or a bike to a place. Returns false if there's no way there. */
-  ride: (kind: VehicleKind, to: { x: number; z: number }) => boolean;
+  /** Get out of the car or off the scooter you're on (also E). */
+  getOut: () => void;
 }
 
 export type VehicleKind = 'car' | 'bike';
@@ -101,8 +101,8 @@ export interface SpaceSceneProps {
   build?: BuildState | null;
   /** Walking or running by default (Shift does the other). */
   moveMode?: MoveMode;
-  /** A parked car or bike was clicked: offer somewhere to go. */
-  onVehicle?: (kind: VehicleKind) => void;
+  /** You got into a car or onto a scooter (or out: null). */
+  onVehicle?: (kind: VehicleKind | null) => void;
 }
 
 export interface BuildState {
@@ -569,6 +569,9 @@ export default function SpaceScene(props: SpaceSceneProps) {
       x: start.x, z: start.z, rot: myPlace.current?.rot ?? Math.PI * 1.25,
       path: null as null | { points: [number, number][]; startedAt: number; speed: number; gait: Gait },
       dancing: false,
+      /** The car or scooter I'm in, and the one I'm walking to. */
+      vehicle: null as VehicleKind | null,
+      pendingVehicle: null as VehicleKind | null,
       /** The seat I'm in, and the one I'm walking to. */
       seat: null as Seat | null,
       pathSeat: null as Seat | null,
@@ -582,7 +585,14 @@ export default function SpaceScene(props: SpaceSceneProps) {
     /** Walk to (x, z), or to a seat and sit in it. Standing up first if I'm sitting. */
     let shiftHeld = false;
     const running = () => shiftHeld !== (latest.current.moveMode === 'run');
-    const walkTo = (x: number, z: number, seat: Seat | null = null, gait: Gait = running() ? 'run' : 'walk') => {
+    const gaitNow = (): Gait => (me.vehicle === 'car' ? 'drive' : me.vehicle === 'bike' ? 'ride' : running() ? 'run' : 'walk');
+    const setVehicleMine = (kind: VehicleKind | null) => {
+      if (me.vehicle === kind) return;
+      me.vehicle = kind;
+      latest.current.onVehicle?.(kind);
+    };
+    const walkTo = (x: number, z: number, seat: Seat | null = null, gait: Gait = gaitNow()) => {
+      if (!seat) me.pendingVehicle = null;
       // Tapping on furniture walks to the nearest free spot beside it.
       const goal = seat ? seatApproach(map, seat) : freeSpot(map, x, z);
       // Stand up on the free side of my seat, then go from there.
@@ -806,7 +816,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
     const rideSeat = (pose: { x: number; z: number; rot: number }, kind: VehicleKind): Seat => {
       const fx = Math.sin(pose.rot);
       const fz = Math.cos(pose.rot);
-      return { id: `ride-${kind}`, x: pose.x + fx * SIT_BACK, z: pose.z + fz * SIT_BACK, rot: pose.rot, y: kind === 'car' ? 0.42 : 0.8, kind: 'chair' };
+      return { id: `ride-${kind}`, x: pose.x + fx * SIT_BACK, z: pose.z + fz * SIT_BACK, rot: pose.rot, y: kind === 'car' ? 0.56 : 0.62, kind: 'chair' };
     };
     /** Cars and bikes: one set of parts each, shared by everyone riding. */
     const vehicleParts = new Map<VehicleKind, Part[]>();
@@ -825,8 +835,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
         group.add(m);
       }
       // The driver sits on the car's left; a rider over the bike's saddle.
-      if (kind === 'car') group.position.set(0.38, 0, 0.15);
-      else group.position.set(0, 0, 0.12);
+      if (kind === 'car') group.position.set(0.28, 0, 0.25);
+      else group.position.set(0, 0, 0.3);
       a.root.add(group);
       a.vehicle = { kind, group };
     };
@@ -873,11 +883,27 @@ export default function SpaceScene(props: SpaceSceneProps) {
     const raycaster = new THREE.Raycaster();
     const ndc = new THREE.Vector2();
     let down: { x: number; y: number; id: number } | null = null;
-    const onPointerDown = (e: PointerEvent) => { if (e.button === 0) down = { x: e.clientX, y: e.clientY, id: e.pointerId }; };
+    // Hold and drag to look around: the view slides with the pointer (and comes back to you when
+    // you move). `pan` is how far the view is from you, `dragFrom` the floor point under the pointer.
+    const pan = new THREE.Vector3();
+    let dragFrom: THREE.Vector3 | null = null;
+    const floorPoint = (cx: number, cy: number) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      ndc.set(((cx - rect.left) / rect.width) * 2 - 1, -((cy - rect.top) / rect.height) * 2 + 1);
+      raycaster.setFromCamera(ndc, camera);
+      const at = new THREE.Vector3();
+      return raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), at) ? at : null;
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      down = { x: e.clientX, y: e.clientY, id: e.pointerId };
+      dragFrom = null;
+    };
     const onPointerUp = (e: PointerEvent) => {
       if (!down || down.id !== e.pointerId) return;
       const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
       down = null;
+      if (dragFrom) { dragFrom = null; renderer.domElement.style.cursor = ''; return; }
       if (moved > 8) return;
       const rect = renderer.domElement.getBoundingClientRect();
       ndc.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
@@ -894,23 +920,45 @@ export default function SpaceScene(props: SpaceSceneProps) {
         }
         return;
       }
-      // A parked car or bike: offer somewhere to ride to.
-      if (campusLayout && latest.current.onVehicle) {
+      // A parked car or scooter (when you're on foot): walk over to it and get in.
+      if (campusLayout && !me.vehicle) {
         const ground = raycaster.intersectObject(floorMesh)[0];
         const piece = ground ? pieceAt(campusLayout.objects, ground.point.x, ground.point.z) : null;
         const item = piece ? KIT_BY_ID.get(piece.kind) : undefined;
-        if (item && 'proc' in item && (item.proc === 'car' || item.proc === 'bike')) { latest.current.onVehicle(item.proc); return; }
+        if (piece && item && 'proc' in item && (item.proc === 'car' || item.proc === 'bike')) {
+          const kind = item.proc;
+          // Beside it, on the side away from where it's parked nose-first.
+          const back = { x: piece.x - Math.sin(piece.rot) * 1.6, z: piece.z - Math.cos(piece.rot) * 1.6 };
+          if (walkTo(back.x, back.z, null, gaitNow())) me.pendingVehicle = kind;
+          else setVehicleMine(kind);
+          return;
+        }
       }
       // A chair or sofa place: walk over and sit (unless someone's in it).
       const seat = seatOnRay(seats, raycaster.ray.origin, raycaster.ray.direction);
       if (seat && seat === me.seat) return;
-      if (seat && !occupied.has(seat.id)) { walkTo(seat.x, seat.z, seat); return; }
+      if (seat && !occupied.has(seat.id)) { setVehicleMine(null); walkTo(seat.x, seat.z, seat, gaitNow()); return; }
       if (seat) { const near = seatApproach(map, seat); walkTo(near.x, near.z); return; }
       const hit = raycaster.intersectObject(floorMesh)[0];
       if (hit) walkTo(hit.point.x, hit.point.z);
     };
     // A hand over seats you can sit in.
     const onPointerMove = (e: PointerEvent) => {
+      // Dragging (not in build mode, where clicks place pieces): slide the view.
+      if (down && down.id === e.pointerId && !latest.current.build && (dragFrom || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8)) {
+        const at = floorPoint(e.clientX, e.clientY);
+        if (!at) return;
+        if (!dragFrom) { dragFrom = floorPoint(down.x, down.y) ?? at; renderer.domElement.style.cursor = 'grabbing'; }
+        pan.x += dragFrom.x - at.x;
+        pan.z += dragFrom.z - at.z;
+        target.x += dragFrom.x - at.x;
+        target.z += dragFrom.z - at.z;
+        camera.position.copy(target).add(cameraOffset());
+        camera.lookAt(target);
+        camera.updateMatrixWorld();
+        dragFrom = floorPoint(e.clientX, e.clientY);
+        return;
+      }
       const rect = renderer.domElement.getBoundingClientRect();
       ndc.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
       raycaster.setFromCamera(ndc, camera);
@@ -968,6 +1016,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey || isEditable(e.target)) return;
+      if ((e.key === 'e' || e.key === 'E') && me.vehicle) { e.preventDefault(); setVehicleMine(null); return; }
       const k = moveKeyFor(e);
       if (!k) return;
       e.preventDefault();
@@ -976,7 +1025,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
     const onKeyUp = (e: KeyboardEvent) => { if (e.key === 'Shift') shiftHeld = false; const k = moveKeyFor(e); if (k) held.delete(k); };
     const onBlur = () => { held.clear(); shiftHeld = false; };
     const toggleDance = () => {
-      if (me.path || me.seat) return;
+      if (me.path || me.seat || me.vehicle) return;
       me.dancing = !me.dancing;
     };
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
@@ -988,11 +1037,11 @@ export default function SpaceScene(props: SpaceSceneProps) {
     window.addEventListener('blur', onBlur);
 
     latest.current.controls.current = {
-      center: () => { zoom = 1; target.set(me.x, 0, me.z); applyCamera(); },
+      center: () => { zoom = 1; pan.set(0, 0, 0); target.set(me.x, 0, me.z); applyCamera(); },
       zoomIn: () => { zoom = Math.min(MAX_ZOOM, zoom * 1.25); applyCamera(); },
       zoomOut: () => { zoom = Math.max(minZoom, zoom / 1.25); applyCamera(); },
       dance: () => toggleDance(),
-      ride: (kind, to) => walkTo(to.x, to.z, null, kind === 'car' ? 'drive' : 'ride'),
+      getOut: () => setVehicleMine(null),
       walkTo: (userId: string) => {
         const a = avatars.get(userId);
         if (!a || userId === latest.current.meId) return false;
@@ -1073,7 +1122,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
           me.z = up.z;
           me.seat = null;
         }
-        const speed = running() ? RUN_SPEED : WALK_SPEED;
+        const speed = me.vehicle === 'car' ? CAR_SPEED : me.vehicle === 'bike' ? BIKE_SPEED : running() ? RUN_SPEED : WALK_SPEED;
         const next = stepTo(map, me.x, me.z, dir.x * speed * dt, dir.z * speed * dt);
         me.dancing = false;
         moving = Math.hypot(next.x - me.x, next.z - me.z) > 1e-4;
@@ -1097,6 +1146,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
             me.rot = me.seat.rot;
           }
           me.pathSeat = null;
+          // Arrived at a parked car or scooter: get in.
+          if (me.pendingVehicle) { setVehicleMine(me.pendingVehicle); me.pendingVehicle = null; }
           p.endPath();
         }
       }
@@ -1130,8 +1181,9 @@ export default function SpaceScene(props: SpaceSceneProps) {
         }
       }
       campusWorld?.update(dt);
-      const travel: Gait = me.path ? me.path.gait : running() ? 'run' : 'walk';
-      const myAnim = moving ? travel : me.seat ? 'sit' : me.dancing ? 'dance' : 'idle';
+      const travel: Gait = me.path ? me.path.gait : gaitNow();
+      // In a car or on a scooter you stay in it, moving or not.
+      const myAnim = me.vehicle ? gaitNow() : moving ? travel : me.seat ? 'sit' : me.dancing ? 'dance' : 'idle';
       p.onLocal({ x: me.x, z: me.z, rot: me.rot, anim: myAnim });
 
       // Emotes that arrived since the last frame.
@@ -1251,10 +1303,14 @@ export default function SpaceScene(props: SpaceSceneProps) {
       // in, the margin shrinks with the view, so you always stay on screen.
       const mx = Math.min(W / 2, 6 / zoom);
       const mz = Math.min(D / 2, 4.5 / zoom);
-      const fx = office ? Math.min(Math.max(me.x, mx), W - mx) : me.x;
-      const fz = office ? Math.min(Math.max(me.z, mz), D - mz) : me.z;
-      target.x += (fx - target.x) * k;
-      target.z += (fz - target.z) * k;
+      // Moving brings the view back to you after looking around.
+      if (moving) pan.multiplyScalar(Math.max(0, 1 - dt * 3));
+      const fx = office ? Math.min(Math.max(me.x + pan.x, mx), W - mx) : me.x + pan.x;
+      const fz = office ? Math.min(Math.max(me.z + pan.z, mz), D - mz) : me.z + pan.z;
+      if (!dragFrom) {
+        target.x += (fx - target.x) * k;
+        target.z += (fz - target.z) * k;
+      }
       camera.position.copy(target).add(cameraOffset());
       camera.lookAt(target);
       campusWorld?.follow(target, sun, camera);
