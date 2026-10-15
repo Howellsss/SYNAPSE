@@ -10,7 +10,7 @@
 import type { Rect } from '../offices';
 import type { Seat, SeatKind } from '../seats';
 
-export type KitCategory = 'desks' | 'meeting' | 'seating' | 'tables' | 'plants' | 'decor' | 'outdoor' | 'lighting' | 'events';
+export type KitCategory = 'desks' | 'meeting' | 'seating' | 'tables' | 'plants' | 'decor' | 'outdoor' | 'lighting' | 'events' | 'transport';
 
 /** Pieces drawn in code. */
 export type ProcKind =
@@ -19,7 +19,7 @@ export type ProcKind =
   | 'oak' | 'palm' | 'bush_flower' | 'flowers_round' | 'reeds' | 'lilies' | 'string_lights' | 'pergola' | 'umbrella_set'
   | 'gazebo' | 'picnic' | 'fire_pit' | 'planter_tree' | 'led_wall' | 'truss' | 'theatre_seat' | 'sofa_p' | 'lounge_chair'
   | 'dining_set' | 'bar_counter' | 'bar_stool' | 'bottle_wall' | 'fireplace' | 'booth' | 'reception' | 'bookcase'
-  | 'conference' | 'ping_pong' | 'potted_tree' | 'doorway';
+  | 'conference' | 'ping_pong' | 'potted_tree' | 'doorway' | 'car' | 'bike';
 
 interface Base {
   id: string;
@@ -171,6 +171,13 @@ export const KIT: KitItem[] = [
   })),
   // Events.
   { id: 'led_wall', name: 'LED wall', category: 'events', proc: 'led_wall', w: 10, d: 0.4 },
+  // Transport: click one to ride it somewhere.
+  ...([['car_navy', 'Car (navy)', '#24406E'], ['car_red', 'Car (red)', '#A3302A'], ['car_gold', 'Car (gold)', '#C9952F'], ['car_white', 'Car (pearl)', '#C9CED6']] as const).map(([id, name, color]): ProcItem => ({
+    id, name, category: 'transport', proc: 'car', w: 1.9, d: 4.0, color,
+  })),
+  ...([['bike_teal', 'Bike (teal)', '#2F7F86'], ['bike_red', 'Bike (red)', '#A3302A'], ['bike_navy', 'Bike (navy)', '#24406E']] as const).map(([id, name, color]): ProcItem => ({
+    id, name, category: 'transport', proc: 'bike', w: 0.6, d: 1.8, color,
+  })),
   { id: 'stage_large', name: 'Large stage', category: 'events', proc: 'stage', w: 16, d: 5, walkable: true, hidden: true },
   { id: 'tv_wall', name: 'Wall screen', category: 'meeting', proc: 'led_wall', w: 3.2, d: 0.3 },
   { id: 'doorway', name: 'Doorway', category: 'decor', proc: 'doorway', w: 3, d: 0.5, walkable: true, hidden: true },
@@ -215,7 +222,7 @@ export const KIT_BY_ID: ReadonlyMap<string, KitItem> = new Map(KIT.map((i) => [i
 
 export const KIT_CATEGORIES: { id: KitCategory; label: string }[] = [
   { id: 'desks', label: 'Desks' }, { id: 'meeting', label: 'Meeting' }, { id: 'seating', label: 'Seating' }, { id: 'tables', label: 'Tables' },
-  { id: 'plants', label: 'Plants' }, { id: 'decor', label: 'Decor' }, { id: 'outdoor', label: 'Outdoor' }, { id: 'lighting', label: 'Lighting' }, { id: 'events', label: 'Events' },
+  { id: 'plants', label: 'Plants' }, { id: 'decor', label: 'Decor' }, { id: 'outdoor', label: 'Outdoor' }, { id: 'lighting', label: 'Lighting' }, { id: 'events', label: 'Events' }, { id: 'transport', label: 'Transport' },
 ];
 
 /** Every GLB node the kit uses (loaded once from office-02.glb). */

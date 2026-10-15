@@ -6,12 +6,12 @@ const meshy = ['Joyful_Dance_with_Hand_Sway', 'Running', 'Walking', 'ymca_dance'
 describe('guessSpaceClips', () => {
   it('guesses from Meshy clip names', () => {
     expect(guessSpaceClips(meshy, 'ymca_dance')).toEqual({
-      idle: 'ymca_dance', walk: 'Walking', sit: null, wave: null, cheer: 'Joyful_Dance_with_Hand_Sway',
+      idle: 'ymca_dance', walk: 'Walking', run: 'Running', dance: 'Joyful_Dance_with_Hand_Sway', sit: null, wave: null, cheer: 'Joyful_Dance_with_Hand_Sway',
     });
   });
   it('prefers a real idle clip and a walk over a run', () => {
     expect(guessSpaceClips(['Run', 'Idle_Breathing', 'Walk_Cycle', 'Wave_Hello'], null)).toEqual({
-      idle: 'Idle_Breathing', walk: 'Walk_Cycle', sit: null, wave: 'Wave_Hello', cheer: null,
+      idle: 'Idle_Breathing', walk: 'Walk_Cycle', run: 'Run', dance: null, sit: null, wave: 'Wave_Hello', cheer: null,
     });
   });
   it('never stands still with the walk clip', () => {
@@ -23,7 +23,7 @@ describe('guessSpaceClips', () => {
     expect(guessSpaceClips(['Chair_Sit_Down'], null).sit).toBeNull();
   });
   it('handles a file without clips', () => {
-    expect(guessSpaceClips([], null)).toEqual({ idle: null, walk: null, sit: null, wave: null, cheer: null });
+    expect(guessSpaceClips([], null)).toEqual({ idle: null, walk: null, run: null, dance: null, sit: null, wave: null, cheer: null });
   });
 });
 
@@ -31,7 +31,7 @@ describe('resolveSpaceClips', () => {
   const clips = meshy.map((name) => ({ name, duration: 1 }));
   it('uses saved choices that still exist, and guesses the rest', () => {
     expect(resolveSpaceClips({ clips, default_clip: 'Walking', space_clips: { idle: 'Running', cheer: 'Gone', wave: null } })).toEqual({
-      idle: 'Running', walk: 'Walking', sit: null, wave: null, cheer: 'Joyful_Dance_with_Hand_Sway',
+      idle: 'Running', walk: 'Walking', run: 'Running', dance: 'Joyful_Dance_with_Hand_Sway', sit: null, wave: null, cheer: 'Joyful_Dance_with_Hand_Sway',
     });
   });
   it('works before the columns exist', () => {

@@ -15,20 +15,21 @@ import { shownStatus } from '@/spatial/net/status';
 import { EMOTE_EMOJI } from '@/spatial/net/emotes';
 import type { RemoteStore } from '@/spatial/net/useSpaceChannel';
 import type { LocalState } from '@/spatial/net/moveSender';
-import type { EmoteKind, EmoteMsg, PresenceMeta } from '@/spatial/net/protocol';
+import type { EmoteKind, EmoteMsg, Gait, PresenceMeta } from '@/spatial/net/protocol';
 import type { Group } from '@/spatial/media/proximity';
 import type { GraphicsQuality } from '@/spatial/quality';
 import { findPath, smoothPath } from '@/spatial/scene/pathfinding';
 import { AVATAR_ACTIONS, type AvatarAction, type SpaceClips, type WalkStyle } from '@/spatial/scene/avatarClips';
 import {
-  cellCenter, facing, freeSpot, keyDirection, mapCell, moveKeyFor, pinRootMotion, spawnPoint, stepTo, walkMap, WALK_SPEED,
+  BIKE_SPEED, CAR_SPEED, cellCenter, facing, freeSpot, keyDirection, mapCell, moveKeyFor, pinRootMotion, RUN_SPEED, spawnPoint, stepTo, walkMap, WALK_SPEED,
   type Floor, type MoveKey,
 } from '@/spatial/scene/floor';
 import type { OfficeLayout } from '@/spatial/scene/offices';
-import { seatApproach, seatAt, seatOnRay, sittingSpot, type Seat } from '@/spatial/scene/seats';
+import { SIT_BACK, seatApproach, seatAt, seatOnRay, sittingSpot, type Seat } from '@/spatial/scene/seats';
 import { applyEdits, NO_EDITS, type CampusEdits } from '@/spatial/scene/campus/office';
 import { campusObstacles, campusSeats, portalAt, wingAt } from '@/spatial/scene/campus/layout';
-import { fitsAt, pieceAt, placedBounds } from '@/spatial/scene/campus/kit';
+import { fitsAt, KIT_BY_ID, pieceAt, placedBounds } from '@/spatial/scene/campus/kit';
+import { bikeParts, carParts, type Part } from './kitParts';
 import type { Rect } from '@/spatial/scene/offices';
 import { createWorld, type World } from './campusWorld';
 import { aimBone, beginPose, endPose, feminineGait, findRig, relaxPosture, type Rig } from './posture';
@@ -41,7 +42,14 @@ export interface SceneControls {
   zoomOut: () => void;
   /** Walk to someone (stops a little short of them). Returns false if they aren't placed yet. */
   walkTo: (userId: string) => boolean;
+  /** Start or stop dancing (also Ctrl+Z). */
+  dance: () => void;
+  /** Ride a car or a bike to a place. Returns false if there's no way there. */
+  ride: (kind: VehicleKind, to: { x: number; z: number }) => boolean;
 }
+
+export type VehicleKind = 'car' | 'bike';
+export type MoveMode = 'walk' | 'run';
 
 /** A character from the shared library, ready to load. */
 export interface SceneCharacter {
@@ -77,7 +85,7 @@ export interface SpaceSceneProps {
   /** My state, every frame. */
   onLocal: (state: LocalState) => void;
   /** Click-to-walk; `sitAtEnd` when the route ends in a seat. */
-  startPath: (points: [number, number][], speed: number, sitAtEnd?: boolean) => void;
+  startPath: (points: [number, number][], speed: number, sitAtEnd?: boolean, gait?: Gait) => void;
   endPath: () => void;
   onEmote: (fn: (e: EmoteMsg) => void) => () => void;
   /** My own reactions (others' arrive through onEmote). */
@@ -91,6 +99,10 @@ export interface SpaceSceneProps {
   view?: SceneView;
   /** Campus build mode: clicks place or pick pieces instead of walking. */
   build?: BuildState | null;
+  /** Walking or running by default (Shift does the other). */
+  moveMode?: MoveMode;
+  /** A parked car or bike was clicked: offer somewhere to go. */
+  onVehicle?: (kind: VehicleKind) => void;
 }
 
 export interface BuildState {
@@ -158,6 +170,10 @@ interface Avatar {
   style: WalkStyle;
   /** Was drawn seated last frame (so the body can be put back when standing up). */
   seated: boolean;
+  /** The car or bike drawn under them while they ride. */
+  vehicle: { kind: VehicleKind; group: THREE.Group } | null;
+  /** Bouncing to music without a dance clip (so the body can be put back). */
+  bouncing: boolean;
 }
 
 const _va = new THREE.Vector3();
@@ -551,7 +567,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
     const start = freeSpot(map, from.x, from.z);
     const me = {
       x: start.x, z: start.z, rot: myPlace.current?.rot ?? Math.PI * 1.25,
-      path: null as null | { points: [number, number][]; startedAt: number },
+      path: null as null | { points: [number, number][]; startedAt: number; speed: number; gait: Gait },
+      dancing: false,
       /** The seat I'm in, and the one I'm walking to. */
       seat: null as Seat | null,
       pathSeat: null as Seat | null,
@@ -563,7 +580,9 @@ export default function SpaceScene(props: SpaceSceneProps) {
     let occupied = new Set<string>();
 
     /** Walk to (x, z), or to a seat and sit in it. Standing up first if I'm sitting. */
-    const walkTo = (x: number, z: number, seat: Seat | null = null) => {
+    let shiftHeld = false;
+    const running = () => shiftHeld !== (latest.current.moveMode === 'run');
+    const walkTo = (x: number, z: number, seat: Seat | null = null, gait: Gait = running() ? 'run' : 'walk') => {
       // Tapping on furniture walks to the nearest free spot beside it.
       const goal = seat ? seatApproach(map, seat) : freeSpot(map, x, z);
       // Stand up on the free side of my seat, then go from there.
@@ -581,10 +600,12 @@ export default function SpaceScene(props: SpaceSceneProps) {
       const route = points.filter((p, i) => i === 0 || Math.hypot(p[0] - points[i - 1][0], p[1] - points[i - 1][1]) > 1e-3);
       const length = route.reduce((s, p, i) => (i ? s + Math.hypot(p[0] - route[i - 1][0], p[1] - route[i - 1][1]) : 0), 0);
       if (length < 0.05 || route.length < 2) return false;
-      me.path = { points: route, startedAt: performance.now() };
+      const speed = gait === 'run' ? RUN_SPEED : gait === 'drive' ? CAR_SPEED : gait === 'ride' ? BIKE_SPEED : WALK_SPEED;
+      me.path = { points: route, startedAt: performance.now(), speed, gait };
       me.seat = null;
+      me.dancing = false;
       me.pathSeat = seat;
-      latest.current.startPath(route, WALK_SPEED, !!seat);
+      latest.current.startPath(route, speed, !!seat, gait);
       marker.position.set(goal.x, 0.02, goal.z);
       marker.visible = true;
       markerUntil = performance.now() + 900;
@@ -670,7 +691,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       label.position.set(0, LABEL_HEIGHT, 0);
       root.add(label);
       scene.add(root);
-      return { root, body: null, bodyFor: undefined, clipsSig: '', mixer: null, actions: {}, current: null, emote: null, label, labelEl, labelSig: '', bubble: null, rig: null, style: 'standard', seated: false };
+      return { root, body: null, bodyFor: undefined, clipsSig: '', mixer: null, actions: {}, current: null, emote: null, label, labelEl, labelSig: '', bubble: null, rig: null, style: 'standard', seated: false, vehicle: null, bouncing: false };
     };
     const setBody = (a: Avatar, userId: string, tpl: Template | null, waiting = false) => {
       if (a.body) {
@@ -708,6 +729,9 @@ export default function SpaceScene(props: SpaceSceneProps) {
           if (ONE_SHOT.includes(action)) { act.setLoop(THREE.LoopOnce, 1); act.clampWhenFinished = true; }
           a.actions[action] = act;
         }
+        // No dancing clip: the cheer, on a loop (its own copy, so the one-off cheer still plays once).
+        const cheer = names?.cheer ? tpl.clips.get(names.cheer) : undefined;
+        if (!a.actions.dance && cheer) a.actions.dance = a.mixer.clipAction(cheer.clone());
       }
       if (shadows) a.body.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
       a.root.add(a.body);
@@ -778,10 +802,39 @@ export default function SpaceScene(props: SpaceSceneProps) {
       // Hip joints just above the cushion.
       a.body.position.y = Math.min(0.3, Math.max(-0.9, seat.y + 0.07 - hipY));
     };
+    /** Where someone riding sits: on the bike's saddle, or in the car's driving seat. */
+    const rideSeat = (pose: { x: number; z: number; rot: number }, kind: VehicleKind): Seat => {
+      const fx = Math.sin(pose.rot);
+      const fz = Math.cos(pose.rot);
+      return { id: `ride-${kind}`, x: pose.x + fx * SIT_BACK, z: pose.z + fz * SIT_BACK, rot: pose.rot, y: kind === 'car' ? 0.42 : 0.8, kind: 'chair' };
+    };
+    /** Cars and bikes: one set of parts each, shared by everyone riding. */
+    const vehicleParts = new Map<VehicleKind, Part[]>();
+    const setVehicle = (a: Avatar, kind: VehicleKind | null) => {
+      if ((a.vehicle?.kind ?? null) === kind) return;
+      if (a.vehicle) { a.root.remove(a.vehicle.group); a.vehicle = null; }
+      if (!kind) return;
+      let parts = vehicleParts.get(kind);
+      if (!parts) { parts = kind === 'car' ? carParts('#24406E') : bikeParts('#2F7F86'); vehicleParts.set(kind, parts); }
+      const group = new THREE.Group();
+      for (const part of parts) {
+        const m = new THREE.Mesh(part.geo, part.mat);
+        m.matrixAutoUpdate = false;
+        m.matrix.copy(part.local);
+        m.castShadow = shadows && part.shadow;
+        group.add(m);
+      }
+      // The driver sits on the car's left; a rider over the bike's saddle.
+      if (kind === 'car') group.position.set(0.38, 0, 0.15);
+      else group.position.set(0, 0, 0.12);
+      a.root.add(group);
+      a.vehicle = { kind, group };
+    };
+
     /** After the clips: shoulders down, arms by the sides, and the feminine walk where chosen. */
     const standTall = (a: Avatar, rig: Rig, body: THREE.Object3D) => {
-      const walking = a.current === 'walk';
-      if (a.current === 'wave' || a.current === 'cheer') return; // gestures play as made
+      const walking = a.current === 'walk' || a.current === 'run';
+      if (a.current === 'wave' || a.current === 'cheer' || a.current === 'dance') return; // gestures play as made
       if (!a.current) toRest(rig); // no clip at all: start from the file's pose every frame
       const feminine = a.style === 'feminine';
       const walk = a.actions.walk;
@@ -840,6 +893,13 @@ export default function SpaceScene(props: SpaceSceneProps) {
           build.onSelect(pieceAt(campusLayout.objects, hit.point.x, hit.point.z)?.id ?? null);
         }
         return;
+      }
+      // A parked car or bike: offer somewhere to ride to.
+      if (campusLayout && latest.current.onVehicle) {
+        const ground = raycaster.intersectObject(floorMesh)[0];
+        const piece = ground ? pieceAt(campusLayout.objects, ground.point.x, ground.point.z) : null;
+        const item = piece ? KIT_BY_ID.get(piece.kind) : undefined;
+        if (item && 'proc' in item && (item.proc === 'car' || item.proc === 'bike')) { latest.current.onVehicle(item.proc); return; }
       }
       // A chair or sofa place: walk over and sit (unless someone's in it).
       const seat = seatOnRay(seats, raycaster.ray.origin, raycaster.ray.direction);
@@ -900,14 +960,25 @@ export default function SpaceScene(props: SpaceSceneProps) {
     };
     const isEditable = (el: EventTarget | null) => el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') shiftHeld = true;
+      // Ctrl+Z dances, like Gather (not while typing).
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z') && !isEditable(e.target)) {
+        e.preventDefault();
+        toggleDance();
+        return;
+      }
       if (e.ctrlKey || e.metaKey || e.altKey || isEditable(e.target)) return;
       const k = moveKeyFor(e);
       if (!k) return;
       e.preventDefault();
       held.add(k);
     };
-    const onKeyUp = (e: KeyboardEvent) => { const k = moveKeyFor(e); if (k) held.delete(k); };
-    const onBlur = () => held.clear();
+    const onKeyUp = (e: KeyboardEvent) => { if (e.key === 'Shift') shiftHeld = false; const k = moveKeyFor(e); if (k) held.delete(k); };
+    const onBlur = () => { held.clear(); shiftHeld = false; };
+    const toggleDance = () => {
+      if (me.path || me.seat) return;
+      me.dancing = !me.dancing;
+    };
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
     renderer.domElement.addEventListener('pointerup', onPointerUp);
     renderer.domElement.addEventListener('pointermove', onPointerMove);
@@ -920,6 +991,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
       center: () => { zoom = 1; target.set(me.x, 0, me.z); applyCamera(); },
       zoomIn: () => { zoom = Math.min(MAX_ZOOM, zoom * 1.25); applyCamera(); },
       zoomOut: () => { zoom = Math.max(minZoom, zoom / 1.25); applyCamera(); },
+      dance: () => toggleDance(),
+      ride: (kind, to) => walkTo(to.x, to.z, null, kind === 'car' ? 'drive' : 'ride'),
       walkTo: (userId: string) => {
         const a = avatars.get(userId);
         if (!a || userId === latest.current.meId) return false;
@@ -1000,14 +1073,16 @@ export default function SpaceScene(props: SpaceSceneProps) {
           me.z = up.z;
           me.seat = null;
         }
-        const next = stepTo(map, me.x, me.z, dir.x * WALK_SPEED * dt, dir.z * WALK_SPEED * dt);
+        const speed = running() ? RUN_SPEED : WALK_SPEED;
+        const next = stepTo(map, me.x, me.z, dir.x * speed * dt, dir.z * speed * dt);
+        me.dancing = false;
         moving = Math.hypot(next.x - me.x, next.z - me.z) > 1e-4;
         me.x = next.x;
         me.z = next.z;
         me.rot = facing(dir.x, dir.z);
       } else if (me.path) {
         // By the clock, like everyone else's screen walks this route, so we stay in step.
-        const at = pointAlong(me.path.points, ((now - me.path.startedAt) / 1000) * WALK_SPEED);
+        const at = pointAlong(me.path.points, ((now - me.path.startedAt) / 1000) * me.path.speed);
         me.x = at.x;
         me.z = at.z;
         me.rot = at.rot;
@@ -1055,7 +1130,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
         }
       }
       campusWorld?.update(dt);
-      const myAnim = moving ? 'walk' : me.seat ? 'sit' : 'idle';
+      const travel: Gait = me.path ? me.path.gait : running() ? 'run' : 'walk';
+      const myAnim = moving ? travel : me.seat ? 'sit' : me.dancing ? 'dance' : 'idle';
       p.onLocal({ x: me.x, z: me.z, rot: me.rot, anim: myAnim });
 
       // Emotes that arrived since the last frame.
@@ -1075,15 +1151,36 @@ export default function SpaceScene(props: SpaceSceneProps) {
       // Place, turn, animate and (if sitting) seat one avatar.
       const turn = 1 - Math.exp(-dt * 14);
       const nowOccupied = new Set<string>();
-      const drawAvatar = (a: Avatar, pose: { x: number; z: number; rot: number; anim: string }, seat: Seat | null) => {
+      const drawAvatar = (a: Avatar, pose: { x: number; z: number; rot: number; anim: string }, chair: Seat | null) => {
+        // Riding: seated in the car or on the bike, which is drawn under them.
+        const riding: VehicleKind | null = pose.anim === 'drive' ? 'car' : pose.anim === 'ride' ? 'bike' : null;
+        const seat = chair ?? (riding ? rideSeat(pose, riding) : null);
+        setVehicle(a, riding);
         const spot = seat ? sittingSpot(seat) : pose;
         a.root.position.set(spot.x, 0, spot.z);
         a.root.rotation.y = lerpAngle(a.root.rotation.y, seat ? seat.rot : pose.rot, turn);
         if (a.emote && (a.emote.until <= now || pose.anim === 'walk')) a.emote = null;
-        const want: AvatarAction | null = a.emote ? a.emote.action : pose.anim === 'walk' ? 'walk'
-          : seat ? (a.actions.sit ? 'sit' : a.rig ? null : 'idle') : 'idle';
+        if (a.emote && pose.anim === 'run') a.emote = null;
+        const want: AvatarAction | null = a.emote ? a.emote.action
+          : pose.anim === 'walk' ? 'walk'
+          : pose.anim === 'run' ? (a.actions.run ? 'run' : 'walk')
+          : pose.anim === 'dance' ? 'dance'
+          : seat ? (a.actions.sit && !riding ? 'sit' : a.rig ? null : 'idle') : 'idle';
         play(a, want && a.actions[want] ? want : want && a.actions.idle ? 'idle' : null);
+        // Quicker steps for the quicker walk; a walk sped right up when there's no running clip.
+        if (a.actions.walk) a.actions.walk.timeScale = pose.anim === 'run' && !a.actions.run ? 2.1 : 1.3;
         a.mixer?.update(dt);
+        // Dancing with no clip at all: bounce and sway to the beat.
+        const bounce = pose.anim === 'dance' && !a.actions.dance && !!a.body;
+        if (bounce && a.body) {
+          a.body.position.y = Math.abs(Math.sin(now / 190)) * 0.12;
+          a.body.rotation.y = Math.sin(now / 380) * 0.4;
+          a.bouncing = true;
+        } else if (a.bouncing && a.body) {
+          a.body.position.y = 0;
+          a.body.rotation.y = 0;
+          a.bouncing = false;
+        }
         if (a.rig && a.body) {
           beginPose(a.rig);
           if (!seat) standTall(a, a.rig, a.body);
@@ -1148,7 +1245,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
       }
 
       // Follow me.
-      const k = 1 - Math.exp(-dt * 5);
+      // Keep up with a car or a bike.
+      const k = 1 - Math.exp(-dt * (me.path && me.path.speed > RUN_SPEED ? 10 : me.path?.gait === 'run' || running() ? 7 : 5));
       // In an office the view stays over the office, so its edge never fills the screen. Zoomed
       // in, the margin shrinks with the view, so you always stay on screen.
       const mx = Math.min(W / 2, 6 / zoom);

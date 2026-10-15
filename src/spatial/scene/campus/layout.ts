@@ -340,6 +340,10 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
     add('park-picnic-b', 'picnic', 52.4, 36.6);
     add('park-lights', 'string_lights', 50, 35.2);
     add('park-bench-ne', 'bench', 74.5, 36.6, -HALF);
+    // Cars on the avenue and bikes by the park: click one to ride somewhere.
+    add('park-car-a', 'car_navy', 46, 61.75, HALF);
+    add('park-car-b', 'car_red', 50.6, 61.75, HALF);
+    for (const [i, x] of [68, 69, 70].entries()) add(`park-bike-${i}`, i % 2 ? 'bike_navy' : 'bike_teal', x, 59.3, 0);
     add('park-palm-a', 'palm', 45.4, 57.8);
     add('park-palm-b', 'palm', 75.8, 34.8);
   }

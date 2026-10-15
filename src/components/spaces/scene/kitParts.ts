@@ -873,6 +873,58 @@ function doorway(w: number): Part[] {
   ];
 }
 
+// ---------------------------------------------------------------- vehicles
+
+/** A small electric car (faces +z), about 2 × 4 m. */
+export function carParts(color: string): Part[] {
+  const { M, G } = kitShared();
+  const body = new Painter(rng(3));
+  // An open-top car, so whoever drives shows from above.
+  body.add(G.rounded, mx(0, 0.45, 0, 1.8, 0.45, 3.9), color, { shade: 0.35, jitter: 0.02 });
+  body.add(G.rounded, mx(0, 0.75, 1.3, 1.7, 0.22, 1.2), color, { shade: 0.2, jitter: 0.02 });
+  body.add(G.rounded, mx(0, 0.75, -1.45, 1.7, 0.22, 0.9), color, { shade: 0.2, jitter: 0.02 });
+  for (const x of [-0.42, 0.42]) {
+    body.add(G.rounded, mx(x, 0.62, -0.25, 0.62, 0.14, 0.6), '#3A2A22', { shade: 0.2 });
+    body.add(G.rounded, mx(x, 0.95, -0.6, 0.62, 0.6, 0.14, 0, -0.15), '#3A2A22', { shade: 0.25 });
+  }
+  const glass = new Painter(rng(4));
+  glass.add(G.box, mx(0, 1.02, 0.66, 1.5, 0.42, 0.04, 0, -0.45), '#2C3E52', { shade: 0 });
+  glass.add(G.cyl8, mx(-0.38, 0.95, 0.35, 0.36, 0.05, 0.36, 0, -0.9), '#15171C', { shade: 0 });
+  const lights = new Painter(rng(5));
+  for (const x of [-0.6, 0.6]) {
+    lights.add(G.box, mx(x, 0.62, 1.95, 0.32, 0.1, 0.04), new THREE.Color(1, 0.95, 0.8), { shade: 0, hdr: 2.6 });
+    lights.add(G.box, mx(x, 0.62, -1.95, 0.32, 0.08, 0.04), new THREE.Color(1, 0.15, 0.1), { shade: 0, hdr: 2.2 });
+  }
+  const wheel = new THREE.CylinderGeometry(0.36, 0.36, 0.26, 18).rotateZ(Math.PI / 2);
+  const wheels = new Painter(rng(6));
+  for (const [x, z] of [[-0.85, 1.25], [0.85, 1.25], [-0.85, -1.25], [0.85, -1.25]]) wheels.add(wheel, mx(x, 0.36, z), '#15171C', { shade: 0.1 });
+  wheel.dispose();
+  return [P(body.done(), M.gloss), P(glass.done(), M.gloss, undefined, false), P(lights.done(), M.bulbs, undefined, false), P(wheels.done(), M.fabric)];
+}
+
+/** A city bike (faces +z), about 0.6 × 1.8 m. */
+export function bikeParts(color: string): Part[] {
+  const { M, G } = kitShared();
+  const frame = new Painter(rng(7));
+  const tube = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, r = 0.035) => {
+    const len = Math.hypot(x1 - x0, y1 - y0, z1 - z0);
+    const g = new THREE.CylinderGeometry(r, r, len, 6);
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(x1 - x0, y1 - y0, z1 - z0).normalize());
+    frame.add(g, new THREE.Matrix4().compose(new THREE.Vector3((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), q, new THREE.Vector3(1, 1, 1)), color, { shade: 0.1 });
+    g.dispose();
+  };
+  tube(0, 0.36, -0.55, 0, 0.75, -0.1); tube(0, 0.36, -0.55, 0, 0.42, 0.25); tube(0, 0.42, 0.25, 0, 0.82, 0.45);
+  tube(0, 0.75, -0.1, 0, 0.82, 0.45); tube(0, 0.82, 0.45, 0, 0.36, 0.6); tube(0, 0.36, -0.55, 0, 0.75, -0.18);
+  tube(-0.28, 1.0, 0.42, 0.28, 1.0, 0.42, 0.025); tube(0, 0.82, 0.45, 0, 1.0, 0.42);
+  frame.add(G.rounded, mx(0, 0.82, -0.14, 0.18, 0.06, 0.28), '#2A2420', { shade: 0.1 });
+  const wheel = new THREE.TorusGeometry(0.33, 0.03, 6, 24).rotateY(Math.PI / 2);
+  const wheels = new Painter(rng(8));
+  for (const z of [-0.55, 0.6]) wheels.add(wheel, mx(0, 0.36, z), '#15171C', { shade: 0 });
+  wheel.dispose();
+  const lamp = new Painter(rng(9)).add(G.bulb, mx(0, 0.95, 0.52, 0.09, 0.09, 0.09), new THREE.Color(1, 0.95, 0.8), { shade: 0, hdr: 2.6 }).done();
+  return [P(frame.done(), M.gloss), P(wheels.done(), M.fabric), P(lamp, M.bulbs, undefined, false)];
+}
+
 // ---------------------------------------------------------------- the rest
 
 function bench(): Part[] {
@@ -951,6 +1003,8 @@ export function procParts(kind: ProcKind, item: ProcItem): Part[] {
     case 'ping_pong': return pingPong();
     case 'potted_tree': return pottedTree(seed);
     case 'doorway': return doorway(item.w);
+    case 'car': return carParts(color);
+    case 'bike': return bikeParts(color);
   }
 }
 

@@ -34,8 +34,12 @@ export interface PresenceMeta {
   joinedAt: string;
 }
 
-export type AnimName = 'idle' | 'walk' | 'sit' | 'wave' | 'cheer' | 'raise_hand';
-const ANIMS: AnimName[] = ['idle', 'walk', 'sit', 'wave', 'cheer', 'raise_hand'];
+export type AnimName = 'idle' | 'walk' | 'run' | 'dance' | 'drive' | 'ride' | 'sit' | 'wave' | 'cheer' | 'raise_hand';
+const ANIMS: AnimName[] = ['idle', 'walk', 'run', 'dance', 'drive', 'ride', 'sit', 'wave', 'cheer', 'raise_hand'];
+
+/** How someone travels a route: on foot, running, in a car or on a bike. */
+export type Gait = 'walk' | 'run' | 'drive' | 'ride';
+const GAITS: Gait[] = ['walk', 'run', 'drive', 'ride'];
 
 export interface MoveMsg {
   userId: string;
@@ -58,6 +62,8 @@ export interface PathMsg {
   speed: number;
   /** Sit when they arrive (they clicked a chair). */
   sitAtEnd: boolean;
+  /** Walking (default), running, driving or riding. */
+  gait?: Gait;
   seq: number;
   t: number;
 }
@@ -147,7 +153,8 @@ export function parsePath(raw: unknown): PathMsg | null {
     if (x === null || z === null) return null;
     points.push([x, z]);
   }
-  return { userId, points, speed, sitAtEnd: raw.sitAtEnd === true, seq, t };
+  const gait = GAITS.includes(raw.gait as Gait) ? (raw.gait as Gait) : 'walk';
+  return { userId, points, speed, sitAtEnd: raw.sitAtEnd === true, gait, seq, t };
 }
 
 export function parseEmote(raw: unknown): EmoteMsg | null {

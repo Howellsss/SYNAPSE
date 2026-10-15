@@ -5,7 +5,7 @@ import { MoveSender, type LocalState } from './moveSender';
 import { RemoteMover } from './interpolation';
 import {
   mergePresence, parseAdmit, parseEmote, parseKnock, parseLayout, parseMove, parsePath,
-  type AdmitMsg, type EmoteKind, type EmoteMsg, type KnockMsg, type LayoutMsg, type MoveMsg, type PathMsg, type PresenceMeta,
+  type AdmitMsg, type EmoteKind, type Gait, type EmoteMsg, type KnockMsg, type LayoutMsg, type MoveMsg, type PathMsg, type PresenceMeta,
 } from './protocol';
 import type { ConnectionState } from './status';
 
@@ -219,7 +219,7 @@ export function useSpaceChannel(spaceId: string | null, me: MeInput | null, away
     sender?.update(state);
   }, [sender]);
 
-  const startPath = useCallback((points: [number, number][], speed: number, sitAtEnd = false) => sender?.startPath(points, speed, sitAtEnd), [sender]);
+  const startPath = useCallback((points: [number, number][], speed: number, sitAtEnd = false, gait: Gait = 'walk') => sender?.startPath(points, speed, sitAtEnd, gait), [sender]);
   const endPath = useCallback(() => sender?.endPath(), [sender]);
 
   const sendEmote = useCallback((kind: EmoteKind, to: string | null = null) => {

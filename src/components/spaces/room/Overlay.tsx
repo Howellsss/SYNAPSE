@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import {
   LocateFixed, ZoomIn, ZoomOut, Map as MapIcon, Gauge, PencilRuler, Mic, MicOff, Video, VideoOff, MonitorUp,
   SmilePlus, Hand, MessageSquare, Megaphone, MoreHorizontal, PhoneOff, Settings2, Check, Wifi, WifiOff, Loader2, Shirt, Box, Square, Hammer,
+  Footprints, Zap, Music, Bike, Car,
 } from 'lucide-react';
 import type { ConnectionState } from '@/spatial/net/status';
 import { REACTIONS, type ReactionKind } from '@/spatial/net/emotes';
@@ -180,13 +181,63 @@ function BarButton({ label, onClick, on = true, danger, children, className, pre
 }
 
 /** Bottom-center controls. Mic, camera and screen share are real; chat and "bring team" come later. */
-export function ControlBar({ call, onLeave, onSettings, onReact, handRaised, onHand }: {
+export type MoveMode = 'walk' | 'run';
+
+/** How you move: walk or run by default, dance, or ride a bike or car somewhere. */
+function ActionMenu({ mode, onMode, onDance, onRide }: {
+  mode: MoveMode;
+  onMode: (m: MoveMode) => void;
+  onDance: () => void;
+  onRide?: (kind: 'bike' | 'car') => void;
+}) {
+  const kbd = 'ml-auto rounded bg-ivory-100 px-1.5 py-0.5 text-[10px] font-semibold text-ivory-700';
+  return (
+    <Popover
+      label="Action"
+      panelClassName="bottom-full left-1/2 mb-2 w-60 -translate-x-1/2"
+      trigger={({ open, toggle }) => (
+        <BarButton label={`Action: ${mode === 'run' ? 'running' : 'walking'}`} pressed={open} onClick={toggle}>
+          {mode === 'run' ? <Zap className="h-5 w-5" /> : <Footprints className="h-5 w-5" />}
+        </BarButton>
+      )}
+    >
+      {(close) => (
+        <div role="menu" aria-label="Action">
+          <button type="button" role="menuitemradio" aria-checked={mode === 'walk'} className={menuItem} onClick={() => { onMode('walk'); close(); }}>
+            <Footprints className="h-4 w-4" /> Walk {mode === 'walk' && <Check className="h-4 w-4 text-gold-600" />}
+            <span className={kbd}>default</span>
+          </button>
+          <button type="button" role="menuitemradio" aria-checked={mode === 'run'} className={menuItem} onClick={() => { onMode('run'); close(); }}>
+            <Zap className="h-4 w-4" /> Run {mode === 'run' && <Check className="h-4 w-4 text-gold-600" />}
+            <span className={kbd}>hold Shift</span>
+          </button>
+          <button type="button" role="menuitem" className={menuItem} onClick={() => { onDance(); close(); }}>
+            <Music className="h-4 w-4" /> Dance <span className={kbd}>Ctrl+Z</span>
+          </button>
+          {onRide && (
+            <>
+              <div className="my-1 h-px bg-ivory-100" />
+              <button type="button" role="menuitem" className={menuItem} onClick={() => { onRide('bike'); close(); }}><Bike className="h-4 w-4" /> Ride a bike…</button>
+              <button type="button" role="menuitem" className={menuItem} onClick={() => { onRide('car'); close(); }}><Car className="h-4 w-4" /> Drive a car…</button>
+            </>
+          )}
+        </div>
+      )}
+    </Popover>
+  );
+}
+
+export function ControlBar({ call, onLeave, onSettings, onReact, handRaised, onHand, moveMode = 'walk', onMoveMode, onDance, onRide }: {
   call: Pick<LiveKitRoom, 'micOn' | 'camOn' | 'screenOn' | 'pending' | 'toggleMic' | 'toggleCam' | 'startScreenShare' | 'stopScreenShare'>;
   onLeave: () => void;
   onSettings: () => void;
   onReact: (kind: ReactionKind) => void;
   handRaised: boolean;
   onHand: (raised: boolean) => void;
+  moveMode?: MoveMode;
+  onMoveMode?: (m: MoveMode) => void;
+  onDance?: () => void;
+  onRide?: (kind: 'bike' | 'car') => void;
 }) {
   const { micOn: mic, camOn: cam, screenOn: sharing, pending } = call;
   const share = () => (sharing ? call.stopScreenShare() : call.startScreenShare());
@@ -215,6 +266,7 @@ export function ControlBar({ call, onLeave, onSettings, onReact, handRaised, onH
         ))}
       </Popover>
       <BarButton label={handRaised ? 'Lower hand' : 'Raise hand'} pressed={handRaised} onClick={() => onHand(!handRaised)}><Hand className="h-5 w-5" /></BarButton>
+      {onMoveMode && onDance && <ActionMenu mode={moveMode} onMode={onMoveMode} onDance={onDance} onRide={onRide} />}
       <BarButton label="Chat" pressed={chat} onClick={() => setChat(!chat)} className="hidden sm:flex"><MessageSquare className="h-5 w-5" /></BarButton>
       <BarButton label="Bring your team over" className="hidden sm:flex"><Megaphone className="h-5 w-5" /></BarButton>
       <Popover

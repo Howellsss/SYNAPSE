@@ -738,7 +738,7 @@ export interface Character {
   /** The character everyone appears as in this workspace's spaces (one per workspace). */
   use_in_spaces?: boolean;
   /** Which clip plays for standing, walking, wave and cheer in spaces (chosen on the Characters page). */
-  space_clips?: Partial<Record<'idle' | 'walk' | 'sit' | 'wave' | 'cheer' | 'style', string | null>> | null;
+  space_clips?: Partial<Record<'idle' | 'walk' | 'run' | 'dance' | 'sit' | 'wave' | 'cheer' | 'style', string | null>> | null;
   created_by: string | null;
   created_at: string;
 }
