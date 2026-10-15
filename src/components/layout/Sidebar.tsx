@@ -1,9 +1,6 @@
-import { useState } from 'react';
-import { ChevronRight, Menu, X } from 'lucide-react';
-import {
-  ArrowRightStartOnRectangleIcon, BoltIcon, CubeIcon, CalendarDaysIcon, ChatBubbleLeftRightIcon, Cog6ToothIcon, DocumentTextIcon,
-  FolderIcon, HomeIcon, BuildingOffice2Icon, SignalIcon, MicrophoneIcon, PresentationChartBarIcon, SparklesIcon, Squares2X2Icon, TicketIcon, UserIcon, VideoCameraIcon,
-} from '@heroicons/react/24/solid';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowRightStartOnRectangleIcon, Cog6ToothIcon, HomeIcon } from '@heroicons/react/24/solid';
+import { isNavActive, navGroups } from './nav';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { usePlatformAdmin } from '@/lib/platformAdmin';
@@ -12,45 +9,23 @@ import { Avatar } from '@/components/ui/Avatar';
 interface SidebarProps {
   currentPath: string;
   onNavigate: (to: string) => void;
+  /** Shown (slid in from the left), or tucked away with the features in the bottom dock. */
+  open: boolean;
+  onClose: () => void;
 }
 
-// Everyday places first, then tools: the arrangement from the redesign.
-const navGroups = [
-  [
-    { label: 'Dashboard', icon: HomeIcon, path: '/dashboard' },
-    { label: 'Conversations', icon: ChatBubbleLeftRightIcon, path: '/conversations' },
-    { label: 'Contacts', icon: UserIcon, path: '/contacts' },
-    { label: 'Calendars', icon: CalendarDaysIcon, path: '/calendars' },
-    { label: 'Meetings', icon: VideoCameraIcon, path: '/meetings' },
-    { label: 'Rooms', icon: BuildingOffice2Icon, path: '/rooms' },
-    { label: 'Workspaces', icon: Squares2X2Icon, path: '/workspace' },
-    { label: 'Events', icon: TicketIcon, path: '/events' },
-    { label: 'Streams', icon: SignalIcon, path: '/streams' },
-  ],
-  [
-    { label: 'Webinars', icon: PresentationChartBarIcon, path: '/webinars' },
-    { label: 'Submissions', icon: DocumentTextIcon, path: '/forms' },
-    { label: 'Workflows', icon: BoltIcon, path: '/workflows' },
-    { label: 'Recordings', icon: MicrophoneIcon, path: '/recordings' },
-    { label: 'Characters', icon: CubeIcon, path: '/characters' },
-    { label: 'Media Library', icon: FolderIcon, path: '/media-library' },
-    { label: 'AI Hub', icon: SparklesIcon, path: '/ai-hub' },
-  ],
-];
-
-export function Sidebar({ currentPath, onNavigate }: SidebarProps) {
+export function Sidebar({ currentPath, onNavigate, open, onClose }: SidebarProps) {
   const { profile, signOut, role } = useAuth();
-  const [mobileOpen, setMobileOpen] = useState(false);
   // The character library is managed by SYNAPSE admins only.
   const isPlatformAdmin = usePlatformAdmin() === true;
 
   const handleNavigate = (path: string) => {
     onNavigate(path);
-    setMobileOpen(false);
+    // On a phone the menu covers the page: close it once you've picked somewhere.
+    if (window.matchMedia('(max-width: 1023px)').matches) onClose();
   };
 
-  const isActive = (path: string) =>
-    currentPath === path || currentPath.startsWith(path + '/') || (path === '/dashboard' && currentPath === '/') || (path === '/workspace' && currentPath.startsWith('/workspaces'));
+  const isActive = (path: string) => isNavActive(currentPath, path);
 
   const item = (label: string, Icon: typeof HomeIcon, path: string) => {
     const active = isActive(path);
@@ -69,25 +44,17 @@ export function Sidebar({ currentPath, onNavigate }: SidebarProps) {
 
   return (
     <>
-      {/* Mobile toggle */}
-      <button
-        onClick={() => setMobileOpen(true)}
-        className="lg:hidden fixed top-3 left-3 z-50 w-10 h-10 rounded-lg bg-white text-navy-800 border border-navy-100 flex items-center justify-center"
-        aria-label="Open menu"
-      >
-        <Menu className="w-5 h-5" />
-      </button>
-
-      {/* Mobile backdrop */}
-      {mobileOpen && (
-        <div className="lg:hidden fixed inset-0 bg-navy-900/40 z-40 animate-backdrop-in" onClick={() => setMobileOpen(false)} />
+      {/* On a phone the menu covers the page: tap outside to close it. */}
+      {open && (
+        <div className="lg:hidden fixed inset-0 bg-navy-900/40 z-[55] animate-backdrop-in" onClick={onClose} />
       )}
 
       <aside
         aria-label="Main"
+        aria-hidden={!open}
         className={cn(
-          'fixed left-0 top-0 bottom-0 w-[240px] bg-white border-r border-navy-100 z-40 flex flex-col overflow-y-auto transition-transform duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] lg:translate-x-0',
-          mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+          'fixed left-0 top-0 bottom-0 w-[240px] bg-white border-r border-navy-100 z-[60] flex flex-col overflow-y-auto transition-transform duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]',
+          open ? 'translate-x-0 shadow-popover lg:shadow-none' : '-translate-x-full',
         )}
       >
         {/* Logo */}
@@ -99,11 +66,12 @@ export function Sidebar({ currentPath, onNavigate }: SidebarProps) {
             <span className="text-[14px] font-bold tracking-[0.12em] text-navy-800">SYNAPSE</span>
           </div>
           <button
-            onClick={() => setMobileOpen(false)}
+            onClick={onClose}
             aria-label="Close menu"
-            className="lg:hidden w-8 h-8 rounded-lg flex items-center justify-center text-navy-700 hover:bg-navy-50"
+            title="Close menu (features stay in the bar at the bottom)"
+            className="w-8 h-8 rounded-full flex items-center justify-center bg-navy-800 text-gold-300 hover:bg-navy-700"
           >
-            <X className="w-4 h-4" />
+            <ChevronLeft className="w-4 h-4" />
           </button>
         </div>
 

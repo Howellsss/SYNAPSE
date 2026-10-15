@@ -610,12 +610,12 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
         )}
 
         <div className="absolute bottom-24 left-3 flex flex-col items-start gap-2 sm:left-4 lg:bottom-auto lg:top-4">
-          {/* Back to the rest of SYNAPSE, with this space kept open on the right. */}
+          {/* The rest of SYNAPSE: the menu opens from the left and this space stays beside it. */}
           <button
             type="button"
-            onClick={dock.dock}
+            onClick={dock.openNav}
             aria-label="Back to SYNAPSE"
-            title="Use the rest of SYNAPSE while staying in this workspace"
+            title="Open the menu (you stay in this workspace)"
             className="inline-flex h-10 items-center gap-1.5 rounded-full bg-white/95 px-3 text-sm font-semibold text-navy-800 shadow-popover backdrop-blur hover:bg-white"
           >
             <ArrowLeft className="h-4 w-4" /> <span className="hidden sm:inline">Back to SYNAPSE</span>

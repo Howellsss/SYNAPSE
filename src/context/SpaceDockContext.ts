@@ -13,9 +13,11 @@ export interface SpaceDock {
   expand: () => void;
   /** Leave the space altogether (back to the workspaces). */
   leave: () => void;
+  /** Open the main menu from the left, with the space still showing beside it. */
+  openNav: () => void;
 }
 
 const noop = () => {};
-export const SpaceDockContext = createContext<SpaceDock>({ docked: false, dock: noop, expand: noop, leave: noop });
+export const SpaceDockContext = createContext<SpaceDock>({ docked: false, dock: noop, expand: noop, leave: noop, openNav: noop });
 
 export const useSpaceDock = () => useContext(SpaceDockContext);
