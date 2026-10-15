@@ -53,13 +53,13 @@ describe('campus layout', () => {
     expect(zoneAt(c.zones, 60.5, 7)?.id).toBe('allhands-stage');
     expect(zoneAt(c.zones, 60.5, 20)?.id).toBe('allhands');
     expect(zoneAt(c.zones, 60.5, 46)?.id).toBe('plaza');
-    expect(zoneAt(c.zones, c.hq.x + 3, c.hq.z + 3)?.id).toBe('hq-meet');
+    expect(zoneAt(c.zones, c.hq!.x + 3, c.hq!.z + 3)?.id).toBe('hq-meet');
   });
   it('can walk from the plaza into every place', () => {
     expect(isFree(map, c.spawn.x, c.spawn.z)).toBe(true);
     const start = mapCell(map, c.spawn.x, c.spawn.z);
     const targets: Record<string, [number, number]> = {
-      hq: [c.hq.x + 10, c.hq.z + 12], allhands: [60.5, 22], cafe: [98, 22.5], lounge: [108, 14.5], team1: [11.5, 41], team4: [31.5, 54],
+      hq: [c.hq!.x + 10, c.hq!.z + 12], allhands: [60.5, 22], cafe: [98, 22.5], lounge: [108, 14.5], team1: [11.5, 41], team4: [31.5, 54],
       meet1: [88, 40.5], meet4: [105, 54], focus1: [6, 68.5], focus8: [33, 81], game: [91.75, 75], library: [109, 82], garden: [60.5, 90],
     };
     for (const [name, [x, z]] of Object.entries(targets)) {

@@ -17,8 +17,10 @@ import { placedBlocks, placedSeats, type Placed } from './kit';
 export const CAMPUS_W = 120;
 export const CAMPUS_D = 96;
 
-export type FloorFinish = 'oak' | 'walnut' | 'carpet_navy' | 'carpet_green' | 'carpet_plum' | 'slate' | 'terrazzo';
-export type WallKind = 'solid' | 'glass';
+export type FloorFinish = 'oak' | 'walnut' | 'carpet_navy' | 'carpet_green' | 'carpet_plum' | 'slate' | 'terrazzo'
+  | 'marble' | 'herringbone' | 'carpet_red' | 'carpet_teal' | 'deck';
+/** Solid walls, glass walls, or none (an open deck or terrace). */
+export type WallKind = 'solid' | 'glass' | 'none';
 export type Side = 'n' | 's' | 'e' | 'w';
 
 /** A walled area with a raised floor; doorways are gaps in its walls. */
@@ -29,6 +31,8 @@ export interface Building {
   wall: WallKind;
   /** Gaps: on which side, centre along that side (metres from its start), width. */
   doors: { side: Side; at: number; width: number }[];
+  /** Wall height (default 1.6 m: low enough to see in from above). */
+  height?: number;
 }
 type FinishOrNone = FloorFinish;
 
@@ -44,17 +48,40 @@ export interface Zone {
 
 export interface Water { id: string; cx: number; cz: number; rx: number; rz: number }
 
+/** A winding garden walk (drawn only: lawns are walkable anyway). */
+export interface Walk { points: [number, number][]; width: number }
+
+/**
+ * SYNAPSE Hub: separate places in one workspace. Each wing is drawn on its own (only the one
+ * you're in shows), and doorways (portals) take you from one to another.
+ */
+export interface Wing { id: string; name: string; rect: Rect; outdoor: boolean }
+export interface Portal {
+  id: string;
+  /** Step in here… */
+  rect: Rect;
+  /** …to arrive here, facing this way. */
+  to: { x: number; z: number; rot: number };
+  /** Shown over the doorway. */
+  label: string;
+}
+
 export interface CampusLayout {
   width: number;
   depth: number;
-  /** Where the HQ (Office 02 as built) stands: its (0, 0) corner. */
-  hq: { x: number; z: number };
+  /** Where the HQ (Office 02 as built) stands: its (0, 0) corner. Null for worlds without it. */
+  hq: { x: number; z: number } | null;
   buildings: Building[];
   zones: Zone[];
   paths: Rect[];
   water: Water[];
   objects: Placed[];
   spawn: { x: number; z: number };
+  walks?: Walk[];
+  /** Round paved areas. */
+  plazas?: { cx: number; cz: number; r: number }[];
+  wings?: Wing[];
+  portals?: Portal[];
 }
 
 const r = (x0: number, x1: number, z0: number, z1: number): Rect => ({ x0, x1, z0, z1 });
@@ -79,7 +106,6 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
   const paths: Rect[] = [
     r(2, 118, 30, 33.5), r(2, 118, 60, 63.5), // east–west avenues
     r(40, 43.5, 2, 94), r(77.5, 81, 2, 94), // north–south avenues
-    r(43.5, 77.5, 33.5, 60), // plaza
     r(18.8, 21.2, 23, 30), // HQ entrance: the gap in its front planters
     r(58, 63, 26, 30), // to the all-hands hall
     r(98, 102, 26, 30), // to the café & lounge
@@ -240,35 +266,81 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
       const x = 60.5 + Math.cos(a) * 13.5;
       const z = 79 + Math.sin(a) * 9.5;
       if (z < 66.5 || z > 92.5) continue;
-      add(`garden-tree-${i}`, i % 3 === 0 ? 'pine' : 'blossom', x, z);
+      add(`garden-tree-${i}`, i % 3 === 0 ? 'pine' : i % 3 === 1 ? 'blossom' : 'oak', x, z);
     }
-    add('garden-bench-n', 'bench', 60.5, 72.6, PI);
-    add('garden-bench-s', 'bench', 60.5, 85.4, 0);
+    add('garden-bench-n', 'bench', 60.5, 72.6, 0);
+    add('garden-bench-s', 'bench', 60.5, 85.4, PI);
     add('garden-bench-w', 'bench', 49.4, 79, HALF);
     add('garden-bench-e', 'bench', 71.6, 79, -HALF);
-    add('garden-flowers-a', 'flowers', 52, 70);
-    add('garden-flowers-b', 'flowers', 69, 70);
-    add('garden-flowers-c', 'flowers', 52, 88.5);
-    add('garden-flowers-d', 'flowers', 69, 88.5);
+    add('garden-flowers-a', 'flowers_round', 52, 70);
+    add('garden-flowers-b', 'bush_flower', 66.5, 70);
+    add('garden-flowers-c', 'flowers_round', 54.5, 89);
+    add('garden-flowers-d', 'flowers_round', 66.5, 89);
     add('garden-rock-a', 'boulder', 67.4, 75.7, 0.6);
     add('garden-rock-b', 'boulder', 53.2, 82.6, 2.1);
     add('garden-fountain', 'fountain', 60.5, 67.2);
     paths.push(r(59, 62, 63.5, 72));
+    // Water lilies and reeds; a pergola over the west bench; umbrella tables; a fire pit.
+    add('garden-lilies-a', 'lilies', 56.4, 77.4);
+    add('garden-lilies-b', 'lilies', 64.6, 80.6);
+    add('garden-lilies-c', 'lilies', 59.6, 82.2);
+    for (const [i, [x, z]] of ([[52.4, 76.6], [52.6, 81.6], [68.6, 76.8], [68.4, 82.2]] as const).entries()) add(`garden-reeds-${i}`, 'reeds', x, z);
+    add('garden-pergola', 'pergola', 48.6, 79, HALF);
+    add('garden-umbrella-a', 'umbrella_teal', 72.6, 70.4);
+    add('garden-umbrella-b', 'umbrella_gold', 72.6, 88.2);
+    add('garden-fire', 'fire_pit', 48.2, 89.6);
+    add('garden-fire-bench-a', 'bench', 48.2, 87.2, 0);
+    add('garden-fire-bench-b', 'bench', 45.8, 89.6, HALF);
+    add('garden-lights', 'string_lights', 69.4, 66.2);
   }
 
-  // ---- the plaza: the grand fountain, benches, flowers and blossom trees
+  // ---- Central Park: a round plaza with the grand fountain, lawns, winding walks and a loop,
+  // shade trees, flower beds, a gazebo and a picnic lawn under string lights.
+  const walks: Walk[] = [];
+  const plazas: { cx: number; cz: number; r: number }[] = [];
   {
-    zones.push({ id: 'plaza', name: 'Central Plaza', type: 'open_area', rect: r(43.5, 77.5, 33.5, 60) });
-    add('plaza-fountain', 'big_fountain', 60.5, 46.75);
-    add('plaza-bench-n', 'bench', 60.5, 41.6, PI);
-    add('plaza-bench-s', 'bench', 60.5, 51.9, 0);
-    add('plaza-bench-w', 'bench', 55.2, 46.75, HALF);
-    add('plaza-bench-e', 'bench', 65.8, 46.75, -HALF);
-    for (const [i, [x, z]] of ([[47, 37], [74, 37], [47, 56.5], [74, 56.5]] as const).entries()) {
-      add(`plaza-blossom-${i}`, 'blossom', x, z);
-      add(`plaza-flowers-${i}`, 'flowers', x + (x < 60 ? 3.2 : -3.2), z, 0);
+    const cx = 60.5;
+    const cz = 46.75;
+    zones.push({ id: 'plaza', name: 'Central Park', type: 'open_area', rect: r(43.5, 77.5, 33.5, 60) });
+    plazas.push({ cx, cz, r: 7 });
+    add('plaza-fountain', 'big_fountain', cx, cz);
+    for (const [i, a] of [0, HALF, PI, -HALF].entries()) {
+      // Benches round the fountain, facing it, between the walks.
+      const b = a + PI / 4;
+      add(`plaza-bench-${i}`, 'bench', cx + Math.sin(b) * 5.6, cz + Math.cos(b) * 5.6, b + PI);
     }
-    for (const [i, [x, z]] of ([[52, 39.5], [69, 39.5], [52, 54], [69, 54]] as const).entries()) add(`plaza-lamp-${i}`, 'lamp_post', x, z);
+    // Walks out to the avenues, gently winding, and a loop round the park.
+    walks.push({ width: 2.4, points: [[cx, cz - 7], [cx - 1.2, cz - 9.5], [cx + 0.6, cz - 11.5], [cx, 33.4]] });
+    walks.push({ width: 2.4, points: [[cx, cz + 7], [cx + 1.3, cz + 9.2], [cx - 0.8, cz + 11.3], [cx, 60.1]] });
+    walks.push({ width: 2.4, points: [[cx - 7, cz], [cx - 9.8, cz - 1.4], [cx - 13, cz + 0.8], [43.4, cz - 0.5]] });
+    walks.push({ width: 2.4, points: [[cx + 7, cz], [cx + 9.8, cz + 1.4], [cx + 13, cz - 0.8], [77.6, cz + 0.5]] });
+    const loop: [number, number][] = [];
+    for (let i = 0; i <= 40; i++) { const a = (i / 40) * PI * 2; loop.push([cx + Math.cos(a) * 11, cz + Math.sin(a) * 8.6]); }
+    walks.push({ width: 1.8, points: loop });
+    // Shade trees round the outside of the loop, avoiding the walks.
+    for (let i = 0; i < 16; i++) {
+      const a = ((i + 0.5) / 16) * PI * 2;
+      const kind = i % 4 === 1 ? 'blossom' : i % 4 === 3 ? 'tree' : 'oak';
+      add(`park-tree-${i}`, kind, cx + Math.cos(a) * 14.6, cz + Math.sin(a) * 11.4, a);
+    }
+    // Flower beds and bushes on the lawns inside the loop.
+    for (const [i, a] of [PI / 4, (3 * PI) / 4, (5 * PI) / 4, (7 * PI) / 4].entries()) {
+      add(`park-bed-${i}`, 'flowers_round', cx + Math.cos(a) * 8.6, cz + Math.sin(a) * 6.4);
+      add(`park-bush-${i}`, i % 2 ? 'bush_flower' : 'bush', cx + Math.cos(a + 0.35) * 12.6, cz + Math.sin(a + 0.35) * 9.8);
+    }
+    // Lamps along the loop.
+    for (let i = 0; i < 8; i++) {
+      const a = ((i + 0.5) / 8) * PI * 2;
+      add(`plaza-lamp-${i}`, 'lamp_post', cx + Math.cos(a) * 12.4, cz + Math.sin(a) * 9.9);
+    }
+    // A gazebo on the south-east lawn, a picnic lawn under string lights to the north-west.
+    add('park-gazebo', 'gazebo', 72.6, 56.2);
+    add('park-picnic-a', 'picnic', 47.6, 36.6);
+    add('park-picnic-b', 'picnic', 52.4, 36.6);
+    add('park-lights', 'string_lights', 50, 35.2);
+    add('park-bench-ne', 'bench', 74.5, 36.6, -HALF);
+    add('park-palm-a', 'palm', 45.4, 57.8);
+    add('park-palm-b', 'palm', 75.8, 34.8);
   }
 
   // ---- along the avenues: lamps and hedges
@@ -281,7 +353,8 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
   // ---- trees around the edge of the campus
   {
     let n = 0;
-    const tree = (x: number, z: number) => add(`edge-tree-${n++}`, n % 4 === 0 ? 'pine' : n % 4 === 2 ? 'blossom' : 'tree', x, z);
+    const kinds = ['oak', 'tree', 'pine', 'tree', 'blossom', 'oak'];
+    const tree = (x: number, z: number) => add(`edge-tree-${n}`, kinds[n++ % kinds.length], x, z, n * 1.7);
     for (let x = 4; x <= 116; x += 6) { tree(x, 1.4); if (Math.abs(x - 41.75) > 3 && Math.abs(x - 79.25) > 3) tree(x, 94.6); }
     for (let z = 8; z <= 88; z += 6) {
       if (Math.abs(z - 31.75) < 3 || Math.abs(z - 61.75) < 3) continue;
@@ -296,7 +369,7 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
   }
 
   const all = [...objects, ...extra.filter((p) => !objects.some((o) => o.id === p.id))];
-  return { width: CAMPUS_W, depth: CAMPUS_D, hq, buildings, zones, paths, water, objects: all, spawn: { x: 60.5, z: 56 } };
+  return { width: CAMPUS_W, depth: CAMPUS_D, hq, buildings, zones, paths, water, objects: all, spawn: { x: 60.5, z: 56 }, walks, plazas };
 }
 
 // ---------------------------------------------------------------- walls, walking, sitting
@@ -305,6 +378,7 @@ export const WALL_T = 0.2;
 
 /** Wall pieces of a building (with gaps for its doorways). */
 export function wallSegments(b: Building): Rect[] {
+  if (b.wall === 'none') return [];
   const { x0, x1, z0, z1 } = b.rect;
   const out: Rect[] = [];
   const side = (s: Side, from: number, to: number, mk: (a: number, c: number) => Rect) => {
@@ -340,9 +414,10 @@ function waterBlocks(w: Water): Rect[] {
 
 /** Everything that blocks walking: the HQ's own furniture and walls, building walls, water, pieces. */
 export function campusObstacles(c: CampusLayout): Rect[] {
-  const shift = (o: Rect): Rect => ({ x0: o.x0 + c.hq.x, x1: o.x1 + c.hq.x, z0: o.z0 + c.hq.z, z1: o.z1 + c.hq.z });
+  const at = c.hq;
+  const shift = (o: Rect): Rect => (at ? { x0: o.x0 + at.x, x1: o.x1 + at.x, z0: o.z0 + at.z, z1: o.z1 + at.z } : o);
   // The HQ's walls, planters and furniture (its open sides, front and right, stay open).
-  const hq = OFFICE_02.obstacles.filter((o) => o.x1 <= 20.2 && o.z1 <= 16.2).map(shift);
+  const hq = at ? OFFICE_02.obstacles.filter((o) => o.x1 <= 20.2 && o.z1 <= 16.2).map(shift) : [];
   return [
     ...hq,
     ...c.buildings.flatMap(wallSegments),
@@ -352,7 +427,8 @@ export function campusObstacles(c: CampusLayout): Rect[] {
 }
 
 export function campusSeats(c: CampusLayout): Seat[] {
-  const hq = (OFFICE_02.seats ?? []).map((s) => ({ ...s, id: `hq-${s.id}`, x: s.x + c.hq.x, z: s.z + c.hq.z }));
+  const at = c.hq;
+  const hq = at ? (OFFICE_02.seats ?? []).map((s) => ({ ...s, id: `hq-${s.id}`, x: s.x + at.x, z: s.z + at.z })) : [];
   return [...hq, ...c.objects.flatMap(placedSeats)];
 }
 
@@ -367,4 +443,14 @@ export function zoneAt(zones: Zone[], x: number, z: number): Zone | null {
     if (area < bestArea) { best = zone; bestArea = area; }
   }
   return best;
+}
+
+/** The Hub wing a point is in (null outside every wing, or in a world without wings). */
+export function wingAt(c: Pick<CampusLayout, 'wings'>, x: number, z: number): Wing | null {
+  return c.wings?.find((w) => x >= w.rect.x0 && x <= w.rect.x1 && z >= w.rect.z0 && z <= w.rect.z1) ?? null;
+}
+
+/** The doorway a point stands in, if any. */
+export function portalAt(c: Pick<CampusLayout, 'portals'>, x: number, z: number): Portal | null {
+  return c.portals?.find((p) => x >= p.rect.x0 && x <= p.rect.x1 && z >= p.rect.z0 && z <= p.rect.z1) ?? null;
 }
