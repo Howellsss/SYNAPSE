@@ -404,6 +404,30 @@ What you see inside a space, until the art kit brings rooms and furniture:
   (`components/spaces/scene/campusWorld.ts`) draws one `InstancedMesh` per part per kind, canvas
   textures for the lawn, pavers and floors, glass or solid walls with door gaps, and a sign per
   area that faces the camera; the sun's shadow box follows the view. Walking uses a 50 cm grid.
+- **SYNAPSE Hub** (`hub-01`, first in the 3D office list): you arrive in a walled garden courtyard
+  with doorways all round it; each doorway opens into its own place (`campus/hub.ts`): an
+  auditorium (stage, LED wall, about 600 seats), a conference center (four glass meeting rooms), a
+  work studio (desk pods, focus booths), a café and bar, a lounge and library, and a garden
+  terrace. The places are wings of one layout, 25 m+ apart in the same coordinates (so walking,
+  the network and proximity work unchanged). `createWorld` (`campusWorld.ts`) draws each wing on
+  its own and shows only the one you're in; people elsewhere are hidden. A `Portal` is a doorway:
+  stepping into its rect moves you to its `to` point (with a short fade), and others see you jump
+  rather than slide (`RemoteMover` treats moves over `JUMP_M` = 8 m as a jump).
+- **Realism** (Campus and Hub): golden late-afternoon sun (ACES tone mapping), bloom on Medium
+  and High so lamps, screens, fires and string lights glow (lights use HDR colours on unlit
+  materials). Pieces drawn in code live in `scene/kitParts.ts`: trees are a trunk and branches
+  under a crown of leaf clusters with noise-displaced, faceted surfaces and vertex-coloured shade
+  (two draws per kind), plus palms, flowering bushes, dense flower beds, reeds, lilies, pergolas,
+  gazebos, umbrella tables, fire pits, theatre seats, sofas and chairs in several colours, bar,
+  bookcases, booths, conference tables. Lawns get thousands of instanced grass tufts (not on Low),
+  ponds a stone edge and rippling, reflective water, walls a wooden cap and warm sconces, paths
+  warm sandstone pavers and winding flagstone walks (`Walk`, `plazas` in the layout).
+- **Characters** (`scene/posture.ts`, after the clips each frame): shoulders are kept level and
+  arms within a natural range of hanging down; a character with no standing clip stands with arms
+  down instead of its file's T or A pose. A feminine walk style (Characters page → Walk style,
+  saved in `characters.space_clips.style`, guessed from names like "Woman") narrows the steps, sways
+  the hips with the chest turning against them and softens the arms. Adjustments are undone on
+  bones no clip animates, so they never pile up.
 - **Views:** from above (default, about 50° down) or angled from the corner, switched in the
   right toolbar and remembered on the device (`spatial/view.ts`).
 - **Build mode** (campus, people who can edit the office): the hammer in the right toolbar opens

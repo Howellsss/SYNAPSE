@@ -2,7 +2,8 @@
  * A workspace's campus: the layout with its team areas named after the account's departments,
  * plus the changes people made in build mode (pieces added, and layout pieces taken away).
  */
-import { CAMPUS_01, type OfficeLayout } from '../offices';
+import { CAMPUS_01, HUB_01, type OfficeLayout } from '../offices';
+import { buildHub } from './hub';
 import type { Placed } from './kit';
 import { KIT_BY_ID } from './kit';
 import { buildCampus, campusObstacles, campusSeats, type CampusLayout } from './layout';
@@ -17,14 +18,14 @@ export const NO_EDITS: CampusEdits = { added: [], removed: [] };
 export const MAX_ADDED = 600;
 
 /** Saved edits, checked (they come from the database, written by people in the account). */
-export function readEdits(raw: unknown): CampusEdits {
+export function readEdits(raw: unknown, floor: { width: number; depth: number } = CAMPUS_01.floor): CampusEdits {
   const v = (raw && typeof raw === 'object' ? raw : {}) as { added?: unknown; removed?: unknown };
   const num = (n: unknown, lo: number, hi: number) => (typeof n === 'number' && Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : null);
   const added: Placed[] = [];
   for (const p of Array.isArray(v.added) ? v.added.slice(0, MAX_ADDED) : []) {
     const o = (p ?? {}) as Record<string, unknown>;
-    const x = num(o.x, 0, CAMPUS_01.floor.width);
-    const z = num(o.z, 0, CAMPUS_01.floor.depth);
+    const x = num(o.x, 0, floor.width);
+    const z = num(o.z, 0, floor.depth);
     const rot = num(o.rot, -Math.PI * 2, Math.PI * 2);
     if (typeof o.id !== 'string' || !/^[A-Za-z0-9_-]{1,40}$/.test(o.id) || typeof o.kind !== 'string' || !KIT_BY_ID.has(o.kind) || x === null || z === null || rot === null) continue;
     added.push({ id: o.id, kind: o.kind, x, z, rot });
@@ -68,4 +69,17 @@ export function movePiece(e: CampusEdits, layoutObjects: Placed[], id: string, t
   const base = layoutObjects.find((p) => p.id === id);
   if (!base) return e;
   return addPiece(removePiece(e, id), { id: copyId, kind: base.kind, ...to });
+}
+
+/** SYNAPSE Hub: the courtyard and the places its doorways lead to. */
+export function hubOffice(): OfficeLayout {
+  const campus = buildHub();
+  return { ...HUB_01, campus, obstacles: campusObstacles(campus), seats: campusSeats(campus) };
+}
+
+/** The large world for an office id (with the account's team names), or the office as it is. */
+export function worldOffice(base: OfficeLayout | null, teamNames: string[]): OfficeLayout | null {
+  if (base?.id === 'campus-01') return campusOffice(teamNames);
+  if (base?.id === 'hub-01') return hubOffice();
+  return base;
 }

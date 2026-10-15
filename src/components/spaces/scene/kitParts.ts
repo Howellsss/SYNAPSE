@@ -735,7 +735,8 @@ function ledWall(w: number): Part[] {
   return [
     P(G.box, M.metal, mx(0, 0.5 + h / 2, 0, w + 0.3, h + 0.3, 0.25)),
     P(G.plane, M.screen, mx(0, 0.5 + h / 2, 0.14, w, 1, h).multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2)), false),
-    P(G.plane, M.glowDecal, mx(0, 0.06, 1.8, w * 1.1, 1, 3.6), false),
+    // A big stage screen lights the floor in front of it.
+    ...(w > 6 ? [P(G.plane, M.glowDecal, mx(0, 0.06, 1.8, w * 1.1, 1, 3.6), false)] : []),
   ];
 }
 
@@ -849,6 +850,29 @@ function rug(color: string, w: number, d: number, seed: number): Part[] {
   return [P(G.box, mat, mx(0, 0.072, 0, w, 0.02, d), false)];
 }
 
+/** A doorway to another place: a framed opening filled with warm light. */
+const doorGlowTex = () => canvasTex(64, (g, s) => {
+  const grad = g.createLinearGradient(0, s, 0, 0);
+  grad.addColorStop(0, 'rgba(255,205,120,0.95)');
+  grad.addColorStop(0.6, 'rgba(255,190,100,0.35)');
+  grad.addColorStop(1, 'rgba(255,180,90,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, s, s);
+});
+let doorGlow: THREE.Material | null = null;
+function doorway(w: number): Part[] {
+  const { M, G } = kitShared();
+  doorGlow ??= new THREE.MeshBasicMaterial({ map: doorGlowTex(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide });
+  const h = 2.9;
+  return [
+    P(G.box, M.woodDark, mx(-w / 2 - 0.2, h / 2, 0, 0.4, h, 0.6)), P(G.box, M.woodDark, mx(w / 2 + 0.2, h / 2, 0, 0.4, h, 0.6)),
+    P(G.box, M.woodDark, mx(0, h + 0.2, 0, w + 0.8, 0.4, 0.6)),
+    P(G.box, M.brass, mx(0, h - 0.02, 0.31, w + 0.1, 0.06, 0.02), false), P(G.box, M.brass, mx(0, h - 0.02, -0.31, w + 0.1, 0.06, 0.02), false),
+    P(new THREE.PlaneGeometry(w, h), doorGlow, mx(0, h / 2, 0), false),
+    P(G.plane, M.glowDecal, mx(0, 0.07, 0, w + 1.5, 1, 3.2), false),
+  ];
+}
+
 // ---------------------------------------------------------------- the rest
 
 function bench(): Part[] {
@@ -926,6 +950,7 @@ export function procParts(kind: ProcKind, item: ProcItem): Part[] {
     case 'conference': return conference(10, color);
     case 'ping_pong': return pingPong();
     case 'potted_tree': return pottedTree(seed);
+    case 'doorway': return doorway(item.w);
   }
 }
 

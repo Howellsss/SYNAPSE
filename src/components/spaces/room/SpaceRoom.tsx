@@ -41,7 +41,7 @@ import { DoorCard } from './DoorCard';
 import { BuildPanel } from './BuildPanel';
 import type { Character, Space, SpaceRoom as SpaceRoomConfig } from '@/types';
 import { loadDepartments } from '@/lib/team';
-import { addPiece, campusOffice, movePiece, newPieceId, readEdits, removePiece, type CampusEdits } from '@/spatial/scene/campus/office';
+import { addPiece, movePiece, newPieceId, readEdits, removePiece, worldOffice, type CampusEdits } from '@/spatial/scene/campus/office';
 import { zoneAt } from '@/spatial/scene/campus/layout';
 import { loadView, saveView } from '@/spatial/view';
 import { cn } from '@/lib/utils';
@@ -150,8 +150,9 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
     return () => { alive = false; };
   }, [baseOffice?.id, workspace]);
   const deptKey = deptNames.join('|');
-  const office = useMemo(() => (baseOffice?.id === 'campus-01' ? campusOffice(deptKey ? deptKey.split('|') : []) : baseOffice), [baseOffice, deptKey]);
-  const savedEdits = useMemo(() => readEdits(space.config?.campus), [space.config?.campus]);
+  const office = useMemo(() => worldOffice(baseOffice, deptKey ? deptKey.split('|') : []), [baseOffice, deptKey]);
+  const editFloor = office?.floor;
+  const savedEdits = useMemo(() => readEdits(space.config?.campus, editFloor), [space.config?.campus, editFloor]);
   // Build mode shows a change straight away, before it's saved.
   const [pendingEdits, setPendingEdits] = useState<CampusEdits | null>(null);
   const campusEdits = pendingEdits ?? savedEdits;
@@ -251,12 +252,12 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
   spaceRef.current = space;
   const saveChain = useRef<Promise<void>>(Promise.resolve());
   const saveEdits = useCallback((change: (e: CampusEdits) => CampusEdits) => {
-    setPendingEdits((cur) => change(cur ?? readEdits(spaceRef.current.config?.campus)));
+    setPendingEdits((cur) => change(cur ?? readEdits(spaceRef.current.config?.campus, editFloor)));
     setSavingBuild(true);
     // One save at a time, each starting from what's saved now, so two people building don't undo each other.
     saveChain.current = saveChain.current.then(async () => {
       const latest = (await getSpaceBySlug(spaceRef.current.slug)).data ?? spaceRef.current;
-      const next = change(readEdits(latest.config?.campus));
+      const next = change(readEdits(latest.config?.campus, editFloor));
       const { data, error } = await updateSpace(latest.id, { config: { ...latest.config, campus: next } });
       if (error || !data) toast(`Couldn't save that change. ${error ?? ''}`.trim(), 'error');
       else { onSpaceChange(data); sendLayout(); }
@@ -267,7 +268,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
       setPendingEdits(null);
       setSavingBuild(false);
     });
-  }, [onSpaceChange, sendLayout, toast]);
+  }, [onSpaceChange, sendLayout, toast, editFloor]);
   // Someone else changed the campus: load it.
   useEffect(() => onLayout(() => {
     void getSpaceBySlug(spaceRef.current.slug).then(({ data }) => { if (data) onSpaceChange(data); });

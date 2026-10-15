@@ -19,7 +19,7 @@ export type ProcKind =
   | 'oak' | 'palm' | 'bush_flower' | 'flowers_round' | 'reeds' | 'lilies' | 'string_lights' | 'pergola' | 'umbrella_set'
   | 'gazebo' | 'picnic' | 'fire_pit' | 'planter_tree' | 'led_wall' | 'truss' | 'theatre_seat' | 'sofa_p' | 'lounge_chair'
   | 'dining_set' | 'bar_counter' | 'bar_stool' | 'bottle_wall' | 'fireplace' | 'booth' | 'reception' | 'bookcase'
-  | 'conference' | 'ping_pong' | 'potted_tree';
+  | 'conference' | 'ping_pong' | 'potted_tree' | 'doorway';
 
 interface Base {
   id: string;
@@ -171,6 +171,9 @@ export const KIT: KitItem[] = [
   })),
   // Events.
   { id: 'led_wall', name: 'LED wall', category: 'events', proc: 'led_wall', w: 10, d: 0.4 },
+  { id: 'stage_large', name: 'Large stage', category: 'events', proc: 'stage', w: 16, d: 5, walkable: true, hidden: true },
+  { id: 'tv_wall', name: 'Wall screen', category: 'meeting', proc: 'led_wall', w: 3.2, d: 0.3 },
+  { id: 'doorway', name: 'Doorway', category: 'decor', proc: 'doorway', w: 3, d: 0.5, walkable: true, hidden: true },
   { id: 'truss', name: 'Lighting truss', category: 'events', proc: 'truss', w: 12, d: 0.3, walkable: true, hidden: true },
   ...([['seat_navy', 'Seat (navy)', '#24406E'], ['seat_red', 'Seat (red)', '#8E2B2B'], ['seat_green', 'Seat (green)', '#2F6B4F'], ['seat_gold', 'Seat (gold)', '#B5832A'], ['seat_blue', 'Seat (blue)', '#2F5D9F']] as const).map(([id, name, color]): ProcItem => ({
     id, name, category: 'events', proc: 'theatre_seat', w: 0.6, d: 0.6, color, seats: [{ x: 0, z: 0.02, rot: 0, y: 0.5 }],
@@ -195,9 +198,14 @@ export const KIT: KitItem[] = [
   { id: 'fireplace', name: 'Fireplace', category: 'decor', proc: 'fireplace', w: 3.2, d: 0.9 },
   { id: 'reception', name: 'Reception desk', category: 'tables', proc: 'reception', w: 3.5, d: 0.9 },
   { id: 'bookcase', name: 'Bookcase wall', category: 'decor', proc: 'bookcase', w: 3, d: 0.45 },
-  { id: 'conference', name: 'Conference table (10 seats)', category: 'meeting', proc: 'conference', w: 2.4, d: 4.6, color: '#24406E',
-    seats: [0, 1, 2, 3, 4].flatMap((i) => [{ x: -0.95, z: -1.8 + 0.9 * i, rot: Math.PI / 2, y: 0.5 }, { x: 0.95, z: -1.8 + 0.9 * i, rot: -Math.PI / 2, y: 0.5 }]) },
+  ...([['conference', 'Conference table (navy)', '#24406E'], ['conf_teal', 'Conference table (teal)', '#2F6F73'], ['conf_red', 'Conference table (red)', '#8E2B2B'], ['conf_green', 'Conference table (green)', '#2F6B4F']] as const).map(([id, name, color]): ProcItem => ({
+    id, name, category: 'meeting', proc: 'conference', w: 2.4, d: 4.6, color,
+    seats: [0, 1, 2, 3, 4].flatMap((i) => [{ x: -0.95, z: -1.8 + 0.9 * i, rot: Math.PI / 2, y: 0.5 }, { x: 0.95, z: -1.8 + 0.9 * i, rot: -Math.PI / 2, y: 0.5 }]),
+  })),
   { id: 'ping_pong', name: 'Ping-pong table', category: 'tables', proc: 'ping_pong', w: 1.6, d: 2.8 },
+  ...([['rug_xl_rust', 'Room rug (rust)', '#7E3B2C'], ['rug_xl_navy', 'Room rug (navy)', '#1E3A6E'], ['rug_xl_teal', 'Room rug (teal)', '#245E63'], ['rug_xl_green', 'Room rug (green)', '#2F5E4A']] as const).map(([id, name, color]): ProcItem => ({
+    id, name, category: 'decor', proc: 'rug', w: 8, d: 7, walkable: true, color,
+  })),
   ...([['rug_large_navy', 'Large rug (navy)', '#1E3A6E'], ['rug_large_rust', 'Large rug (rust)', '#8B3A2A'], ['rug_large_green', 'Large rug (green)', '#2F5E4A']] as const).map(([id, name, color]): ProcItem => ({
     id, name, category: 'decor', proc: 'rug', w: 5, d: 3.5, walkable: true, color,
   })),

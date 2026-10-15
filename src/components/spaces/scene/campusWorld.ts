@@ -123,8 +123,8 @@ function finishTex(f: FloorFinish): THREE.CanvasTexture {
         g.fillRect(0, 0, s, s);
         const u = s / 16;
         for (let row = -2; row < 18; row++) for (let col = -2; col < 18; col++) {
-          const v = (rand() - 0.5) * 30;
-          g.fillStyle = `rgb(${164 + v},${112 + v * 0.8},${68 + v * 0.6})`;
+          const v = (rand() - 0.5) * 14;
+          g.fillStyle = `rgb(${150 + v},${104 + v * 0.8},${66 + v * 0.6})`;
           const x = col * u;
           const y = row * u;
           if ((row + col) % 2 === 0) g.fillRect(x + 1, y + 1, u * 2 - 2, u - 2);
@@ -385,7 +385,7 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
     const wallMat = keep(new THREE.MeshStandardMaterial({ color: '#B59C78', roughness: 0.85 }));
     const capMat = keep(new THREE.MeshStandardMaterial({ color: '#4E3524', roughness: 0.5 }));
     const baseMat = keep(new THREE.MeshStandardMaterial({ color: '#2E2620', roughness: 0.7 }));
-    const glassMat = keep(new THREE.MeshPhysicalMaterial({ color: '#BFDCE8', transparent: true, opacity: 0.2, roughness: 0.04, metalness: 0, depthWrite: false, side: THREE.DoubleSide }));
+    const glassMat = keep(new THREE.MeshPhysicalMaterial({ color: '#8FB8CC', transparent: true, opacity: 0.14, roughness: 0.04, metalness: 0, envMapIntensity: 0.25, depthWrite: false, side: THREE.DoubleSide }));
     const frameMat = keep(new THREE.MeshStandardMaterial({ color: '#2B2620', roughness: 0.4, metalness: 0.6 }));
     const finishes = new Map<FloorFinish, THREE.MeshStandardMaterial>();
     const lists = { wall: [] as THREE.BufferGeometry[], cap: [] as THREE.BufferGeometry[], base: [] as THREE.BufferGeometry[], glass: [] as THREE.BufferGeometry[], frame: [] as THREE.BufferGeometry[] };
@@ -396,20 +396,26 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
       g.translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
       list.push(g);
     };
+    const inside = (a: Rect, o: Rect) => a !== o && a.x0 >= o.x0 && a.x1 <= o.x1 && a.z0 >= o.z0 && a.z1 <= o.z1;
     for (const b of layout.buildings) {
-      let mat = finishes.get(b.floor);
-      if (!mat) {
-        const t = keep(finishTex(b.floor));
-        mat = keep(new THREE.MeshStandardMaterial({ map: t, roughness: b.floor.startsWith('carpet') ? 1 : b.floor === 'marble' ? 0.25 : 0.55 }));
-        finishes.set(b.floor, mat);
-      }
       const { x0, x1, z0, z1 } = b.rect;
-      const fg = new THREE.BoxGeometry(x1 - x0, 0.06, z1 - z0);
-      fg.translate((x0 + x1) / 2, 0.0, (z0 + z1) / 2);
-      worldUV(fg, b.floor === 'marble' ? 2.4 : b.floor === 'herringbone' ? 4 : 3.2);
-      const floor = new THREE.Mesh(keep(fg), mat);
-      floor.receiveShadow = shadows;
-      root.add(floor);
+      if (b.floor) {
+        const finish = b.floor;
+        let mat = finishes.get(finish);
+        if (!mat) {
+          const t = keep(finishTex(finish));
+          mat = keep(new THREE.MeshStandardMaterial({ map: t, roughness: finish.startsWith('carpet') ? 1 : finish === 'marble' ? 0.25 : 0.55 }));
+          finishes.set(finish, mat);
+        }
+        // A room inside another sits a hair higher, so the two floors never flicker.
+        const nested = layout.buildings.filter((o) => o.floor && inside(b.rect, o.rect)).length;
+        const fg = new THREE.BoxGeometry(x1 - x0, 0.06, z1 - z0);
+        fg.translate((x0 + x1) / 2, nested * 0.006, (z0 + z1) / 2);
+        worldUV(fg, finish === 'marble' ? 2.4 : finish === 'herringbone' ? 2.6 : 3.2);
+        const floor = new THREE.Mesh(keep(fg), mat);
+        floor.receiveShadow = shadows;
+        root.add(floor);
+      }
       const h = b.height ?? 1.6;
       for (const s of wallSegments(b)) {
         if (b.wall === 'solid') {
@@ -480,7 +486,7 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
     const rand = rng(101);
     const blocked = (x: number, z: number) =>
       layout.paths.some((p) => x > p.x0 - 0.3 && x < p.x1 + 0.3 && z > p.z0 - 0.3 && z < p.z1 + 0.3)
-      || layout.buildings.some((b) => x > b.rect.x0 - 0.3 && x < b.rect.x1 + 0.3 && z > b.rect.z0 - 0.3 && z < b.rect.z1 + 0.3)
+      || layout.buildings.some((b) => !!b.floor && x > b.rect.x0 - 0.3 && x < b.rect.x1 + 0.3 && z > b.rect.z0 - 0.3 && z < b.rect.z1 + 0.3)
       || layout.water.some((w) => ((x - w.cx) / (w.rx + 0.9)) ** 2 + ((z - w.cz) / (w.rz + 0.9)) ** 2 < 1)
       || (layout.plazas ?? []).some((c) => Math.hypot(x - c.cx, z - c.cz) < c.r + 0.3);
     const margin = 14;

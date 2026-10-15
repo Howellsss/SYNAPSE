@@ -27,7 +27,8 @@ export type Side = 'n' | 's' | 'e' | 'w';
 export interface Building {
   id: string;
   rect: Rect;
-  floor: FinishOrNone;
+  /** No floor: walls standing on the ground (a courtyard's walls). */
+  floor?: FinishOrNone;
   wall: WallKind;
   /** Gaps: on which side, centre along that side (metres from its start), width. */
   doors: { side: Side; at: number; width: number }[];

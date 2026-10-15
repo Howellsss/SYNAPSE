@@ -10,7 +10,7 @@ import type { CampusLayout } from './campus/layout';
 
 export interface Rect { x0: number; x1: number; z0: number; z1: number }
 
-export type OfficeId = 'office-01' | 'office-02' | 'campus-01';
+export type OfficeId = 'office-01' | 'office-02' | 'campus-01' | 'hub-01';
 
 export interface OfficeLayout {
   id: OfficeId;
@@ -161,7 +161,20 @@ export const CAMPUS_01: OfficeLayout = {
   seats: [],
 };
 
-export const OFFICES: Record<OfficeId, OfficeLayout> = { 'campus-01': CAMPUS_01, 'office-02': OFFICE_02, 'office-01': OFFICE_01 };
+export const HUB_01: OfficeLayout = {
+  id: 'hub-01',
+  name: 'SYNAPSE Hub',
+  url: OFFICE_02.url,
+  picture: '/assets/spatial/offices/hub-01.jpg',
+  floor: { width: 290, depth: 134 },
+  spawn: { x: 36, z: 51 },
+  blurb: 'Arrive in a garden courtyard with doorways all round it. Each doorway opens into its own place: auditorium, conference center, work studio, café & bar, lounge & library, garden terrace. You can add furniture.',
+  sun: OFFICE_02.sun,
+  obstacles: [],
+  seats: [],
+};
+
+export const OFFICES: Record<OfficeId, OfficeLayout> = { 'hub-01': HUB_01, 'campus-01': CAMPUS_01, 'office-02': OFFICE_02, 'office-01': OFFICE_01 };
 
 /** The office a space uses (space.config.scene), or null for the open floor. */
 export function officeFor(id: string | null | undefined): OfficeLayout | null {
