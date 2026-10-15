@@ -7,6 +7,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { lerpAngle, pointAlong } from '@/spatial/net/interpolation';
@@ -18,7 +19,7 @@ import type { EmoteKind, EmoteMsg, PresenceMeta } from '@/spatial/net/protocol';
 import type { Group } from '@/spatial/media/proximity';
 import type { GraphicsQuality } from '@/spatial/quality';
 import { findPath, smoothPath } from '@/spatial/scene/pathfinding';
-import { AVATAR_ACTIONS, type AvatarAction, type SpaceClips } from '@/spatial/scene/avatarClips';
+import { AVATAR_ACTIONS, type AvatarAction, type SpaceClips, type WalkStyle } from '@/spatial/scene/avatarClips';
 import {
   cellCenter, facing, freeSpot, keyDirection, mapCell, moveKeyFor, pinRootMotion, spawnPoint, stepTo, walkMap, WALK_SPEED,
   type Floor, type MoveKey,
@@ -26,10 +27,11 @@ import {
 import type { OfficeLayout } from '@/spatial/scene/offices';
 import { seatApproach, seatAt, seatOnRay, sittingSpot, type Seat } from '@/spatial/scene/seats';
 import { applyEdits, NO_EDITS, type CampusEdits } from '@/spatial/scene/campus/office';
-import { campusObstacles, campusSeats } from '@/spatial/scene/campus/layout';
+import { campusObstacles, campusSeats, portalAt, wingAt } from '@/spatial/scene/campus/layout';
 import { fitsAt, pieceAt, placedBounds } from '@/spatial/scene/campus/kit';
 import type { Rect } from '@/spatial/scene/offices';
-import { createCampusWorld, type CampusWorld } from './campusWorld';
+import { createWorld, type World } from './campusWorld';
+import { aimBone, beginPose, endPose, feminineGait, findRig, relaxPosture, type Rig } from './posture';
 import { characterBytes } from '@/spatial/scene/characterCache';
 
 /** What the world toolbar and the people panel can ask the scene to do. */
@@ -49,6 +51,8 @@ export interface SceneCharacter {
   /** Stays the same while the file does (the signed URL changes every visit), for keeping it on this device. */
   cacheKey?: string;
   clips: SpaceClips;
+  /** Feminine: narrower steps, a gentle hip sway, softer arms. */
+  style?: WalkStyle;
 }
 
 export interface SpaceSceneProps {
@@ -148,64 +152,16 @@ interface Avatar {
   labelEl: HTMLDivElement;
   labelSig: string;
   bubble: { text: string; until: number } | null;
-  /** Bones for the seated pose (when the character has no sitting clip of its own). */
+  /** Bones for the seated pose (when the character has no sitting clip of its own) and posture fixes. */
   rig: Rig | null;
+  /** The character's walk style (from the library). */
+  style: WalkStyle;
   /** Was drawn seated last frame (so the body can be put back when standing up). */
   seated: boolean;
 }
 
-interface Limb { root: THREE.Object3D; mid: THREE.Object3D; end: THREE.Object3D }
-interface Rig {
-  legs: Limb[];
-  arms: Limb[];
-  /** Every bone's natural (standing) pose, from the file. */
-  rest: { bone: THREE.Object3D; q: THREE.Quaternion; p: THREE.Vector3 }[];
-}
-
-/** Legs and arms of a rigged character, found by the usual bone names (Mixamo, Meshy, Blender). */
-function findRig(model: THREE.Object3D): Rig | null {
-  const legs: Limb[] = [];
-  const arms: Limb[] = [];
-  const rest: Rig['rest'] = [];
-  const isBone = (o: THREE.Object3D | null | undefined): o is THREE.Object3D => !!o && !!(o as THREE.Bone).isBone;
-  const firstBone = (o: THREE.Object3D) => o.children.find(isBone);
-  model.traverse((o) => {
-    if (!isBone(o)) return;
-    rest.push({ bone: o, q: o.quaternion.clone(), p: o.position.clone() });
-    if (/twist|roll/i.test(o.name)) return;
-    if (/up_?leg|thigh|upper_?leg/i.test(o.name)) {
-      const mid = firstBone(o);
-      const end = mid && firstBone(mid);
-      if (mid && end) legs.push({ root: o, mid, end });
-    } else if (/hand$/i.test(o.name.replace(/[._-]?[lr]$/i, '').replace(/^.*[:|]/, '')) || /(^|[^a-z])hand([^a-z]|$)/i.test(o.name)) {
-      // Hand → forearm → upper arm.
-      const mid = o.parent;
-      const root = mid?.parent;
-      if (isBone(mid) && isBone(root) && arms.every((a) => a.end !== o)) arms.push({ root, mid, end: o });
-    }
-  });
-  return legs.length === 2 ? { legs, arms: arms.length === 2 ? arms : [], rest } : null;
-}
-
 const _va = new THREE.Vector3();
 const _vb = new THREE.Vector3();
-const _qa = new THREE.Quaternion();
-const _qb = new THREE.Quaternion();
-const _qc = new THREE.Quaternion();
-/** Turns `bone` so the direction to `child` points along `want` (world space, unit length). */
-function aimBone(bone: THREE.Object3D, child: THREE.Object3D, want: THREE.Vector3) {
-  if (!bone.parent) return;
-  bone.getWorldPosition(_va);
-  child.getWorldPosition(_vb);
-  const cur = _vb.sub(_va);
-  if (cur.lengthSq() < 1e-10) return;
-  cur.normalize();
-  _qa.setFromUnitVectors(cur, want);
-  bone.getWorldQuaternion(_qb);
-  bone.parent.getWorldQuaternion(_qc);
-  bone.quaternion.copy(_qc.invert().multiply(_qa.multiply(_qb)));
-  bone.updateMatrixWorld(true);
-}
 
 const STATUS_DOT: Record<string, string> = {
   'bg-green-500': '#22c55e', 'bg-gold-500': '#D49826', 'bg-indigo-500': '#6366f1', 'bg-burgundy-500': '#8B2530',
@@ -353,7 +309,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
     const envMap = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     scene.environment = envMap;
     scene.environmentIntensity = 0.7;
-    scene.add(new THREE.HemisphereLight('#ffffff', '#8A95B0', 1.1));
+    const hemi = new THREE.HemisphereLight('#ffffff', '#8A95B0', 1.1);
+    scene.add(hemi);
     const sun = new THREE.DirectionalLight('#ffffff', 1.4);
     sun.position.set(6, 12, 8);
     scene.add(sun);
@@ -378,10 +335,20 @@ export default function SpaceScene(props: SpaceSceneProps) {
     const campus = office?.campus ?? null;
     let appliedEdits = latest.current.campusEdits ?? NO_EDITS;
     let campusLayout = campus ? applyEdits(campus, appliedEdits) : null;
-    let campusWorld: CampusWorld | null = null;
+    let campusWorld: World | null = null;
     if (campus && campusLayout) {
-      campusWorld = createCampusWorld(campusLayout, { shadows });
+      campusWorld = createWorld(campusLayout, { shadows, grass: !low });
       scene.add(campusWorld.root);
+      // Golden light: a warm, lower sun with long shadows, a blue sky above and warm bounce below.
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.05;
+      sun.color.set('#FFE2BC');
+      sun.intensity = 2.6;
+      hemi.color.set('#CFE2FF');
+      hemi.groundColor.set('#6B5236');
+      hemi.intensity = 0.85;
+      scene.environmentIntensity = 0.45;
+      scene.background = new THREE.Color(campus.wings?.length ? '#16110D' : GROUND_EDGE);
       if (ground) ground.visible = false;
       if (shadows) {
         // The shadow box follows the view (campusWorld.follow) instead of covering 120 m at once.
@@ -436,6 +403,14 @@ export default function SpaceScene(props: SpaceSceneProps) {
             gltf.scene.traverse((o) => { if (o.name === 'BAKED_ground' || o.name.startsWith('GRD_')) drop.push(o); });
             drop.forEach((o) => o.removeFromParent());
             gltf.scene.updateMatrixWorld(true);
+            if (!campus.hq) {
+              // A world without the HQ (the Hub) only wanted the furniture.
+              gltf.scene.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
+              grid.visible = false;
+              edge.visible = false;
+              (floorMesh.material as THREE.Material).visible = false;
+              return;
+            }
             officeRoot.position.set(campus.hq.x, 0, campus.hq.z);
           }
           const byMaterial = new Map<THREE.Material, THREE.BufferGeometry[]>();
@@ -544,6 +519,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
       ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
       ao.blendIntensity = 0.85;
       composer.addPass(ao);
+      // Lamps, screens, fires and string lights glow.
+      if (campus) composer.addPass(new UnrealBloomPass(new THREE.Vector2(mount.clientWidth || 1, mount.clientHeight || 1), 0.55, 0.45, 0.92));
       composer.addPass(new OutputPass());
     }
     const resize = () => {
@@ -564,8 +541,13 @@ export default function SpaceScene(props: SpaceSceneProps) {
     let map = campusLayout
       ? walkMap(floor, campusObstacles(campusLayout), CAMPUS_CELL, OFFICE_CLEARANCE)
       : office ? walkMap(floor, office.obstacles, OFFICE_CELL, OFFICE_CLEARANCE) : walkMap(floor);
-    // Appear near the middle (or where you were before a rebuild), never inside furniture.
-    const from = myPlace.current ?? spawnPoint(floor);
+    // Appear at the world's arrival point (the campus, the Hub's courtyard) or near the middle of
+    // the floor, or where you were before a rebuild; never inside furniture.
+    const arrival = () => {
+      const at = office?.campus?.spawn;
+      return at ? { x: at.x + (Math.random() - 0.5) * 3, z: at.z + (Math.random() - 0.5) * 2 } : spawnPoint(floor);
+    };
+    const from = myPlace.current ?? arrival();
     const start = freeSpot(map, from.x, from.z);
     const me = {
       x: start.x, z: start.z, rot: myPlace.current?.rot ?? Math.PI * 1.25,
@@ -670,7 +652,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
     };
     const clipsFor = (tpl: Template | null): SpaceClips | null =>
       (tpl ? latest.current.library.find((c) => c.id === tpl.id)?.clips : null) ?? null;
-    const bodySig = (tpl: Template | null, waiting: boolean) => (tpl ? JSON.stringify(clipsFor(tpl)) : waiting ? 'waiting' : 'figure');
+    const bodySig = (tpl: Template | null, waiting: boolean) => (tpl ? JSON.stringify([clipsFor(tpl), latest.current.library.find((c) => c.id === tpl.id)?.style]) : waiting ? 'waiting' : 'figure');
     // Start fetching the characters people are most likely to be, before anyone is drawn.
     for (const id of new Set([latest.current.myCharacterId, latest.current.defaultCharacterId])) templateFor(id);
 
@@ -688,7 +670,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       label.position.set(0, LABEL_HEIGHT, 0);
       root.add(label);
       scene.add(root);
-      return { root, body: null, bodyFor: undefined, clipsSig: '', mixer: null, actions: {}, current: null, emote: null, label, labelEl, labelSig: '', bubble: null, rig: null, seated: false };
+      return { root, body: null, bodyFor: undefined, clipsSig: '', mixer: null, actions: {}, current: null, emote: null, label, labelEl, labelSig: '', bubble: null, rig: null, style: 'standard', seated: false };
     };
     const setBody = (a: Avatar, userId: string, tpl: Template | null, waiting = false) => {
       if (a.body) {
@@ -701,6 +683,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       a.current = null;
       a.rig = null;
       a.seated = false;
+      a.style = (tpl ? latest.current.library.find((c) => c.id === tpl.id)?.style : null) ?? 'standard';
       a.bodyFor = tpl;
       const names = clipsFor(tpl);
       a.clipsSig = bodySig(tpl, waiting);
@@ -794,6 +777,18 @@ export default function SpaceScene(props: SpaceSceneProps) {
       }
       // Hip joints just above the cushion.
       a.body.position.y = Math.min(0.3, Math.max(-0.9, seat.y + 0.07 - hipY));
+    };
+    /** After the clips: shoulders down, arms by the sides, and the feminine walk where chosen. */
+    const standTall = (a: Avatar, rig: Rig, body: THREE.Object3D) => {
+      const walking = a.current === 'walk';
+      if (a.current === 'wave' || a.current === 'cheer') return; // gestures play as made
+      if (!a.current) toRest(rig); // no clip at all: start from the file's pose every frame
+      const feminine = a.style === 'feminine';
+      const walk = a.actions.walk;
+      if (feminine && walking && walk) feminineGait(rig, body, (walk.time / Math.max(0.01, walk.getClip().duration)) % 1);
+      relaxPosture(rig, body, walking ? 'walk' : a.current ? 'stand' : 'still');
+      // Standing: a relaxed weight shift onto one hip.
+      if (feminine && !walking) feminineGait(rig, body, 0.25, 0.3);
     };
     const play = (a: Avatar, want: AvatarAction | null) => {
       if (want === a.current) return;
@@ -936,6 +931,28 @@ export default function SpaceScene(props: SpaceSceneProps) {
       },
     };
 
+    // The Hub: which wing is showing, the doorway I'm standing in, signs over doorways, a fade between places.
+    let shownWing: string | null = null;
+    let lastPortal: string | null = campusLayout ? portalAt(campusLayout, me.x, me.z)?.id ?? null : null;
+    const portalSigns = (campusLayout?.portals ?? []).map((pt) => {
+      const el = document.createElement('div');
+      el.className = 'pointer-events-none select-none whitespace-nowrap rounded-full bg-navy-900/90 px-3 py-1 text-xs font-semibold text-gold-300 shadow-popover';
+      el.textContent = pt.label;
+      const sign = new CSS2DObject(el);
+      const x = (pt.rect.x0 + pt.rect.x1) / 2;
+      const z = (pt.rect.z0 + pt.rect.z1) / 2;
+      sign.position.set(x, 2.6, z);
+      sign.visible = false;
+      scene.add(sign);
+      // The place the doorway belongs to: the nearest one (the doorway sits on its edge).
+      const dist = (r: Rect) => Math.hypot(Math.max(r.x0 - x, 0, x - r.x1), Math.max(r.z0 - z, 0, z - r.z1));
+      const wing = [...(campusLayout?.wings ?? [])].sort((a, b) => dist(a.rect) - dist(b.rect))[0]?.id ?? null;
+      return { sign, wing };
+    });
+    const fade = document.createElement('div');
+    fade.style.cssText = 'position:absolute;inset:0;background:#0D0A07;opacity:0;pointer-events:none;';
+    mount.appendChild(fade);
+
     const timer = new THREE.Timer();
     renderer.setAnimationLoop((time) => {
       timer.update(time);
@@ -1011,6 +1028,33 @@ export default function SpaceScene(props: SpaceSceneProps) {
       // Kept for a scene rebuild: standing beside my seat if I'm in one.
       const place = me.seat ? seatApproach(map, me.seat) : me;
       myPlace.current = { x: place.x, z: place.z, rot: me.rot };
+      // The Hub: stepping into a doorway takes you to the place it leads to.
+      if (campusLayout?.portals?.length && !me.seat) {
+        const portal = portalAt(campusLayout, me.x, me.z);
+        if (portal && portal.id !== lastPortal) {
+          const to = freeSpot(map, portal.to.x, portal.to.z);
+          me.x = to.x;
+          me.z = to.z;
+          me.rot = portal.to.rot;
+          if (me.path) { me.path = null; me.pathSeat = null; p.endPath(); }
+          held.clear();
+          moving = false;
+          target.set(me.x, 0, me.z);
+          fade.style.transition = 'none';
+          fade.style.opacity = '1';
+          requestAnimationFrame(() => { fade.style.transition = 'opacity 450ms ease-out'; fade.style.opacity = '0'; });
+          lastPortal = portalAt(campusLayout, me.x, me.z)?.id ?? null;
+        } else lastPortal = portal?.id ?? null;
+      }
+      if (campusWorld && campusLayout?.wings?.length) {
+        const wing = wingAt(campusLayout, me.x, me.z)?.id ?? shownWing;
+        if (wing !== shownWing) {
+          shownWing = wing;
+          campusWorld.showWing(wing);
+          for (const s of portalSigns) s.sign.visible = s.wing === wing;
+        }
+      }
+      campusWorld?.update(dt);
       const myAnim = moving ? 'walk' : me.seat ? 'sit' : 'idle';
       p.onLocal({ x: me.x, z: me.z, rot: me.rot, anim: myAnim });
 
@@ -1040,6 +1084,11 @@ export default function SpaceScene(props: SpaceSceneProps) {
           : seat ? (a.actions.sit ? 'sit' : a.rig ? null : 'idle') : 'idle';
         play(a, want && a.actions[want] ? want : want && a.actions.idle ? 'idle' : null);
         a.mixer?.update(dt);
+        if (a.rig && a.body) {
+          beginPose(a.rig);
+          if (!seat) standTall(a, a.rig, a.body);
+          endPose(a.rig);
+        }
         poseSeated(a, seat);
       };
 
@@ -1060,6 +1109,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
         const seat = pose.anim !== 'sit' ? null : isMe ? me.seat : seatAt(seats, pose.x, pose.z);
         if (seat && !isMe) nowOccupied.add(seat.id);
         drawAvatar(a, pose, seat);
+        // In the Hub you only see the people in the same place as you.
+        a.root.visible = isMe || shownWing === null || wingAt(campusLayout ?? {}, pose.x, pose.z)?.id === shownWing;
         updateLabel(a, person, isMe, now);
       }
       // Draw me even before presence lists me.
@@ -1121,6 +1172,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
       for (const child of [...officeRoot.children]) disposeObject(child);
       officeRoot.clear();
       campusWorld?.dispose();
+      for (const s of portalSigns) { s.sign.element.remove(); scene.remove(s.sign); }
+      fade.remove();
       observer.disconnect();
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
       renderer.domElement.removeEventListener('pointerup', onPointerUp);

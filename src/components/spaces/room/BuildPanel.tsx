@@ -1,7 +1,7 @@
 import { useState, type ComponentType } from 'react';
 import {
   Armchair, BookOpen, Coffee, Droplets, Fence, Flower2, Frame, Gamepad2, Hammer, Lamp, LampFloor, LayoutGrid, Loader2, Monitor,
-  Mountain, Move, Presentation, RectangleHorizontal, RotateCw, Shrub, Sofa, Sprout, Table2, Trash2, TreeDeciduous, TreePine, Tv, Users, X,
+  Mountain, Move, Presentation, TreePalm, Umbrella, Flame, Wine, Store, Lightbulb, Waves, Theater, Tent, RectangleHorizontal, RotateCw, Shrub, Sofa, Sprout, Table2, Trash2, TreeDeciduous, TreePine, Tv, Users, X,
 } from 'lucide-react';
 import { KIT, KIT_BY_ID, KIT_CATEGORIES, type KitCategory } from '@/spatial/scene/campus/kit';
 import { cn } from '@/lib/utils';
@@ -14,6 +14,14 @@ const ICONS: Record<string, Icon> = {
   rug_green: LayoutGrid, big_screen: Presentation, podium: Presentation, arcade: Gamepad2, arc_lamp: LampFloor, lamp_post: Lamp,
   monstera: Sprout, monstera_tall: Sprout, palm_pot: Sprout, planter_small: Sprout, tree: TreeDeciduous, blossom: TreeDeciduous,
   pine: TreePine, bush: Shrub, flowers: Flower2, hedge: Fence, bench: Sofa, fountain: Droplets, boulder: Mountain,
+};
+/** Pieces drawn in code, by what they are (covers every colour of a sofa, seat, booth…). */
+const PROC_ICONS: Record<string, Icon> = {
+  oak: TreeDeciduous, palm: TreePalm, bush_flower: Shrub, flowers_round: Flower2, reeds: Waves, planter_tree: TreeDeciduous,
+  potted_tree: Sprout, string_lights: Lightbulb, pergola: Tent, gazebo: Tent, fire_pit: Flame, picnic: Table2, umbrella_set: Umbrella,
+  led_wall: Presentation, theatre_seat: Theater, booth: Store, sofa_p: Sofa, lounge_chair: Armchair, dining_set: Coffee,
+  bar_counter: Wine, bar_stool: Wine, bottle_wall: Wine, fireplace: Flame, reception: Table2, bookcase: BookOpen,
+  conference: Users, ping_pong: Table2, rug: LayoutGrid,
 };
 
 /**
@@ -87,7 +95,7 @@ export function BuildPanel({ picking, selected, saving, onPick, onTurn, onMove, 
           </div>
           <ul className="grid min-h-0 flex-1 grid-cols-2 gap-2 overflow-y-auto px-3 pb-3">
             {items.map((i) => {
-              const ItemIcon = ICONS[i.id] ?? LayoutGrid;
+              const ItemIcon = ICONS[i.id] ?? ('proc' in i ? PROC_ICONS[i.proc] : undefined) ?? LayoutGrid;
               return (
                 <li key={i.id}>
                   <button type="button" onClick={() => onPick(i.id)} className="flex h-full w-full flex-col items-center gap-1.5 rounded-xl bg-white/[0.07] px-2 py-3 text-center text-xs font-semibold text-white/90 ring-1 ring-white/10 transition hover:bg-white/15 hover:ring-gold-400/60">

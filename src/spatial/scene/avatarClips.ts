@@ -73,6 +73,18 @@ export function resolveSpaceClips(character: Pick<Character, 'clips' | 'default_
   return out;
 }
 
+/** How a character carries itself walking: a standard gait, or a feminine one (narrower steps, hip sway, softer arms). */
+export type WalkStyle = 'standard' | 'feminine';
+export const WALK_STYLES: { id: WalkStyle; label: string }[] = [{ id: 'standard', label: 'Standard' }, { id: 'feminine', label: 'Feminine' }];
+const FEMININE_NAME = /\b(woman|women|female|girl|lady|ladies|queen|princess|madam|mrs|ms|she|her)\b/i;
+
+/** The walk style chosen on the Characters page (saved in space_clips.style), else a guess from the name. */
+export function resolveWalkStyle(character: Pick<Character, 'name' | 'space_clips'>): WalkStyle {
+  const saved = character.space_clips?.style;
+  if (saved === 'feminine' || saved === 'standard') return saved;
+  return FEMININE_NAME.test(character.name.replace(/[_-]+/g, ' ')) ? 'feminine' : 'standard';
+}
+
 /** The character people appear as in this workspace's spaces: the chosen one, else the newest. */
 export function pickSpaceCharacter<T extends Pick<Character, 'use_in_spaces' | 'created_at'>>(characters: T[]): T | null {
   if (!characters.length) return null;

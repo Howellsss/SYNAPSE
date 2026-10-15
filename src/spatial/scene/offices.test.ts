@@ -64,7 +64,7 @@ describe('SYNAPSE Office 02', () => {
     return Math.hypot(ex - to.x, ez - to.z);
   };
   it('is listed first and found by id', () => {
-    expect(Object.keys(OFFICES)[0]).toBe('campus-01');
+    expect(Object.keys(OFFICES).slice(0, 2)).toEqual(['hub-01', 'campus-01']);
     expect(officeFor('office-02')).toBe(OFFICE_02);
     expect(officeFor('office-01')).toBe(OFFICE_01);
   });

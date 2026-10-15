@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { usePlatformAdmin } from '@/lib/platformAdmin';
 import { useToast } from '@/context/ToastContext';
 import { characterFileUrl, deleteCharacter, listCharacters, setSpaceCharacter, updateCharacter, uploadCharacter } from '@/lib/characters';
-import { AVATAR_ACTION_LABELS, AVATAR_ACTIONS, pickSpaceCharacter, resolveSpaceClips, type AvatarAction } from '@/spatial/scene/avatarClips';
+import { AVATAR_ACTION_LABELS, AVATAR_ACTIONS, WALK_STYLES, pickSpaceCharacter, resolveSpaceClips, resolveWalkStyle, type AvatarAction, type WalkStyle } from '@/spatial/scene/avatarClips';
 import { formatMb } from '@/lib/glb';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState, ErrorState, LoadingSpinner, Skeleton } from '@/components/ui/States';
@@ -312,12 +312,19 @@ function SpaceClipChoices({ character, clipNames, onPreview, onChanged }: {
   const { toast } = useToast();
   const chosen = resolveSpaceClips(character);
 
-  const choose = async (action: AvatarAction, value: string) => {
-    const next = { ...chosen, [action]: value || null };
+  const style = resolveWalkStyle(character);
+  const save = async (next: NonNullable<Character['space_clips']>) => {
     const { error } = await updateCharacter(character.id, { space_clips: next });
-    if (error) { toast(error, 'error'); return; }
+    if (error) { toast(error, 'error'); return false; }
     onChanged({ ...character, space_clips: next });
-    if (value) onPreview(value);
+    return true;
+  };
+  const chooseStyle = async (value: WalkStyle) => {
+    if (await save({ ...(character.space_clips ?? {}), style: value })) toast(`Walk style: ${value === 'feminine' ? 'Feminine' : 'Standard'}`);
+  };
+  const choose = async (action: AvatarAction, value: string) => {
+    const next = { ...(character.space_clips ?? {}), ...chosen, [action]: value || null };
+    if ((await save(next)) && value) onPreview(value);
   };
 
   return (
@@ -335,6 +342,13 @@ function SpaceClipChoices({ character, clipNames, onPreview, onChanged }: {
             </select>
           </label>
         ))}
+        <label className="block text-sm">
+          <span className="font-medium text-navy-800">Walk style</span>
+          <span className="block text-xs text-ivory-600">Feminine: narrower steps, a gentle hip sway and softer arms</span>
+          <select className="input-field mt-1" value={style} onChange={(e) => chooseStyle(e.target.value as WalkStyle)}>
+            {WALK_STYLES.map((w) => <option key={w.id} value={w.id}>{w.label}</option>)}
+          </select>
+        </label>
       </div>
     </div>
   );

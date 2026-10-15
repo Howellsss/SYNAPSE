@@ -10,12 +10,16 @@
 import type { Rect } from '../offices';
 import type { Seat, SeatKind } from '../seats';
 
-export type KitCategory = 'desks' | 'meeting' | 'seating' | 'tables' | 'plants' | 'decor' | 'outdoor' | 'lighting';
+export type KitCategory = 'desks' | 'meeting' | 'seating' | 'tables' | 'plants' | 'decor' | 'outdoor' | 'lighting' | 'events';
 
 /** Pieces drawn in code. */
 export type ProcKind =
   | 'tree' | 'pine' | 'blossom' | 'bush' | 'flowers' | 'hedge' | 'lamp_post' | 'bench' | 'fountain'
-  | 'big_fountain' | 'rug' | 'stage' | 'big_screen' | 'boulder' | 'pool_table' | 'arcade' | 'beanbag' | 'podium';
+  | 'big_fountain' | 'rug' | 'stage' | 'big_screen' | 'boulder' | 'pool_table' | 'arcade' | 'beanbag' | 'podium'
+  | 'oak' | 'palm' | 'bush_flower' | 'flowers_round' | 'reeds' | 'lilies' | 'string_lights' | 'pergola' | 'umbrella_set'
+  | 'gazebo' | 'picnic' | 'fire_pit' | 'planter_tree' | 'led_wall' | 'truss' | 'theatre_seat' | 'sofa_p' | 'lounge_chair'
+  | 'dining_set' | 'bar_counter' | 'bar_stool' | 'bottle_wall' | 'fireplace' | 'booth' | 'reception' | 'bookcase'
+  | 'conference' | 'ping_pong' | 'potted_tree' | 'doorway';
 
 interface Base {
   id: string;
@@ -145,13 +149,73 @@ export const KIT: KitItem[] = [
   { id: 'pool_table', name: 'Pool table', category: 'tables', proc: 'pool_table', w: 2.4, d: 1.3 },
   { id: 'arcade', name: 'Arcade machine', category: 'decor', proc: 'arcade', w: 0.8, d: 0.7 },
   { id: 'beanbag', name: 'Beanbag', category: 'seating', proc: 'beanbag', w: 0.9, d: 0.9, walkable: false, seats: [{ x: 0, z: 0, rot: 0, y: 0.3, kind: 'armchair' }] },
+
+  // Nature.
+  { id: 'oak', name: 'Oak tree', category: 'outdoor', proc: 'oak', w: 1.2, d: 1.2 },
+  { id: 'palm', name: 'Palm tree', category: 'outdoor', proc: 'palm', w: 0.9, d: 0.9 },
+  { id: 'bush_flower', name: 'Flowering bush', category: 'outdoor', proc: 'bush_flower', w: 1.0, d: 1.0 },
+  { id: 'flowers_round', name: 'Round flower bed', category: 'outdoor', proc: 'flowers_round', w: 2.4, d: 2.4 },
+  { id: 'reeds', name: 'Reeds', category: 'outdoor', proc: 'reeds', w: 0.9, d: 0.9 },
+  { id: 'lilies', name: 'Water lilies', category: 'outdoor', proc: 'lilies', w: 2.4, d: 2.4, walkable: true, hidden: true },
+  { id: 'planter_tree', name: 'Tree planter', category: 'plants', proc: 'planter_tree', w: 4.2, d: 4.2 },
+  { id: 'potted_tree', name: 'Indoor tree', category: 'plants', proc: 'potted_tree', w: 0.8, d: 0.8 },
+  // Outdoor living.
+  { id: 'string_lights', name: 'String lights', category: 'lighting', proc: 'string_lights', w: 8, d: 0.3, walkable: true },
+  { id: 'pergola', name: 'Pergola', category: 'outdoor', proc: 'pergola', w: 4, d: 3, walkable: true },
+  { id: 'gazebo', name: 'Gazebo', category: 'outdoor', proc: 'gazebo', w: 4.8, d: 4.8, walkable: true },
+  { id: 'fire_pit', name: 'Fire pit', category: 'outdoor', proc: 'fire_pit', w: 1.8, d: 1.8 },
+  { id: 'picnic', name: 'Picnic table', category: 'outdoor', proc: 'picnic', w: 1.8, d: 1.6, seats: [-0.45, 0.45].flatMap((x) => [{ x, z: -0.62, rot: 0, y: 0.45 }, { x, z: 0.62, rot: Math.PI, y: 0.45 }]) },
+  ...([['umbrella_teal', 'Umbrella table (teal)', '#2F7F86'], ['umbrella_gold', 'Umbrella table (gold)', '#C9952F'], ['umbrella_navy', 'Umbrella table (navy)', '#24406E']] as const).map(([id, name, color]): ProcItem => ({
+    id, name, category: 'outdoor', proc: 'umbrella_set', w: 2.2, d: 2.2, color,
+    seats: [0, 1, 2, 3].map((i) => { const a = (i / 4) * Math.PI * 2 + Math.PI / 4; const x = Math.cos(a) * 0.85; const z = Math.sin(a) * 0.85; return { x, z, rot: Math.atan2(-x, -z), y: 0.45 }; }),
+  })),
+  // Events.
+  { id: 'led_wall', name: 'LED wall', category: 'events', proc: 'led_wall', w: 10, d: 0.4 },
+  { id: 'stage_large', name: 'Large stage', category: 'events', proc: 'stage', w: 16, d: 5, walkable: true, hidden: true },
+  { id: 'tv_wall', name: 'Wall screen', category: 'meeting', proc: 'led_wall', w: 3.2, d: 0.3 },
+  { id: 'doorway', name: 'Doorway', category: 'decor', proc: 'doorway', w: 3, d: 0.5, walkable: true, hidden: true },
+  { id: 'truss', name: 'Lighting truss', category: 'events', proc: 'truss', w: 12, d: 0.3, walkable: true, hidden: true },
+  ...([['seat_navy', 'Seat (navy)', '#24406E'], ['seat_red', 'Seat (red)', '#8E2B2B'], ['seat_green', 'Seat (green)', '#2F6B4F'], ['seat_gold', 'Seat (gold)', '#B5832A'], ['seat_blue', 'Seat (blue)', '#2F5D9F']] as const).map(([id, name, color]): ProcItem => ({
+    id, name, category: 'events', proc: 'theatre_seat', w: 0.6, d: 0.6, color, seats: [{ x: 0, z: 0.02, rot: 0, y: 0.5 }],
+  })),
+  ...([['booth_navy', 'Expo booth (navy)', '#24406E'], ['booth_teal', 'Expo booth (teal)', '#2F7F86'], ['booth_red', 'Expo booth (red)', '#9C3434'], ['booth_green', 'Expo booth (green)', '#3E7A4E']] as const).map(([id, name, color]): ProcItem => ({
+    id, name, category: 'events', proc: 'booth', w: 3.1, d: 1.0, color,
+  })),
+  // Rooms.
+  ...([['sofa_teal', 'Sofa (teal)', '#2F6F73'], ['sofa_navy', 'Sofa (navy)', '#24406E'], ['sofa_rust', 'Sofa (rust)', '#A0522D'], ['sofa_green', 'Sofa (green)', '#3E6B48']] as const).map(([id, name, color]): ProcItem => ({
+    id, name, category: 'seating', proc: 'sofa_p', w: 2.2, d: 0.95, color, seats: [-0.65, 0, 0.65].map((x) => ({ x, z: 0.1, rot: 0, y: 0.52, kind: 'sofa' as const })),
+  })),
+  ...([['chair_mustard', 'Lounge chair (mustard)', '#C08A2E'], ['chair_teal', 'Lounge chair (teal)', '#2F6F73'], ['chair_rust', 'Lounge chair (rust)', '#A0522D']] as const).map(([id, name, color]): ProcItem => ({
+    id, name, category: 'seating', proc: 'lounge_chair', w: 0.85, d: 0.85, color, seats: [{ x: 0, z: 0.06, rot: 0, y: 0.52, kind: 'armchair' }],
+  })),
+  ...([['dining_green', 'Café table (green)', '#3E6B48'], ['dining_mustard', 'Café table (mustard)', '#C08A2E'], ['dining_navy', 'Café table (navy)', '#24406E']] as const).map(([id, name, color]): ProcItem => ({
+    id, name, category: 'tables', proc: 'dining_set', w: 1.9, d: 1.9, color,
+    seats: [0, 1, 2, 3].map((i) => { const a = (i / 4) * Math.PI * 2; return { x: Math.sin(a) * 0.72, z: Math.cos(a) * 0.72, rot: a + Math.PI, y: 0.5 }; }),
+  })),
+  { id: 'bar_counter', name: 'Bar counter', category: 'tables', proc: 'bar_counter', w: 5, d: 0.8 },
+  { id: 'bar_stool', name: 'Bar stool', category: 'seating', proc: 'bar_stool', w: 0.45, d: 0.45, color: '#24406E', seats: [{ x: 0, z: 0, rot: 0, y: 0.82 }] },
+  { id: 'bottle_wall', name: 'Bar shelves', category: 'decor', proc: 'bottle_wall', w: 5, d: 0.45 },
+  { id: 'fireplace', name: 'Fireplace', category: 'decor', proc: 'fireplace', w: 3.2, d: 0.9 },
+  { id: 'reception', name: 'Reception desk', category: 'tables', proc: 'reception', w: 3.5, d: 0.9 },
+  { id: 'bookcase', name: 'Bookcase wall', category: 'decor', proc: 'bookcase', w: 3, d: 0.45 },
+  ...([['conference', 'Conference table (navy)', '#24406E'], ['conf_teal', 'Conference table (teal)', '#2F6F73'], ['conf_red', 'Conference table (red)', '#8E2B2B'], ['conf_green', 'Conference table (green)', '#2F6B4F']] as const).map(([id, name, color]): ProcItem => ({
+    id, name, category: 'meeting', proc: 'conference', w: 2.4, d: 4.6, color,
+    seats: [0, 1, 2, 3, 4].flatMap((i) => [{ x: -0.95, z: -1.8 + 0.9 * i, rot: Math.PI / 2, y: 0.5 }, { x: 0.95, z: -1.8 + 0.9 * i, rot: -Math.PI / 2, y: 0.5 }]),
+  })),
+  { id: 'ping_pong', name: 'Ping-pong table', category: 'tables', proc: 'ping_pong', w: 1.6, d: 2.8 },
+  ...([['rug_xl_rust', 'Room rug (rust)', '#7E3B2C'], ['rug_xl_navy', 'Room rug (navy)', '#1E3A6E'], ['rug_xl_teal', 'Room rug (teal)', '#245E63'], ['rug_xl_green', 'Room rug (green)', '#2F5E4A']] as const).map(([id, name, color]): ProcItem => ({
+    id, name, category: 'decor', proc: 'rug', w: 8, d: 7, walkable: true, color,
+  })),
+  ...([['rug_large_navy', 'Large rug (navy)', '#1E3A6E'], ['rug_large_rust', 'Large rug (rust)', '#8B3A2A'], ['rug_large_green', 'Large rug (green)', '#2F5E4A']] as const).map(([id, name, color]): ProcItem => ({
+    id, name, category: 'decor', proc: 'rug', w: 5, d: 3.5, walkable: true, color,
+  })),
 ];
 
 export const KIT_BY_ID: ReadonlyMap<string, KitItem> = new Map(KIT.map((i) => [i.id, i]));
 
 export const KIT_CATEGORIES: { id: KitCategory; label: string }[] = [
   { id: 'desks', label: 'Desks' }, { id: 'meeting', label: 'Meeting' }, { id: 'seating', label: 'Seating' }, { id: 'tables', label: 'Tables' },
-  { id: 'plants', label: 'Plants' }, { id: 'decor', label: 'Decor' }, { id: 'outdoor', label: 'Outdoor' }, { id: 'lighting', label: 'Lighting' },
+  { id: 'plants', label: 'Plants' }, { id: 'decor', label: 'Decor' }, { id: 'outdoor', label: 'Outdoor' }, { id: 'lighting', label: 'Lighting' }, { id: 'events', label: 'Events' },
 ];
 
 /** Every GLB node the kit uses (loaded once from office-02.glb). */
@@ -198,7 +262,7 @@ export function placedBlocks(p: Placed): Rect[] {
   if (isGlb(item)) return item.blocks.map((b) => rectToWorld(item, p, b));
   if (item.walkable) return [];
   // Trees and posts block their trunk, not their whole canopy.
-  const shrink = item.proc === 'tree' || item.proc === 'blossom' || item.proc === 'pine' || item.proc === 'lamp_post' ? 0.35 : 1;
+  const shrink = ['tree', 'blossom', 'pine', 'lamp_post', 'oak', 'palm', 'potted_tree'].includes(item.proc) ? 0.4 : 1;
   const hw = (item.w * shrink) / 2;
   const hd = (item.d * shrink) / 2;
   return [rectToWorld(item, p, { x0: -hw, x1: hw, z0: -hd, z1: hd })];

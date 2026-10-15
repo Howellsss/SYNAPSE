@@ -46,6 +46,9 @@ export function pointAlong(points: [number, number][], dist: number): { x: numbe
  * sides to blend between. Broadcast paths are walked locally; position messages that arrive
  * during a path nudge it back if it drifted.
  */
+/** Further than this between two updates is a jump (through a door into another place), never a walk. */
+export const JUMP_M = 8;
+
 export class RemoteMover {
   private snaps: Snapshot[] = [];
   private lastSeq = -1;
@@ -70,13 +73,20 @@ export class RemoteMover {
     if (this.path) {
       // During a path, a position message is a correction: compare with where we think they are.
       const expected = this.pathPose(at);
-      if (expected && !expected.done) {
+      if (expected && Math.hypot(m.x - expected.x, m.z - expected.z) > JUMP_M) {
+        // They went through a door: appear there.
+        this.path = null;
+        this.drift = { x: 0, z: 0 };
+        this.snaps = [];
+      } else if (expected && !expected.done) {
         this.drift = { x: m.x - expected.x, z: m.z - expected.z };
         return;
       }
       this.path = null;
       this.drift = { x: 0, z: 0 };
     }
+    const last = this.snaps[this.snaps.length - 1];
+    if (last && Math.hypot(m.x - last.x, m.z - last.z) > JUMP_M) this.snaps = [];
     this.snaps.push({ x: m.x, z: m.z, rot: m.rot, anim: m.anim, at });
     if (this.snaps.length > 30) this.snaps.splice(0, this.snaps.length - 30);
   }
