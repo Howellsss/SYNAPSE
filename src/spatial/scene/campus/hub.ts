@@ -152,7 +152,7 @@ export function buildHub(): CampusLayout {
     ];
     trees.forEach(([k, x, z], i) => C.add(`tree-${i}`, k, x, z, i * 1.3));
     ([[14, 20.5], [50, 20.5], [14, 31.5], [50, 31.5]] as const).forEach(([x, z], i) => C.add(`bed-${i}`, 'flowers_round', x, z));
-    ([[8, 3.2], [16, 3.2], [48, 3.2], [56, 3.2], [3.2, 13], [60.8, 13], [3.2, 39], [60.8, 39], [26, 49], [38, 49]] as const)
+    ([[8, 3.2], [16, 3.2], [48, 3.2], [56, 3.2], [3.2, 13], [60.8, 13], [3.2, 39], [60.8, 39]] as const)
       .forEach(([x, z], i) => C.add(`bush-${i}`, i % 2 ? 'bush_flower' : 'bush', x, z));
     ([[27, 21.5], [37, 21.5], [27, 30.5], [37, 30.5], [27, 8], [37, 8], [27, 44], [37, 44], [8, 26], [56, 26]] as const)
       .forEach(([x, z], i) => C.add(`lamp-${i}`, 'lamp_post', x, z));
@@ -162,6 +162,10 @@ export function buildHub(): CampusLayout {
     C.add('lights', 'string_lights', 16, 38.6);
     C.add('gazebo', 'gazebo', 46, 39);
     C.add('lights-b', 'string_lights', 32, 12.5);
+    // By the entrance: cars and bikes to ride to the doorways (click one).
+    C.add('car-a', 'car_navy', 42, 49.8, HALF);
+    C.add('car-b', 'car_gold', 46.6, 49.8, HALF);
+    for (const [i, x] of [21.6, 22.6, 23.6, 24.6].entries()) C.add(`bike-${i}`, i % 2 ? 'bike_red' : 'bike_teal', x, 50.1, 0);
   }
 
   // ---------------------------------------------------------------- the auditorium

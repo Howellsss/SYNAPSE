@@ -21,7 +21,12 @@ export const FLOOR_SIZES: Record<SizeBand, Floor> = {
 };
 
 /** Walking speed, metres per second. */
-export const WALK_SPEED = 2.4;
+export const WALK_SPEED = 3.4;
+/** Running (Shift, or Run in the Action menu). */
+export const RUN_SPEED = 6.4;
+/** Riding: a bike and a car. */
+export const BIKE_SPEED = 7;
+export const CAR_SPEED = 10;
 /** Keep this far from the edge. */
 export const EDGE_MARGIN = 0.4;
 

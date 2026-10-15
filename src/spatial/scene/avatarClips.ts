@@ -5,12 +5,14 @@
  */
 import type { Character } from '@/types';
 
-export type AvatarAction = 'idle' | 'walk' | 'sit' | 'wave' | 'cheer';
-export const AVATAR_ACTIONS: AvatarAction[] = ['idle', 'walk', 'sit', 'wave', 'cheer'];
+export type AvatarAction = 'idle' | 'walk' | 'run' | 'dance' | 'sit' | 'wave' | 'cheer';
+export const AVATAR_ACTIONS: AvatarAction[] = ['idle', 'walk', 'run', 'dance', 'sit', 'wave', 'cheer'];
 
 export const AVATAR_ACTION_LABELS: Record<AvatarAction, { label: string; hint: string }> = {
   idle: { label: 'Standing', hint: 'Plays while someone stands still' },
   walk: { label: 'Walking', hint: 'Plays while someone walks' },
+  run: { label: 'Running', hint: 'Plays while someone runs (Shift). Without one, the walk plays faster' },
+  dance: { label: 'Dancing', hint: 'Plays when someone dances (Ctrl+Z). Without one, the cheer loops' },
   sit: { label: 'Sitting', hint: 'Only if the clip sits on a chair. Without one, a natural seated pose is used' },
   wave: { label: 'Wave', hint: 'Plays once for the 👋 reaction' },
   cheer: { label: 'Cheer', hint: 'Plays once for the 🎉 reaction' },
@@ -22,6 +24,8 @@ export type SpaceClips = Record<AvatarAction, string | null>;
 const PATTERNS: Record<AvatarAction, RegExp[]> = {
   idle: [/idle/i, /stand/i, /breath/i],
   walk: [/walk/i, /jog/i, /run/i],
+  run: [/run/i, /sprint/i, /jog/i],
+  dance: [/danc/i, /groove/i, /samba/i, /hip.?hop/i, /salsa/i, /twerk/i, /ymca/i],
   sit: [],
   wave: [/wave/i, /greet/i, /hello/i, /\bhi\b/i],
   cheer: [/cheer/i, /celebrat/i, /victory/i, /clap/i, /joy/i, /dance/i],
@@ -50,6 +54,9 @@ export function guessSpaceClips(clipNames: string[], defaultClip: string | null 
     // Everyone stands by default: a "sitting idle" clip is never the standing clip.
     idle: firstMatch(clipNames, PATTERNS.idle, NOT_STANDING) ?? fallbackIdle,
     walk,
+    // A run that isn't the walk itself.
+    run: firstMatch(clipNames.filter((n) => n !== walk), PATTERNS.run),
+    dance: firstMatch(clipNames, PATTERNS.dance),
     // Never guessed: a clip named "sitting" is often sitting on the floor or sitting down, which
     // sinks the character into a chair. The seated pose is built for each seat unless one is chosen.
     sit: null,

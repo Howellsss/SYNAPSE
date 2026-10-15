@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ToastProvider } from '@/context/ToastContext';
 import { useRouter } from '@/lib/router';
 import { useGmailReturnNotice } from '@/lib/email-accounts';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
+import { DOCK_STRIP, FeatureDock } from '@/components/layout/FeatureDock';
 import { AuthPage } from '@/pages/AuthPage';
 import { HomePage } from '@/pages/HomePage';
 import { AcceptInvitePage } from '@/pages/AcceptInvitePage';
@@ -58,6 +59,19 @@ function AppContent() {
   const spaceMatch = path.match(/^\/workspace\/([a-z0-9-]+)(?:[/?]|$)/);
   const spaceSlug = spaceMatch && spaceMatch[1] !== 'new' ? spaceMatch[1] : null;
   const [dockedSpace, setDockedSpace] = useState<string | null>(null);
+  // The main menu: open from the left, or tucked into the feature dock at the bottom so whatever
+  // you're in fills the screen. Remembered on this device.
+  const [navOpen, setNavOpenState] = useState(() => { try { return localStorage.getItem('synapse.navOpen') === '1'; } catch { return false; } });
+  // Full-screen editors (workflows, events) sit beside the menu when it's open.
+  useEffect(() => {
+    document.documentElement.style.setProperty('--nav-w', navOpen ? '240px' : '0px');
+    // Pages that fill the screen (Conversations) leave room for the top bar when the menu is open.
+    document.documentElement.style.setProperty('--top-h', navOpen ? '64px' : '0px');
+  }, [navOpen]);
+  const setNavOpen = useCallback((open: boolean) => {
+    setNavOpenState(open);
+    try { localStorage.setItem('synapse.navOpen', open ? '1' : '0'); } catch { /* private mode */ }
+  }, []);
   useEffect(() => {
     if (!loading && !user) setDockedSpace(null);
     else if (spaceSlug) setDockedSpace(spaceSlug);
@@ -67,7 +81,8 @@ function AppContent() {
     dock: () => navigate('/dashboard'),
     expand: () => { if (dockedSpace) navigate(`/workspace/${dockedSpace}`); },
     leave: () => { setDockedSpace(null); navigate('/workspace'); },
-  }), [spaceSlug, dockedSpace, navigate]);
+    openNav: () => setNavOpen(true),
+  }), [spaceSlug, dockedSpace, navigate, setNavOpen]);
 
   const authPath = path === '/signin' || path === '/signup';
   // Public events pages: /e, /e/<slug>, /e/ticket/<token>. Open to everyone, signed in or not.
@@ -188,24 +203,38 @@ function AppContent() {
     return <Dashboard />;
   };
 
-  // Inside a space the world is the whole screen: no sidebar, no top bar, no padding.
-  // "Back to SYNAPSE" keeps the space open as a panel on the right while you use the other pages;
-  // the space stays in the same place in the tree, so the call and your place in it carry on.
+  // Every feature fills the screen; the features sit in a dock along the bottom, and the arrow
+  // at its start opens the full menu from the left (the page, or the space, moves over beside it).
+  // Inside a space the world is the whole screen above the dock. "Back to SYNAPSE" opens the menu;
+  // picking a page keeps the space open as a panel on the right; the space stays in the same place
+  // in the tree, so the call and your place in it carry on.
   const shownSpace = spaceSlug ?? dockedSpace;
   const docked = !spaceSlug && !!dockedSpace;
+  const dockBar = (
+    <div className={cn('pointer-events-none fixed bottom-0 z-50 flex items-center justify-center px-2', DOCK_STRIP, navOpen ? 'left-0 right-0 lg:left-[240px]' : 'inset-x-0', docked && 'lg:right-[380px]')}>
+      <div className="pointer-events-auto">
+        <FeatureDock currentPath={path} onNavigate={navigate} onOpenMenu={() => setNavOpen(true)} dark={!!spaceSlug} />
+      </div>
+    </div>
+  );
   return (
     <SpaceDockContext.Provider value={dockApi}>
-      {spaceSlug ? null : (
+      <Sidebar currentPath={path} onNavigate={navigate} open={navOpen} onClose={() => setNavOpen(false)} />
+      {spaceSlug ? (
+        <div className={cn('fixed bottom-0 left-0 right-0 bg-navy-950', DOCK_STRIP)} aria-hidden="true" />
+      ) : (
         <div className="min-h-screen bg-white">
-          <Sidebar currentPath={path} onNavigate={navigate} />
-          <div className={cn('lg:ml-[240px] flex flex-col min-h-screen', docked && 'lg:mr-[380px]')}>
-            <TopBar
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
-              onQuickCreate={() => navigate('/calendars')}
-            />
+          <div className={cn('flex flex-col min-h-screen transition-[margin] duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]', navOpen && 'lg:ml-[240px]', docked && 'lg:mr-[380px]')}>
+            {/* The top bar is part of the main menu: with the menu tucked away, the page has the screen. */}
+            {navOpen && (
+              <TopBar
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+                onQuickCreate={() => navigate('/calendars')}
+              />
+            )}
             {/* Each section fades in with a slight rise when you move to it. */}
-            <main key={path.split(/[/?]/)[1] || 'dashboard'} className="flex-1 px-4 lg:px-6 py-5 lg:py-6 animate-page-in">{renderPage()}</main>
+            <main key={path.split(/[/?]/)[1] || 'dashboard'} className="flex-1 px-4 lg:px-6 pt-5 lg:pt-6 pb-[84px] animate-page-in">{renderPage()}</main>
           </div>
         </div>
       )}
@@ -215,13 +244,14 @@ function AppContent() {
             'z-40 overflow-hidden bg-navy-900',
             docked
               ? 'fixed bottom-3 right-3 h-[280px] w-[min(92vw,360px)] rounded-2xl shadow-popover ring-1 ring-navy-100 lg:bottom-0 lg:right-0 lg:top-0 lg:h-auto lg:w-[380px] lg:rounded-none lg:ring-0'
-              : 'fixed inset-0',
+              : cn('fixed left-0 right-0 top-0 bottom-[60px] transition-[left] duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]', navOpen && 'lg:left-[240px]'),
           )}
           aria-label={docked ? 'Your workspace' : undefined}
         >
           <SpacePage key={shownSpace} slug={shownSpace} />
         </div>
       )}
+      {dockBar}
     </SpaceDockContext.Provider>
   );
 }

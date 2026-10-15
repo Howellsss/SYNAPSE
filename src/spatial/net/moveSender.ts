@@ -1,4 +1,4 @@
-import { HEARTBEAT_MS, MAX_MOVES_PER_SECOND, PATH_CORRECTION_MS, type AnimName, type MoveMsg, type PathMsg } from './protocol';
+import { HEARTBEAT_MS, MAX_MOVES_PER_SECOND, PATH_CORRECTION_MS, type AnimName, type Gait, type MoveMsg, type PathMsg } from './protocol';
 
 export interface LocalState {
   x: number;
@@ -41,10 +41,10 @@ export class MoveSender {
   ) {}
 
   /** Click-to-walk: send the route once. */
-  startPath(points: [number, number][], speed: number, sitAtEnd = false) {
+  startPath(points: [number, number][], speed: number, sitAtEnd = false, gait: Gait = 'walk') {
     if (points.length < 2) return;
     const t = this.now();
-    this.sendPath({ userId: this.userId, points, speed, sitAtEnd, seq: ++this.seq, t });
+    this.sendPath({ userId: this.userId, points, speed, sitAtEnd, gait, seq: ++this.seq, t });
     this.followingPath = true;
     this.lastSentAt = t;
   }

@@ -281,14 +281,14 @@ export function WorkflowBuilder({ workflowId, preset, onClose, onSaved }: Workfl
 
   if (loading) {
     return (
-      <div className="fixed inset-y-0 left-0 right-0 z-[80] flex items-center justify-center bg-white lg:left-[270px]">
+      <div className="fixed inset-y-0 left-0 right-0 z-[80] flex items-center justify-center bg-white lg:left-[var(--nav-w,0px)]">
         <div className="text-sm text-ivory-600">Loading workflow...</div>
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-y-0 left-0 right-0 z-[80] flex flex-col bg-white lg:left-[270px]">
+    <div className="fixed inset-y-0 left-0 right-0 z-[80] flex flex-col bg-white lg:left-[var(--nav-w,0px)]">
       {/* Top Toolbar */}
       <header className="flex h-[60px] shrink-0 items-center gap-2 border-b border-navy-100 px-4">
         <button onClick={onClose} className="btn-ghost btn-sm"><ArrowLeft className="h-4 w-4" /> Back</button>

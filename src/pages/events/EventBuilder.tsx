@@ -280,7 +280,7 @@ export function EventBuilder({ eventId }: { eventId?: string }) {
         </aside>
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-navy-100 bg-white/90 backdrop-blur-xl lg:left-[240px]">
+      <div className="fixed inset-x-0 bottom-[60px] z-30 border-t border-navy-100 bg-white/90 backdrop-blur-xl lg:left-[var(--nav-w,0px)]">
         <div className="mx-auto flex max-w-[1180px] items-center justify-end gap-2 px-4 py-3 lg:px-10">
           {!isLive && <button type="button" onClick={() => { void save(false); }} disabled={!!saving} className="h-[38px] rounded-lg px-4 text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50 disabled:opacity-60">{saving === 'draft' ? 'Saving…' : 'Save draft'}</button>}
           <button type="button" onClick={() => { void save(true); }} disabled={!!saving} className="h-[38px] rounded-lg bg-gold-400 px-4 text-sm font-semibold text-navy-900 hover:bg-gold-300 disabled:opacity-60">{saving === 'publish' ? 'Saving…' : isLive ? 'Save changes' : 'Publish'}</button>

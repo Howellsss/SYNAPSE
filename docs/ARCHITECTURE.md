@@ -428,6 +428,18 @@ What you see inside a space, until the art kit brings rooms and furniture:
   saved in `characters.space_clips.style`, guessed from names like "Woman") narrows the steps, sways
   the hips with the chest turning against them and softens the arms. Adjustments are undone on
   bones no clip animates, so they never pile up.
+- **Moving** (`floor.ts` speeds): walk 3.4 m/s, run 6.4 m/s (hold Shift, or Run as the default
+  in the Action menu on the call bar), dance (Ctrl+Z, or Action → Dance). Run and dance clips are
+  guessed from clip names or chosen on the Characters page; without them a faster walk, the cheer
+  on a loop, or a bounce stands in. A route (`PathMsg`) carries its `gait`, so others see you
+  walk, run, drive or ride.
+- **Cars and bikes** (kit `car_*`, `bike_*`, drawn in `kitParts.ts`): click a parked one, or
+  Action → Ride a bike / Drive a car, and pick a place (campus areas, or the Hub's doorways); you
+  ride there seated in the vehicle at 7 or 10 m/s, and everyone sees the vehicle under you.
+- **Getting everywhere:** pieces turned at an angle block their real shape (cut into short boxes),
+  round ones a circle, so you can walk past the front of the benches round a fountain. Tests check
+  that no open floor in the Campus or any Hub place is unreachable and that you can walk right
+  round each fountain (`campus/reach.ts`).
 - **Views:** from above (default, about 50° down) or angled from the corner, switched in the
   right toolbar and remembered on the device (`spatial/view.ts`).
 - **Build mode** (campus, people who can edit the office): the hammer in the right toolbar opens
@@ -438,6 +450,23 @@ What you see inside a space, until the art kit brings rooms and furniture:
   copy and its id goes in `removed`). The change shows at once, each save starts from the latest
   saved layout so two builders don't undo each other, and a `layout` message on the space channel
   tells everyone else to reload it. No database change was needed (`config` is jsonb).
+
+## Layout: every feature full screen
+
+The main menu (`Sidebar`) is tucked away by default: every page fills the screen, with the
+features as small icons in a dock along the bottom (`FeatureDock`, sections in `layout/nav.ts`).
+The arrow at the start of the dock opens the menu (and the top bar) from the left; whatever you're
+in moves over beside it. Inside a workspace the world fills the screen above the dock (a navy
+strip); "Back to SYNAPSE" opens the menu with the world still showing; picking a page keeps the
+workspace as a panel on the right, and Leave closes it. Full-screen editors use `--nav-w` and
+fill-the-screen pages `--top-h` (set by `App.tsx`).
+
+**Conversations** is laid out like Slack: a rail (Home, DMs, Activity, Email), the conversation
+list (starred, channels, direct messages; collapsible), and the open conversation with Messages
+and Links tabs, date pills, search in the conversation, threads alongside, and a composer with a
+formatting bar (bold, italic, strike, link, lists, quote, code, code block), emoji and @mention
+autocomplete. DMs shows each conversation's last message; Activity lists @mentions of you (and
+@here/@channel) and replies to your threads, from `listRecent`. Stars are kept on the device.
 
 ## Checks
 

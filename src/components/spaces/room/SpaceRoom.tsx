@@ -20,7 +20,7 @@ import type { LocalState } from '@/spatial/net/moveSender';
 import { characterFor, chosenCharacterId, pickSpaceCharacter, resolveSpaceClips, resolveWalkStyle } from '@/spatial/scene/avatarClips';
 import { floorFor } from '@/spatial/scene/floor';
 import { officeFor } from '@/spatial/scene/offices';
-import type { BuildState, SceneCharacter, SceneControls, SceneView } from '@/components/spaces/scene/SpaceScene';
+import type { BuildState, MoveMode, SceneCharacter, SceneControls, SceneView, VehicleKind } from '@/components/spaces/scene/SpaceScene';
 import { CharacterPicker } from '@/components/spaces/CharacterPicker';
 import { loadQuality, saveQuality, type GraphicsQuality } from '@/spatial/quality';
 import { normalizeMediaPrefs } from '@/spatial/media/devices';
@@ -39,10 +39,11 @@ import { ConnectionPill, ControlBar, WorldToolbar } from './Overlay';
 import { InviteToSpace } from './InviteToSpace';
 import { DoorCard } from './DoorCard';
 import { BuildPanel } from './BuildPanel';
+import { RidePicker, type RideTarget } from './RidePicker';
 import type { Character, Space, SpaceRoom as SpaceRoomConfig } from '@/types';
 import { loadDepartments } from '@/lib/team';
 import { addPiece, movePiece, newPieceId, readEdits, removePiece, worldOffice, type CampusEdits } from '@/spatial/scene/campus/office';
-import { zoneAt } from '@/spatial/scene/campus/layout';
+import { wingAt, zoneAt } from '@/spatial/scene/campus/layout';
 import { loadView, saveView } from '@/spatial/view';
 import { cn } from '@/lib/utils';
 
@@ -168,6 +169,29 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
     lastZone.current = campusZone?.id ?? null;
     if (campusZone && (campusZone.type === 'meeting_room' || campusZone.type === 'private_office')) toast(`You're in ${campusZone.name}: only people inside hear you.`, 'info');
   }, [campusZone, toast]);
+  // Walking or running by default (remembered on this device), dancing, and rides.
+  const [moveMode, setMoveMode] = useState<MoveMode>(() => { try { return localStorage.getItem('synapse.moveMode') === 'run' ? 'run' : 'walk'; } catch { return 'walk'; } });
+  const changeMoveMode = (m: MoveMode) => { setMoveMode(m); try { localStorage.setItem('synapse.moveMode', m); } catch { /* private mode */ } };
+  const [riding, setRiding] = useState<VehicleKind | null>(null);
+  const rideTargets = useMemo<RideTarget[]>(() => {
+    const c = office?.campus;
+    if (!c) return [];
+    const mid = (r: { x0: number; x1: number; z0: number; z1: number }) => ({ x: (r.x0 + r.x1) / 2, z: (r.z0 + r.z1) / 2 });
+    if (c.wings?.length) {
+      // The Hub: from the courtyard to any doorway; from a place, back to the courtyard.
+      const here = myPos ? wingAt(c, myPos.x, myPos.z)?.id ?? 'court' : 'court';
+      const portals = c.portals ?? [];
+      if (here === 'court') return portals.filter((p) => p.id.startsWith('to-')).map((p) => ({ id: p.id, name: p.label.replace(/^→\s*/, ''), ...mid(p.rect) }));
+      const back = portals.find((p) => p.id === `from-${here}`);
+      return back ? [{ id: back.id, name: 'Courtyard', ...mid(back.rect) }] : [];
+    }
+    return c.zones.filter((z) => z.type !== 'stage').map((z) => ({ id: z.id, name: z.name, ...mid(z.rect) }));
+  }, [office, myPos]);
+  const ride = (t: RideTarget) => {
+    const kind = riding;
+    setRiding(null);
+    if (kind && !sceneControls.current?.ride(kind, t)) toast(`Couldn't find a way to ${t.name}.`, 'error');
+  };
   const [view, setView] = useState<SceneView>(loadView);
   const changeView = (v: SceneView) => { setView(v); saveView(v); };
   // Standing at the office door shows the way to the account's other spaces.
@@ -426,6 +450,8 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
                 campusEdits={campusEdits}
                 view={view}
                 build={build}
+                moveMode={moveMode}
+                onVehicle={office?.campus ? setRiding : undefined}
               />
             </Suspense>
           )}
@@ -447,7 +473,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
             <p className="flex max-w-md items-center gap-2 rounded-2xl bg-white/95 px-4 py-2 text-sm text-navy-800 shadow-popover backdrop-blur">
               <Footprints className="h-4 w-4 shrink-0 text-gold-600" />
               <span className="min-w-0 flex-1">
-                Click or tap the floor to walk, or use the arrow keys or WASD.
+                Click or tap the floor to walk, or use the arrow keys or WASD. Hold Shift to run, Ctrl+Z to dance.
                 {library.loaded && library.list.length > 0 && <> <button type="button" className="font-semibold text-gold-700 underline" onClick={() => setPickerOpen(true)}>Choose your character</button>.</>}
                 {library.loaded && !library.list.length && (isPlatformAdmin
                   ? <> Everyone shows as a simple figure until a character is added on the <button type="button" className="font-semibold text-gold-700 underline" onClick={() => navigate('/characters')}>Characters</button> page.</>
@@ -549,6 +575,8 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
           />
         </div>
 
+        {riding && <RidePicker kind={riding} targets={rideTargets} onPick={ride} onClose={() => setRiding(null)} />}
+
         {building && (
           <div className="pointer-events-none absolute left-3 top-40 z-10 sm:left-4">
             <BuildPanel
@@ -582,12 +610,12 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
         )}
 
         <div className="absolute bottom-24 left-3 flex flex-col items-start gap-2 sm:left-4 lg:bottom-auto lg:top-4">
-          {/* Back to the rest of SYNAPSE, with this space kept open on the right. */}
+          {/* The rest of SYNAPSE: the menu opens from the left and this space stays beside it. */}
           <button
             type="button"
-            onClick={dock.dock}
+            onClick={dock.openNav}
             aria-label="Back to SYNAPSE"
-            title="Use the rest of SYNAPSE while staying in this workspace"
+            title="Open the menu (you stay in this workspace)"
             className="inline-flex h-10 items-center gap-1.5 rounded-full bg-white/95 px-3 text-sm font-semibold text-navy-800 shadow-popover backdrop-blur hover:bg-white"
           >
             <ArrowLeft className="h-4 w-4" /> <span className="hidden sm:inline">Back to SYNAPSE</span>
@@ -606,6 +634,10 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
             onReact={react}
             handRaised={handRaised}
             onHand={raiseHand}
+            moveMode={moveMode}
+            onMoveMode={changeMoveMode}
+            onDance={() => sceneControls.current?.dance()}
+            onRide={office?.campus ? setRiding : undefined}
           />
         </div>
 

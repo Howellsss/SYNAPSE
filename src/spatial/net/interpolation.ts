@@ -1,4 +1,6 @@
-import { INTERPOLATION_DELAY_MS, type AnimName, type MoveMsg, type PathMsg } from './protocol';
+import { INTERPOLATION_DELAY_MS, type AnimName, type Gait, type MoveMsg, type PathMsg } from './protocol';
+
+const MOVING: AnimName[] = ['walk', 'run', 'drive', 'ride'];
 
 export interface Pose {
   x: number;
@@ -53,7 +55,7 @@ export class RemoteMover {
   private snaps: Snapshot[] = [];
   private lastSeq = -1;
   private offset: number | null = null;
-  private path: { points: [number, number][]; speed: number; start: number; sitAtEnd: boolean } | null = null;
+  private path: { points: [number, number][]; speed: number; start: number; sitAtEnd: boolean; gait: Gait } | null = null;
   /** Correction applied on top of the path, decays to zero. */
   private drift = { x: 0, z: 0 };
 
@@ -95,7 +97,7 @@ export class RemoteMover {
     if (p.seq <= this.lastSeq) return;
     this.lastSeq = p.seq;
     const start = this.localTime(p.t, now);
-    this.path = { points: p.points, speed: p.speed, start, sitAtEnd: p.sitAtEnd };
+    this.path = { points: p.points, speed: p.speed, start, sitAtEnd: p.sitAtEnd, gait: p.gait ?? 'walk' };
     this.drift = { x: 0, z: 0 };
     this.snaps = [];
   }
@@ -117,7 +119,7 @@ export class RemoteMover {
       if (p.done) {
         return { x: p.x, z: p.z, rot: p.rot, anim: this.path.sitAtEnd ? 'sit' : 'idle' };
       }
-      return { x: p.x + this.drift.x, z: p.z + this.drift.z, rot: p.rot, anim: 'walk' };
+      return { x: p.x + this.drift.x, z: p.z + this.drift.z, rot: p.rot, anim: this.path.gait };
     }
     const s = this.snaps;
     if (!s.length) return null;
@@ -132,7 +134,8 @@ export class RemoteMover {
           x: a.x + (b.x - a.x) * k,
           z: a.z + (b.z - a.z) * k,
           rot: lerpAngle(a.rot, b.rot, k),
-          anim: moving ? 'walk' : b.anim,
+          // Moving: their own way of moving (running, driving…), else walking.
+          anim: moving ? (MOVING.includes(b.anim) ? b.anim : 'walk') : b.anim,
         };
       }
     }
