@@ -8,6 +8,7 @@
  * in it. Lights use HDR colours (above 1) on unlit materials: the bloom pass makes them glow.
  */
 import * as THREE from 'three';
+import { applyRealSurface } from './realSurfaces';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { ProcItem, ProcKind } from '@/spatial/scene/campus/kit';
 
@@ -228,6 +229,26 @@ const boothTex = (color: string) => canvasTex(256, (g, s) => {
 
 // ---------------------------------------------------------------- shared materials and shapes
 
+/**
+ * Lights (bulbs, lamps, fires, screens, car lights) are drawn on this layer too, and only this
+ * layer feeds the glow (bloom). So a white shirt or keyboard in the sun stays a lit surface instead
+ * of glowing like a bulb.
+ */
+export const GLOW_LAYER = 1;
+/** Mark a material as a light, so what's drawn with it glows. */
+export function glowing<T extends THREE.Material>(m: T): T {
+  m.userData.glow = true;
+  return m;
+}
+/** Put everything drawn with a light's material on the glow layer. */
+export function markGlow(root: THREE.Object3D) {
+  root.traverse((o) => {
+    const mat = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+    if (!mat) return;
+    if ((Array.isArray(mat) ? mat : [mat]).some((m) => m.userData.glow)) o.layers.enable(GLOW_LAYER);
+  });
+}
+
 let shared: ReturnType<typeof makeShared> | null = null;
 function makeShared() {
   const glow = glowTex();
@@ -238,7 +259,7 @@ function makeShared() {
       fabric: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75 }),
       gloss: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35, metalness: 0.1 }),
       leafSheet: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, side: THREE.DoubleSide }),
-      bulbs: new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }),
+      bulbs: glowing(new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false })),
       glowDecal: new THREE.MeshBasicMaterial({ map: glow, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, opacity: 0.6 }),
       bark: new THREE.MeshStandardMaterial({ color: '#5E4330', roughness: 0.95 }),
       wood: new THREE.MeshStandardMaterial({ map: woodTex([150, 102, 62], 3), roughness: 0.55 }),
@@ -254,11 +275,11 @@ function makeShared() {
       navy: new THREE.MeshStandardMaterial({ color: '#1B2A4A', roughness: 0.55 }),
       felt: new THREE.MeshStandardMaterial({ color: '#1F6B4F', roughness: 0.95 }),
       blueTop: new THREE.MeshStandardMaterial({ color: '#1F4F8C', roughness: 0.6 }),
-      screen: new THREE.MeshBasicMaterial({ map: screen, toneMapped: false, color: new THREE.Color(1.6, 1.6, 1.6) }),
+      screen: glowing(new THREE.MeshBasicMaterial({ map: screen, toneMapped: false, color: new THREE.Color(1.6, 1.6, 1.6) })),
       screenDim: new THREE.MeshBasicMaterial({ map: screen, toneMapped: false }),
       books: new THREE.MeshStandardMaterial({ map: booksTex(), roughness: 0.8 }),
-      bottles: new THREE.MeshBasicMaterial({ map: bottlesTex(), toneMapped: false, color: new THREE.Color(1.35, 1.25, 1.1) }),
-      fire: new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 1.8, 0.5), toneMapped: false }),
+      bottles: glowing(new THREE.MeshBasicMaterial({ map: bottlesTex(), toneMapped: false, color: new THREE.Color(1.35, 1.25, 1.1) })),
+      fire: glowing(new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 1.8, 0.5), toneMapped: false })),
       arcade: new THREE.MeshStandardMaterial({ color: '#4A2A7A', roughness: 0.45 }),
     },
     G: {
@@ -939,7 +960,9 @@ function parkingParts(w: number, d: number, bay: number): Part[] {
   tex.repeat.set(w / 4, d / 4);
   const lines = new THREE.MeshBasicMaterial({ color: '#F4F1E6' });
   const { G } = kitShared();
-  const parts: Part[] = [P(G.box, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 }), mx(0, 0.015, 0, w, 0.02, d), false)];
+  const ground = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 });
+  applyRealSurface(ground, 'asphalt', [w, d], 0.5);
+  const parts: Part[] = [P(G.box, ground, mx(0, 0.015, 0, w, 0.02, d), false)];
   const n = Math.round(w / bay);
   for (let i = 0; i <= n; i++) parts.push(P(G.box, lines, mx(-w / 2 + (i * w) / n, 0.03, 0.15, 0.08, 0.005, d - 0.3), false));
   parts.push(P(G.box, lines, mx(0, 0.03, d / 2 - 0.2, w, 0.005, 0.08), false));
@@ -963,7 +986,7 @@ function stage(w: number, d: number): Part[] {
     // Low, so people walking on it stand on it rather than in it.
     P(G.box, M.woodDark, mx(0, 0.09, 0, w, 0.18, d)),
     P(G.box, M.brass, mx(0, 0.185, d / 2 - 0.03, w, 0.02, 0.06), false),
-    P(G.box, new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 1.5, 0.7), toneMapped: false }), mx(0, 0.06, d / 2 + 0.005, w, 0.03, 0.01), false),
+    P(G.box, glowing(new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 1.5, 0.7), toneMapped: false })), mx(0, 0.06, d / 2 + 0.005, w, 0.03, 0.01), false),
   ];
 }
 

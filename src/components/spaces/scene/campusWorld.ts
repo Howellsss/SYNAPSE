@@ -8,7 +8,8 @@ import * as THREE from 'three';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { KIT_BY_ID, isGlb, type Placed } from '@/spatial/scene/campus/kit';
-import { canvasTex, grassTuft, kitShared, procParts, rng, speckle, type Part } from './kitParts';
+import { applyRealSurface, type RealSurface } from './realSurfaces';
+import { canvasTex, glowing, grassTuft, kitShared, markGlow, procParts, rng, speckle, type Part } from './kitParts';
 import type { Rect } from '@/spatial/scene/offices';
 import { WALL_T, wallSegments, type CampusLayout, type FloorFinish, type Zone } from '@/spatial/scene/campus/layout';
 
@@ -88,6 +89,13 @@ const flagTex = () => canvasTex(512, (g, s) => {
   }
   speckle(g, s, ['#7A6650', '#C9B48C'], 1500, [1, 2], 23, [0.1, 0.3]);
 });
+
+/** Metres per unit of a floor's UVs. */
+const finishUV = (f: FloorFinish) => (f === 'marble' ? 2.4 : f === 'herringbone' ? 2.6 : 3.2);
+/** The photographed surface for each floor (carpets keep their drawn colours and patterns). */
+const REAL_FINISH: Partial<Record<FloorFinish, RealSurface>> = {
+  oak: 'oak', walnut: 'walnut', deck: 'deck', herringbone: 'parquet', marble: 'marble', slate: 'slate', terrazzo: 'terrazzo',
+};
 
 function finishTex(f: FloorFinish): THREE.CanvasTexture {
   switch (f) {
@@ -292,7 +300,9 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
     if (outdoor) {
       const lawn = keep(lawnTex());
       lawn.repeat.set(size / 8, size / 8);
-      mat = keep(new THREE.MeshStandardMaterial({ map: lawn, roughness: 1 }));
+      const lawnMat = keep(new THREE.MeshStandardMaterial({ map: lawn, roughness: 1 }));
+      keep(applyRealSurface(lawnMat, 'grass', size, 0.6));
+      mat = lawnMat;
     } else {
       mat = keep(new THREE.MeshStandardMaterial({ color: '#1C1611', roughness: 1 }));
     }
@@ -320,7 +330,9 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
     const merged = geos.length ? mergeGeometries(geos.map((g) => (g.index ? g.toNonIndexed() : g))) : null;
     geos.forEach((g) => g.dispose());
     if (merged) {
-      const mesh = new THREE.Mesh(keep(merged), keep(new THREE.MeshStandardMaterial({ map: keep(paverTex()), roughness: 0.85 })));
+      const paveMat = keep(new THREE.MeshStandardMaterial({ map: keep(paverTex()), roughness: 0.85 }));
+      keep(applyRealSurface(paveMat, 'paving', 3));
+      const mesh = new THREE.Mesh(keep(merged), paveMat);
       mesh.receiveShadow = shadows;
       root.add(mesh);
     }
@@ -328,7 +340,9 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
     const walkGeo = walks.length ? mergeGeometries(walks) : null;
     walks.forEach((g) => g.dispose());
     if (walkGeo) {
-      const mesh = new THREE.Mesh(keep(walkGeo), keep(new THREE.MeshStandardMaterial({ map: keep(flagTex()), roughness: 0.9 })));
+      const walkMat = keep(new THREE.MeshStandardMaterial({ map: keep(flagTex()), roughness: 0.9 }));
+      keep(applyRealSurface(walkMat, 'brick', 2.5));
+      const mesh = new THREE.Mesh(keep(walkGeo), walkMat);
       mesh.receiveShadow = shadows;
       root.add(mesh);
     }
@@ -404,14 +418,17 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
         let mat = finishes.get(finish);
         if (!mat) {
           const t = keep(finishTex(finish));
-          mat = keep(new THREE.MeshStandardMaterial({ map: t, roughness: finish.startsWith('carpet') ? 1 : finish === 'marble' ? 0.25 : 0.55 }));
+          const finishMat = keep(new THREE.MeshStandardMaterial({ map: t, roughness: finish.startsWith('carpet') ? 1 : finish === 'marble' ? 0.25 : 0.55 }));
+          const real = REAL_FINISH[finish];
+          if (real) keep(applyRealSurface(finishMat, real, finishUV(finish)));
+          mat = finishMat;
           finishes.set(finish, mat);
         }
         // A room inside another sits a hair higher, so the two floors never flicker.
         const nested = layout.buildings.filter((o) => o.floor && inside(b.rect, o.rect)).length;
         const fg = new THREE.BoxGeometry(x1 - x0, 0.06, z1 - z0);
         fg.translate((x0 + x1) / 2, nested * 0.006, (z0 + z1) / 2);
-        worldUV(fg, finish === 'marble' ? 2.4 : finish === 'herringbone' ? 2.6 : 3.2);
+        worldUV(fg, finishUV(finish));
         const floor = new THREE.Mesh(keep(fg), mat);
         floor.receiveShadow = shadows;
         root.add(floor);
@@ -475,7 +492,7 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
     add(lists.cap, capMat, false);
     add(lists.frame, frameMat, true);
     add(lists.glass, glassMat, false);
-    add(bulbGeos, keep(new THREE.MeshBasicMaterial({ color: new THREE.Color(3.2, 2.2, 1.2), toneMapped: false })), false);
+    add(bulbGeos, keep(glowing(new THREE.MeshBasicMaterial({ color: new THREE.Color(3.2, 2.2, 1.2), toneMapped: false }))), false);
     void WALL_T;
   }
 
@@ -551,6 +568,7 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
         pieces.add(inst);
       }
     }
+    markGlow(pieces);
   };
   place();
 
@@ -566,6 +584,7 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
   outline.renderOrder = 4;
   root.add(outline);
   const bar = keep(new THREE.BoxGeometry(1, 0.04, 1));
+  markGlow(root);
 
   return {
     root,

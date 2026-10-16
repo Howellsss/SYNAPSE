@@ -10,6 +10,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { lerpAngle, pointAlong } from '@/spatial/net/interpolation';
 import { shownStatus } from '@/spatial/net/status';
 import { EMOTE_EMOJI } from '@/spatial/net/emotes';
@@ -29,7 +30,7 @@ import { SIT_BACK, seatApproach, seatAt, seatOnRay, sittingSpot, type Seat } fro
 import { applyEdits, NO_EDITS, type CampusEdits } from '@/spatial/scene/campus/office';
 import { campusObstacles, campusSeats, portalAt, wingAt } from '@/spatial/scene/campus/layout';
 import { fitsAt, KIT_BY_ID, pieceAt, placedBounds } from '@/spatial/scene/campus/kit';
-import { bikeParts, carParts, type Part } from './kitParts';
+import { bikeParts, carParts, GLOW_LAYER, markGlow, type Part } from './kitParts';
 import type { Rect } from '@/spatial/scene/offices';
 import { createWorld, type World } from './campusWorld';
 import { aimBone, beginPose, endPose, feminineGait, findRig, relaxPosture, type Rig } from './posture';
@@ -536,6 +537,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
     };
     // High quality in a built office: soft contact shadows where things meet (ambient occlusion).
     let composer: EffectComposer | null = null;
+    let glowComposer: EffectComposer | null = null;
+    const clearColor = new THREE.Color();
     if (office && !low) {
       composer = new EffectComposer(renderer);
       composer.addPass(new RenderPass(scene, camera));
@@ -544,8 +547,22 @@ export default function SpaceScene(props: SpaceSceneProps) {
       ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
       ao.blendIntensity = 0.85;
       composer.addPass(ao);
-      // Lamps, screens, fires and string lights glow.
-      if (campus) composer.addPass(new UnrealBloomPass(new THREE.Vector2(mount.clientWidth || 1, mount.clientHeight || 1), 0.55, 0.45, 0.92));
+      // Lamps, screens, fires and string lights glow: only what's on the glow layer is bloomed
+      // (drawn on its own first), then added over the scene, so bright white clothes, keyboards or
+      // leaves in the sun don't glow like bulbs.
+      if (campus) {
+        glowComposer = new EffectComposer(renderer);
+        glowComposer.renderToScreen = false;
+        glowComposer.addPass(new RenderPass(scene, camera));
+        glowComposer.addPass(new UnrealBloomPass(new THREE.Vector2(mount.clientWidth || 1, mount.clientHeight || 1), 0.7, 0.45, 0));
+        const mix = new ShaderPass(new THREE.ShaderMaterial({
+          uniforms: { baseTexture: { value: null }, glowTexture: { value: glowComposer.renderTarget2.texture } },
+          vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+          fragmentShader: 'uniform sampler2D baseTexture; uniform sampler2D glowTexture; varying vec2 vUv; void main() { vec4 base = texture2D(baseTexture, vUv); vec4 glow = texture2D(glowTexture, vUv); gl_FragColor = vec4(base.rgb + glow.rgb, base.a); }',
+        }), 'baseTexture');
+        mix.needsSwap = true;
+        composer.addPass(mix);
+      }
       composer.addPass(new OutputPass());
     }
     const resize = () => {
@@ -553,6 +570,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       const h = mount.clientHeight || 1;
       renderer.setSize(w, h, false);
       composer?.setSize(w, h);
+      glowComposer?.setSize(w, h);
       renderer.domElement.style.width = '100%';
       renderer.domElement.style.height = '100%';
       labels.setSize(w, h);
@@ -843,6 +861,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
         m.castShadow = shadows && part.shadow;
         group.add(m);
       }
+      markGlow(group);
       // The driver sits on the car's left; a rider over the bike's saddle.
       if (kind === 'car') group.position.set(0.28, 0, 0.25);
       else group.position.set(0, 0, 0.3);
@@ -1324,6 +1343,23 @@ export default function SpaceScene(props: SpaceSceneProps) {
       camera.lookAt(target);
       campusWorld?.follow(target, sun, camera);
 
+      if (glowComposer) {
+        // Only the lights, on black, with the shadows from the main render.
+        const background = scene.background;
+        const layers = camera.layers.mask;
+        const shadowUpdate = renderer.shadowMap.autoUpdate;
+        scene.background = null;
+        camera.layers.set(GLOW_LAYER);
+        renderer.shadowMap.autoUpdate = false;
+        renderer.getClearColor(clearColor);
+        const clearAlpha = renderer.getClearAlpha();
+        renderer.setClearColor(0x000000, 1);
+        glowComposer.render(dt);
+        renderer.setClearColor(clearColor, clearAlpha);
+        renderer.shadowMap.autoUpdate = shadowUpdate;
+        camera.layers.mask = layers;
+        scene.background = background;
+      }
       if (composer) composer.render(dt);
       else renderer.render(scene, camera);
       labels.render(scene, camera);
@@ -1366,6 +1402,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
       if (ground) disposeObject(ground);
       pmrem.dispose();
       renderer.dispose();
+      // Give the graphics context back now: browsers allow only a few, and refuse 3D once they run out.
+      renderer.forceContextLoss();
       renderer.domElement.remove();
       labels.domElement.remove();
     };

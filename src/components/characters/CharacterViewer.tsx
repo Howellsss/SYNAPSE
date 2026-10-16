@@ -138,6 +138,7 @@ export default function CharacterViewer({ url, clip, playing, onLoaded }: {
       envMap.dispose();
       pmrem.dispose();
       renderer.dispose();
+      renderer.forceContextLoss();
       renderer.domElement.remove();
     };
   }, [url]);

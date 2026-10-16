@@ -438,6 +438,13 @@ What you see inside a space, until the art kit brings rooms and furniture:
   courtyard and on the Campus. Click one on foot: you walk to it and get in. Then click where to
   go, or use the arrow keys, at 10 m/s (car) or 7 m/s (scooter); E or "Get out" leaves it, and
   clicking a seat gets you out first. Everyone sees the vehicle under you (`gait` drive/ride).
+- **Glow:** only lights glow. Their materials are marked `glowing()` (`kitParts.ts`) and drawn on
+  `GLOW_LAYER`; SpaceScene blooms that layer on its own and adds it over the scene, so white
+  clothes, keyboards or leaves in the sun stay ordinary lit surfaces.
+- **Real surfaces** (`realSurfaces.ts`): grass, paving, brick paths, wood, parquet, marble, slate,
+  terrazzo and asphalt are Poly Haven photos (CC0, 512 px, ~800 KB in all, in
+  `public/assets/spatial/textures`). They load after the world appears; until then, or if one
+  fails, the drawn texture stays.
 - **Looking around:** hold and drag on the floor to slide the view (it eases back to you when you
   move; the locate button recentres it).
 - **Getting everywhere:** pieces turned at an angle block their real shape (cut into short boxes),
