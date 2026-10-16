@@ -19,10 +19,11 @@ const isEditable = (el: EventTarget | null) =>
  * Ctrl/Cmd+Shift+A toggles the mic, Ctrl/Cmd+Shift+V the camera.
  * Ignored while typing, so "paste as plain text" (Ctrl/Cmd+Shift+V) still works in text boxes.
  */
-export function useCallShortcuts(actions: { mic: () => void; cam: () => void }) {
+export function useCallShortcuts(actions: { mic: () => void; cam: () => void }, enabled = true) {
   const ref = useRef(actions);
   ref.current = actions;
   useEffect(() => {
+    if (!enabled) return;
     const onKey = (e: KeyboardEvent) => {
       const which = callShortcut(e);
       if (!which || e.repeat || isEditable(e.target)) return;
@@ -31,5 +32,5 @@ export function useCallShortcuts(actions: { mic: () => void; cam: () => void }) 
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [enabled]);
 }

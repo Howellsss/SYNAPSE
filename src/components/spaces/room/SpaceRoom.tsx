@@ -240,16 +240,11 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
 
   const media = normalizeMediaPrefs(profile?.media_prefs);
   const [, updatePrefs] = useMediaPrefs();
-  const call = useLiveKitRoom(space.id, { prefs: media, onNotice: (m, tone) => toast(m, tone ?? 'info') });
-  useCallShortcuts({ mic: () => { void call.toggleMic(); }, cam: () => { void call.toggleCam(); } });
-  // Stepping away to another feature: you stay in the workspace, out of sight, so your
-  // microphone and camera turn off (nobody hears or sees you without knowing it).
-  useEffect(() => {
-    if (!dock.docked) return;
-    if (call.micOn) void call.toggleMic();
-    if (call.camOn) void call.toggleCam();
-    if (call.screenOn) void call.stopScreenShare();
-  }, [dock.docked]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Stepping away to another feature: you stay in the workspace, out of sight, but its audio and
+  // video disconnect, so nobody hears or sees you without knowing it and your camera and microphone
+  // are free for a meeting. Coming back reconnects them.
+  const call = useLiveKitRoom(dock.docked ? null : space.id, { prefs: media, onNotice: (m, tone) => toast(m, tone ?? 'info') });
+  useCallShortcuts({ mic: () => { void call.toggleMic(); }, cam: () => { void call.toggleCam(); } }, !dock.docked);
   // Movement rides on the call once it's connected (see useSpaceChannel).
   useEffect(() => { setCallRoom(call.state === 'connected' ? call.room : null); }, [call.state, call.room, setCallRoom]);
   const canInvite = can(space.permissions, 'invite', role);

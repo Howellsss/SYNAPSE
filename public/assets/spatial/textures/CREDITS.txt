@@ -1,0 +1,5 @@
+Surface photos from Poly Haven (https://polyhaven.com), CC0 (public domain), resized to 512 px.
+grass = Grass Ground (colour-graded greener); paving, marble = Marble 01; brick = Brick Floor;
+oak = Oak Wood Planks; walnut = Wood Floor Worn (darkened); deck = Wood Floor Deck;
+parquet = Herringbone Parquet; slate = Slate Floor; terrazzo = Terrazzo Tiles; asphalt = Asphalt 02.
+*_n.jpg are the matching OpenGL normal maps.
