@@ -43,3 +43,22 @@ export function characterBytes(key: string, url: string): Promise<ArrayBuffer> {
   p.catch(() => inMemory.delete(key));
   return p;
 }
+
+/**
+ * Start downloading the character you'll appear as (your choice, else the default), so it's
+ * there the moment you enter a workspace instead of loading after you arrive.
+ */
+export async function prefetchMyCharacter(avatarConfig: unknown): Promise<void> {
+  try {
+    const [{ listCharacters, characterFileUrls }, { chosenCharacterId, pickSpaceCharacter }] = await Promise.all([
+      import('@/lib/characters'),
+      import('./avatarClips'),
+    ]);
+    const { data } = await listCharacters();
+    const mine = chosenCharacterId(avatarConfig);
+    const c = data.find((x) => x.id === mine) ?? pickSpaceCharacter(data);
+    if (!c) return;
+    const urls = await characterFileUrls([c]);
+    if (urls[c.id]) await characterBytes(`${c.storage_path}:${c.size_bytes}`, urls[c.id]);
+  } catch { /* it just loads on arrival instead */ }
+}

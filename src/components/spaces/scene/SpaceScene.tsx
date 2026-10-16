@@ -137,8 +137,6 @@ const OFFICE_MIN_ZOOM = 0.6;
 const MAX_ZOOM = 2.6;
 const EMOTE_BUBBLE_MS = 3000;
 /** Walking grid inside a built office: fine enough for doorways, with room for the avatar's body. */
-/** How long to wait for a character before showing a simple figure instead. */
-const CHARACTER_WAIT_MS = 15_000;
 const OFFICE_CELL = 0.25;
 const OFFICE_CLEARANCE = 0.28;
 const ONE_SHOT: AvatarAction[] = ['wave', 'cheer'];
@@ -652,7 +650,6 @@ export default function SpaceScene(props: SpaceSceneProps) {
     // Characters load the first time someone appears as them.
     const loadTemplate = (entry: SceneCharacter) => {
       templates.current.set(entry.id, 'loading');
-      loadStarted.set(entry.id, performance.now());
       const loaded = (gltf: GLTF) => {
         const box = new THREE.Box3().setFromObject(gltf.scene);
         const height = box.max.y - box.min.y;
@@ -678,12 +675,13 @@ export default function SpaceScene(props: SpaceSceneProps) {
         templates.current.set(entry.id, 'failed');
         latest.current.onCharacterError?.("Couldn't load a character; showing a simple figure instead.");
       };
-      // Kept on this device after the first visit, so characters appear straight away.
-      characterBytes(entry.cacheKey ?? entry.url, entry.url)
-        .then((bytes) => new GLTFLoader().parseAsync(bytes, ''))
+      // Kept on this device after the first visit, so characters appear straight away. A failed
+      // download is tried once more before falling back to the simple figure.
+      const fetchOnce = () => characterBytes(entry.cacheKey ?? entry.url, entry.url).then((bytes) => new GLTFLoader().parseAsync(bytes, ''));
+      fetchOnce()
+        .catch(() => new Promise((ok) => setTimeout(ok, 1500)).then(fetchOnce))
         .then(loaded, failed);
     };
-    const loadStarted = new Map<string, number>();
     const entryFor = (chosenId: string | null | undefined) => {
       const { library, defaultCharacterId } = latest.current;
       return (chosenId ? library.find((c) => c.id === chosenId) : undefined) ?? library.find((c) => c.id === defaultCharacterId);
@@ -697,8 +695,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
       const entry = entryFor(chosenId);
       if (!entry) return false;
       const t = templates.current.get(entry.id);
-      if (t !== 'loading' && t !== undefined) return false;
-      return performance.now() - (loadStarted.get(entry.id) ?? performance.now()) < CHARACTER_WAIT_MS;
+      // Still on its way, however long that takes: the stand-in figure is only for a failed load.
+      return t === 'loading' || t === undefined;
     };
     /** The loaded character someone appears as, or null while it loads (or when there's none). */
     const templateFor = (chosenId: string | null | undefined): Template | null => {
@@ -1230,6 +1228,9 @@ export default function SpaceScene(props: SpaceSceneProps) {
 
       // Place, turn, animate and (if sitting) seat one avatar.
       const turn = 1 - Math.exp(-dt * 14);
+      // Zoomed out over a big world, people are drawn larger so you can still see them
+      // (not when sitting, where they must fit the chair).
+      const grow = Math.min(2.2, Math.max(1, Math.pow(0.85 / zoom, 0.8)));
       const nowOccupied = new Set<string>();
       const drawAvatar = (a: Avatar, pose: { x: number; z: number; rot: number; anim: string }, chair: Seat | null) => {
         // Riding: seated in the car or on the bike, which is drawn under them.
@@ -1238,6 +1239,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
         setVehicle(a, riding);
         const spot = seat ? sittingSpot(seat) : pose;
         a.root.position.set(spot.x, 0, spot.z);
+        a.root.scale.setScalar(chair ? 1 : grow);
         a.root.rotation.y = lerpAngle(a.root.rotation.y, seat ? seat.rot : pose.rot, turn);
         if (a.emote && (a.emote.until <= now || pose.anim === 'walk')) a.emote = null;
         if (a.emote && pose.anim === 'run') a.emote = null;
