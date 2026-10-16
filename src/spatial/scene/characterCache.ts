@@ -4,6 +4,9 @@
  * cache by itself; here each file is stored under its own stable key (path and size) instead.
  */
 
+import { characterLibrary } from '@/lib/characters';
+import { chosenCharacterId, pickSpaceCharacter } from './avatarClips';
+
 const CACHE_NAME = 'synapse-characters-v1';
 const inMemory = new Map<string, Promise<ArrayBuffer>>();
 
@@ -50,15 +53,9 @@ export function characterBytes(key: string, url: string): Promise<ArrayBuffer> {
  */
 export async function prefetchMyCharacter(avatarConfig: unknown): Promise<void> {
   try {
-    const [{ listCharacters, characterFileUrls }, { chosenCharacterId, pickSpaceCharacter }] = await Promise.all([
-      import('@/lib/characters'),
-      import('./avatarClips'),
-    ]);
-    const { data } = await listCharacters();
+    const { list, urls } = await characterLibrary();
     const mine = chosenCharacterId(avatarConfig);
-    const c = data.find((x) => x.id === mine) ?? pickSpaceCharacter(data);
-    if (!c) return;
-    const urls = await characterFileUrls([c]);
-    if (urls[c.id]) await characterBytes(`${c.storage_path}:${c.size_bytes}`, urls[c.id]);
+    const c = list.find((x) => x.id === mine) ?? pickSpaceCharacter(list);
+    if (c && urls[c.id]) await characterBytes(`${c.storage_path}:${c.size_bytes}`, urls[c.id]);
   } catch { /* it just loads on arrival instead */ }
 }

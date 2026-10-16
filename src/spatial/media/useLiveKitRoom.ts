@@ -146,12 +146,6 @@ export function useLiveKitRoom(spaceId: string | null, { prefs, onNotice, tokenB
         return supabase.functions.invoke<TokenAnswer>('livekit-token', { body: { ...JSON.parse(bodyKey), ...(ticket ? { ticket } : {}) } });
       };
       let { data, error: fnError } = await ask();
-      // Turned away for the login (an old token): refresh it once and ask again before saying so.
-      if (alive && (fnError as { context?: Response } | null)?.context?.status === 401 && !/"guestName"/.test(bodyKey)) {
-        await supabase.auth.refreshSession().catch(() => null);
-        if (!alive) return;
-        ({ data, error: fnError } = await ask());
-      }
       // Waiting room: keep our place (the ticket) and ask again until the host lets us in.
       while (alive && !fnError && data?.waiting) {
         if (data.ticket) saveTicket(ticketKey, data.ticket);
