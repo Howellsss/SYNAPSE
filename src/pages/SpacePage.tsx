@@ -20,6 +20,9 @@ export function SpacePage({ slug }: { slug: string }) {
   // undefined while checking; false shows "Get ready" before the first visit.
   const [entered, setEntered] = useState<boolean | undefined>(undefined);
 
+  // Keyed on who you are, not the session object: it changes every time the login is refreshed
+  // (about hourly), and reloading the space then would drop you out of the call.
+  const userId = user?.id ?? null;
   useEffect(() => {
     let active = true;
     setSpace(undefined);
@@ -31,19 +34,19 @@ export function SpacePage({ slug }: { slug: string }) {
       setSpace(data);
       // Only check (and later count) a visit when the person is actually let in.
       const closed = data ? opensLabel(data.schedule, data.persistence) : null;
-      if (!data || !user || (closed && !canManageTeam)) { setEntered(true); return; }
-      const before = await hasEntered(data.id, user.id);
+      if (!data || !userId || (closed && !canManageTeam)) { setEntered(true); return; }
+      const before = await hasEntered(data.id, userId);
       if (!active) return;
       if (before === null) {
         // Couldn't check: let them in rather than block, and record the visit as before.
-        markEntered(data.id, user.id);
+        markEntered(data.id, userId);
         setEntered(true);
         return;
       }
       setEntered(before);
     });
     return () => { active = false; };
-  }, [slug, user, attempt, canManageTeam]);
+  }, [slug, userId, attempt, canManageTeam]);
 
   if (error) return <Padded><ErrorState message={`Couldn't open this workspace. ${error}`} onRetry={() => setAttempt((n) => n + 1)} /></Padded>;
   if (space === undefined || (space && entered === undefined)) return <div className="flex h-full items-center justify-center py-20"><LoadingSpinner className="h-8 w-8" /></div>;

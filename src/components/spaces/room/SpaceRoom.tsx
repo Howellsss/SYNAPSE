@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useRouter } from '@/lib/router';
 import { useSpaceDock } from '@/context/SpaceDockContext';
 import { getSpaceBySlug, listSpaces, updateSpace } from '@/lib/spaces';
-import { characterFileUrls, listCharacters, saveMyCharacter } from '@/lib/characters';
+import { characterLibrary, saveMyCharacter } from '@/lib/characters';
 import { usePlatformAdmin } from '@/lib/platformAdmin';
 import { spaceTypeInfo } from '@/spatial/data/spaceTypes';
 import { templateInfo } from '@/spatial/data/templates';
@@ -101,16 +101,16 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
 
   // The SYNAPSE character library: everyone appears as the character they chose, else the default.
   const [library, setLibrary] = useState<{ list: Character[]; urls: Record<string, string>; loaded: boolean }>({ list: [], urls: {}, loaded: false });
+  const signedIn = !!user;
   useEffect(() => {
-    if (!user) { setLibrary({ list: [], urls: {}, loaded: true }); return; }
+    if (!signedIn) { setLibrary({ list: [], urls: {}, loaded: true }); return; }
     let alive = true;
-    (async () => {
-      const { data } = await listCharacters();
-      const urls = await characterFileUrls(data);
-      if (alive) setLibrary({ list: data, urls, loaded: true });
-    })();
+    // Usually already fetched on the Workspaces page.
+    characterLibrary()
+      .then(({ list, urls }) => { if (alive) setLibrary({ list, urls, loaded: true }); })
+      .catch(() => { if (alive) setLibrary({ list: [], urls: {}, loaded: true }); });
     return () => { alive = false; };
-  }, [user]);
+  }, [signedIn]);
   const sceneLibrary = useMemo<SceneCharacter[]>(
     () => library.list.filter((c) => library.urls[c.id]).map((c) => ({ id: c.id, url: library.urls[c.id], cacheKey: `${c.storage_path}:${c.size_bytes}`, clips: resolveSpaceClips(c), style: resolveWalkStyle(c) })),
     [library],

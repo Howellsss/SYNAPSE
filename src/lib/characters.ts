@@ -27,6 +27,7 @@ const MAX_SOURCE_BYTES = 300 * 1024 * 1024;
  * or can't be brought under 30 MB.
  */
 export async function uploadCharacter(userId: string, original: File, onProgress?: (message: string) => void): Promise<{ data: Character | null; error: string | null }> {
+  library = null; // the shared copy is out of date
   if (!/\.glb$/i.test(original.name)) return { data: null, error: 'Please choose a .glb file (binary glTF).' };
   if (original.size > MAX_SOURCE_BYTES) return { data: null, error: `That file is ${formatMb(original.size)}. Files up to ${formatMb(MAX_SOURCE_BYTES)} can be shrunk.` };
   let file: File;
@@ -81,12 +82,14 @@ export async function characterFileUrl(character: Pick<Character, 'storage_path'
 }
 
 export async function updateCharacter(id: string, changes: Partial<Pick<Character, 'name' | 'default_clip' | 'space_clips'>>): Promise<{ error: string | null }> {
+  library = null; // the shared copy is out of date
   const { error } = await supabase.from('characters').update(changes).eq('id', id);
   return { error: error?.message ?? null };
 }
 
 /** Makes this the character everyone appears as in every workspace (one for all of SYNAPSE). */
 export async function setSpaceCharacter(id: string): Promise<{ error: string | null }> {
+  library = null; // the shared copy is out of date
   const { error: clearError } = await supabase
     .from('characters')
     .update({ use_in_spaces: false })
@@ -121,8 +124,27 @@ export async function saveMyCharacter(userId: string, currentConfig: Record<stri
 
 /** Removes the record and its file. */
 export async function deleteCharacter(character: Pick<Character, 'id' | 'storage_path'>): Promise<{ error: string | null }> {
+  library = null; // the shared copy is out of date
   const { error } = await supabase.from('characters').delete().eq('id', character.id);
   if (error) return { error: error.message };
   await supabase.storage.from(CHARACTERS_BUCKET).remove([character.storage_path]);
   return { error: null };
+}
+
+/**
+ * The character library (and links to the files), fetched once and shared by the Workspaces page
+ * and the workspace for 10 minutes (the links last an hour; any change to the library refetches),
+ * so entering a workspace doesn't wait for it again.
+ */
+let library: { at: number; p: Promise<{ list: Character[]; urls: Record<string, string> }> } | null = null;
+export function characterLibrary(): Promise<{ list: Character[]; urls: Record<string, string> }> {
+  if (library && Date.now() - library.at < 10 * 60_000) return library.p;
+  const p = (async () => {
+    const { data, error } = await listCharacters();
+    if (error) throw new Error(error);
+    return { list: data, urls: await characterFileUrls(data) };
+  })();
+  library = { at: Date.now(), p };
+  p.catch(() => { if (library?.p === p) library = null; });
+  return p;
 }
