@@ -20,18 +20,32 @@ function env(name: string): string {
 }
 
 Deno.serve(async (req: Request) => {
+  // Why this request's login check said no (each request has its own).
+  let authProblem: string | null = null;
   try {
     return await handle(req, {
       livekitUrl: Deno.env.get("LIVEKIT_URL"),
 
-      async getUser(jwt) {
-        const client = createClient(env("SUPABASE_URL"), env("SUPABASE_ANON_KEY"), {
-          global: { headers: { Authorization: `Bearer ${jwt}` } },
-          auth: { persistSession: false },
-        });
-        const { data } = await client.auth.getUser(jwt);
-        return data?.user ? { id: data.user.id, email: data.user.email } : null;
+      async getUser(jwt, apikey) {
+        // Ask the auth server directly, with the key the app itself sent (it works for everything
+        // else the app does), falling back to the project's anon key.
+        authProblem = null;
+        try {
+          const res = await fetch(`${env("SUPABASE_URL")}/auth/v1/user`, {
+            headers: { Authorization: `Bearer ${jwt}`, apikey: apikey || Deno.env.get("SUPABASE_ANON_KEY") || "" },
+          });
+          if (!res.ok) {
+            authProblem = `auth ${res.status}: ${(await res.text()).slice(0, 160)}`;
+            return null;
+          }
+          const u = await res.json() as { id?: string; email?: string | null };
+          return u?.id ? { id: u.id, email: u.email ?? null } : null;
+        } catch (e) {
+          authProblem = `auth unreachable: ${String((e as Error)?.message ?? e).slice(0, 120)}`;
+          return null;
+        }
       },
+      authProblem: () => authProblem,
 
       async getSpaceWorkspace(spaceId) {
         const { data, error } = await admin().from("spaces").select("workspace_id").eq("id", spaceId).maybeSingle();

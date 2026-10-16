@@ -58,8 +58,13 @@ export interface StreamRow {
 export interface Deps {
   /** A stream by code, or null. Left out before the streams database update. */
   getStream?(code: string): Promise<StreamRow | null>;
-  /** The signed-in user for this JWT, or null. */
-  getUser(jwt: string): Promise<{ id: string; email?: string | null } | null>;
+  /**
+   * The signed-in user for this JWT, or null. `apikey` is the key the app sent with the request
+   * (the one it uses for everything else), so the check works whichever kind of key it is.
+   */
+  getUser(jwt: string, apikey?: string): Promise<{ id: string; email?: string | null } | null>;
+  /** Why the last getUser said no (the auth server's answer), for the error message. */
+  authProblem?(): string | null;
   /** The space's owning tenant (workspaces.id), or null if there's no such space. */
   getSpaceWorkspace(spaceId: string): Promise<string | null>;
   /** A meeting's id, owning tenant and invite token by code, or null. Ended meetings return ended: true. */
@@ -159,9 +164,9 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
   const invite = typeof body.invite === "string" ? body.invite.trim() : "";
   const watch = typeof body.watch === "string" ? body.watch.trim() : "";
   // A guest with an invite or watch link has no login; the anon key isn't a user, so getUser gives null.
-  const user = jwt ? await deps.getUser(jwt) : null;
+  const user = jwt ? await deps.getUser(jwt, req.headers.get("apikey") ?? undefined) : null;
   if (!user && !(typeof body.meetingCode === "string" && invite) && !(typeof body.streamCode === "string" && watch)) {
-    return json({ error: "Please sign in again." }, 401);
+    return json({ error: "Please sign in again.", reason: deps.authProblem?.() ?? (jwt ? "login not accepted" : "no login sent") }, 401);
   }
 
   // Streams: the host sends; everyone else (account members, or anyone with the watch link)
@@ -233,7 +238,7 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
     return json({ token, url: deps.livekitUrl, identity, ...(ticket ? { ticket } : {}) });
   }
 
-  if (!user) return json({ error: "Please sign in again." }, 401);
+  if (!user) return json({ error: "Please sign in again.", reason: deps.authProblem?.() ?? "no login" }, 401);
   const spaceId = typeof body.spaceId === "string" ? body.spaceId.trim() : "";
   if (!UUID_RE.test(spaceId)) return json({ error: "Missing or invalid spaceId." }, 400);
   // Same answer for "no such space" and "not yours", so ids can't be probed.

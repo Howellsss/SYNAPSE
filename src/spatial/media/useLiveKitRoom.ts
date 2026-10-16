@@ -95,13 +95,16 @@ async function tokenError(err: unknown, guest = false): Promise<string> {
   }
   if (ctx && typeof ctx.status === 'number') {
     if (ctx.status === 404) return "Audio and video aren't set up for this SYNAPSE yet.";
-    try {
-      const body = await ctx.clone().json();
-      if (body?.error) return /Missing secret/.test(body.error) ? "Audio and video aren't set up for this SYNAPSE yet." : body.error;
-    } catch { /* not JSON */ }
-    // Turned away before reaching SYNAPSE's function (the gateway checks the login itself when
-    // "Verify JWT" is on for it, which fails with Supabase's newer signing keys).
-    if (ctx.status === 401) return "Audio and video couldn't confirm your login. Try again in a moment.";
+    // The service's own words, so a problem can be told apart from the screen alone.
+    const text = await ctx.clone().text().catch(() => '');
+    let body: { error?: string; reason?: string; message?: string; msg?: string } | null = null;
+    try { body = JSON.parse(text); } catch { /* not JSON */ }
+    if (body?.error && /Missing secret/.test(body.error)) return "Audio and video aren't set up for this SYNAPSE yet.";
+    if (ctx.status === 401) {
+      const why = body?.reason ?? body?.message ?? body?.msg ?? (body?.error ? null : text.slice(0, 120)) ?? null;
+      return `Audio and video couldn't confirm your login${why ? ` (${why})` : ''}.`;
+    }
+    if (body?.error) return body.error;
     if (ctx.status === 403) return "You don't have access to audio and video in this workspace.";
     if (ctx.status === 410) return 'This meeting has ended.';
   }
