@@ -722,18 +722,46 @@ export function createWorld(layout: CampusLayout, opts: WorldOptions): World {
   if (!wings.length) return { ...createCampusWorld(layout, opts), showWing: () => {} };
   const root = new THREE.Group();
   root.name = 'hub';
-  const parts = wings.map((w) => ({ wing: w, world: createCampusWorld(within(layout, w.rect), { ...opts, bounds: w.rect, outdoor: w.outdoor }) }));
-  parts.forEach((p) => root.add(p.world.root));
+  // Each place is built when it's first shown (the one you arrive in straight away), and the rest
+  // one at a time just after, so arriving doesn't wait for every place to be built.
+  const parts = wings.map((wing) => ({ wing, world: null as CampusWorld | null }));
+  let kit: GLTF | null = null;
+  let objects = layout.objects;
+  let shown: string | null | undefined; // undefined: not chosen yet, so everything shows
   const holder = (x: number, z: number) => parts.find((p) => x >= p.wing.rect.x0 && x <= p.wing.rect.x1 && z >= p.wing.rect.z0 && z <= p.wing.rect.z1);
+  const visible = (p: (typeof parts)[number]) => shown == null || p.wing.id === shown;
+  const built = () => parts.filter((p) => p.world) as { wing: (typeof parts)[number]['wing']; world: CampusWorld }[];
+  const build = (p: (typeof parts)[number]): CampusWorld => {
+    if (p.world) return p.world;
+    const w = createCampusWorld(within(layout, p.wing.rect), { ...opts, bounds: p.wing.rect, outdoor: p.wing.outdoor });
+    p.world = w;
+    if (kit) w.attachKit(kit);
+    if (objects !== layout.objects) w.setObjects(objects.filter((o) => holder(o.x, o.z) === p));
+    w.root.visible = visible(p);
+    root.add(w.root);
+    return w;
+  };
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const buildNext = () => {
+    timer = null;
+    const next = parts.find((p) => !p.world);
+    if (!next) return;
+    build(next);
+    timer = setTimeout(buildNext, 120);
+  };
+  timer = setTimeout(buildNext, 1500);
   return {
     root,
-    attachKit: (gltf) => parts.forEach((p) => p.world.attachKit(gltf)),
-    setObjects: (objects) => parts.forEach((p) => p.world.setObjects(objects.filter((o) => holder(o.x, o.z) === p))),
-    setGhost: (g, ok) => { const at = g ? holder(g.x, g.z) : undefined; parts.forEach((p) => p.world.setGhost(p === at ? g : null, ok)); },
-    setSelected: (b) => { const at = b ? holder((b.x0 + b.x1) / 2, (b.z0 + b.z1) / 2) : undefined; parts.forEach((p) => p.world.setSelected(p === at ? b : null)); },
-    follow: (target, sun, camera) => parts.forEach((p) => { if (p.world.root.visible) p.world.follow(target, sun, camera); }),
-    update: (dt) => parts.forEach((p) => { if (p.world.root.visible) p.world.update(dt); }),
-    showWing: (id) => parts.forEach((p) => { p.world.root.visible = id === null || p.wing.id === id; }),
-    dispose: () => parts.forEach((p) => p.world.dispose()),
+    attachKit: (gltf) => { kit = gltf; built().forEach((p) => p.world.attachKit(gltf)); },
+    setObjects: (next) => { objects = next; built().forEach((p) => p.world.setObjects(next.filter((o) => holder(o.x, o.z) === p))); },
+    setGhost: (g, ok) => { const at = g ? holder(g.x, g.z) : undefined; if (at) build(at); built().forEach((p) => p.world.setGhost(p === at ? g : null, ok)); },
+    setSelected: (b) => { const at = b ? holder((b.x0 + b.x1) / 2, (b.z0 + b.z1) / 2) : undefined; built().forEach((p) => p.world.setSelected(p === at ? b : null)); },
+    follow: (target, sun, camera) => built().forEach((p) => { if (p.world.root.visible) p.world.follow(target, sun, camera); }),
+    update: (dt) => built().forEach((p) => { if (p.world.root.visible) p.world.update(dt); }),
+    showWing: (id) => {
+      shown = id;
+      parts.forEach((p) => { if (visible(p)) build(p); if (p.world) p.world.root.visible = visible(p); });
+    },
+    dispose: () => { if (timer) clearTimeout(timer); built().forEach((p) => p.world.dispose()); },
   };
 }

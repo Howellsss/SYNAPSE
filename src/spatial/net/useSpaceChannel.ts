@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Room } from 'livekit-client';
 import { supabase } from '@/lib/supabase';
+import { openChannel } from '@/lib/realtime';
 import { MoveSender, type LocalState } from './moveSender';
 import { RemoteMover } from './interpolation';
 import {
@@ -153,51 +154,58 @@ export function useSpaceChannel(spaceId: string | null, me: MeInput | null, away
     if (!spaceId || !userId) return;
     setConnection('connecting');
     let subscribed = false;
-    const channel = supabase.channel(`space:${spaceId}`, {
+    let stopped = false;
+    let channel: RealtimeChannel | null = null;
+    void openChannel(`space:${spaceId}`, {
       config: { presence: { key: userId }, broadcast: { self: false, ack: false } },
+    }, () => stopped).then((ch) => {
+      if (!ch) return;
+      channel = ch;
+      channelRef.current = ch;
+      ch
+        .on('presence', { event: 'sync' }, () => {
+          const list = mergePresence(ch.presenceState() as unknown as Record<string, unknown[]>);
+          const before = presentIds.current;
+          presentIds.current = new Set(list.map((p) => p.userId));
+          // Someone new arrived: send where you are once, so they see you without waiting for a heartbeat.
+          if (list.some((p) => p.userId !== userId && !before.has(p.userId)) && lastLocal.current) {
+            senderRef.current?.flush(lastLocal.current);
+          }
+          remotes.keepOnly(presentIds.current);
+          setPeople(list);
+        })
+        .on('broadcast', { event: 'move' }, ({ payload }) => handleRef.current('move', payload))
+        .on('broadcast', { event: 'path' }, ({ payload }) => handleRef.current('path', payload))
+        .on('broadcast', { event: 'emote' }, ({ payload }) => handleRef.current('emote', payload))
+        .on('broadcast', { event: 'knock' }, ({ payload }) => handleRef.current('knock', payload))
+        .on('broadcast', { event: 'admit' }, ({ payload }) => handleRef.current('admit', payload))
+        .on('broadcast', { event: 'layout' }, ({ payload }) => handleRef.current('layout', payload))
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            subscribed = true;
+            setConnection('connected');
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            // supabase-js keeps retrying; we show "Reconnecting…" meanwhile.
+            setConnection(subscribed ? 'reconnecting' : 'offline');
+          } else if (status === 'CLOSED') {
+            setConnection(subscribed ? 'reconnecting' : 'offline');
+          }
+        });
     });
-    channelRef.current = channel;
-
-    channel
-      .on('presence', { event: 'sync' }, () => {
-        const list = mergePresence(channel.presenceState() as unknown as Record<string, unknown[]>);
-        const before = presentIds.current;
-        presentIds.current = new Set(list.map((p) => p.userId));
-        // Someone new arrived: send where you are once, so they see you without waiting for a heartbeat.
-        if (list.some((p) => p.userId !== userId && !before.has(p.userId)) && lastLocal.current) {
-          senderRef.current?.flush(lastLocal.current);
-        }
-        remotes.keepOnly(presentIds.current);
-        setPeople(list);
-      })
-      .on('broadcast', { event: 'move' }, ({ payload }) => handleRef.current('move', payload))
-      .on('broadcast', { event: 'path' }, ({ payload }) => handleRef.current('path', payload))
-      .on('broadcast', { event: 'emote' }, ({ payload }) => handleRef.current('emote', payload))
-      .on('broadcast', { event: 'knock' }, ({ payload }) => handleRef.current('knock', payload))
-      .on('broadcast', { event: 'admit' }, ({ payload }) => handleRef.current('admit', payload))
-      .on('broadcast', { event: 'layout' }, ({ payload }) => handleRef.current('layout', payload))
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          subscribed = true;
-          setConnection('connected');
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          // supabase-js keeps retrying; we show "Reconnecting…" meanwhile.
-          setConnection(subscribed ? 'reconnecting' : 'offline');
-        } else if (status === 'CLOSED') {
-          setConnection(subscribed ? 'reconnecting' : 'offline');
-        }
-      });
 
     const goOffline = () => setConnection('offline');
     const goOnline = () => setConnection(subscribed ? 'reconnecting' : 'connecting');
     window.addEventListener('offline', goOffline);
     window.addEventListener('online', goOnline);
     return () => {
+      stopped = true;
       window.removeEventListener('offline', goOffline);
       window.removeEventListener('online', goOnline);
       channelRef.current = null;
-      channel.untrack().catch(() => {});
-      supabase.removeChannel(channel);
+      if (channel) {
+        channel.untrack().catch(() => {});
+        supabase.removeChannel(channel);
+      }
     };
   }, [spaceId, userId, remotes]);
 
