@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { openChannel } from '@/lib/realtime';
 import { mergePresence } from './protocol';
 
 /**
@@ -12,15 +14,19 @@ export function usePresenceCounts(spaceIds: string[]): Record<string, number> {
 
   useEffect(() => {
     if (!key) return;
-    const channels = key.split(',').map((id) => {
-      const ch = supabase.channel(`space:${id}`, { config: { presence: { key: '' } } });
-      ch.on('presence', { event: 'sync' }, () => {
-        const n = mergePresence(ch.presenceState() as unknown as Record<string, unknown[]>).length;
-        setCounts((c) => (c[id] === n ? c : { ...c, [id]: n }));
-      }).subscribe();
-      return ch;
-    });
-    return () => { channels.forEach((ch) => supabase.removeChannel(ch)); };
+    let stopped = false;
+    const channels: RealtimeChannel[] = [];
+    for (const id of key.split(',')) {
+      void openChannel(`space:${id}`, { config: { presence: { key: '' } } }, () => stopped).then((ch) => {
+        if (!ch) return;
+        channels.push(ch);
+        ch.on('presence', { event: 'sync' }, () => {
+          const n = mergePresence(ch.presenceState() as unknown as Record<string, unknown[]>).length;
+          setCounts((c) => (c[id] === n ? c : { ...c, [id]: n }));
+        }).subscribe();
+      });
+    }
+    return () => { stopped = true; channels.forEach((ch) => supabase.removeChannel(ch)); };
   }, [key]);
 
   return counts;

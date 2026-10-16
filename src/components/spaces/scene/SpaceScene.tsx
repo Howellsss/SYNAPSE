@@ -294,6 +294,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
 
     const renderer = new THREE.WebGLRenderer({ antialias: !low, powerPreference: low ? 'low-power' : 'high-performance' });
     renderer.setPixelRatio(low ? 1 : Math.min(window.devicePixelRatio, 2));
+    // Checking each shader for errors makes the first frame wait on the graphics card: only while developing.
+    renderer.debug.checkShaderErrors = import.meta.env.DEV;
     renderer.toneMapping = THREE.NeutralToneMapping;
     renderer.domElement.style.display = 'block';
     renderer.domElement.style.touchAction = 'none';
@@ -391,6 +393,13 @@ export default function SpaceScene(props: SpaceSceneProps) {
     ]);
     const edge = new THREE.LineLoop(edgeGeo, new THREE.LineBasicMaterial({ color: '#E4A93C' }));
     scene.add(edge);
+    if (campus) {
+      // The campus has its own ground: the plain floor only catches clicks, from the start (not once
+      // the office file arrives, or a slow or failed download would leave a white floor over it).
+      grid.visible = false;
+      edge.visible = false;
+      (floorMesh.material as THREE.Material).visible = false;
+    }
 
     // A built office: one GLB, merged by material so it draws in a few dozen batches.
     const officeRoot = new THREE.Group();
