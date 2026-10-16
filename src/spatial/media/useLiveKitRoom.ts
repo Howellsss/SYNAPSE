@@ -99,7 +99,9 @@ async function tokenError(err: unknown, guest = false): Promise<string> {
       const body = await ctx.clone().json();
       if (body?.error) return /Missing secret/.test(body.error) ? "Audio and video aren't set up for this SYNAPSE yet." : body.error;
     } catch { /* not JSON */ }
-    if (ctx.status === 401) return 'Please sign in again to use audio and video.';
+    // Turned away before reaching SYNAPSE's function (the gateway checks the login itself when
+    // "Verify JWT" is on for it, which fails with Supabase's newer signing keys).
+    if (ctx.status === 401) return "Audio and video couldn't confirm your login. Try again in a moment.";
     if (ctx.status === 403) return "You don't have access to audio and video in this workspace.";
     if (ctx.status === 410) return 'This meeting has ended.';
   }
@@ -144,6 +146,12 @@ export function useLiveKitRoom(spaceId: string | null, { prefs, onNotice, tokenB
         return supabase.functions.invoke<TokenAnswer>('livekit-token', { body: { ...JSON.parse(bodyKey), ...(ticket ? { ticket } : {}) } });
       };
       let { data, error: fnError } = await ask();
+      // Turned away for the login (an old token): refresh it once and ask again before saying so.
+      if (alive && (fnError as { context?: Response } | null)?.context?.status === 401 && !/"guestName"/.test(bodyKey)) {
+        await supabase.auth.refreshSession().catch(() => null);
+        if (!alive) return;
+        ({ data, error: fnError } = await ask());
+      }
       // Waiting room: keep our place (the ticket) and ask again until the host lets us in.
       while (alive && !fnError && data?.waiting) {
         if (data.ticket) saveTicket(ticketKey, data.ticket);

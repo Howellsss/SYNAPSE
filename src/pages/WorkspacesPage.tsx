@@ -21,6 +21,7 @@ import { SpaceSettingsDrawer } from '@/components/spaces/SpaceSettingsDrawer';
 import { DeviceCheckModal } from '@/components/spaces/DeviceCheck';
 import { normalizeMediaPrefs } from '@/spatial/media/devices';
 import { usePresenceCounts } from '@/spatial/net/usePresenceCounts';
+import { prefetchMyCharacter } from '@/spatial/scene/characterCache';
 import { Avatar } from '@/components/ui/Avatar';
 import { Modal } from '@/components/ui/Modal';
 import { ErrorState, Skeleton } from '@/components/ui/States';
@@ -31,6 +32,14 @@ type MemberProfile = Pick<Profile, 'user_id' | 'first_name' | 'last_name' | 'ava
 
 export function WorkspacesPage() {
   const { workspace, profile, canManageTeam } = useAuth();
+  // Your character downloads while you're here, so you appear as it the moment you enter.
+  const avatarConfig = profile?.avatar_config;
+  const fetchedFor = useRef<unknown>(undefined);
+  useEffect(() => {
+    if (!profile || fetchedFor.current === avatarConfig) return;
+    fetchedFor.current = avatarConfig;
+    void prefetchMyCharacter(avatarConfig);
+  }, [profile, avatarConfig]);
   const [, navigate] = useRouter();
   const { toast } = useToast();
   const [spaces, setSpaces] = useState<SpaceWithMembers[] | null>(null);
