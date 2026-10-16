@@ -1,3 +1,4 @@
+import { supabaseKey } from '@/lib/supabase';
 import { useState } from 'react';
 import {
   Bell, Mail, MessageSquare, Send, ChevronDown, ChevronRight,
@@ -653,7 +654,7 @@ function TestEmailButton({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Authorization': `Bearer ${supabaseKey}`,
         },
         body: JSON.stringify({
           mode: 'test_email',

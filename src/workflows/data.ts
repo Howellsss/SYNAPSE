@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseKey } from '@/lib/supabase';
 import {
   compile, fromLegacy, settingsFrom, type Definition, type Step, type Trigger, type WorkflowSettings,
 } from './model';
@@ -239,7 +239,7 @@ export async function listVersions(workflowId: string): Promise<VersionRow[]> {
 
 /** Lets the scheduler's mailer call pass Supabase's gateway (the public key every visitor already has). */
 export async function shareClientKey(): Promise<void> {
-  const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+  const key: string | undefined = supabaseKey;
   if (key) await supabase.rpc('wf_set_client_key', { p_key: key }).then(() => {}, () => {});
 }
 
