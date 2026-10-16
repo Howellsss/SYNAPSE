@@ -452,7 +452,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
           />
         ) : (
           <>
-        {hintOpen && (
+        {hintOpen && !call.error && (
           <div className="absolute inset-x-0 bottom-36 z-10 flex justify-center px-3 lg:bottom-24">
             <p className="flex max-w-md items-center gap-2 rounded-2xl bg-white/95 px-4 py-2 text-sm text-navy-800 shadow-popover backdrop-blur">
               <Footprints className="h-4 w-4 shrink-0 text-gold-600" />
