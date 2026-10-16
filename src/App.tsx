@@ -36,6 +36,7 @@ import { WatchPage } from '@/pages/WatchPage';
 import { watchFromLocation } from '@/lib/streams';
 import { CreateSpaceWizard } from '@/pages/CreateSpaceWizard';
 import { SpacePage } from '@/pages/SpacePage';
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { GuestJoinPage } from '@/pages/GuestJoinPage';
 import { EventsHomePage } from '@/pages/events/EventsHomePage';
 import { EventDetailPage } from '@/pages/events/EventDetailPage';
@@ -234,7 +235,9 @@ function AppContent() {
               />
             )}
             {/* Each section fades in with a slight rise when you move to it. */}
-            <main key={path.split(/[/?]/)[1] || 'dashboard'} className={cn('flex-1 px-4 lg:px-6 pt-5 lg:pt-6 animate-page-in', navOpen ? 'pb-6' : 'pb-[84px]')}>{renderPage()}</main>
+            <main key={path.split(/[/?]/)[1] || 'dashboard'} className={cn('flex-1 px-4 lg:px-6 pt-5 lg:pt-6 animate-page-in', navOpen ? 'pb-6' : 'pb-[84px]')}>
+              <ErrorBoundary what="this page" resetKey={section} onBack={() => navigate('/dashboard')} backLabel="Back to Dashboard">{renderPage()}</ErrorBoundary>
+            </main>
           </div>
         </div>
       )}
@@ -247,7 +250,9 @@ function AppContent() {
           )}
           aria-hidden={hiddenSpace || undefined}
         >
-          <SpacePage key={liveSpace} slug={liveSpace} />
+          <ErrorBoundary what="this workspace" dark onBack={dockApi.leave} backLabel="Back to Workspaces">
+            <SpacePage key={liveSpace} slug={liveSpace} />
+          </ErrorBoundary>
         </div>
       )}
       {!navOpen && (
@@ -266,7 +271,9 @@ export default function App() {
   return (
     <AuthProvider>
       <ToastProvider>
-        <AppContent />
+        <ErrorBoundary what="SYNAPSE" onBack={() => { window.location.hash = '#/dashboard'; window.location.reload(); }} backLabel="Reload SYNAPSE">
+          <AppContent />
+        </ErrorBoundary>
       </ToastProvider>
     </AuthProvider>
   );
