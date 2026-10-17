@@ -13,6 +13,9 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { PROP_DIMS, propUrl, type PropId } from '@/spatial/scene/campus/props';
 import type { ModelPart, ProcItem } from '@/spatial/scene/campus/kit';
+
+/** Anything drawn from models: a kit piece, drawn in code or from the office file until then. */
+export type Modelled = Pick<ProcItem, 'model' | 'scale'>;
 import { canvasTex, glowing, kitShared, type Part } from './kitParts';
 
 /**
@@ -73,7 +76,7 @@ export function loadProp(id: PropId): Promise<Part[]> {
 export const propNow = (id: PropId): Part[] | undefined => ready.get(id);
 
 /** What a piece is drawn from: its parts, each placed in the piece's own frame. */
-export function itemModels(item: ProcItem, variant = 0): ModelPart[] {
+export function itemModels(item: Modelled, variant = 0): ModelPart[] {
   const s = item.scale ?? 1;
   const m = item.model;
   if (!m) return [];
@@ -83,10 +86,10 @@ export function itemModels(item: ProcItem, variant = 0): ModelPart[] {
 }
 
 /** How many models a piece chooses between (1 for most). */
-export const variantCount = (item: ProcItem) => (Array.isArray(item.model) && typeof item.model[0] === 'string' ? item.model.length : 1);
+export const variantCount = (item: Modelled) => (Array.isArray(item.model) && typeof item.model[0] === 'string' ? item.model.length : 1);
 
 /** Which of its models a placed piece shows (the same everywhere, from its id). */
-export function variantOf(item: ProcItem, pieceId: string): number {
+export function variantOf(item: Modelled, pieceId: string): number {
   const n = variantCount(item);
   if (n < 2) return 0;
   let h = 7;
@@ -94,8 +97,10 @@ export function variantOf(item: ProcItem, pieceId: string): number {
   return h % n;
 }
 
+const partScale = (m: ModelPart) => { const s = m.s ?? 1; return new THREE.Vector3(s, s * (m.sy ?? 1), s * (m.sz ?? 1)); };
+
 /** Load everything a piece is drawn from, and place it (null if a model couldn't load). */
-export async function loadItemParts(item: ProcItem, variant = 0): Promise<Part[] | null> {
+export async function loadItemParts(item: Modelled, variant = 0): Promise<Part[] | null> {
   const models = itemModels(item, variant);
   try {
     const loaded = await Promise.all(models.map((m) => loadProp(m.id)));
@@ -103,7 +108,7 @@ export async function loadItemParts(item: ProcItem, variant = 0): Promise<Part[]
       const at = new THREE.Matrix4().compose(
         new THREE.Vector3(m.x ?? 0, m.y ?? 0, m.z ?? 0),
         new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), m.rot ?? 0),
-        new THREE.Vector3(m.s ?? 1, m.s ?? 1, m.s ?? 1),
+        partScale(m),
       );
       return loaded[i].map((p) => ({ ...p, local: at.clone().multiply(p.local) }));
     });
@@ -113,14 +118,14 @@ export async function loadItemParts(item: ProcItem, variant = 0): Promise<Part[]
 }
 
 /** The same, if every model it needs has already loaded. */
-export function itemPartsNow(item: ProcItem, variant = 0): Part[] | null {
+export function itemPartsNow(item: Modelled, variant = 0): Part[] | null {
   const models = itemModels(item, variant);
   if (!models.length || models.some((m) => !ready.has(m.id))) return null;
   return models.flatMap((m) => {
     const at = new THREE.Matrix4().compose(
       new THREE.Vector3(m.x ?? 0, m.y ?? 0, m.z ?? 0),
       new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), m.rot ?? 0),
-      new THREE.Vector3(m.s ?? 1, m.s ?? 1, m.s ?? 1),
+      partScale(m),
     );
     return ready.get(m.id)!.map((p) => ({ ...p, local: at.clone().multiply(p.local) }));
   });
@@ -192,8 +197,45 @@ const lightMaterials = () => (lightMats ??= {
   tailOff: new THREE.MeshBasicMaterial({ color: '#7E1B16' }),
 });
 
+let navMats: Record<'red' | 'green' | 'white', THREE.Material> | null = null;
+const planeSpots = new Map<string, Record<'left' | 'right' | 'tail', THREE.Vector3>>();
+/** A plane's navigation lights: red on the left wingtip, green on the right, white on the tail. */
+function planeLightParts(item: ProcItem): Part[] {
+  let at = planeSpots.get(item.id);
+  if (!at) {
+    const parts = itemPartsNow(item);
+    if (!parts) return [];
+    const v = new THREE.Vector3();
+    at = { left: new THREE.Vector3(-Infinity, 0, 0), right: new THREE.Vector3(Infinity, 0, 0), tail: new THREE.Vector3(0, 0, Infinity) };
+    for (const part of parts) {
+      const pos = part.geo.getAttribute('position');
+      for (let i = 0; i < pos.count; i += 2) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(part.local);
+        if (v.x > at.left.x) at.left.copy(v);
+        if (v.x < at.right.x) at.right.copy(v);
+        if (v.z < at.tail.z) at.tail.copy(v);
+      }
+    }
+    planeSpots.set(item.id, at);
+  }
+  navMats ??= {
+    red: glowing(new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 0.15, 0.1), toneMapped: false })),
+    green: glowing(new THREE.MeshBasicMaterial({ color: new THREE.Color(0.15, 3, 0.4), toneMapped: false })),
+    white: glowing(new THREE.MeshBasicMaterial({ color: new THREE.Color(3.2, 3.2, 3), toneMapped: false })),
+  };
+  const { G } = kitShared();
+  const r = Math.max(0.2, item.w * 0.012);
+  const ball = (p: THREE.Vector3) => new THREE.Matrix4().compose(p, new THREE.Quaternion(), new THREE.Vector3(r, r, r));
+  return [
+    { geo: G.sphere, mat: navMats.red, local: ball(at.left), shadow: false },
+    { geo: G.sphere, mat: navMats.green, local: ball(at.right), shadow: false },
+    { geo: G.sphere, mat: navMats.white, local: ball(at.tail), shadow: false },
+  ];
+}
+
 /** The head and tail lights of a vehicle as parts: lit (driven) or just their lenses (parked). */
 export function vehicleLightParts(item: ProcItem, lit: boolean): Part[] {
+  if (item.vehicle?.lights === 'plane') return planeLightParts(item);
   const at = item.vehicle ? lightSpots(item) : null;
   if (!at) return [];
   const { G } = kitShared();

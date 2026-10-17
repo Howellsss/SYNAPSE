@@ -24,7 +24,11 @@ export type ProcKind =
   | 'model' | 'runway' | 'taxiway';
 
 /** One model of a piece made of several (a desk with its screen and chair), placed in the piece's frame. */
-export interface ModelPart { id: PropId; x?: number; z?: number; y?: number; rot?: number; s?: number }
+export interface ModelPart {
+  id: PropId; x?: number; z?: number; y?: number; rot?: number; s?: number;
+  /** Stretch up or along its depth (a bar-height table brought to desk height). */
+  sy?: number; sz?: number;
+}
 
 interface Base {
   id: string;
@@ -44,6 +48,8 @@ export interface GlbItem extends Base {
   /** What blocks walking, in the office's coordinates. */
   blocks: Rect[];
   seats?: { x: number; z: number; rot: number; y: number; kind?: SeatKind }[];
+  /** Drawn from prop models instead, in the piece's own frame (pivot at the origin, facing +z). */
+  model?: ModelPart[];
 }
 
 export interface ProcItem extends Base {
@@ -63,8 +69,8 @@ export interface ProcItem extends Base {
   model?: PropId | PropId[] | ModelPart[];
   /** Model size (1 = as made). */
   scale?: number;
-  /** Cars and bikes: their head and tail lights; the flying car flies. */
-  vehicle?: { lights: 'car' | 'moto'; flies?: boolean };
+  /** Cars, bikes and planes: their lights; the flying car and the planes fly. */
+  vehicle?: { lights: 'car' | 'moto' | 'plane'; flies?: boolean; plane?: boolean };
 }
 
 export type KitItem = GlbItem | ProcItem;
@@ -73,6 +79,10 @@ export const isGlb = (i: KitItem): i is GlbItem => 'nodes' in i;
 
 const r = (x0: number, x1: number, z0: number, z1: number): Rect => ({ x0, x1, z0, z1 });
 const HALF_PI = Math.PI / 2;
+
+/** Chairs at each of a piece's seats, facing the way its people sit. */
+const chairsAt = (id: PropId, seats: { x: number; z: number; rot: number }[], s = 1): ModelPart[] => seats.map((t) => ({ id, x: t.x, z: t.z, rot: t.rot, s }));
+const PI = Math.PI;
 
 /** A piece drawn from one prop model, its footprint the model's own. */
 const prop = (id: string, name: string, category: KitCategory, model: PropId, o: Partial<ProcItem> = {}): ProcItem => {
@@ -98,11 +108,17 @@ export const KIT: KitItem[] = [
     nodes: ['FURN_desk_r0c0', 'FURN_chair_r0c0'], c: [13.3, 2.6], rot0: 0,
     blocks: [r(12.5, 14.1, 2.525, 3.275), r(12.98, 13.63, 1.93, 2.6)],
     seats: [{ x: 13.295, z: 2.28, rot: 0, y: 0.48 }],
+    model: [
+      { id: 'desk_glass', z: 0.3, s: 1.067 },
+      { id: 'computer_retro', z: 0.38, y: 0.79, rot: PI, s: 0.85 },
+      { id: 'chair_office_ergonomic', x: -0.005, z: -0.3, s: 0.85 },
+    ],
   },
   {
     id: 'office_chair', name: 'Office chair', category: 'desks',
     nodes: ['FURN_chair_r0c0'], c: [13.3, 2.27], rot0: 0, blocks: [r(12.98, 13.63, 1.93, 2.6)],
     seats: [{ x: 13.295, z: 2.28, rot: 0, y: 0.48 }],
+    model: [{ id: 'chair_office_ergonomic', x: -0.005, z: 0.01, s: 0.85 }],
   },
   {
     id: 'divider', name: 'Desk divider', category: 'desks',
@@ -119,6 +135,16 @@ export const KIT: KitItem[] = [
       { x: 2.589, z: 4.38, rot: 3.017, y: 0.48 }, { x: 3.603, z: 4.38, rot: 3.031, y: 0.48 }, { x: 4.622, z: 4.38, rot: 3.128, y: 0.48 },
       { x: 1.6, z: 3.4, rot: HALF_PI, y: 0.48 },
     ],
+    model: [
+      { id: 'conference_table_oval', x: 0.2, s: 1.03, sy: 0.58, sz: 0.6 },
+      { id: 'laptop', x: -0.8, z: -0.3, y: 0.745, rot: PI },
+      { id: 'laptop', x: 1.2, z: 0.3, y: 0.745 },
+      ...chairsAt('chair_office_highback', [
+        { x: -0.808, z: -1.0, rot: 0.135 }, { x: 0.209, z: -1.0, rot: -0.023 }, { x: 1.219, z: -1.0, rot: -0.017 },
+        { x: -0.811, z: 1.0, rot: 3.017 }, { x: 0.203, z: 1.0, rot: 3.031 }, { x: 1.222, z: 1.0, rot: 3.128 },
+        { x: -1.82, z: 0, rot: HALF_PI },
+      ], 0.82),
+    ],
   },
   {
     id: 'screen_console', name: 'Wall screen and console', category: 'meeting',
@@ -132,11 +158,13 @@ export const KIT: KitItem[] = [
       { x: 0.85, z: 10.75, rot: HALF_PI, y: 0.45, kind: 'sofa' }, { x: 0.85, z: 11.4, rot: HALF_PI, y: 0.45, kind: 'sofa' },
       { x: 0.85, z: 12.05, rot: HALF_PI, y: 0.45, kind: 'sofa' },
     ],
+    model: [{ id: 'sofa_navy', s: 1.04 }],
   },
   {
     id: 'armchair', name: 'Armchair', category: 'seating',
     nodes: ['FURN_armchair_a'], c: [5.58, 10.29], rot0: -1.116, blocks: [r(5.02, 6.14, 9.77, 10.87)],
     seats: [{ x: 5.55, z: 10.3, rot: -1.116, y: 0.42, kind: 'armchair' }],
+    model: [{ id: 'armchair_yellow', s: 1.05 }],
   },
   {
     id: 'cafe_set', name: 'Café table (3 seats)', category: 'tables',
@@ -145,19 +173,23 @@ export const KIT: KitItem[] = [
     seats: [
       { x: 13.745, z: 11.932, rot: -2.641, y: 0.49 }, { x: 13.777, z: 10.687, rot: -0.551, y: 0.49 }, { x: 12.68, z: 11.277, rot: 1.539, y: 0.49 },
     ],
+    model: [
+      { id: 'coffee_table_terrazzo', s: 0.93, sy: 1.75 },
+      ...chairsAt('chair_dining_teal', [{ x: 0.345, z: 0.632, rot: -2.641 }, { x: 0.377, z: -0.613, rot: -0.551 }, { x: -0.72, z: -0.023, rot: 1.539 }]),
+    ],
   },
   // Tables and storage.
-  { id: 'coffee_table', name: 'Coffee table', category: 'tables', nodes: ['FURN_coffee_table'], c: [3.3, 11.4], rot0: 0, blocks: [r(2.68, 3.92, 10.78, 12.02)] },
-  { id: 'side_table', name: 'Side table', category: 'tables', nodes: ['FURN_side_table'], c: [0.65, 13.15], rot0: 0, blocks: [r(0.41, 0.89, 12.91, 13.39)] },
+  { id: 'coffee_table', name: 'Coffee table', category: 'tables', nodes: ['FURN_coffee_table'], c: [3.3, 11.4], rot0: 0, blocks: [r(2.68, 3.92, 10.78, 12.02)], model: [{ id: 'coffee_table_terrazzo', s: 1.3 }] },
+  { id: 'side_table', name: 'Side table', category: 'tables', nodes: ['FURN_side_table'], c: [0.65, 13.15], rot0: 0, blocks: [r(0.41, 0.89, 12.91, 13.39)], model: [{ id: 'coffee_table_terrazzo', s: 0.52, sy: 1.9 }] },
   { id: 'credenza', name: 'Credenza', category: 'tables', nodes: ['FURN_credenza'], c: [15.1, 0.55], rot0: 0, blocks: [r(14.2, 16.0, 0.33, 0.77)] },
   { id: 'coffee_bar', name: 'Coffee bar', category: 'tables', nodes: ['FURN_counter'], c: [8.85, 0.55], rot0: 0, blocks: [r(7.45, 10.25, 0.19, 0.91)] },
   { id: 'bookshelf', name: 'Bookshelf', category: 'decor', nodes: ['FURN_bookshelf'], c: [0.42, 14.8], rot0: HALF_PI, blocks: [r(0.24, 0.6, 13.8, 15.8)] },
-  { id: 'arc_lamp', name: 'Arc floor lamp', category: 'lighting', nodes: ['FURN_arc_lamp'], c: [2.25, 10.1], rot0: HALF_PI, blocks: [r(1.8, 2.3, 9.8, 10.3)] },
+  { id: 'arc_lamp', name: 'Floor lamp', category: 'lighting', nodes: ['FURN_arc_lamp'], c: [2.25, 10.1], rot0: HALF_PI, blocks: [r(1.8, 2.3, 9.8, 10.3)], model: [{ id: 'desk_lamp_brass' }] },
   // Plants.
-  { id: 'monstera', name: 'Monstera plant', category: 'plants', nodes: ['DECO_monstera_lounge'], c: [0.81, 9.42], rot0: 0, blocks: [r(0.55, 1.1, 9.15, 9.7)] },
-  { id: 'monstera_tall', name: 'Tall monstera', category: 'plants', nodes: ['DECO_monstera_lounge_tall'], c: [7.43, 14.71], rot0: 0, blocks: [r(7.15, 7.7, 14.43, 14.98)] },
-  { id: 'palm_pot', name: 'Potted palm', category: 'plants', nodes: ['DECO_meet_plant'], c: [6.48, 0.74], rot0: 0, blocks: [r(6.2, 6.76, 0.46, 1.02)] },
-  { id: 'planter_small', name: 'Small planter', category: 'plants', nodes: ['DECO_planter_right_b'], c: [19.7, 0.62], rot0: 0, blocks: [r(19.44, 19.96, 0.17, 1.07)] },
+  { id: 'monstera', name: 'Monstera plant', category: 'plants', nodes: ['DECO_monstera_lounge'], c: [0.81, 9.42], rot0: 0, blocks: [r(0.55, 1.1, 9.15, 9.7)], model: [{ id: 'plant_monstera' }] },
+  { id: 'monstera_tall', name: 'Tall fiddle-leaf fig', category: 'plants', nodes: ['DECO_monstera_lounge_tall'], c: [7.43, 14.71], rot0: 0, blocks: [r(7.15, 7.7, 14.43, 14.98)], model: [{ id: 'plant_fiddle_leaf', s: 1.15 }] },
+  { id: 'palm_pot', name: 'Bird of paradise', category: 'plants', nodes: ['DECO_meet_plant'], c: [6.48, 0.74], rot0: 0, blocks: [r(6.2, 6.76, 0.46, 1.02)], model: [{ id: 'plant_bird_of_paradise' }] },
+  { id: 'planter_small', name: 'Snake plant', category: 'plants', nodes: ['DECO_planter_right_b'], c: [19.7, 0.62], rot0: 0, blocks: [r(19.44, 19.96, 0.17, 1.07)], model: [{ id: 'plant_snake' }] },
   { id: 'wall_art', name: 'Wall art', category: 'decor', nodes: ['DECO_art_meet_a'], c: [0.23, 2.3], rot0: HALF_PI, blocks: [] },
 
   // Drawn in code.
@@ -232,8 +264,9 @@ export const KIT: KitItem[] = [
   bike('kick_scooter', 'Kick scooter', 'kick_scooter', '#2A2D33'),
   // The airport (laid out in the Campus).
   { ...prop('airport_terminal', 'Airport terminal', 'transport', 'airport_terminal', { scale: 1.2 }), hidden: true },
-  { ...prop('parking_garage', 'Parking garage', 'transport', 'parking_facility'), hidden: true },
-  { ...prop('parking_plaza', 'Parking plaza', 'transport', 'parking_entrance'), hidden: true },
+  // Planes at their stands: board one and fly it (it takes off and lands on the runway).
+  { ...prop('plane_airliner', 'Airliner', 'transport', 'airliner', { scale: 0.85 }), proc: 'car', color: '#E8EAEE', vehicle: { lights: 'plane', flies: true, plane: true }, hidden: true },
+  { ...prop('plane_jet', 'Private jet', 'transport', 'private_jet'), proc: 'car', color: '#E8EAEE', vehicle: { lights: 'plane', flies: true, plane: true }, hidden: true },
   { id: 'runway', name: 'Runway', category: 'transport', proc: 'runway', w: 108, d: 12, walkable: true, hidden: true },
   { id: 'taxiway', name: 'Taxiway', category: 'transport', proc: 'taxiway', w: 108, d: 5, walkable: true, hidden: true },
   { id: 'stage_large', name: 'Large stage', category: 'events', proc: 'stage', w: 16, d: 5, walkable: true, hidden: true },
@@ -241,7 +274,7 @@ export const KIT: KitItem[] = [
   { id: 'doorway', name: 'Doorway', category: 'decor', proc: 'doorway', w: 3, d: 0.5, walkable: true, hidden: true },
   { id: 'truss', name: 'Lighting truss', category: 'events', proc: 'truss', w: 12, d: 0.3, walkable: true, hidden: true },
   ...([['seat_navy', 'Seat (navy)', '#24406E'], ['seat_red', 'Seat (red)', '#8E2B2B'], ['seat_green', 'Seat (green)', '#2F6B4F'], ['seat_gold', 'Seat (gold)', '#B5832A'], ['seat_blue', 'Seat (blue)', '#2F5D9F']] as const).map(([id, name, color]): ProcItem => ({
-    id, name, category: 'events', proc: 'theatre_seat', w: 0.6, d: 0.6, color, seats: [{ x: 0, z: 0.02, rot: 0, y: 0.5 }],
+    id, name, category: 'events', proc: 'theatre_seat', w: 0.6, d: 0.6, color, seats: [{ x: 0, z: 0.02, rot: 0, y: 0.47 }], model: 'chair_dining_teal',
   })),
   ...([['booth_navy', 'Expo booth (navy)', '#24406E'], ['booth_teal', 'Expo booth (teal)', '#2F7F86'], ['booth_red', 'Expo booth (red)', '#9C3434'], ['booth_green', 'Expo booth (green)', '#3E7A4E']] as const).map(([id, name, color]): ProcItem => ({
     id, name, category: 'events', proc: 'booth', w: 3.1, d: 1.0, color,
@@ -253,10 +286,13 @@ export const KIT: KitItem[] = [
   ...([['chair_mustard', 'Lounge chair (mustard)', '#C08A2E', 'armchair_yellow'], ['chair_teal', 'Lounge chair (bouclé)', '#2F6F73', 'armchair_boucle'], ['chair_rust', 'Lounge chair (cream)', '#A0522D', 'armchair_boucle']] as const).map(([id, name, color, model]): ProcItem => ({
     id, name, category: 'seating', proc: 'lounge_chair', w: 0.85, d: 0.85, color, model, scale: Math.min(1, 0.88 / PROP_DIMS[model].w), seats: [{ x: 0, z: 0.06, rot: 0, y: 0.52, kind: 'armchair' }],
   })),
-  ...([['dining_green', 'Café table (green)', '#3E6B48'], ['dining_mustard', 'Café table (mustard)', '#C08A2E'], ['dining_navy', 'Café table (navy)', '#24406E']] as const).map(([id, name, color]): ProcItem => ({
-    id, name, category: 'tables', proc: 'dining_set', w: 1.9, d: 1.9, color,
-    seats: [0, 1, 2, 3].map((i) => { const a = (i / 4) * Math.PI * 2; return { x: Math.sin(a) * 0.72, z: Math.cos(a) * 0.72, rot: a + Math.PI, y: 0.5 }; }),
-  })),
+  ...([['dining_green', 'Café table (teal chairs)', '#3E6B48', 'chair_dining_teal'], ['dining_mustard', 'Café table (oak chairs)', '#C08A2E', 'chair_dining_wood'], ['dining_navy', 'Café table', '#24406E', 'chair_dining_teal']] as const).map(([id, name, color, chair]): ProcItem => {
+    const seats = [0, 1, 2, 3].map((i) => { const a = (i / 4) * Math.PI * 2; return { x: Math.sin(a) * 0.72, z: Math.cos(a) * 0.72, rot: a + Math.PI, y: 0.5 }; });
+    return {
+      id, name, category: 'tables', proc: 'dining_set', w: 1.9, d: 1.9, color, seats,
+      model: [{ id: 'coffee_table_terrazzo', s: 1, sy: 1.65 }, ...chairsAt(chair, seats.map((t) => ({ x: t.x * 1.05, z: t.z * 1.05, rot: t.rot })))],
+    };
+  }),
   { id: 'bar_counter', name: 'Bar counter', category: 'tables', proc: 'bar_counter', w: 5, d: 0.8 },
   { id: 'bar_stool', name: 'Bar stool', category: 'seating', proc: 'bar_stool', w: 0.45, d: 0.45, color: '#24406E', model: 'bar_stool_cane', scale: 0.95, seats: [{ x: 0, z: 0, rot: 0, y: 0.82 }] },
   { id: 'bottle_wall', name: 'Bar shelves', category: 'decor', proc: 'bottle_wall', w: 5, d: 0.45 },
@@ -266,6 +302,10 @@ export const KIT: KitItem[] = [
   ...([['conference', 'Conference table (navy)', '#24406E'], ['conf_teal', 'Conference table (teal)', '#2F6F73'], ['conf_red', 'Conference table (red)', '#8E2B2B'], ['conf_green', 'Conference table (green)', '#2F6B4F']] as const).map(([id, name, color]): ProcItem => ({
     id, name, category: 'meeting', proc: 'conference', w: 2.4, d: 4.6, color,
     seats: [0, 1, 2, 3, 4].flatMap((i) => [{ x: -0.95, z: -1.8 + 0.9 * i, rot: Math.PI / 2, y: 0.5 }, { x: 0.95, z: -1.8 + 0.9 * i, rot: -Math.PI / 2, y: 0.5 }]),
+    model: [
+      { id: 'conference_table_oval', rot: HALF_PI, s: 1.25, sy: 0.49, sz: 0.54 },
+      ...chairsAt('chair_office_highback', [0, 1, 2, 3, 4].flatMap((i) => [{ x: -1.0, z: -1.8 + 0.9 * i, rot: HALF_PI }, { x: 1.0, z: -1.8 + 0.9 * i, rot: -HALF_PI }]), 0.78),
+    ],
   })),
   { id: 'ping_pong', name: 'Ping-pong table', category: 'tables', proc: 'ping_pong', w: 1.6, d: 2.8 },
   ...([['rug_xl_rust', 'Room rug (rust)', '#7E3B2C'], ['rug_xl_navy', 'Room rug (navy)', '#1E3A6E'], ['rug_xl_teal', 'Room rug (teal)', '#245E63'], ['rug_xl_green', 'Room rug (green)', '#2F5E4A']] as const).map(([id, name, color]): ProcItem => ({

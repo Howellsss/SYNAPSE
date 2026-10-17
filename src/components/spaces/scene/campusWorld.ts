@@ -7,11 +7,10 @@
 import * as THREE from 'three';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { KIT_BY_ID, isGlb, type Placed } from '@/spatial/scene/campus/kit';
+import { KIT_BY_ID, isGlb, placedBounds, type Placed } from '@/spatial/scene/campus/kit';
 import { applyRealSurface, type RealSurface } from './realSurfaces';
 import { canvasTex, glowing, grassTuft, kitShared, markGlow, procParts, rng, speckle, type Part } from './kitParts';
 import { loadItemParts, variantOf, vehicleLightParts } from './propModels';
-import { createAirTraffic } from './airTraffic';
 import type { Rect } from '@/spatial/scene/offices';
 import { WALL_T, wallSegments, type CampusLayout, type FloorFinish, type Zone } from '@/spatial/scene/campus/layout';
 
@@ -272,7 +271,7 @@ export interface CampusWorld {
   setSelected(bounds: Rect | null): void;
   /** Keep the sun's shadow box over where the camera looks, and turn the place signs to face the camera. */
   follow(target: THREE.Vector3, sun: THREE.DirectionalLight, camera: THREE.Camera): void;
-  /** Every frame: ripples on the water, planes in the sky. */
+  /** Every frame: ripples on the water. */
   update(dt: number): void;
   dispose(): void;
 }
@@ -505,8 +504,18 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
     const tuft = keep(grassTuft());
     const mat = kitShared().M.leaves;
     const rand = rng(101);
+    // Not indoors (the HQ), nor under paving, car parks, the runway or big pieces like the terminal.
+    const hq = layout.hq;
+    const covered = layout.objects.flatMap((p) => {
+      const item = KIT_BY_ID.get(p.kind);
+      if (!item || isGlb(item) || !(item.walkable || item.w * item.d > 20)) return [];
+      const b = placedBounds(p);
+      return b ? [b] : [];
+    });
     const blocked = (x: number, z: number) =>
-      layout.paths.some((p) => x > p.x0 - 0.3 && x < p.x1 + 0.3 && z > p.z0 - 0.3 && z < p.z1 + 0.3)
+      (!!hq && x > hq.x - 0.4 && x < hq.x + 20.4 && z > hq.z - 0.4 && z < hq.z + 16.4)
+      || covered.some((b) => x > b.x0 - 0.3 && x < b.x1 + 0.3 && z > b.z0 - 0.3 && z < b.z1 + 0.3)
+      || layout.paths.some((p) => x > p.x0 - 0.3 && x < p.x1 + 0.3 && z > p.z0 - 0.3 && z < p.z1 + 0.3)
       || layout.buildings.some((b) => !!b.floor && x > b.rect.x0 - 0.3 && x < b.rect.x1 + 0.3 && z > b.rect.z0 - 0.3 && z < b.rect.z1 + 0.3)
       || layout.water.some((w) => ((x - w.cx) / (w.rx + 0.9)) ** 2 + ((z - w.cz) / (w.rz + 0.9)) ** 2 < 1)
       || (layout.plazas ?? []).some((c) => Math.hypot(x - c.cx, z - c.cz) < c.r + 0.3);
@@ -556,7 +565,7 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
   // piece choosing between a kind's models by its id, so a row of plants isn't all the same).
   const keyOf = (p: Placed): string => {
     const item = KIT_BY_ID.get(p.kind);
-    if (!item || isGlb(item) || !item.model) return p.kind;
+    if (!item?.model) return p.kind;
     const key = `${p.kind}#${variantOf(item, p.id)}`;
     return partsByKind.has(key) ? key : p.kind;
   };
@@ -565,7 +574,7 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
   const loadModels = (list: Placed[]) => {
     for (const p of list) {
       const item = KIT_BY_ID.get(p.kind);
-      if (!item || isGlb(item) || !item.model) continue;
+      if (!item?.model) continue;
       const v = variantOf(item, p.id);
       const key = `${p.kind}#${v}`;
       if (asked.has(key)) continue;
@@ -573,7 +582,7 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
       void loadItemParts(item, v).then((parts) => {
         if (disposed || !parts) return;
         // Parked cars and bikes show their (unlit) head and tail lights.
-        partsByKind.set(key, item.vehicle ? [...parts, ...vehicleLightParts(item, false)] : parts);
+        partsByKind.set(key, !isGlb(item) && item.vehicle ? [...parts, ...vehicleLightParts(item, false)] : parts);
         if (ghostKind === p.kind) ghostKind = null;
         if (placeSoon) return;
         placeSoon = setTimeout(() => { placeSoon = null; if (!disposed) { place(); ghostAgain?.(); } }, 120);
@@ -627,9 +636,6 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
   outline.renderOrder = 4;
   root.add(outline);
   const bar = keep(new THREE.BoxGeometry(1, 0.04, 1));
-  // Planes taking off, flying their circuit and landing, by the clock (the same on every screen).
-  const air = layout.airport ? createAirTraffic(layout.airport, shadows) : null;
-  if (air) root.add(air.root);
   markGlow(root);
 
   const api: CampusWorld = {
@@ -726,12 +732,10 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
     update(dt) {
       ripples.offset.x += dt * 0.012;
       ripples.offset.y += dt * 0.008;
-      air?.update(Date.now());
     },
     dispose() {
       disposed = true;
       if (placeSoon) clearTimeout(placeSoon);
-      air?.dispose();
       for (const child of [...pieces.children]) (child as THREE.InstancedMesh).dispose?.();
       disposables.forEach((d) => d.dispose());
     },

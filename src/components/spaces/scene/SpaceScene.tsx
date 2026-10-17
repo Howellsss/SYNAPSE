@@ -33,8 +33,9 @@ import { fitsAt, isGlb, KIT_BY_ID, pieceAt, placedBounds, type Placed, type Proc
 import { bikeParts, carParts, GLOW_LAYER, markGlow, type Part } from './kitParts';
 import type { Rect } from '@/spatial/scene/offices';
 import { createWorld, type World } from './campusWorld';
+import { refurnish } from './refurnish';
 import { flickerFlames, headlightPool, itemPartsNow, loadItemParts, vehicleLightParts, vehicleSize, wheelFlames } from './propModels';
-import { aimBone, beginPose, endPose, feminineGait, findRig, relaxPosture, type Rig } from './posture';
+import { aimBone, beginPose, endPose, feminineGait, findRig, relaxPosture, turnBone, type Rig } from './posture';
 import { characterBytes } from '@/spatial/scene/characterCache';
 
 /** What the world toolbar and the people panel can ask the scene to do. */
@@ -54,6 +55,9 @@ export type VehicleKind = 'car' | 'bike';
 
 /** A car or bike someone is in: the parked piece they took, and what it is. */
 interface Ride { piece: string; item: ProcItem; kind: VehicleKind }
+
+/** One stretch of a plane's trip: where, how fast, on the ground or in the air, and what happens after. */
+interface Leg { points: [number, number][]; speed: number; air: boolean; done?: () => void }
 
 /** A car or bike like the one someone is in, when they don't say which. */
 const fallbackRide = (kind: VehicleKind): Ride => ({ piece: '', item: KIT_BY_ID.get(kind === 'car' ? 'car_navy' : 'bike_teal') as ProcItem, kind });
@@ -134,9 +138,15 @@ export interface BuildState {
 export type SceneView = 'top' | 'angled';
 
 const AVATAR_HEIGHT = 1.7;
-/** The flying car: how high it flies, and how fast. */
-const FLY_HEIGHT = 2.6;
+/** The flying car: how high it flies (clear of the trees and roofs), and how fast. */
+const FLY_HEIGHT = 6;
 const FLY_SPEED = 11;
+/** Planes: how high they cruise, how fast they fly and taxi. */
+const PLANE_HEIGHT = 15;
+const PLANE_SPEED = 19;
+const TAXI_SPEED = 8;
+/** How high something in the air flies. */
+const cruiseHeight = (ride: Ride | null) => (ride?.item.vehicle?.plane ? PLANE_HEIGHT : FLY_HEIGHT);
 const LABEL_HEIGHT = 2.0;
 /** Where the camera sits relative to what it looks at. */
 const CAMERA_OFFSETS: Record<SceneView, THREE.Vector3> = {
@@ -456,6 +466,9 @@ export default function SpaceScene(props: SpaceSceneProps) {
             }
             officeRoot.position.set(campus.hq.x, 0, campus.hq.z);
           }
+          // The old chairs, desks, tables, sofa, lamps and plants make way for the prop models.
+          officeRoot.add(refurnish(gltf.scene).group);
+          gltf.scene.updateMatrixWorld(true);
           const byMaterial = new Map<THREE.Material, THREE.BufferGeometry[]>();
           // BAKED_* meshes carry light rendered in Blender (sun, lamps, soft shadows) in their
           // texture: shown as-is. Furniture shadows are then already on the floor, so only people
@@ -619,8 +632,13 @@ export default function SpaceScene(props: SpaceSceneProps) {
       /** The car or bike I'm in, and the one I'm walking to. */
       vehicle: null as Ride | null,
       pendingVehicle: null as Ride | null,
-      /** In the flying car, off the ground. */
+      /** In the flying car or a plane, off the ground. */
       airborne: false,
+      /** A plane's next stretches (taxi out then take off; fly in, land and taxi back), and what to do at the end of this one. */
+      legs: [] as Leg[],
+      pathDone: null as (() => void) | null,
+      /** A plane on its way in to land (don't circle). */
+      landing: false,
       /** The seat I'm in, and the one I'm walking to. */
       seat: null as Seat | null,
       pathSeat: null as Seat | null,
@@ -641,7 +659,9 @@ export default function SpaceScene(props: SpaceSceneProps) {
     let shiftHeld = false;
     const running = () => shiftHeld !== (latest.current.moveMode === 'run');
     const flying = () => !!me.vehicle?.item.vehicle?.flies;
+    const inPlane = () => !!me.vehicle?.item.vehicle?.plane;
     const gaitNow = (): Gait => (me.vehicle?.kind === 'car' ? (flying() && me.airborne ? 'fly' : 'drive') : me.vehicle?.kind === 'bike' ? 'ride' : running() ? 'run' : 'walk');
+    const stopLegs = () => { me.legs = []; me.pathDone = null; me.landing = false; };
     const setVehicleMine = (ride: Ride | null) => {
       if (me.vehicle?.piece === ride?.piece) return;
       // Out of the flying car in the air: down onto the nearest clear ground first.
@@ -651,25 +671,114 @@ export default function SpaceScene(props: SpaceSceneProps) {
         me.z = down.z;
         if (me.path) { me.path = null; me.pathSeat = null; latest.current.endPath(); }
       }
+      stopLegs();
       me.airborne = false;
       me.vehicle = ride;
+      // In a plane: zoom out, so the whole plane and where it's going are in view.
+      if (ride?.item.vehicle?.plane) { zoom = minZoom; applyCamera(); }
       latest.current.onVehicle?.(ride?.kind ?? null, ride?.piece ?? null);
     };
-    /** The flying car goes straight there through the air, and lands on clear ground. */
-    const flyTo = (x: number, z: number) => {
-      const goal = freeSpot(map, Math.min(W - 0.6, Math.max(0.6, x)), Math.min(D - 0.6, Math.max(0.6, z)));
-      const route: [number, number][] = [[me.x, me.z], [goal.x, goal.z]];
-      if (Math.hypot(goal.x - me.x, goal.z - me.z) < 0.05) return false;
-      me.airborne = true;
-      me.path = { points: route, startedAt: performance.now(), speed: FLY_SPEED, gait: 'fly' };
+    /** Start one stretch of a trip (others see it as a route, like a walk). */
+    const startLeg = (leg: Leg) => {
+      if (leg.points.length < 2) { leg.done?.(); return; }
+      me.airborne = leg.air;
+      const gait: Gait = leg.air ? 'fly' : 'drive';
+      me.path = { points: leg.points, startedAt: performance.now(), speed: leg.speed, gait };
+      me.pathDone = leg.done ?? null;
       me.seat = null;
       me.dancing = false;
       me.pathSeat = null;
-      latest.current.startPath(route, FLY_SPEED, false, 'fly');
-      marker.position.set(goal.x, 0.02, goal.z);
+      latest.current.startPath(leg.points, leg.speed, false, gait);
+    };
+    const runLegs = (legs: Leg[]) => {
+      me.legs = legs.slice(1);
+      startLeg(legs[0]);
+    };
+    const inBounds = (x: number, z: number): [number, number] => [Math.min(W - 0.6, Math.max(0.6, x)), Math.min(D - 0.6, Math.max(0.6, z))];
+    const showMarker = (x: number, z: number) => {
+      marker.position.set(x, 0.02, z);
       marker.visible = true;
       markerUntil = performance.now() + 900;
+    };
+    /**
+     * The flying car goes straight there through the air and lands on clear ground. A plane on the
+     * ground taxis to the end of the runway and takes off first; in the air it flies there, then
+     * circles until it's sent on or brought in to land.
+     */
+    const flyTo = (x: number, z: number) => {
+      const [gx, gz] = inBounds(x, z);
+      if (inPlane()) {
+        me.landing = false;
+        const strip = campusLayout?.airport?.runway;
+        if (!me.airborne && strip) {
+          // From the end of the runway nearer the plane, along it, lifting off half way.
+          const west = me.x < (strip.x0 + strip.x1) / 2;
+          const start: [number, number] = [west ? strip.x0 + 8 : strip.x1 - 8, strip.z];
+          const lift: [number, number] = [west ? strip.x0 + 70 : strip.x1 - 70, strip.z];
+          runLegs([
+            { points: [[me.x, me.z], start], speed: TAXI_SPEED, air: false },
+            { points: [start, lift, [gx, gz]], speed: PLANE_SPEED, air: true },
+          ]);
+        } else {
+          me.legs = [];
+          startLeg({ points: [[me.x, me.z], [gx, gz]], speed: PLANE_SPEED, air: true });
+        }
+        showMarker(gx, gz);
+        return true;
+      }
+      const goal = freeSpot(map, gx, gz);
+      if (Math.hypot(goal.x - me.x, goal.z - me.z) < 0.05) return false;
+      startLeg({ points: [[me.x, me.z], [goal.x, goal.z]], speed: FLY_SPEED, air: true });
+      showMarker(goal.x, goal.z);
       return true;
+    };
+    /** A plane with nowhere to go flies a wide circle where it is. */
+    const circle = () => {
+      const r = 26;
+      const cx = me.x + Math.cos(me.rot) * r;
+      const cz = me.z - Math.sin(me.rot) * r;
+      const a0 = Math.atan2(me.z - cz, me.x - cx);
+      const pts: [number, number][] = [];
+      for (let i = 0; i <= 32; i++) {
+        const a = a0 - (i / 32) * Math.PI * 2;
+        pts.push(inBounds(cx + Math.cos(a) * r, cz + Math.sin(a) * r));
+      }
+      startLeg({ points: pts, speed: PLANE_SPEED * 0.8, air: true });
+    };
+    /** Get out: a plane in the air flies in, lands on the runway and taxis back to its stand first. */
+    const getOut = () => {
+      const ride = me.vehicle;
+      if (!ride) return;
+      const stand = piecesById.get(ride.piece);
+      const strip = campusLayout?.airport?.runway;
+      const behind = () => {
+        if (!stand) return;
+        const away = ride.item.d / 2 + 0.7;
+        const at = freeSpot(map, stand.x - Math.sin(stand.rot) * away, stand.z - Math.cos(stand.rot) * away);
+        me.x = at.x;
+        me.z = at.z;
+      };
+      if (ride.item.vehicle?.plane && me.airborne && stand && strip) {
+        if (me.landing) return;
+        me.landing = true;
+        // In over the far end of the runway, down along it towards the stand, then taxi in.
+        const west = stand.x < (strip.x0 + strip.x1) / 2;
+        const over: [number, number] = [west ? strip.x1 - 2 : strip.x0 + 2, strip.z];
+        const slow: [number, number] = [stand.x + (west ? 25 : -25), strip.z];
+        runLegs([
+          { points: [[me.x, me.z], over], speed: PLANE_SPEED, air: true },
+          { points: [over, slow], speed: 16, air: false },
+          {
+            points: [slow, [stand.x, strip.z], [stand.x, stand.z]],
+            speed: TAXI_SPEED,
+            air: false,
+            done: () => { setVehicleMine(null); behind(); me.rot = stand.rot; },
+          },
+        ]);
+        return;
+      }
+      setVehicleMine(null);
+      if (ride.item.vehicle?.plane) behind();
     };
     const walkTo = (x: number, z: number, seat: Seat | null = null, gait: Gait = gaitNow()) => {
       if (!seat) me.pendingVehicle = null;
@@ -847,6 +956,38 @@ export default function SpaceScene(props: SpaceSceneProps) {
     const dirA = new THREE.Vector3();
     const dirB = new THREE.Vector3();
     const toRest = (rig: Rig) => { for (const r of rig.rest) { r.bone.quaternion.copy(r.q); r.bone.position.copy(r.p); } };
+    /**
+     * On a motorbike or scooter: astride the saddle, leaning forward over the tank, hands on the
+     * grips, knees bent and feet back on the pegs.
+     */
+    const poseRiding = (a: Avatar, rig: Rig, seat: Seat) => {
+      if (!a.body) return;
+      side.set(fwd.z, 0, -fwd.x); // to the rider's left
+      if (rig.spine) turnBone(rig.spine, _va.set(0, 1, 0).cross(fwd).normalize(), 0.42);
+      let hipY = 0;
+      for (const leg of rig.legs) {
+        leg.root.getWorldPosition(_vb);
+        const out = Math.sign(_vb.clone().sub(a.root.position).dot(side)) || 1;
+        // Thighs forward and down, a little apart round the tank; shins down and back to the pegs.
+        dirA.copy(fwd).multiplyScalar(0.72).addScaledVector(side, out * 0.16).add(_va.set(0, -0.62, 0)).normalize();
+        aimBone(leg.root, leg.mid, dirA);
+        dirB.copy(fwd).multiplyScalar(-0.28).addScaledVector(side, out * 0.06).add(_va.set(0, -1, 0)).normalize();
+        aimBone(leg.mid, leg.end, dirB);
+        leg.root.getWorldPosition(_vb);
+        hipY += _vb.y;
+      }
+      hipY /= rig.legs.length;
+      for (const arm of rig.arms) {
+        arm.root.getWorldPosition(_vb);
+        const out = Math.sign(_vb.clone().sub(a.root.position).dot(side)) || 1;
+        // Upper arms forward and down to the bars, forearms reaching on to the grips.
+        dirA.copy(fwd).multiplyScalar(0.8).addScaledVector(side, out * 0.18).add(_va.set(0, -0.55, 0)).normalize();
+        aimBone(arm.root, arm.mid, dirA);
+        dirB.copy(fwd).multiplyScalar(0.95).addScaledVector(side, out * 0.05).add(_va.set(0, -0.3, 0)).normalize();
+        aimBone(arm.mid, arm.end, dirB);
+      }
+      a.body.position.y = Math.min(0.3, Math.max(-0.9, seat.y + 0.05 - hipY));
+    };
     const poseSeated = (a: Avatar, seat: Seat | null) => {
       if (!a.body) return;
       a.label.position.y = seat ? LABEL_HEIGHT - 0.45 : LABEL_HEIGHT;
@@ -866,6 +1007,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       a.body.position.y = 0;
       a.root.updateMatrixWorld(true);
       fwd.set(Math.sin(a.root.rotation.y), 0, Math.cos(a.root.rotation.y));
+      if (seat.id === 'ride-bike') { poseRiding(a, rig, seat); return; }
       // Thighs along the cushion (slightly down to the knee), shins straight down to the floor.
       dirA.copy(fwd).add(_va.set(0, -0.08, 0)).normalize();
       dirB.copy(fwd).multiplyScalar(0.08).add(_va.set(0, -1, 0)).normalize();
@@ -928,9 +1070,9 @@ export default function SpaceScene(props: SpaceSceneProps) {
         m.castShadow = shadows && part.shadow;
         group.add(m);
       }
-      const pool = real ? headlightPool(item) : null;
+      const pool = real && !item.vehicle?.plane ? headlightPool(item) : null;
       if (pool) group.add(pool);
-      const flames = item.vehicle?.flies ? wheelFlames(item) : null;
+      const flames = item.vehicle?.flies && !item.vehicle.plane ? wheelFlames(item) : null;
       if (flames) group.add(flames);
       markGlow(group);
       // A rider sits just behind the middle of the bike; a car is centred on its driver.
@@ -1036,7 +1178,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       // A chair or sofa place: walk over and sit (unless someone's in it).
       const seat = seatOnRay(seats, raycaster.ray.origin, raycaster.ray.direction);
       if (seat && seat === me.seat) return;
-      if (seat && !occupied.has(seat.id)) { setVehicleMine(null); walkTo(seat.x, seat.z, seat, gaitNow()); return; }
+      if (seat && !occupied.has(seat.id) && !inPlane()) { setVehicleMine(null); walkTo(seat.x, seat.z, seat, gaitNow()); return; }
       if (seat) { const near = seatApproach(map, seat); walkTo(near.x, near.z); return; }
       const hit = raycaster.intersectObject(floorMesh)[0];
       if (hit) walkTo(hit.point.x, hit.point.z);
@@ -1115,7 +1257,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey || isEditable(e.target)) return;
-      if ((e.key === 'e' || e.key === 'E') && me.vehicle) { e.preventDefault(); setVehicleMine(null); return; }
+      if ((e.key === 'e' || e.key === 'E') && me.vehicle) { e.preventDefault(); getOut(); return; }
       const k = moveKeyFor(e);
       if (!k) return;
       e.preventDefault();
@@ -1140,7 +1282,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       zoomIn: () => { zoom = Math.min(MAX_ZOOM, zoom * 1.25); applyCamera(); },
       zoomOut: () => { zoom = Math.max(minZoom, zoom / 1.25); applyCamera(); },
       dance: () => toggleDance(),
-      getOut: () => setVehicleMine(null),
+      getOut: () => getOut(),
       walkTo: (userId: string) => {
         const a = avatars.get(userId);
         if (!a || userId === latest.current.meId) return false;
@@ -1214,6 +1356,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       const dir = keyDirection(held, { x: -off.x / flat, z: -off.z / flat });
       if (dir) {
         if (me.path) { me.path = null; me.pathSeat = null; p.endPath(); }
+        if (me.legs.length || me.landing) stopLegs();
         if (me.seat) {
           // Stand up on the free side of the seat, then walk.
           const up = seatApproach(map, me.seat);
@@ -1221,7 +1364,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
           me.z = up.z;
           me.seat = null;
         }
-        const speed = flying() ? FLY_SPEED : me.vehicle?.kind === 'car' ? CAR_SPEED : me.vehicle?.kind === 'bike' ? BIKE_SPEED : running() ? RUN_SPEED : WALK_SPEED;
+        const speed = inPlane() ? PLANE_SPEED : flying() ? FLY_SPEED : me.vehicle?.kind === 'car' ? CAR_SPEED : me.vehicle?.kind === 'bike' ? BIKE_SPEED : running() ? RUN_SPEED : WALK_SPEED;
         // The flying car goes over everything (within the grounds).
         const next = flying()
           ? { x: Math.min(W - 0.6, Math.max(0.6, me.x + dir.x * speed * dt)), z: Math.min(D - 0.6, Math.max(0.6, me.z + dir.z * speed * dt)) }
@@ -1254,6 +1397,12 @@ export default function SpaceScene(props: SpaceSceneProps) {
             me.pendingVehicle = null;
           }
           p.endPath();
+          // A plane's trip: on to the next stretch.
+          const done = me.pathDone;
+          me.pathDone = null;
+          done?.();
+          const next = me.legs.shift();
+          if (next) startLeg(next);
         }
       }
       // Kept for a scene rebuild: standing beside my seat if I'm in one.
@@ -1288,8 +1437,12 @@ export default function SpaceScene(props: SpaceSceneProps) {
       campusWorld?.update(dt);
       const travel: Gait = me.path ? me.path.gait : gaitNow();
       // In a car or on a scooter you stay in it, moving or not.
-      // The flying car stays up while it moves, or while it's over something it can't land on.
-      if (flying()) me.airborne = moving || !!me.path || !isFree(map, me.x, me.z);
+      // The flying car stays up while it moves, or while it's over something it can't land on. A
+      // plane stays up until it lands, circling when it has nowhere to go.
+      if (inPlane()) {
+        if (dir) me.airborne = true;
+        else if (me.airborne && !me.path && !me.landing) circle();
+      } else if (flying()) me.airborne = moving || !!me.path || !isFree(map, me.x, me.z);
       const myAnim = me.vehicle ? gaitNow() : moving ? travel : me.seat ? 'sit' : me.dancing ? 'dance' : 'idle';
       p.onLocal({ x: me.x, z: me.z, rot: me.rot, anim: myAnim });
 
@@ -1311,7 +1464,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
       const turn = 1 - Math.exp(-dt * 14);
       // Zoomed out over a big world, people are drawn larger so you can still see them
       // (not when sitting, where they must fit the chair).
-      const grow = Math.min(2.2, Math.max(1, Math.pow(0.85 / zoom, 0.8)));
+      // (Not in the Campus or Hub, where they must stay in proportion with the cars and bikes.)
+      const grow = campusLayout ? 1 : Math.min(2.2, Math.max(1, Math.pow(0.85 / zoom, 0.8)));
       const nowOccupied = new Set<string>();
       const nowTaken = new Set<string>();
       const drawAvatar = (a: Avatar, pose: { x: number; z: number; rot: number; anim: string }, chair: Seat | null, ride: Ride | null) => {
@@ -1324,8 +1478,12 @@ export default function SpaceScene(props: SpaceSceneProps) {
         setVehicle(a, riding);
         const spot = seat ? sittingSpot(seat) : pose;
         // The flying car rises and settles smoothly, and hovers gently in the air.
-        a.lift += ((pose.anim === 'fly' ? FLY_HEIGHT : 0) - a.lift) * (1 - Math.exp(-Math.min(dt, 0.1) * 3));
+        // A plane climbs and comes down gently, along the way; the car lifts straight up.
+        const before = a.lift;
+        const rate = riding?.item.vehicle?.plane ? 0.9 : 3;
+        a.lift += ((pose.anim === 'fly' ? cruiseHeight(riding) : 0) - a.lift) * (1 - Math.exp(-Math.min(dt, 0.1) * rate));
         if (a.lift < 0.003) a.lift = 0;
+        const climb = dt > 0 ? (a.lift - before) / dt : 0;
         const hover = a.lift > 0.3 ? Math.sin(now / 420) * 0.05 : 0;
         const deck = riding?.item.id === 'kick_scooter' ? 0.13 : 0; // standing on the scooter's deck
         a.root.position.set(spot.x, a.lift + hover + deck, spot.z);
@@ -1335,7 +1493,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
           // A car keeps its size when you zoom out (its driver isn't drawn); a rider and bike grow together.
           a.vehicle.group.scale.setScalar(a.vehicle.kind === 'car' ? 1 / scale : 1);
           a.vehicle.group.position.y = -deck / scale;
-          a.vehicle.group.rotation.x = pose.anim === 'fly' ? -0.04 : 0; // nose up a touch in flight
+          // Nose up while climbing, down while coming in.
+          a.vehicle.group.rotation.x = pose.anim === 'fly' || a.lift > 0.05 ? Math.max(-0.22, Math.min(0.14, -climb * 0.03 - 0.02)) : 0;
           if (a.vehicle.flames) flickerFlames(a.vehicle.flames, a.lift + hover, now);
           if (a.vehicle.pool) a.vehicle.pool.visible = a.lift < 0.25;
         }
@@ -1438,8 +1597,13 @@ export default function SpaceScene(props: SpaceSceneProps) {
       const mz = Math.min(D / 2, 4.5 / zoom);
       // Moving brings the view back to you after looking around.
       if (moving) pan.multiplyScalar(Math.max(0, 1 - dt * 3));
-      const fx = office ? Math.min(Math.max(me.x + pan.x, mx), W - mx) : me.x + pan.x;
-      const fz = office ? Math.min(Math.max(me.z + pan.z, mz), D - mz) : me.z + pan.z;
+      // Up in the air, the view follows the car or plane itself, not the ground under it.
+      const up = avatars.get(p.meId)?.lift ?? 0;
+      const off2 = cameraOffset();
+      const ux = (-up * off2.x) / off2.y;
+      const uz = (-up * off2.z) / off2.y;
+      const fx = office ? Math.min(Math.max(me.x + pan.x + ux, mx), W - mx) : me.x + pan.x + ux;
+      const fz = office ? Math.min(Math.max(me.z + pan.z + uz, mz - 20), D - mz) : me.z + pan.z + uz;
       if (!dragFrom) {
         target.x += (fx - target.x) * k;
         target.z += (fz - target.z) * k;

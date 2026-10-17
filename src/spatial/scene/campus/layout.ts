@@ -361,7 +361,7 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
   }
 
   // ---- the airport, across the boulevard: car parks and bike parks by the road, the terminal
-  // between two parking garages, then the taxiway and the runway, where the planes take off.
+  // with a plane at a stand on each side, then the taxiway and the runway.
   const runway = { x0: 6, x1: 114, z: 180 };
   const taxiZ = 167;
   {
@@ -369,8 +369,9 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
     zones.push({ id: 'terminal', name: 'Airport Terminal', type: 'open_area', rect: r(32.4, 87.6, 109, 154.5) });
     zones.push({ id: 'runway', name: 'Runway', type: 'open_area', rect: r(6, 114, 164.5, 186) });
     add('ap-terminal', 'airport_terminal', 60, 131.75, 0);
-    add('ap-garage', 'parking_garage', 16.7, 125, 0);
-    add('ap-plaza', 'parking_plaza', 103, 125, 0);
+    // Planes at their stands, nose to the runway: walk up to one and board it.
+    add('ap-plane-airliner', 'plane_airliner', 17.5, 136, 0);
+    add('ap-plane-jet', 'plane_jet', 103, 138, 0);
     add('ap-taxiway', 'taxiway', 60, taxiZ, 0);
     add('ap-runway', 'runway', 60, runway.z, 0);
     const lots: [number, string[]][] = [

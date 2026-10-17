@@ -101,7 +101,7 @@ export function aimBone(bone: THREE.Object3D, child: THREE.Object3D, want: THREE
 }
 
 /** Turns `bone` by `angle` about a world-space axis. */
-function turnBone(bone: THREE.Object3D, axis: THREE.Vector3, angle: number) {
+export function turnBone(bone: THREE.Object3D, axis: THREE.Vector3, angle: number) {
   if (!bone.parent || Math.abs(angle) < 1e-5) return;
   remember(bone);
   _qa.setFromAxisAngle(axis, angle);

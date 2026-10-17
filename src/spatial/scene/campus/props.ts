@@ -54,8 +54,6 @@ export const PROP_DIMS = {
   moto_racing: { w: 0.788, d: 2, h: 1.082 },
   moto_red: { w: 0.786, d: 2, h: 1.066 },
   moto_vintage: { w: 0.868, d: 2, h: 1.088 },
-  parking_entrance: { w: 25.591, d: 30, h: 2.853 },
-  parking_facility: { w: 21.257, d: 30, h: 2.45 },
   plant_bird_of_paradise: { w: 1.078, d: 1.064, h: 1.55 },
   plant_fiddle_leaf: { w: 0.847, d: 0.847, h: 1.6 },
   plant_monstera: { w: 0.961, d: 0.844, h: 1.15 },
