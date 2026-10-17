@@ -22,17 +22,18 @@ import type { GraphicsQuality } from '@/spatial/quality';
 import { findPath, smoothPath } from '@/spatial/scene/pathfinding';
 import { AVATAR_ACTIONS, type AvatarAction, type SpaceClips, type WalkStyle } from '@/spatial/scene/avatarClips';
 import {
-  BIKE_SPEED, CAR_SPEED, cellCenter, facing, freeSpot, keyDirection, mapCell, moveKeyFor, pinRootMotion, RUN_SPEED, spawnPoint, stepTo, walkMap, WALK_SPEED,
+  BIKE_SPEED, CAR_SPEED, cellCenter, facing, freeSpot, isFree, keyDirection, mapCell, moveKeyFor, pinRootMotion, RUN_SPEED, spawnPoint, stepTo, walkMap, WALK_SPEED,
   type Floor, type MoveKey,
 } from '@/spatial/scene/floor';
 import type { OfficeLayout } from '@/spatial/scene/offices';
 import { SIT_BACK, seatApproach, seatAt, seatOnRay, sittingSpot, type Seat } from '@/spatial/scene/seats';
 import { applyEdits, NO_EDITS, type CampusEdits } from '@/spatial/scene/campus/office';
 import { campusObstacles, campusSeats, portalAt, wingAt } from '@/spatial/scene/campus/layout';
-import { fitsAt, KIT_BY_ID, pieceAt, placedBounds } from '@/spatial/scene/campus/kit';
+import { fitsAt, isGlb, KIT_BY_ID, pieceAt, placedBounds, type Placed, type ProcItem } from '@/spatial/scene/campus/kit';
 import { bikeParts, carParts, GLOW_LAYER, markGlow, type Part } from './kitParts';
 import type { Rect } from '@/spatial/scene/offices';
 import { createWorld, type World } from './campusWorld';
+import { flickerFlames, headlightPool, itemPartsNow, loadItemParts, vehicleLightParts, vehicleSize, wheelFlames } from './propModels';
 import { aimBone, beginPose, endPose, feminineGait, findRig, relaxPosture, type Rig } from './posture';
 import { characterBytes } from '@/spatial/scene/characterCache';
 
@@ -50,6 +51,19 @@ export interface SceneControls {
 }
 
 export type VehicleKind = 'car' | 'bike';
+
+/** A car or bike someone is in: the parked piece they took, and what it is. */
+interface Ride { piece: string; item: ProcItem; kind: VehicleKind }
+
+/** A car or bike like the one someone is in, when they don't say which. */
+const fallbackRide = (kind: VehicleKind): Ride => ({ piece: '', item: KIT_BY_ID.get(kind === 'car' ? 'car_navy' : 'bike_teal') as ProcItem, kind });
+
+/** The car or bike a parked piece is, if it is one. */
+function rideOf(piece: Placed | undefined): Ride | null {
+  const item = piece ? KIT_BY_ID.get(piece.kind) : undefined;
+  if (!piece || !item || isGlb(item) || (item.proc !== 'car' && item.proc !== 'bike')) return null;
+  return { piece: piece.id, item, kind: item.proc };
+}
 export type MoveMode = 'walk' | 'run';
 
 /** A character from the shared library, ready to load. */
@@ -102,8 +116,8 @@ export interface SpaceSceneProps {
   build?: BuildState | null;
   /** Walking or running by default (Shift does the other). */
   moveMode?: MoveMode;
-  /** You got into a car or onto a scooter (or out: null). */
-  onVehicle?: (kind: VehicleKind | null) => void;
+  /** You got into a car or onto a bike (or out: null), and which parked one you took. */
+  onVehicle?: (kind: VehicleKind | null, piece: string | null) => void;
 }
 
 export interface BuildState {
@@ -120,6 +134,9 @@ export interface BuildState {
 export type SceneView = 'top' | 'angled';
 
 const AVATAR_HEIGHT = 1.7;
+/** The flying car: how high it flies, and how fast. */
+const FLY_HEIGHT = 2.6;
+const FLY_SPEED = 11;
 const LABEL_HEIGHT = 2.0;
 /** Where the camera sits relative to what it looks at. */
 const CAMERA_OFFSETS: Record<SceneView, THREE.Vector3> = {
@@ -169,8 +186,10 @@ interface Avatar {
   style: WalkStyle;
   /** Was drawn seated last frame (so the body can be put back when standing up). */
   seated: boolean;
-  /** The car or bike drawn under them while they ride. */
-  vehicle: { kind: VehicleKind; group: THREE.Group } | null;
+  /** The car or bike drawn under them while they ride (from its model once that has loaded). */
+  vehicle: { item: ProcItem; kind: VehicleKind; group: THREE.Group; real: boolean; flames: THREE.Group | null; pool: THREE.Mesh | null } | null;
+  /** Height off the ground (the flying car in the air). */
+  lift: number;
   /** Bouncing to music without a dance clip (so the body can be put back). */
   bouncing: boolean;
 }
@@ -512,7 +531,10 @@ export default function SpaceScene(props: SpaceSceneProps) {
 
     // Camera: orthographic, from the +x/+z corner, following me.
     const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 200);
-    const cameraOffset = () => CAMERA_OFFSETS[latest.current.view ?? 'top'];
+    // With planes in the sky the camera stands further back along the same line, so they pass
+    // under it (an orthographic view looks exactly the same from further away).
+    const farOffset = new THREE.Vector3();
+    const cameraOffset = () => (campusLayout?.airport ? farOffset.copy(CAMERA_OFFSETS[latest.current.view ?? 'top']).multiplyScalar(3.2) : CAMERA_OFFSETS[latest.current.view ?? 'top']);
     // A built office is surrounded by its grounds; don't zoom out past them.
     const minZoom = campus ? CAMPUS_MIN_ZOOM : office ? OFFICE_MIN_ZOOM : MIN_ZOOM;
     // The campus starts a little further out, so you see where you are.
@@ -594,9 +616,11 @@ export default function SpaceScene(props: SpaceSceneProps) {
       x: start.x, z: start.z, rot: myPlace.current?.rot ?? Math.PI * 1.25,
       path: null as null | { points: [number, number][]; startedAt: number; speed: number; gait: Gait },
       dancing: false,
-      /** The car or scooter I'm in, and the one I'm walking to. */
-      vehicle: null as VehicleKind | null,
-      pendingVehicle: null as VehicleKind | null,
+      /** The car or bike I'm in, and the one I'm walking to. */
+      vehicle: null as Ride | null,
+      pendingVehicle: null as Ride | null,
+      /** In the flying car, off the ground. */
+      airborne: false,
       /** The seat I'm in, and the one I'm walking to. */
       seat: null as Seat | null,
       pathSeat: null as Seat | null,
@@ -606,18 +630,50 @@ export default function SpaceScene(props: SpaceSceneProps) {
     let seats = campusLayout ? campusSeats(campusLayout) : office?.seats ?? [];
     /** Seats other people are sitting in (updated every frame). */
     let occupied = new Set<string>();
+    /** Parked cars and bikes someone is out in (updated every frame): not drawn in their bays. */
+    let taken = new Set<string>();
+    /** Which way the car I'm walking to is parked (I get in facing that way). */
+    let pendingRot = 0;
+    /** Pieces by id, for finding the car or bike someone took. */
+    const piecesById = new Map((campusLayout?.objects ?? []).map((o) => [o.id, o]));
 
     /** Walk to (x, z), or to a seat and sit in it. Standing up first if I'm sitting. */
     let shiftHeld = false;
     const running = () => shiftHeld !== (latest.current.moveMode === 'run');
-    const gaitNow = (): Gait => (me.vehicle === 'car' ? 'drive' : me.vehicle === 'bike' ? 'ride' : running() ? 'run' : 'walk');
-    const setVehicleMine = (kind: VehicleKind | null) => {
-      if (me.vehicle === kind) return;
-      me.vehicle = kind;
-      latest.current.onVehicle?.(kind);
+    const flying = () => !!me.vehicle?.item.vehicle?.flies;
+    const gaitNow = (): Gait => (me.vehicle?.kind === 'car' ? (flying() && me.airborne ? 'fly' : 'drive') : me.vehicle?.kind === 'bike' ? 'ride' : running() ? 'run' : 'walk');
+    const setVehicleMine = (ride: Ride | null) => {
+      if (me.vehicle?.piece === ride?.piece) return;
+      // Out of the flying car in the air: down onto the nearest clear ground first.
+      if (!ride && me.airborne) {
+        const down = freeSpot(map, me.x, me.z);
+        me.x = down.x;
+        me.z = down.z;
+        if (me.path) { me.path = null; me.pathSeat = null; latest.current.endPath(); }
+      }
+      me.airborne = false;
+      me.vehicle = ride;
+      latest.current.onVehicle?.(ride?.kind ?? null, ride?.piece ?? null);
+    };
+    /** The flying car goes straight there through the air, and lands on clear ground. */
+    const flyTo = (x: number, z: number) => {
+      const goal = freeSpot(map, Math.min(W - 0.6, Math.max(0.6, x)), Math.min(D - 0.6, Math.max(0.6, z)));
+      const route: [number, number][] = [[me.x, me.z], [goal.x, goal.z]];
+      if (Math.hypot(goal.x - me.x, goal.z - me.z) < 0.05) return false;
+      me.airborne = true;
+      me.path = { points: route, startedAt: performance.now(), speed: FLY_SPEED, gait: 'fly' };
+      me.seat = null;
+      me.dancing = false;
+      me.pathSeat = null;
+      latest.current.startPath(route, FLY_SPEED, false, 'fly');
+      marker.position.set(goal.x, 0.02, goal.z);
+      marker.visible = true;
+      markerUntil = performance.now() + 900;
+      return true;
     };
     const walkTo = (x: number, z: number, seat: Seat | null = null, gait: Gait = gaitNow()) => {
       if (!seat) me.pendingVehicle = null;
+      if (!seat && flying()) return flyTo(x, z);
       // Tapping on furniture walks to the nearest free spot beside it.
       const goal = seat ? seatApproach(map, seat) : freeSpot(map, x, z);
       // Stand up on the free side of my seat, then go from there.
@@ -635,7 +691,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       const route = points.filter((p, i) => i === 0 || Math.hypot(p[0] - points[i - 1][0], p[1] - points[i - 1][1]) > 1e-3);
       const length = route.reduce((s, p, i) => (i ? s + Math.hypot(p[0] - route[i - 1][0], p[1] - route[i - 1][1]) : 0), 0);
       if (length < 0.05 || route.length < 2) return false;
-      const speed = gait === 'run' ? RUN_SPEED : gait === 'drive' ? CAR_SPEED : gait === 'ride' ? BIKE_SPEED : WALK_SPEED;
+      const speed = gait === 'run' ? RUN_SPEED : gait === 'drive' ? CAR_SPEED : gait === 'ride' ? BIKE_SPEED : gait === 'fly' ? FLY_SPEED : WALK_SPEED;
       me.path = { points: route, startedAt: performance.now(), speed, gait };
       me.seat = null;
       me.dancing = false;
@@ -726,7 +782,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       label.position.set(0, LABEL_HEIGHT, 0);
       root.add(label);
       scene.add(root);
-      return { root, body: null, bodyFor: undefined, clipsSig: '', mixer: null, actions: {}, current: null, emote: null, label, labelEl, labelSig: '', bubble: null, rig: null, style: 'standard', seated: false, vehicle: null, bouncing: false };
+      return { root, body: null, bodyFor: undefined, clipsSig: '', mixer: null, actions: {}, current: null, emote: null, label, labelEl, labelSig: '', bubble: null, rig: null, style: 'standard', seated: false, vehicle: null, lift: 0, bouncing: false };
     };
     const setBody = (a: Avatar, userId: string, tpl: Template | null, waiting = false) => {
       if (a.body) {
@@ -837,20 +893,33 @@ export default function SpaceScene(props: SpaceSceneProps) {
       // Hip joints just above the cushion.
       a.body.position.y = Math.min(0.3, Math.max(-0.9, seat.y + 0.07 - hipY));
     };
-    /** Where someone riding sits: on the bike's saddle, or in the car's driving seat. */
-    const rideSeat = (pose: { x: number; z: number; rot: number }, kind: VehicleKind): Seat => {
+    /** Where someone riding sits: on the bike's saddle, or in the car's driving seat (a kick scooter is stood on). */
+    const rideSeat = (pose: { x: number; z: number; rot: number }, ride: Ride): Seat | null => {
+      if (ride.item.id === 'kick_scooter') return null;
       const fx = Math.sin(pose.rot);
       const fz = Math.cos(pose.rot);
-      return { id: `ride-${kind}`, x: pose.x + fx * SIT_BACK, z: pose.z + fz * SIT_BACK, rot: pose.rot, y: kind === 'car' ? 0.56 : 0.62, kind: 'chair' };
+      const y = ride.kind === 'car' ? 0.56 : Math.min(0.72, Math.max(0.5, vehicleSize(ride.item).h * 0.66));
+      return { id: `ride-${ride.kind}`, x: pose.x + fx * SIT_BACK, z: pose.z + fz * SIT_BACK, rot: pose.rot, y, kind: 'chair' };
     };
-    /** Cars and bikes: one set of parts each, shared by everyone riding. */
-    const vehicleParts = new Map<VehicleKind, Part[]>();
-    const setVehicle = (a: Avatar, kind: VehicleKind | null) => {
-      if ((a.vehicle?.kind ?? null) === kind) return;
-      if (a.vehicle) { a.root.remove(a.vehicle.group); a.vehicle = null; }
-      if (!kind) return;
-      let parts = vehicleParts.get(kind);
-      if (!parts) { parts = kind === 'car' ? carParts('#24406E') : bikeParts('#2F7F86'); vehicleParts.set(kind, parts); }
+    /**
+     * The car or bike under someone riding: its model (code-drawn until the model has loaded) with
+     * its head and tail lights on, a pool of headlight on the road ahead, and the flying car's
+     * flames. In a car the driver is inside (not drawn; their name shows over the roof).
+     */
+    const fallbackParts = new Map<VehicleKind, Part[]>();
+    const setVehicle = (a: Avatar, ride: Ride | null) => {
+      const real = ride ? !!itemPartsNow(ride.item) : false;
+      if ((a.vehicle?.item.id ?? null) === (ride?.item.id ?? null) && (!ride || a.vehicle?.real === real)) return;
+      if (a.vehicle) { a.root.remove(a.vehicle.group); a.vehicle.pool?.geometry.dispose(); a.vehicle = null; }
+      if (!ride) return;
+      const { item, kind } = ride;
+      let parts: Part[] | undefined = itemPartsNow(item) ?? undefined;
+      if (parts) parts = [...parts, ...vehicleLightParts(item, true)];
+      else {
+        void loadItemParts(item); // drawn from the model next frame once it's here
+        parts = fallbackParts.get(kind);
+        if (!parts) { parts = kind === 'car' ? carParts('#24406E') : bikeParts('#2F7F86'); fallbackParts.set(kind, parts); }
+      }
       const group = new THREE.Group();
       for (const part of parts) {
         const m = new THREE.Mesh(part.geo, part.mat);
@@ -859,12 +928,15 @@ export default function SpaceScene(props: SpaceSceneProps) {
         m.castShadow = shadows && part.shadow;
         group.add(m);
       }
+      const pool = real ? headlightPool(item) : null;
+      if (pool) group.add(pool);
+      const flames = item.vehicle?.flies ? wheelFlames(item) : null;
+      if (flames) group.add(flames);
       markGlow(group);
-      // The driver sits on the car's left; a rider over the bike's saddle.
-      if (kind === 'car') group.position.set(0.28, 0, 0.25);
-      else group.position.set(0, 0, 0.3);
+      // A rider sits just behind the middle of the bike; a car is centred on its driver.
+      if (kind === 'bike') group.position.set(0, 0, item.id === 'kick_scooter' ? 0.05 : 0.2);
       a.root.add(group);
-      a.vehicle = { kind, group };
+      a.vehicle = { item, kind, group, real, flames, pool };
     };
 
     /** After the clips: shoulders down, arms by the sides, and the feminine walk where chosen. */
@@ -950,13 +1022,14 @@ export default function SpaceScene(props: SpaceSceneProps) {
       if (campusLayout && !me.vehicle) {
         const ground = raycaster.intersectObject(floorMesh)[0];
         const piece = ground ? pieceAt(campusLayout.objects, ground.point.x, ground.point.z) : null;
-        const item = piece ? KIT_BY_ID.get(piece.kind) : undefined;
-        if (piece && item && 'proc' in item && (item.proc === 'car' || item.proc === 'bike')) {
-          const kind = item.proc;
-          // Beside it, on the side away from where it's parked nose-first.
-          const back = { x: piece.x - Math.sin(piece.rot) * 1.6, z: piece.z - Math.cos(piece.rot) * 1.6 };
-          if (walkTo(back.x, back.z, null, gaitNow())) me.pendingVehicle = kind;
-          else setVehicleMine(kind);
+        const ride = rideOf(piece ?? undefined);
+        // (Not one someone else has taken: it's out on the road.)
+        if (piece && ride && !taken.has(piece.id)) {
+          // Just behind it, on the side away from where it's parked nose-first.
+          const away = ride.item.d / 2 + 0.7;
+          const back = { x: piece.x - Math.sin(piece.rot) * away, z: piece.z - Math.cos(piece.rot) * away };
+          if (walkTo(back.x, back.z, null, gaitNow())) { me.pendingVehicle = ride; pendingRot = piece.rot; }
+          else { setVehicleMine(ride); me.rot = piece.rot; }
           return;
         }
       }
@@ -1148,8 +1221,11 @@ export default function SpaceScene(props: SpaceSceneProps) {
           me.z = up.z;
           me.seat = null;
         }
-        const speed = me.vehicle === 'car' ? CAR_SPEED : me.vehicle === 'bike' ? BIKE_SPEED : running() ? RUN_SPEED : WALK_SPEED;
-        const next = stepTo(map, me.x, me.z, dir.x * speed * dt, dir.z * speed * dt);
+        const speed = flying() ? FLY_SPEED : me.vehicle?.kind === 'car' ? CAR_SPEED : me.vehicle?.kind === 'bike' ? BIKE_SPEED : running() ? RUN_SPEED : WALK_SPEED;
+        // The flying car goes over everything (within the grounds).
+        const next = flying()
+          ? { x: Math.min(W - 0.6, Math.max(0.6, me.x + dir.x * speed * dt)), z: Math.min(D - 0.6, Math.max(0.6, me.z + dir.z * speed * dt)) }
+          : stepTo(map, me.x, me.z, dir.x * speed * dt, dir.z * speed * dt);
         me.dancing = false;
         moving = Math.hypot(next.x - me.x, next.z - me.z) > 1e-4;
         me.x = next.x;
@@ -1173,7 +1249,10 @@ export default function SpaceScene(props: SpaceSceneProps) {
           }
           me.pathSeat = null;
           // Arrived at a parked car or scooter: get in.
-          if (me.pendingVehicle) { setVehicleMine(me.pendingVehicle); me.pendingVehicle = null; }
+          if (me.pendingVehicle) {
+            if (!taken.has(me.pendingVehicle.piece)) { setVehicleMine(me.pendingVehicle); me.rot = pendingRot; }
+            me.pendingVehicle = null;
+          }
           p.endPath();
         }
       }
@@ -1209,6 +1288,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
       campusWorld?.update(dt);
       const travel: Gait = me.path ? me.path.gait : gaitNow();
       // In a car or on a scooter you stay in it, moving or not.
+      // The flying car stays up while it moves, or while it's over something it can't land on.
+      if (flying()) me.airborne = moving || !!me.path || !isFree(map, me.x, me.z);
       const myAnim = me.vehicle ? gaitNow() : moving ? travel : me.seat ? 'sit' : me.dancing ? 'dance' : 'idle';
       p.onLocal({ x: me.x, z: me.z, rot: me.rot, anim: myAnim });
 
@@ -1232,14 +1313,33 @@ export default function SpaceScene(props: SpaceSceneProps) {
       // (not when sitting, where they must fit the chair).
       const grow = Math.min(2.2, Math.max(1, Math.pow(0.85 / zoom, 0.8)));
       const nowOccupied = new Set<string>();
-      const drawAvatar = (a: Avatar, pose: { x: number; z: number; rot: number; anim: string }, chair: Seat | null) => {
-        // Riding: seated in the car or on the bike, which is drawn under them.
-        const riding: VehicleKind | null = pose.anim === 'drive' ? 'car' : pose.anim === 'ride' ? 'bike' : null;
+      const nowTaken = new Set<string>();
+      const drawAvatar = (a: Avatar, pose: { x: number; z: number; rot: number; anim: string }, chair: Seat | null, ride: Ride | null) => {
+        // Riding: seated in the car or on the bike, which is drawn under them (someone on an older
+        // version doesn't say which: a car or bike like it).
+        const inCar = pose.anim === 'drive' || pose.anim === 'fly';
+        const riding: Ride | null = inCar ? (ride?.kind === 'car' ? ride : fallbackRide('car')) : pose.anim === 'ride' ? (ride?.kind === 'bike' ? ride : fallbackRide('bike')) : null;
+        if (riding?.piece) nowTaken.add(riding.piece);
         const seat = chair ?? (riding ? rideSeat(pose, riding) : null);
         setVehicle(a, riding);
         const spot = seat ? sittingSpot(seat) : pose;
-        a.root.position.set(spot.x, 0, spot.z);
-        a.root.scale.setScalar(chair ? 1 : grow);
+        // The flying car rises and settles smoothly, and hovers gently in the air.
+        a.lift += ((pose.anim === 'fly' ? FLY_HEIGHT : 0) - a.lift) * (1 - Math.exp(-Math.min(dt, 0.1) * 3));
+        if (a.lift < 0.003) a.lift = 0;
+        const hover = a.lift > 0.3 ? Math.sin(now / 420) * 0.05 : 0;
+        const deck = riding?.item.id === 'kick_scooter' ? 0.13 : 0; // standing on the scooter's deck
+        a.root.position.set(spot.x, a.lift + hover + deck, spot.z);
+        const scale = chair ? 1 : grow;
+        a.root.scale.setScalar(scale);
+        if (a.vehicle) {
+          // A car keeps its size when you zoom out (its driver isn't drawn); a rider and bike grow together.
+          a.vehicle.group.scale.setScalar(a.vehicle.kind === 'car' ? 1 / scale : 1);
+          a.vehicle.group.position.y = -deck / scale;
+          a.vehicle.group.rotation.x = pose.anim === 'fly' ? -0.04 : 0; // nose up a touch in flight
+          if (a.vehicle.flames) flickerFlames(a.vehicle.flames, a.lift + hover, now);
+          if (a.vehicle.pool) a.vehicle.pool.visible = a.lift < 0.25;
+        }
+        if (a.body) a.body.visible = a.vehicle?.kind !== 'car';
         a.root.rotation.y = lerpAngle(a.root.rotation.y, seat ? seat.rot : pose.rot, turn);
         if (a.emote && (a.emote.until <= now || pose.anim === 'walk')) a.emote = null;
         if (a.emote && pose.anim === 'run') a.emote = null;
@@ -1287,7 +1387,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
         // Others sitting: find the seat from where they are (everyone has the same office).
         const seat = pose.anim !== 'sit' ? null : isMe ? me.seat : seatAt(seats, pose.x, pose.z);
         if (seat && !isMe) nowOccupied.add(seat.id);
-        drawAvatar(a, pose, seat);
+        const ride = isMe ? me.vehicle : rideOf(person.vehicle ? piecesById.get(person.vehicle) : undefined);
+        drawAvatar(a, pose, seat, ride);
         // In the Hub you only see the people in the same place as you.
         a.root.visible = isMe || shownWing === null || wingAt(campusLayout ?? {}, pose.x, pose.z)?.id === shownWing;
         updateLabel(a, person, isMe, now);
@@ -1299,11 +1400,13 @@ export default function SpaceScene(props: SpaceSceneProps) {
         const tpl = templateFor(p.myCharacterId);
         const waiting = !tpl && waitingFor(p.myCharacterId);
         if (needsBody(a, tpl, waiting)) setBody(a, p.meId, tpl, waiting);
-        drawAvatar(a, { x: me.x, z: me.z, rot: me.rot, anim: myAnim }, me.seat);
+        drawAvatar(a, { x: me.x, z: me.z, rot: me.rot, anim: myAnim }, me.seat, me.vehicle);
         updateLabel(a, undefined, true, now);
         present.add(p.meId);
       }
       occupied = nowOccupied;
+      taken = nowTaken;
+      campusWorld?.setHidden(taken);
       for (const id of [...avatars.keys()]) if (!present.has(id)) removeAvatar(id);
 
       // Conversation rings.

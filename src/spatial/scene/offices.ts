@@ -143,7 +143,7 @@ export const OFFICE_02: OfficeLayout = {
 };
 
 /**
- * SYNAPSE Campus: a 120 × 96 m world in one workspace. The headquarters (Office 02 as built) plus
+ * SYNAPSE Campus: a 120 × 190 m world in one workspace. The headquarters (Office 02 as built) plus
  * an all-hands hall, café and lounge, team areas, glass meeting rooms, focus booths, a garden with
  * a pond, a game room and a library around a central plaza. Built from the Office 02 kit
  * (campus/layout.ts); its layout, obstacles and seats are filled in per workspace (campusOffice).
@@ -153,9 +153,9 @@ export const CAMPUS_01: OfficeLayout = {
   name: 'SYNAPSE Campus',
   url: OFFICE_02.url,
   picture: '/assets/spatial/offices/campus-01.jpg',
-  floor: { width: 120, depth: 96 },
+  floor: { width: 120, depth: 190 },
   spawn: { x: 60.5, z: 56 },
-  blurb: 'A whole campus in one workspace (120 × 96 m): headquarters, all-hands hall, café and lounge, team areas, meeting rooms, focus booths, garden, game room and library. Room for 50+ people; you can add furniture.',
+  blurb: 'A whole campus in one workspace (120 × 190 m): headquarters, all-hands hall, café and lounge, team areas, meeting rooms, focus booths, garden, game room, library, and an airport with planes, cars and bikes. Room for 50+ people; you can add furniture.',
   sun: OFFICE_02.sun,
   obstacles: [],
   seats: [],

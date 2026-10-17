@@ -31,15 +31,17 @@ export interface PresenceMeta {
   conversation: string[];
   /** Rooms this person has locked. A room stays locked while whoever locked it is present. */
   locks: string[];
+  /** The parked car or bike (its piece id) they're out in, so everyone draws the same one. */
+  vehicle?: string | null;
   joinedAt: string;
 }
 
-export type AnimName = 'idle' | 'walk' | 'run' | 'dance' | 'drive' | 'ride' | 'sit' | 'wave' | 'cheer' | 'raise_hand';
-const ANIMS: AnimName[] = ['idle', 'walk', 'run', 'dance', 'drive', 'ride', 'sit', 'wave', 'cheer', 'raise_hand'];
+export type AnimName = 'idle' | 'walk' | 'run' | 'dance' | 'drive' | 'ride' | 'fly' | 'sit' | 'wave' | 'cheer' | 'raise_hand';
+const ANIMS: AnimName[] = ['idle', 'walk', 'run', 'dance', 'drive', 'ride', 'fly', 'sit', 'wave', 'cheer', 'raise_hand'];
 
-/** How someone travels a route: on foot, running, in a car or on a bike. */
-export type Gait = 'walk' | 'run' | 'drive' | 'ride';
-const GAITS: Gait[] = ['walk', 'run', 'drive', 'ride'];
+/** How someone travels a route: on foot, running, in a car, on a bike, or in the flying car. */
+export type Gait = 'walk' | 'run' | 'drive' | 'ride' | 'fly';
+const GAITS: Gait[] = ['walk', 'run', 'drive', 'ride', 'fly'];
 
 export interface MoveMsg {
   userId: string;
@@ -211,6 +213,7 @@ export function parsePresence(raw: unknown): PresenceMeta | null {
     deskId: optStr(raw.deskId),
     conversation: Array.isArray(raw.conversation) ? raw.conversation.filter((c): c is string => typeof c === 'string').slice(0, 50) : [],
     locks: Array.isArray(raw.locks) ? raw.locks.filter((c): c is string => typeof c === 'string' && c.length <= 64).slice(0, 20) : [],
+    vehicle: optStr(raw.vehicle),
     joinedAt: typeof raw.joinedAt === 'string' ? raw.joinedAt : '',
   };
 }

@@ -969,6 +969,40 @@ function parkingParts(w: number, d: number, bay: number): Part[] {
   return parts;
 }
 
+/** A runway (white centre dashes, edge lines, threshold bars) or a taxiway (yellow centre line), with edge lights. */
+function runwayParts(w: number, d: number, taxi: boolean): Part[] {
+  const tex = canvasTex(512, (g, s) => {
+    g.fillStyle = '#34373D';
+    g.fillRect(0, 0, s, s);
+    speckle(g, s, ['#2A2D33', '#43474F', '#50545B'], 9000, [1, 2], 37, [0.3, 0.7]);
+  });
+  tex.repeat.set(w / 6, d / 6);
+  const { G } = kitShared();
+  const ground = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 });
+  applyRealSurface(ground, 'asphalt', [w, d], 0.5);
+  const paint = new THREE.MeshBasicMaterial({ color: taxi ? '#E2B33C' : '#EEF0F2' });
+  const edgeLight = glowing(new THREE.MeshBasicMaterial({ color: taxi ? new THREE.Color(0.5, 0.9, 2.6) : new THREE.Color(2.4, 2.2, 1.6), toneMapped: false }));
+  // The markings and lights as one mesh each (one draw), not a part per stripe.
+  const lines: THREE.Matrix4[] = [];
+  const lights: THREE.Matrix4[] = [];
+  const line = (x: number, z: number, lx: number, lz: number) => lines.push(mx(x, 0.028, z, lx, 0.004, lz));
+  if (taxi) {
+    line(0, 0, w - 1, 0.16);
+  } else {
+    for (let x = -w / 2 + 14; x < w / 2 - 14; x += 6) line(x + 1.5, 0, 3, 0.22);
+    line(0, d / 2 - 0.5, w - 1, 0.18);
+    line(0, -d / 2 + 0.5, w - 1, 0.18);
+    for (const end of [-1, 1]) {
+      for (let i = 0; i < 8; i++) line(end * (w / 2 - 4), -d / 2 + 1.4 + (i * (d - 2.8)) / 7, 4, 0.5);
+    }
+  }
+  for (let x = -w / 2 + 1; x <= w / 2 - 1; x += taxi ? 5 : 6) {
+    for (const z of [-d / 2 + 0.15, d / 2 - 0.15]) lights.push(mx(x, 0.06, z, 0.12, 0.08, 0.12));
+  }
+  const boxes = (list: THREE.Matrix4[]) => mergeGeometries(list.map((m) => G.box.clone().applyMatrix4(m)))!;
+  return [P(G.box, ground, mx(0, 0.015, 0, w, 0.02, d), false), P(boxes(lines), paint, undefined, false), P(boxes(lights), edgeLight, undefined, false)];
+}
+
 // ---------------------------------------------------------------- the rest
 
 function bench(): Part[] {
@@ -1049,8 +1083,11 @@ export function procParts(kind: ProcKind, item: ProcItem): Part[] {
     case 'doorway': return doorway(item.w);
     case 'car': return carParts(color);
     case 'bike': return bikeParts(color);
-    case 'car_park': return parkingParts(item.w, item.d, 1.9);
-    case 'bike_park': return parkingParts(item.w, item.d, 0.9);
+    case 'car_park': return parkingParts(item.w, item.d, 2.3);
+    case 'bike_park': return parkingParts(item.w, item.d, 1.2);
+    case 'runway': return runwayParts(item.w, item.d, false);
+    case 'taxiway': return runwayParts(item.w, item.d, true);
+    case 'model': return []; // drawn once its model loads
   }
 }
 

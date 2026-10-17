@@ -1,6 +1,6 @@
 import { INTERPOLATION_DELAY_MS, type AnimName, type Gait, type MoveMsg, type PathMsg } from './protocol';
 
-const MOVING: AnimName[] = ['walk', 'run', 'drive', 'ride'];
+const MOVING: AnimName[] = ['walk', 'run', 'drive', 'ride', 'fly'];
 
 export interface Pose {
   x: number;

@@ -10,6 +10,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { KIT_BY_ID, isGlb, type Placed } from '@/spatial/scene/campus/kit';
 import { applyRealSurface, type RealSurface } from './realSurfaces';
 import { canvasTex, glowing, grassTuft, kitShared, markGlow, procParts, rng, speckle, type Part } from './kitParts';
+import { loadItemParts, variantOf, vehicleLightParts } from './propModels';
+import { createAirTraffic } from './airTraffic';
 import type { Rect } from '@/spatial/scene/offices';
 import { WALL_T, wallSegments, type CampusLayout, type FloorFinish, type Zone } from '@/spatial/scene/campus/layout';
 
@@ -262,13 +264,15 @@ export interface CampusWorld {
   attachKit(gltf: GLTF): void;
   /** Re-place the pieces (after build mode changes). */
   setObjects(objects: Placed[]): void;
+  /** Pieces not to draw (a parked car someone is driving). */
+  setHidden(ids: ReadonlySet<string>): void;
   /** Build mode: a see-through preview of a piece, gold where it fits and red where it doesn't. */
   setGhost(p: Placed | null, ok: boolean): void;
   /** Build mode: outline the chosen piece's footprint. */
   setSelected(bounds: Rect | null): void;
   /** Keep the sun's shadow box over where the camera looks, and turn the place signs to face the camera. */
   follow(target: THREE.Vector3, sun: THREE.DirectionalLight, camera: THREE.Camera): void;
-  /** Every frame: ripples on the water. */
+  /** Every frame: ripples on the water, planes in the sky. */
   update(dt: number): void;
   dispose(): void;
 }
@@ -545,11 +549,49 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
   const pieces = new THREE.Group();
   root.add(pieces);
   let current: Placed[] = layout.objects;
+  let hidden: ReadonlySet<string> = new Set();
+  let disposed = false;
+
+  // Pieces with prop models: drawn in code until the model arrives, then from the model (each
+  // piece choosing between a kind's models by its id, so a row of plants isn't all the same).
+  const keyOf = (p: Placed): string => {
+    const item = KIT_BY_ID.get(p.kind);
+    if (!item || isGlb(item) || !item.model) return p.kind;
+    const key = `${p.kind}#${variantOf(item, p.id)}`;
+    return partsByKind.has(key) ? key : p.kind;
+  };
+  const asked = new Set<string>();
+  let placeSoon: ReturnType<typeof setTimeout> | null = null;
+  const loadModels = (list: Placed[]) => {
+    for (const p of list) {
+      const item = KIT_BY_ID.get(p.kind);
+      if (!item || isGlb(item) || !item.model) continue;
+      const v = variantOf(item, p.id);
+      const key = `${p.kind}#${v}`;
+      if (asked.has(key)) continue;
+      asked.add(key);
+      void loadItemParts(item, v).then((parts) => {
+        if (disposed || !parts) return;
+        // Parked cars and bikes show their (unlit) head and tail lights.
+        partsByKind.set(key, item.vehicle ? [...parts, ...vehicleLightParts(item, false)] : parts);
+        if (ghostKind === p.kind) ghostKind = null;
+        if (placeSoon) return;
+        placeSoon = setTimeout(() => { placeSoon = null; if (!disposed) { place(); ghostAgain?.(); } }, 120);
+      });
+    }
+  };
+  let ghostAgain: (() => void) | null = null;
 
   const place = () => {
     for (const child of [...pieces.children]) { pieces.remove(child); (child as THREE.InstancedMesh).dispose?.(); }
     const byKind = new Map<string, Placed[]>();
-    for (const p of current) { const list = byKind.get(p.kind) ?? []; list.push(p); byKind.set(p.kind, list); }
+    for (const p of current) {
+      if (hidden.has(p.id)) continue;
+      const key = keyOf(p);
+      const list = byKind.get(key) ?? [];
+      list.push(p);
+      byKind.set(key, list);
+    }
     const world = new THREE.Matrix4();
     const tmp = new THREE.Matrix4();
     for (const [kind, list] of byKind) {
@@ -570,6 +612,7 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
     }
     markGlow(pieces);
   };
+  loadModels(current);
   place();
 
   // Build mode: the preview and the selection outline.
@@ -584,9 +627,12 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
   outline.renderOrder = 4;
   root.add(outline);
   const bar = keep(new THREE.BoxGeometry(1, 0.04, 1));
+  // Planes taking off, flying their circuit and landing, by the clock (the same on every screen).
+  const air = layout.airport ? createAirTraffic(layout.airport, shadows) : null;
+  if (air) root.add(air.root);
   markGlow(root);
 
-  return {
+  const api: CampusWorld = {
     root,
     attachKit(gltf) {
       gltf.scene.updateMatrixWorld(true);
@@ -622,14 +668,23 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
     },
     setObjects(objects) {
       current = objects;
+      loadModels(current);
+      place();
+    },
+    setHidden(ids) {
+      if (ids.size === hidden.size && [...ids].every((id) => hidden.has(id))) return;
+      hidden = new Set(ids);
       place();
     },
     setGhost(p, ok) {
+      ghostAgain = null;
       if (!p) { ghost.visible = false; return; }
+      loadModels([p]);
+      ghostAgain = () => api.setGhost(p, ok);
       if (ghostKind !== p.kind) {
         ghost.clear();
         ghostKind = p.kind;
-        for (const part of partsByKind.get(p.kind) ?? []) {
+        for (const part of partsByKind.get(keyOf(p)) ?? []) {
           const m = new THREE.Mesh(part.geo, ghostOk);
           m.matrixAutoUpdate = false;
           m.matrix.copy(part.local);
@@ -671,12 +726,17 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
     update(dt) {
       ripples.offset.x += dt * 0.012;
       ripples.offset.y += dt * 0.008;
+      air?.update(Date.now());
     },
     dispose() {
+      disposed = true;
+      if (placeSoon) clearTimeout(placeSoon);
+      air?.dispose();
       for (const child of [...pieces.children]) (child as THREE.InstancedMesh).dispose?.();
       disposables.forEach((d) => d.dispose());
     },
   };
+  return api;
 }
 
 function zoneLabel(z: Zone, keep: <T extends { dispose(): void }>(x: T) => T): THREE.Mesh {
@@ -746,6 +806,7 @@ export function createWorld(layout: CampusLayout, opts: WorldOptions): World {
   const parts = wings.map((wing) => ({ wing, world: null as CampusWorld | null }));
   let kit: GLTF | null = null;
   let objects = layout.objects;
+  let hiddenIds: ReadonlySet<string> = new Set();
   let shown: string | null | undefined; // undefined: not chosen yet, so everything shows
   const holder = (x: number, z: number) => parts.find((p) => x >= p.wing.rect.x0 && x <= p.wing.rect.x1 && z >= p.wing.rect.z0 && z <= p.wing.rect.z1);
   const visible = (p: (typeof parts)[number]) => shown == null || p.wing.id === shown;
@@ -756,6 +817,7 @@ export function createWorld(layout: CampusLayout, opts: WorldOptions): World {
     p.world = w;
     if (kit) w.attachKit(kit);
     if (objects !== layout.objects) w.setObjects(objects.filter((o) => holder(o.x, o.z) === p));
+    if (hiddenIds.size) w.setHidden(hiddenIds);
     w.root.visible = visible(p);
     root.add(w.root);
     return w;
@@ -773,6 +835,7 @@ export function createWorld(layout: CampusLayout, opts: WorldOptions): World {
     root,
     attachKit: (gltf) => { kit = gltf; built().forEach((p) => p.world.attachKit(gltf)); },
     setObjects: (next) => { objects = next; built().forEach((p) => p.world.setObjects(next.filter((o) => holder(o.x, o.z) === p))); },
+    setHidden: (ids) => { hiddenIds = ids; built().forEach((p) => p.world.setHidden(ids)); },
     setGhost: (g, ok) => { const at = g ? holder(g.x, g.z) : undefined; if (at) build(at); built().forEach((p) => p.world.setGhost(p === at ? g : null, ok)); },
     setSelected: (b) => { const at = b ? holder((b.x0 + b.x1) / 2, (b.z0 + b.z1) / 2) : undefined; built().forEach((p) => p.world.setSelected(p === at ? b : null)); },
     follow: (target, sun, camera) => built().forEach((p) => { if (p.world.root.visible) p.world.follow(target, sun, camera); }),
