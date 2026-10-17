@@ -117,6 +117,7 @@ describe('tagsWrittenBy', () => {
   });
   it('read-only RPCs change nothing; others refresh everything', () => {
     expect(tagsWrittenBy(url('/rest/v1/rpc/get_form_submission_counts'), 'POST')).toEqual([]);
+    expect(tagsWrittenBy(url('/rest/v1/rpc/dashboard_summary'), 'POST')).toEqual([]);
     expect(tagsWrittenBy(url('/rest/v1/rpc/accept_invitation'), 'POST')).toBe('*');
   });
   it('storage, auth and functions are not table writes', () => {

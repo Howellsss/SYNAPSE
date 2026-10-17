@@ -13,6 +13,9 @@ so the cache lives where the reads happen: in the browser, in memory.
 | Calendars | calendars, appointments | 30 s | `calendar-view` |
 | Workspaces | spaces, members, member profiles | 60 s | `spaces` |
 | Forms | forms, submission counts, usages | 60 s | `forms` |
+| Contact record | the contact (+ tags); its bookings, messages, notes, submissions | 30 s | `contact / <id>`, `contact-activity / <id>` |
+| Workflows | workflows, runs in progress | 30 s | `workflows` |
+| Settings | each settings tab; usage counts | 2 min | `settings / <tab>`, `usage-counts` |
 | Workspace characters | character list + file links | 10 min | `characterLibrary()` (lib/characters.ts) |
 
 - **Fresh:** the page shows the cached answer at once, with no request.
@@ -103,8 +106,14 @@ is off, or a read fails, the page reads Supabase directly, as before.
 - clearing
 - the cache switched off
 
+## Dashboard in one request
+
+`dashboard_summary` (migration `20261017120000_dashboard_summary.sql`) returns today's and the
+week's bookings, with their contact and calendar, plus the four counts, in one call instead of six.
+It's `SECURITY INVOKER`, so row-level security applies exactly as it did to the six reads. Until
+it's in the database, the dashboard notices (PGRST202) and uses the six reads.
+
 ## Follow-ups
 
-1. Other reads (contact record, workflows, settings, team, events) still go straight to Supabase.
-   Move them to `withCache` the same way when they matter.
-2. The dashboard's six separate requests could become one database function.
+Team, events, webhooks and the workflow editor still read Supabase directly. Move them to
+`withCache` the same way when they matter.

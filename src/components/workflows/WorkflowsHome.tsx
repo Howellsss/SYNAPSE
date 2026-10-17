@@ -6,6 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useRouter } from '@/lib/router';
 import { supabase } from '@/lib/supabase';
+import { withCache, tableTag, ttlMs } from '@/lib/cache';
 import { Popover } from '@/components/spaces/room/Popover';
 import { menuItem } from '@/components/spaces/room/styles';
 import { Modal } from '@/components/ui/Modal';
@@ -23,7 +24,7 @@ import { cn, timeAgo } from '@/lib/utils';
 type Filter = 'all' | 'active' | 'draft';
 
 export function WorkflowsHome() {
-  const { workspace } = useAuth();
+  const { workspace, user } = useAuth();
   const { toast } = useToast();
   const [, navigate] = useRouter();
   const [rows, setRows] = useState<WorkflowRow[] | null>(null);
@@ -35,17 +36,29 @@ export function WorkflowsHome() {
   const [modal, setModal] = useState<null | 'recipes' | 'describe' | 'import'>(null);
   const [confirmDelete, setConfirmDelete] = useState<WorkflowRow | null>(null);
 
+  const userId = user?.id ?? null;
   const load = useCallback(async () => {
-    if (!workspace) return;
-    const [{ rows: r }, probe, runs] = await Promise.all([
-      listWorkflows(workspace.id),
-      supabase.from('workflows').select('definition').limit(1),
-      supabase.from('wf_runs').select('id', { count: 'exact', head: true }).eq('workspace_id', workspace.id).in('status', ['active', 'waiting']),
-    ]);
-    setRows(r);
-    setNeedsUpdate(!!probe.error);
-    setInFlight(runs.error ? null : runs.count ?? 0);
-  }, [workspace]);
+    if (!workspace || !userId) return;
+    const workspaceId = workspace.id;
+    type Home = { rows: WorkflowRow[]; needsUpdate: boolean; inFlight: number | null };
+    const show = (h: Home) => { setRows(h.rows); setNeedsUpdate(h.needsUpdate); setInFlight(h.inFlight); };
+    try {
+      // Runs move on the server (pg_cron), so this stays fresh only briefly; any edit here refreshes it.
+      show(await withCache(
+        { scope: { userId, workspaceId }, key: ['workflows'], ttl: ttlMs('WORKFLOWS'), tags: ['workflows', 'wf_runs'].map(tableTag) },
+        async (): Promise<Home> => {
+          const [list, probe, runs] = await Promise.all([
+            listWorkflows(workspaceId),
+            supabase.from('workflows').select('definition').limit(1),
+            supabase.from('wf_runs').select('id', { count: 'exact', head: true }).eq('workspace_id', workspaceId).in('status', ['active', 'waiting']),
+          ]);
+          if (list.error) throw new Error(list.error);
+          return { rows: list.rows, needsUpdate: !!probe.error, inFlight: runs.error ? null : runs.count ?? 0 };
+        },
+        show,
+      ));
+    } catch { /* keeps what's shown */ }
+  }, [workspace, userId]);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { try { localStorage.setItem('synapse.workflows.view', view); } catch { /* private mode */ } }, [view]);
 
