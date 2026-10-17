@@ -33,6 +33,8 @@ import { useProximity } from '@/spatial/media/useProximity';
 import { useMediaPrefs } from '@/spatial/media/useMediaPrefs';
 import { CallNotices } from './CallNotices';
 import { VideoStrip } from './VideoStrip';
+import { CallStage, SelfView } from './CallStage';
+import { KIT_BY_ID } from '@/spatial/scene/campus/kit';
 import { FloorMap } from './FloorMap';
 import { PeoplePanel, PeopleCountButton } from './PeoplePanel';
 import { ConnectionPill, ControlBar, WorldToolbar } from './Overlay';
@@ -176,6 +178,14 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
   const changeMoveMode = (m: MoveMode) => { setMoveMode(m); try { localStorage.setItem('synapse.moveMode', m); } catch { /* private mode */ } };
   // In a car or on a scooter (from the parks in the courtyard): show how to get out.
   const [riding, setRiding] = useState<VehicleKind | null>(null);
+  // The meeting view (you and the people you're talking to, full size) over the space.
+  const [stageOpen, setStageOpen] = useState(false);
+  // What the ride is: a plane lands at its stand when you get out; the flying car flies.
+  const rideItem = ridingPiece ? KIT_BY_ID.get(office?.campus?.objects.find((o) => o.id === ridingPiece)?.kind ?? '') : undefined;
+  const rideVehicle = rideItem && 'vehicle' in rideItem ? rideItem.vehicle : undefined;
+  const rideText = rideVehicle?.plane ? 'Flying: click where to go, or use the arrow keys. Get out lands it back at its stand.'
+    : rideVehicle?.flies ? 'Flying: click where to go, or use the arrow keys.'
+    : `${riding === 'car' ? 'Driving' : 'Riding'}: click where to go, or use the arrow keys.`;
   const onVehicle = useCallback((kind: VehicleKind | null, piece: string | null) => { setRiding(kind); setRidingPiece(piece); }, []);
   const [view, setView] = useState<SceneView>(loadView);
   const changeView = (v: SceneView) => { setView(v); saveView(v); };
@@ -248,6 +258,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
   // video disconnect, so nobody hears or sees you without knowing it and your camera and microphone
   // are free for a meeting. Coming back reconnects them.
   const call = useLiveKitRoom(dock.docked ? null : space.id, { prefs: media, onNotice: (m, tone) => toast(m, tone ?? 'info') });
+  const stageMe = { id: user?.id ?? '', name, avatarUrl: profile?.avatar_url ?? null, micOn: call.micOn, camera: call.localTracks.camera };
   useCallShortcuts({ mic: () => { void call.toggleMic(); }, cam: () => { void call.toggleCam(); } }, !dock.docked);
   // Movement rides on the call once it's connected (see useSpaceChannel).
   useEffect(() => { setCallRoom(call.state === 'connected' ? call.room : null); }, [call.state, call.room, setCallRoom]);
@@ -490,9 +501,11 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
         )}
 
         {/* Video strip (filled by proximity video) */}
-        <div className="absolute inset-x-0 top-3 z-10 flex justify-center pl-16 pr-3 sm:px-16 lg:left-64 lg:right-4 lg:px-0">
-          <VideoStrip room={call.room} inRange={proximity.inRange} people={shown} activeSpeakers={call.activeSpeakers} />
-        </div>
+        {!stageOpen && (
+          <div className="absolute inset-x-0 top-3 z-10 flex justify-center pl-16 pr-3 sm:px-16 lg:left-64 lg:right-4 lg:px-0">
+            <VideoStrip room={call.room} inRange={proximity.inRange} people={shown} activeSpeakers={call.activeSpeakers} />
+          </div>
+        )}
 
         {knocks.length > 0 && (
           <div className="absolute right-16 top-28 z-10 flex w-72 flex-col gap-2 sm:right-20">
@@ -566,7 +579,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
         {riding && (
           <div className="pointer-events-none absolute inset-x-0 top-16 z-10 flex justify-center px-3">
             <div className="pointer-events-auto flex items-center gap-3 rounded-full bg-navy-900/90 py-1.5 pl-4 pr-1.5 text-sm text-white shadow-popover backdrop-blur">
-              <span>{riding === 'car' ? 'Driving' : 'Riding'}: click where to go, or use the arrow keys.</span>
+              <span>{rideText}</span>
               <button type="button" onClick={() => sceneControls.current?.getOut()} className="rounded-full bg-gold-400 px-3 py-1 font-semibold text-navy-900 hover:bg-gold-300">
                 Get out <kbd className="ml-1 rounded bg-navy-900/15 px-1 text-[10px]">E</kbd>
               </button>
@@ -621,9 +634,17 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
           <ConnectionPill state={connection} call={call.state} quality={call.connectionQuality} />
         </div>
 
+        {user && call.room && (stageOpen ? (
+          <CallStage room={call.room} me={stageMe} inRange={proximity.inRange} people={shown} activeSpeakers={call.activeSpeakers} onClose={() => setStageOpen(false)} />
+        ) : (
+          <div className="absolute bottom-[15rem] left-3 z-10 sm:left-4 lg:bottom-4">
+            <SelfView room={call.room} me={stageMe} inRange={proximity.inRange} people={shown} activeSpeakers={call.activeSpeakers} onExpand={() => setStageOpen(true)} />
+          </div>
+        ))}
+
         <CallNotices call={call} onOpenSettings={() => setDevicesOpen(true)} />
 
-        <div className="absolute inset-x-0 bottom-4 flex justify-center px-3">
+        <div className="absolute inset-x-0 bottom-4 z-[21] flex justify-center px-3">
           <ControlBar
             call={call}
             onLeave={dock.leave}

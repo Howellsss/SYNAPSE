@@ -171,7 +171,7 @@ function BarButton({ label, onClick, on = true, danger, children, className, pre
         danger ? 'bg-burgundy-500 text-white hover:bg-burgundy-600'
           : pressed ? 'bg-gold-400 text-navy-900 hover:bg-gold-300'
           : on ? 'text-white hover:bg-white/10' : 'bg-burgundy-500 text-white hover:bg-burgundy-600',
-        busy && 'cursor-wait opacity-70',
+        busy && 'opacity-70',
         className,
       )}
     >

@@ -449,14 +449,23 @@ What you see inside a space, until the art kit brings rooms and furniture:
   and tail lights sit on each body where rays cast at the model meet it: dim when parked, lit
   with a pool of light on the road when driven.
 - **The flying car** (`car_flying`) flies: straight to where you click, over everything, at
-  11 m/s and 2.6 m up (gait and anim `fly`), and lands on clear ground. Small flames burn under
+  11 m/s and 6 m up (gait and anim `fly`), and lands on clear ground. Small flames burn under
   its wheels and glow on the ground below while it's in the air.
-- **The airport** (Campus, south of the boulevard): the terminal between two parking garages, car
-  parks and bike parks along the road, a taxiway and a runway (`layout.airport`). The airliner
-  holds, takes off, circles over the campus, lands and taxis back; the private jet flies a wider,
-  higher circuit (`airTraffic.ts`). Where each plane is comes from the clock, so everyone sees
-  the same thing with nothing sent. On the Campus the camera stands further back along the same
-  line so planes pass under it (an orthographic view looks the same).
+- **Planes** (`plane_airliner`, `plane_jet`) stand by the terminal. Board one and click where to
+  go: it taxis to the end of the runway, takes off and flies there at 15 m up, then circles until
+  sent on. "Get out" (or E) brings it in over the runway, lands it and taxis it back to its stand.
+  Each stretch is sent as a route (`fly`, or `drive` on the ground), so others see the same flight.
+- **The airport** (Campus, south of the boulevard): the terminal with a plane stand on each side,
+  car parks and bike parks along the road, a forecourt, a taxiway and a runway (`layout.airport`).
+- **Built offices refurnished** (`refurnish.ts`): Office 01, Office 02 and the Campus HQ keep
+  their walls, floors, shelves and planters, but their chairs, desks and screens, tables, sofa,
+  armchairs, lamps and potted plants are swapped for the prop models in the same places. Kit
+  pieces taken from the office file have `model` too, so the Campus and Hub use the models as well.
+- **Riding pose:** on a motorbike or scooter the character leans over the tank with hands on the
+  grips and feet back (`poseRiding`). People aren't drawn larger when zoomed out in the Campus or
+  Hub, so they stay in proportion with the cars and bikes.
+- **Your video in a workspace:** your camera in the bottom-left corner; its corner button opens the
+  meeting view (you and everyone you're talking to, laid out like a SYNAPSE meeting).
 - **Glow:** only lights glow. Their materials are marked `glowing()` (`kitParts.ts`) and drawn on
   `GLOW_LAYER`; SpaceScene blooms that layer on its own and adds it over the scene, so white
   clothes, keyboards or leaves in the sun stay ordinary lit surfaces.

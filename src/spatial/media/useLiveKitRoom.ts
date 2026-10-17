@@ -336,6 +336,9 @@ export function useLiveKitRoom(spaceId: string | null, { prefs, onNotice, tokenB
   const micOn = !!lp?.isMicrophoneEnabled;
   const camOn = !!lp?.isCameraEnabled;
   const screenOn = !!lp?.isScreenShareEnabled;
+  // A warning about a device that is working after all (a hiccup while it started, or the browser
+  // reporting a permission change it then granted) isn't shown.
+  const shownIssue = deviceIssue && ((deviceIssue.device === 'microphone' && micOn) || (deviceIssue.device === 'camera' && camOn)) ? null : deviceIssue;
 
   const run = useCallback(async (device: CallDevice, fn: () => Promise<unknown>) => {
     if (!room) {
@@ -394,7 +397,7 @@ export function useLiveKitRoom(spaceId: string | null, { prefs, onNotice, tokenB
   return {
     state, error, micOn, camOn, screenOn, pending,
     localTracks: { microphone: trackOf('microphone'), camera: trackOf('camera'), screen: trackOf('screen_share') },
-    remoteParticipants, activeSpeakers, connectionQuality, deviceIssue, room,
+    remoteParticipants, activeSpeakers, connectionQuality, deviceIssue: shownIssue, room,
     toggleMic, toggleCam, startScreenShare, stopScreenShare, applySavedDevices,
     clearDeviceIssue: () => setDeviceIssue(null),
     retry,
