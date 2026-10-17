@@ -214,7 +214,7 @@ Child tables (`form_fields`, `workflow_nodes`, `calendar_hosts`, `availability_r
 | Meetings | `/meetings` | Real: today's meetings, upcoming rooms, join by code/nickname, New (later / instant / scheduled with calendar links), Calls history; rooms at `/meetings/:code` (LiveKit: switch camera/mic/speaker mid-call incl. iPhone Continuity Camera, chat, reactions, raise hand, screen share with live annotation and laser pointer) |
 | Workspaces | `/workspace` | Real: spaces grid and create wizard (`/workspace/new`, full screen); `/workspace/:slug` is the in-space screen (people, status, controls) with the walkable 3D floor; rooms and furniture wait for the art kit |
 | Contacts | `/contacts` | Real: list, add, detail page with composer (email via Gmail) |
-| Conversations | `/conversations` | **Placeholder** (`ComingSoonPage`) |
+| Conversations | `/conversations` | Real: channels, direct messages, threads, activity, email replies, app posts |
 | Events | `/events` | **Placeholder** (`ComingSoonPage`) |
 | Webinars | `/webinars` | **Placeholder** (`ComingSoonPage`) |
 | Calendars | `/calendars` | Real: calendars, groups, appointments, public booking pages |
@@ -501,12 +501,24 @@ connected but hidden (mic, camera and sharing off), and its dock icon gets a gre
 you back. Inside a workspace the world fills the screen above the dock (a navy strip). Full-screen
 editors use `--nav-w`, fill-the-screen pages `--top-h` and `--dock-h` (set by `App.tsx`).
 
-**Conversations** is laid out like Slack, in SYNAPSE's white with navy and gold: a rail (Home, DMs, Activity, Email), the conversation
-list (starred, channels, direct messages; collapsible), and the open conversation with Messages
-and Links tabs, date pills, search in the conversation, threads alongside, and a composer with a
-formatting bar (bold, italic, strike, link, lists, quote, code, code block), emoji and @mention
-autocomplete. DMs shows each conversation's last message; Activity lists @mentions of you (and
-@here/@channel) and replies to your threads, from `listRecent`. Stars are kept on the device.
+**Conversations** keeps Slack's features but writes every action out, so nothing has to be found.
+One navy list on the left holds everything: search, **Activity** (with its count), **Channels**
+("+ New channel", starred and private marked, unread counts, "Browse all channels"), **People**
+(direct messages with each one's last message, "+ Message someone") and **From outside** (email
+replies). Inside a conversation:
+- a row of labelled actions: members, "+ Add people", "Search in this channel", "Channel settings"
+  (connect an app such as Zapier or Airtable, leave);
+- tabs **Channels · Messages · Threads · Files & links**. Channels lists your channels as cards and
+  the public ones you can join ("Have a look" or "Join"); Threads lists the channel's threads;
+  Files & links collects the links shared there;
+- "Reply to this message" under every message (or "N replies · Open replies"). It splits the screen:
+  the replies open beside the channel, titled "Replies to Ama's message", and the message being
+  answered is highlighted;
+- hover actions written out (Reply, Edit, Delete, with a confirm), and a composer with the
+  formatting bar, "Emoji" and "Mention" buttons, @here/@channel, and the keys explained.
+
+Activity lists @mentions of you (and @here/@channel) and replies to your threads, from `listRecent`,
+and each can be answered in place. Stars are kept on the device.
 
 ## Checks
 
