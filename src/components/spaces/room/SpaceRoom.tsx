@@ -81,10 +81,13 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
   const [myZone, setMyZone] = useState<string | null>(null);
   const [myGroup, setMyGroup] = useState<string[]>([]);
   const [myLocks, setMyLocks] = useState<string[]>([]);
+  // The parked car or bike I'm out in (so everyone draws that one, and not in its bay).
+  const [ridingPiece, setRidingPiece] = useState<string | null>(null);
   const me = useMemo<MeInput | null>(() => (user ? {
     userId: user.id, name, avatarUrl: profile?.avatar_url ?? null, avatarHash: null, status,
     zoneId: myZone, deskId: null, conversation: myGroup, locks: myLocks, characterId: chosenCharacterId(profile?.avatar_config),
-  } : null), [user, name, profile?.avatar_url, profile?.avatar_config, status, myZone, myGroup, myLocks]);
+    vehicle: ridingPiece,
+  } : null), [user, name, profile?.avatar_url, profile?.avatar_config, status, myZone, myGroup, myLocks, ridingPiece]);
   const { people, connection, remotes, updateLocal, startPath, endPath, sendEmote, onEmote, sendKnock, sendAdmit, onRoomSignal, sendLayout, onLayout, setCallRoom } = useSpaceChannel(space.id, me, away);
 
   // The scene reports where I am every frame: the network sender decides what to send, and
@@ -173,6 +176,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
   const changeMoveMode = (m: MoveMode) => { setMoveMode(m); try { localStorage.setItem('synapse.moveMode', m); } catch { /* private mode */ } };
   // In a car or on a scooter (from the parks in the courtyard): show how to get out.
   const [riding, setRiding] = useState<VehicleKind | null>(null);
+  const onVehicle = useCallback((kind: VehicleKind | null, piece: string | null) => { setRiding(kind); setRidingPiece(piece); }, []);
   const [view, setView] = useState<SceneView>(loadView);
   const changeView = (v: SceneView) => { setView(v); saveView(v); };
   // Standing at the office door shows the way to the account's other spaces.
@@ -435,7 +439,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
                 view={view}
                 build={build}
                 moveMode={moveMode}
-                onVehicle={setRiding}
+                onVehicle={onVehicle}
               />
             </Suspense>
           )}

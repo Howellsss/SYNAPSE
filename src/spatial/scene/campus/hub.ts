@@ -162,12 +162,11 @@ export function buildHub(): CampusLayout {
     C.add('lights', 'string_lights', 16, 38.6);
     C.add('gazebo', 'gazebo', 46, 39);
     C.add('lights-b', 'string_lights', 32, 12.5);
-    // By the entrance: cars and bikes to ride to the doorways (click one).
-    // By the entrance: a car park and a scooter park. Walk to one, get in, and drive to work.
-    C.add('car-park', 'car_park', 13.7, 48.7, 0);
-    ['car_navy', 'car_red', 'car_gold', 'car_teal', 'car_white', 'car_blue'].forEach((k, i) => C.add(`car-${i}`, k, 8.95 + i * 1.9, 48.85, 0));
-    C.add('bike-park', 'bike_park', 43, 49.4, 0);
-    ['bike_teal', 'bike_red', 'bike_navy', 'bike_gold', 'bike_plum', 'bike_teal'].forEach((k, i) => C.add(`bike-${i}`, k, 40.75 + i * 0.9, 49.5, 0));
+    // By the entrance: a car park and a bike park. Walk to one, get in, and drive (or fly) to work.
+    C.add('car-park', 'car_park', 13.7, 47.2, 0);
+    ['car_flying', 'car_navy', 'car_red_super', 'car_yellow_coupe', 'car_white', 'car_olive_suv'].forEach((k, i) => C.add(`car-${i}`, k, 7.95 + i * 2.3, 47.2, 0));
+    C.add('bike-park', 'bike_park', 43, 48.2, 0);
+    ['bike_red', 'bike_teal', 'bike_gold', 'bike_navy', 'moto_cruiser'].forEach((k, i) => C.add(`bike-${i}`, k, 40.6 + i * 1.2, 48.2, 0));
   }
 
   // ---------------------------------------------------------------- the auditorium

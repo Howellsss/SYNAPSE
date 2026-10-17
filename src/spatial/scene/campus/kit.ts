@@ -9,6 +9,7 @@
  */
 import type { Rect } from '../offices';
 import type { Seat, SeatKind } from '../seats';
+import { PROP_DIMS, type PropId } from './props';
 
 export type KitCategory = 'desks' | 'meeting' | 'seating' | 'tables' | 'plants' | 'decor' | 'outdoor' | 'lighting' | 'events' | 'transport';
 
@@ -19,7 +20,11 @@ export type ProcKind =
   | 'oak' | 'palm' | 'bush_flower' | 'flowers_round' | 'reeds' | 'lilies' | 'string_lights' | 'pergola' | 'umbrella_set'
   | 'gazebo' | 'picnic' | 'fire_pit' | 'planter_tree' | 'led_wall' | 'truss' | 'theatre_seat' | 'sofa_p' | 'lounge_chair'
   | 'dining_set' | 'bar_counter' | 'bar_stool' | 'bottle_wall' | 'fireplace' | 'booth' | 'reception' | 'bookcase'
-  | 'conference' | 'ping_pong' | 'potted_tree' | 'doorway' | 'car' | 'bike' | 'car_park' | 'bike_park';
+  | 'conference' | 'ping_pong' | 'potted_tree' | 'doorway' | 'car' | 'bike' | 'car_park' | 'bike_park'
+  | 'model' | 'runway' | 'taxiway';
+
+/** One model of a piece made of several (a desk with its screen and chair), placed in the piece's frame. */
+export interface ModelPart { id: PropId; x?: number; z?: number; y?: number; rot?: number; s?: number }
 
 interface Base {
   id: string;
@@ -50,6 +55,16 @@ export interface ProcItem extends Base {
   walkable?: boolean;
   color?: string;
   seats?: { x: number; z: number; rot: number; y: number; kind?: SeatKind }[];
+  /**
+   * Drawn from prop models (public/assets/spatial/props) once they've loaded; until then the piece
+   * drawn in code shows. One model, several to choose from (each piece picks one by its id), or
+   * several placed together.
+   */
+  model?: PropId | PropId[] | ModelPart[];
+  /** Model size (1 = as made). */
+  scale?: number;
+  /** Cars and bikes: their head and tail lights; the flying car flies. */
+  vehicle?: { lights: 'car' | 'moto'; flies?: boolean };
 }
 
 export type KitItem = GlbItem | ProcItem;
@@ -58,6 +73,23 @@ export const isGlb = (i: KitItem): i is GlbItem => 'nodes' in i;
 
 const r = (x0: number, x1: number, z0: number, z1: number): Rect => ({ x0, x1, z0, z1 });
 const HALF_PI = Math.PI / 2;
+
+/** A piece drawn from one prop model, its footprint the model's own. */
+const prop = (id: string, name: string, category: KitCategory, model: PropId, o: Partial<ProcItem> = {}): ProcItem => {
+  const s = o.scale ?? 1;
+  const m = PROP_DIMS[model];
+  return { id, name, category, proc: 'model', w: +(m.w * s).toFixed(2), d: +(m.d * s).toFixed(2), model, ...o };
+};
+/** Cars and motorbikes are drawn a little under life size, to sit right with the characters. */
+const CAR_SCALE = 0.88;
+const BIKE_SCALE = 0.9;
+const car = (id: string, name: string, model: PropId, color: string, flies = false): ProcItem => ({
+  ...prop(id, name, 'transport', model, { scale: CAR_SCALE }), proc: 'car', color, vehicle: { lights: 'car', flies },
+});
+const bike = (id: string, name: string, model: PropId, color: string): ProcItem => ({
+  ...prop(id, name, 'transport', model, { scale: model === 'kick_scooter' ? 1 : BIKE_SCALE }), proc: 'bike', color, vehicle: { lights: 'moto' },
+});
+const sofaSeats = (xs: number[], y = 0.45) => xs.map((x) => ({ x, z: 0.08, rot: 0, y, kind: 'sofa' as const }));
 
 export const KIT: KitItem[] = [
   // Desks: a desk with its chair, the person facing the screen (+z).
@@ -135,11 +167,11 @@ export const KIT: KitItem[] = [
   { id: 'bush', name: 'Bush', category: 'outdoor', proc: 'bush', w: 1.0, d: 1.0 },
   { id: 'flowers', name: 'Flower bed', category: 'outdoor', proc: 'flowers', w: 2.4, d: 1.2, walkable: false },
   { id: 'hedge', name: 'Hedge', category: 'outdoor', proc: 'hedge', w: 3.0, d: 0.7 },
-  { id: 'bench', name: 'Park bench', category: 'outdoor', proc: 'bench', w: 1.8, d: 0.7, seats: [{ x: -0.45, z: -0.05, rot: 0, y: 0.45, kind: 'sofa' }, { x: 0.45, z: -0.05, rot: 0, y: 0.45, kind: 'sofa' }] },
+  { id: 'bench', name: 'Park bench', category: 'outdoor', proc: 'bench', w: 1.8, d: 0.7, model: 'bench_slatted', seats: [{ x: -0.45, z: -0.05, rot: 0, y: 0.45, kind: 'sofa' }, { x: 0.45, z: -0.05, rot: 0, y: 0.45, kind: 'sofa' }] },
   { id: 'fountain', name: 'Fountain', category: 'outdoor', proc: 'fountain', w: 2.6, d: 2.6 },
   { id: 'big_fountain', name: 'Grand fountain', category: 'outdoor', proc: 'big_fountain', w: 6.0, d: 6.0, hidden: true },
   { id: 'boulder', name: 'Boulder', category: 'outdoor', proc: 'boulder', w: 1.2, d: 1.0 },
-  { id: 'lamp_post', name: 'Lamp post', category: 'lighting', proc: 'lamp_post', w: 0.4, d: 0.4 },
+  { id: 'lamp_post', name: 'Lamp post', category: 'lighting', proc: 'lamp_post', w: 0.4, d: 0.4, model: 'street_lantern' },
   { id: 'rug_navy', name: 'Navy rug', category: 'decor', proc: 'rug', w: 3.0, d: 2.0, walkable: true, color: '#1E3A6E' },
   { id: 'rug_gold', name: 'Gold rug', category: 'decor', proc: 'rug', w: 3.0, d: 2.0, walkable: true, color: '#B5832A' },
   { id: 'rug_green', name: 'Green rug', category: 'decor', proc: 'rug', w: 3.0, d: 2.0, walkable: true, color: '#2F6B4F' },
@@ -158,7 +190,7 @@ export const KIT: KitItem[] = [
   { id: 'reeds', name: 'Reeds', category: 'outdoor', proc: 'reeds', w: 0.9, d: 0.9 },
   { id: 'lilies', name: 'Water lilies', category: 'outdoor', proc: 'lilies', w: 2.4, d: 2.4, walkable: true, hidden: true },
   { id: 'planter_tree', name: 'Tree planter', category: 'plants', proc: 'planter_tree', w: 4.2, d: 4.2 },
-  { id: 'potted_tree', name: 'Indoor tree', category: 'plants', proc: 'potted_tree', w: 0.8, d: 0.8 },
+  { id: 'potted_tree', name: 'Indoor plant', category: 'plants', proc: 'potted_tree', w: 0.8, d: 0.8, model: ['plant_fiddle_leaf', 'plant_olive', 'plant_monstera', 'plant_bird_of_paradise', 'plant_topiary'] },
   // Outdoor living.
   { id: 'string_lights', name: 'String lights', category: 'lighting', proc: 'string_lights', w: 8, d: 0.3, walkable: true },
   { id: 'pergola', name: 'Pergola', category: 'outdoor', proc: 'pergola', w: 4, d: 3, walkable: true },
@@ -171,15 +203,39 @@ export const KIT: KitItem[] = [
   })),
   // Events.
   { id: 'led_wall', name: 'LED wall', category: 'events', proc: 'led_wall', w: 10, d: 0.4 },
-  // Transport: click one to ride it somewhere.
-  { id: 'car_park', name: 'Car park', category: 'transport', proc: 'car_park', w: 11.4, d: 3.4, walkable: true },
-  { id: 'bike_park', name: 'Scooter park', category: 'transport', proc: 'bike_park', w: 5.4, d: 2.2, walkable: true },
-  ...([['car_navy', 'Car (navy)', '#24406E'], ['car_red', 'Car (red)', '#B8443A'], ['car_gold', 'Car (gold)', '#D9A43A'], ['car_white', 'Car (pearl)', '#DCE0E6'], ['car_teal', 'Car (teal)', '#2F8A8F'], ['car_blue', 'Car (blue)', '#3A6FD0']] as const).map(([id, name, color]): ProcItem => ({
-    id, name, category: 'transport', proc: 'car', w: 1.4, d: 2.35, color,
-  })),
-  ...([['bike_teal', 'Scooter (teal)', '#2F8A8F'], ['bike_red', 'Scooter (red)', '#B8443A'], ['bike_navy', 'Scooter (navy)', '#24406E'], ['bike_gold', 'Scooter (gold)', '#D9A43A'], ['bike_plum', 'Scooter (plum)', '#7A4FA0']] as const).map(([id, name, color]): ProcItem => ({
-    id, name, category: 'transport', proc: 'bike', w: 0.5, d: 1.5, color,
-  })),
+  // Transport: click one to ride it somewhere. (The first ids are kept for pieces saved before.)
+  { id: 'car_park', name: 'Car park', category: 'transport', proc: 'car_park', w: 13.8, d: 4.8, walkable: true },
+  { id: 'bike_park', name: 'Bike park', category: 'transport', proc: 'bike_park', w: 6, d: 2.6, walkable: true },
+  car('car_navy', 'Hypercar (blue)', 'car_blue_hyper', '#24406E'),
+  car('car_red', 'Saloon (red)', 'car_red_sedan', '#B8443A'),
+  car('car_gold', 'Electric saloon (gold)', 'car_gold_electric', '#D9A43A'),
+  car('car_white', 'Muscle car (white)', 'car_white_muscle', '#DCE0E6'),
+  car('car_teal', 'Supercar (lime)', 'car_lime_hyper', '#7BC043'),
+  car('car_blue', 'Coupé (blue)', 'car_blue_coupe', '#3A6FD0'),
+  car('car_flying', 'Flying car', 'car_flying', '#E8EAEE', true),
+  car('car_black_muscle', 'Muscle car (black)', 'car_black_muscle', '#1C1E22'),
+  car('car_purple_muscle', 'Muscle car (purple)', 'car_purple_muscle', '#5B2A86'),
+  car('car_cyber_pickup', 'Electric pickup', 'car_cyber_pickup', '#8A8F96'),
+  car('car_olive_suv', 'Off-roader (olive)', 'car_olive_suv', '#5E6450'),
+  car('car_orange_super', 'Supercar (orange)', 'car_orange_super', '#E8731F'),
+  car('car_orange_track', 'Track car (orange)', 'car_orange_track', '#F09A1A'),
+  car('car_red_super', 'Supercar (red)', 'car_red_super', '#C8262B'),
+  car('car_silver_coupe', 'Grand tourer (silver)', 'car_silver_coupe', '#B9BDC4'),
+  car('car_white_track', 'Track car (white)', 'car_white_track', '#E6E8EC'),
+  car('car_yellow_coupe', 'Coupé (yellow)', 'car_yellow_coupe', '#F2C21B'),
+  bike('bike_teal', 'Scooter (sage)', 'scooter_sage', '#8FAE98'),
+  bike('bike_red', 'Sports bike (red)', 'moto_red', '#C8262B'),
+  bike('bike_navy', 'Race bike', 'moto_racing', '#24406E'),
+  bike('bike_gold', 'Classic motorbike', 'moto_vintage', '#D9A43A'),
+  bike('bike_plum', 'Sports bike (green)', 'moto_green', '#2F6B2F'),
+  bike('moto_cruiser', 'Cruiser motorbike', 'moto_cruiser', '#1C1E22'),
+  bike('kick_scooter', 'Kick scooter', 'kick_scooter', '#2A2D33'),
+  // The airport (laid out in the Campus).
+  { ...prop('airport_terminal', 'Airport terminal', 'transport', 'airport_terminal', { scale: 1.2 }), hidden: true },
+  { ...prop('parking_garage', 'Parking garage', 'transport', 'parking_facility'), hidden: true },
+  { ...prop('parking_plaza', 'Parking plaza', 'transport', 'parking_entrance'), hidden: true },
+  { id: 'runway', name: 'Runway', category: 'transport', proc: 'runway', w: 108, d: 12, walkable: true, hidden: true },
+  { id: 'taxiway', name: 'Taxiway', category: 'transport', proc: 'taxiway', w: 108, d: 5, walkable: true, hidden: true },
   { id: 'stage_large', name: 'Large stage', category: 'events', proc: 'stage', w: 16, d: 5, walkable: true, hidden: true },
   { id: 'tv_wall', name: 'Wall screen', category: 'meeting', proc: 'led_wall', w: 3.2, d: 0.3 },
   { id: 'doorway', name: 'Doorway', category: 'decor', proc: 'doorway', w: 3, d: 0.5, walkable: true, hidden: true },
@@ -191,21 +247,21 @@ export const KIT: KitItem[] = [
     id, name, category: 'events', proc: 'booth', w: 3.1, d: 1.0, color,
   })),
   // Rooms.
-  ...([['sofa_teal', 'Sofa (teal)', '#2F6F73'], ['sofa_navy', 'Sofa (navy)', '#24406E'], ['sofa_rust', 'Sofa (rust)', '#A0522D'], ['sofa_green', 'Sofa (green)', '#3E6B48']] as const).map(([id, name, color]): ProcItem => ({
-    id, name, category: 'seating', proc: 'sofa_p', w: 2.2, d: 0.95, color, seats: [-0.65, 0, 0.65].map((x) => ({ x, z: 0.1, rot: 0, y: 0.52, kind: 'sofa' as const })),
+  ...([['sofa_teal', 'Sofa (bouclé)', '#2F6F73', 'sofa_boucle'], ['sofa_navy', 'Sofa (navy velvet)', '#24406E', 'sofa_navy'], ['sofa_rust', 'Sofa (terracotta)', '#A0522D', 'sofa_terracotta'], ['sofa_green', 'Chesterfield (green)', '#3E6B48', 'sofa_chesterfield']] as const).map(([id, name, color, model]): ProcItem => ({
+    id, name, category: 'seating', proc: 'sofa_p', w: 2.2, d: 0.95, color, model, scale: Math.min(1, 2.2 / PROP_DIMS[model].w), seats: [-0.65, 0, 0.65].map((x) => ({ x, z: 0.1, rot: 0, y: 0.52, kind: 'sofa' as const })),
   })),
-  ...([['chair_mustard', 'Lounge chair (mustard)', '#C08A2E'], ['chair_teal', 'Lounge chair (teal)', '#2F6F73'], ['chair_rust', 'Lounge chair (rust)', '#A0522D']] as const).map(([id, name, color]): ProcItem => ({
-    id, name, category: 'seating', proc: 'lounge_chair', w: 0.85, d: 0.85, color, seats: [{ x: 0, z: 0.06, rot: 0, y: 0.52, kind: 'armchair' }],
+  ...([['chair_mustard', 'Lounge chair (mustard)', '#C08A2E', 'armchair_yellow'], ['chair_teal', 'Lounge chair (bouclé)', '#2F6F73', 'armchair_boucle'], ['chair_rust', 'Lounge chair (cream)', '#A0522D', 'armchair_boucle']] as const).map(([id, name, color, model]): ProcItem => ({
+    id, name, category: 'seating', proc: 'lounge_chair', w: 0.85, d: 0.85, color, model, scale: Math.min(1, 0.88 / PROP_DIMS[model].w), seats: [{ x: 0, z: 0.06, rot: 0, y: 0.52, kind: 'armchair' }],
   })),
   ...([['dining_green', 'Café table (green)', '#3E6B48'], ['dining_mustard', 'Café table (mustard)', '#C08A2E'], ['dining_navy', 'Café table (navy)', '#24406E']] as const).map(([id, name, color]): ProcItem => ({
     id, name, category: 'tables', proc: 'dining_set', w: 1.9, d: 1.9, color,
     seats: [0, 1, 2, 3].map((i) => { const a = (i / 4) * Math.PI * 2; return { x: Math.sin(a) * 0.72, z: Math.cos(a) * 0.72, rot: a + Math.PI, y: 0.5 }; }),
   })),
   { id: 'bar_counter', name: 'Bar counter', category: 'tables', proc: 'bar_counter', w: 5, d: 0.8 },
-  { id: 'bar_stool', name: 'Bar stool', category: 'seating', proc: 'bar_stool', w: 0.45, d: 0.45, color: '#24406E', seats: [{ x: 0, z: 0, rot: 0, y: 0.82 }] },
+  { id: 'bar_stool', name: 'Bar stool', category: 'seating', proc: 'bar_stool', w: 0.45, d: 0.45, color: '#24406E', model: 'bar_stool_cane', scale: 0.95, seats: [{ x: 0, z: 0, rot: 0, y: 0.82 }] },
   { id: 'bottle_wall', name: 'Bar shelves', category: 'decor', proc: 'bottle_wall', w: 5, d: 0.45 },
   { id: 'fireplace', name: 'Fireplace', category: 'decor', proc: 'fireplace', w: 3.2, d: 0.9 },
-  { id: 'reception', name: 'Reception desk', category: 'tables', proc: 'reception', w: 3.5, d: 0.9 },
+  { ...prop('reception', 'Reception desk', 'tables', 'reception_desk'), proc: 'reception' },
   { id: 'bookcase', name: 'Bookcase wall', category: 'decor', proc: 'bookcase', w: 3, d: 0.45 },
   ...([['conference', 'Conference table (navy)', '#24406E'], ['conf_teal', 'Conference table (teal)', '#2F6F73'], ['conf_red', 'Conference table (red)', '#8E2B2B'], ['conf_green', 'Conference table (green)', '#2F6B4F']] as const).map(([id, name, color]): ProcItem => ({
     id, name, category: 'meeting', proc: 'conference', w: 2.4, d: 4.6, color,
@@ -218,6 +274,52 @@ export const KIT: KitItem[] = [
   ...([['rug_large_navy', 'Large rug (navy)', '#1E3A6E'], ['rug_large_rust', 'Large rug (rust)', '#8B3A2A'], ['rug_large_green', 'Large rug (green)', '#2F5E4A']] as const).map(([id, name, color]): ProcItem => ({
     id, name, category: 'decor', proc: 'rug', w: 5, d: 3.5, walkable: true, color,
   })),
+
+  // From the prop models.
+  prop('sofa_wicker', 'Sofa (rattan)', 'seating', 'sofa_wicker', { seats: sofaSeats([-0.62, 0, 0.62]) }),
+  prop('sofa_corner', 'Corner sofa', 'seating', 'sofa_sectional', {
+    seats: [...[-0.25, 0.5, 1.1].map((x) => ({ x, z: -0.85, rot: 0, y: 0.45, kind: 'sofa' as const })), { x: -0.9, z: 0.45, rot: HALF_PI, y: 0.45, kind: 'sofa' }],
+  }),
+  prop('loveseat_mustard', 'Loveseat (mustard)', 'seating', 'loveseat_mustard', { seats: sofaSeats([-0.36, 0.36]) }),
+  prop('loveseat_pink', 'Loveseat (blush)', 'seating', 'loveseat_pink', { seats: sofaSeats([-0.36, 0.36]) }),
+  prop('acoustic_sofa', 'Acoustic sofa', 'seating', 'chair_acoustic_teal', { seats: sofaSeats([-0.42, 0.42]) }),
+  prop('armchair_cream', 'Armchair (bouclé)', 'seating', 'armchair_boucle', { seats: [{ x: 0, z: 0.06, rot: 0, y: 0.45, kind: 'armchair' }] }),
+  prop('armchair_mustard', 'Armchair (mustard)', 'seating', 'armchair_yellow', { seats: [{ x: 0, z: 0.06, rot: 0, y: 0.45, kind: 'armchair' }] }),
+  prop('dining_chair_teal', 'Dining chair (teal)', 'seating', 'chair_dining_teal', { seats: [{ x: 0, z: 0.03, rot: 0, y: 0.47 }] }),
+  prop('dining_chair_oak', 'Dining chair (oak)', 'seating', 'chair_dining_wood', { seats: [{ x: 0, z: 0.03, rot: 0, y: 0.47 }] }),
+  prop('office_chair_mesh', 'Office chair (mesh)', 'desks', 'chair_office_ergonomic', { seats: [{ x: 0, z: 0.05, rot: 0, y: 0.5 }] }),
+  prop('office_chair_high', 'Office chair (high back)', 'desks', 'chair_office_highback', { seats: [{ x: 0, z: 0.05, rot: 0, y: 0.5 }] }),
+  prop('office_chair_leather', 'Office chair (leather)', 'desks', 'chair_office_leather', { seats: [{ x: 0, z: 0.05, rot: 0, y: 0.5 }] }),
+  prop('bench_stone', 'Stone bench', 'outdoor', 'bench_concrete', { seats: [-0.45, 0.45].map((x) => ({ x, z: 0, rot: 0, y: 0.45, kind: 'sofa' as const })) }),
+  // Desks, each with what goes on it and a chair (the person faces +z).
+  { id: 'desk_exec', name: 'Executive desk', category: 'desks', proc: 'model', w: 1.8, d: 1.5,
+    model: [{ id: 'desk_executive', z: 0.39 }, { id: 'computer_retro', z: 0.42, y: 0.797, rot: Math.PI }, { id: 'desk_lamp', x: -0.68, z: 0.5, y: 0.797, rot: Math.PI }, { id: 'chair_office_leather', z: -0.42 }],
+    seats: [{ x: 0, z: -0.4, rot: 0, y: 0.5 }] },
+  { id: 'desk_glass_set', name: 'Glass desk with screens', category: 'desks', proc: 'model', w: 1.5, d: 1.55,
+    model: [{ id: 'desk_glass', z: 0.4 }, { id: 'computer_triple', z: 0.42, y: 0.74, rot: Math.PI, s: 0.95 }, { id: 'chair_office_ergonomic', z: -0.39 }],
+    seats: [{ x: 0, z: -0.37, rot: 0, y: 0.5 }] },
+  { id: 'desk_gaming', name: 'Triple-screen desk', category: 'desks', proc: 'model', w: 1.7, d: 1.5,
+    model: [{ id: 'monitor_triple_stand', z: 0.38, rot: Math.PI }, { id: 'chair_office_highback', z: -0.38 }],
+    seats: [{ x: 0, z: -0.36, rot: 0, y: 0.5 }] },
+  { id: 'desk_stand', name: 'Standing desk', category: 'desks', proc: 'model', w: 1.5, d: 0.86,
+    model: [{ id: 'desk_standing' }, { id: 'monitor_ultrawide', z: 0.18, y: 1.06, rot: Math.PI, s: 0.9 }, { id: 'laptop', x: -0.5, z: -0.12, y: 1.06, rot: Math.PI }] },
+  prop('desk_corner', 'Corner desk', 'desks', 'desk_l_shaped'),
+  prop('desk_pod', 'Team desk with planter', 'desks', 'workstation'),
+  prop('desk_glass', 'Glass desk', 'desks', 'desk_glass'),
+  prop('table_oval', 'Oval table', 'meeting', 'conference_table_oval'),
+  prop('coffee_round', 'Coffee table (terrazzo)', 'tables', 'coffee_table_terrazzo'),
+  prop('coffee_oak', 'Coffee table (oak)', 'tables', 'coffee_table_wood'),
+  prop('screen_stand', 'Screen on a stand', 'meeting', 'display_mobile'),
+  prop('floor_lamp_brass', 'Floor lamp (brass)', 'lighting', 'desk_lamp_brass'),
+  prop('globe_lamp', 'Globe lamp', 'lighting', 'globe_lamp'),
+  prop('plant_fiddle', 'Fiddle-leaf fig', 'plants', 'plant_fiddle_leaf'),
+  prop('plant_monstera', 'Monstera (pot)', 'plants', 'plant_monstera'),
+  prop('plant_olive', 'Olive tree (pot)', 'plants', 'plant_olive'),
+  prop('plant_paradise', 'Bird of paradise', 'plants', 'plant_bird_of_paradise'),
+  prop('plant_palm', 'Palm (pot)', 'plants', 'plant_palm'),
+  prop('plant_snake', 'Snake plant', 'plants', 'plant_snake'),
+  prop('plant_topiary', 'Topiary', 'plants', 'plant_topiary'),
+  prop('planter_box', 'Flower planter', 'plants', 'planter_box'),
 ];
 
 export const KIT_BY_ID: ReadonlyMap<string, KitItem> = new Map(KIT.map((i) => [i.id, i]));

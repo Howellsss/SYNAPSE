@@ -433,11 +433,30 @@ What you see inside a space, until the art kit brings rooms and furniture:
   guessed from clip names or chosen on the Characters page; without them a faster walk, the cheer
   on a loop, or a bounce stands in. A route (`PathMsg`) carries its `gait`, so others see you
   walk, run, drive or ride.
-- **Cars and scooters** (kit `car_*`, `bike_*`, small two-seat city cars and scooters drawn in
-  `kitParts.ts`) stand in a car park and a scooter park (`car_park`, `bike_park`) in the Hub
-  courtyard and on the Campus. Click one on foot: you walk to it and get in. Then click where to
-  go, or use the arrow keys, at 10 m/s (car) or 7 m/s (scooter); E or "Get out" leaves it, and
-  clicking a seat gets you out first. Everyone sees the vehicle under you (`gait` drive/ride).
+- **Prop models** (`public/assets/spatial/props/<id>.glb`, sizes in `campus/props.ts`): 75 models
+  made in Meshy, compressed (meshopt, WebP textures) and baked to real size, facing +z, standing
+  on y = 0. A kit item with `model` is drawn from them (`propModels.ts` loads each file once per
+  page; `campusWorld.ts` swaps the code-drawn piece for the model when it arrives). Sofas, lounge
+  chairs, benches, lamp posts, bar stools, plants and the reception desk use them; the catalog
+  also has desks with screens and chairs, office and dining chairs, loveseats, plants and lamps.
+- **Cars and bikes** (kit `car_*`, `bike_*`, `moto_*`, `kick_scooter`: 17 cars at 0.88 of life
+  size and motorbikes and scooters at 0.9, to sit right with the characters) stand in car parks
+  and bike parks in the Hub courtyard and on the Campus. Click one on foot: you walk to it and
+  get in. Then click where to go, or use the arrow keys, at 10 m/s (car) or 7 m/s (bike); E or
+  "Get out" leaves it, and clicking a seat gets you out first. Presence carries which parked one
+  you took (`vehicle`), so everyone draws that car under you and leaves its bay empty while you're
+  out. A driver isn't drawn (their name shows over the roof); a rider sits on the saddle. Head
+  and tail lights sit on each body where rays cast at the model meet it: dim when parked, lit
+  with a pool of light on the road when driven.
+- **The flying car** (`car_flying`) flies: straight to where you click, over everything, at
+  11 m/s and 2.6 m up (gait and anim `fly`), and lands on clear ground. Small flames burn under
+  its wheels and glow on the ground below while it's in the air.
+- **The airport** (Campus, south of the boulevard): the terminal between two parking garages, car
+  parks and bike parks along the road, a taxiway and a runway (`layout.airport`). The airliner
+  holds, takes off, circles over the campus, lands and taxis back; the private jet flies a wider,
+  higher circuit (`airTraffic.ts`). Where each plane is comes from the clock, so everyone sees
+  the same thing with nothing sent. On the Campus the camera stands further back along the same
+  line so planes pass under it (an orthographic view looks the same).
 - **Glow:** only lights glow. Their materials are marked `glowing()` (`kitParts.ts`) and drawn on
   `GLOW_LAYER`; SpaceScene blooms that layer on its own and adds it over the scene, so white
   clothes, keyboards or leaves in the sun stay ordinary lit surfaces.

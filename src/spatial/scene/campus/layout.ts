@@ -1,8 +1,8 @@
 /**
- * SYNAPSE Campus: one large world (120 × 96 m) inside a single workspace. Walk from the
+ * SYNAPSE Campus: one large world (120 × 190 m) inside a single workspace. Walk from the
  * headquarters (Office 02) along the avenues to the all-hands hall, the café and lounge, the team
  * areas, glass meeting rooms, focus booths, the garden with its pond, the game room and the
- * library: all one space, no loading between places.
+ * library, and south across the boulevard to the airport: all one space, no loading between places.
  *
  * Everything here is data (no three.js): buildings with their doorways, areas (zones) with their
  * sound rules, paths, water and every placed piece. The renderer draws it; walking, sitting and
@@ -15,7 +15,7 @@ import type { Seat } from '../seats';
 import { placedBlocks, placedSeats, type Placed } from './kit';
 
 export const CAMPUS_W = 120;
-export const CAMPUS_D = 96;
+export const CAMPUS_D = 190;
 
 export type FloorFinish = 'oak' | 'walnut' | 'carpet_navy' | 'carpet_green' | 'carpet_plum' | 'slate' | 'terrazzo'
   | 'marble' | 'herringbone' | 'carpet_red' | 'carpet_teal' | 'deck';
@@ -67,6 +67,9 @@ export interface Portal {
   label: string;
 }
 
+/** An airport's runway (centre line from x0 to x1 at z) and the taxiway beside it, for the planes. */
+export interface Airport { runway: { x0: number; x1: number; z: number }; taxiZ: number }
+
 export interface CampusLayout {
   width: number;
   depth: number;
@@ -83,6 +86,7 @@ export interface CampusLayout {
   plazas?: { cx: number; cz: number; r: number }[];
   wings?: Wing[];
   portals?: Portal[];
+  airport?: Airport;
 }
 
 const r = (x0: number, x1: number, z0: number, z1: number): Rect => ({ x0, x1, z0, z1 });
@@ -106,7 +110,8 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
   // ---- avenues and plaza
   const paths: Rect[] = [
     r(2, 118, 30, 33.5), r(2, 118, 60, 63.5), // east–west avenues
-    r(40, 43.5, 2, 94), r(77.5, 81, 2, 94), // north–south avenues
+    r(40, 43.5, 2, 97.5), r(77.5, 81, 2, 97.5), // north–south avenues, down to the boulevard
+    r(2, 118, 97.5, 101), // the boulevard, along the airport
     r(18.8, 21.2, 23, 30), // HQ entrance: the gap in its front planters
     r(58, 63, 26, 30), // to the all-hands hall
     r(98, 102, 26, 30), // to the café & lounge
@@ -340,11 +345,11 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
     add('park-picnic-b', 'picnic', 52.4, 36.6);
     add('park-lights', 'string_lights', 50, 35.2);
     add('park-bench-ne', 'bench', 74.5, 36.6, -HALF);
-    // Cars on the avenue and bikes by the park: click one to ride somewhere.
-    add('park-bike-park', 'bike_park', 70, 58.7, 0);
-    ['bike_teal', 'bike_red', 'bike_navy', 'bike_gold', 'bike_plum', 'bike_teal'].forEach((k, i) => add(`park-bike-${i}`, k, 67.75 + i * 0.9, 58.8, 0));
-    add('park-car-park', 'car_park', 50, 58.3, 0);
-    ['car_navy', 'car_red', 'car_gold', 'car_teal', 'car_white', 'car_blue'].forEach((k, i) => add(`park-car-${i}`, k, 45.25 + i * 1.9, 58.45, 0));
+    // Cars and bikes by the park: click one to ride somewhere (the flying car flies).
+    add('park-bike-park', 'bike_park', 65.5, 58.8, 0);
+    ['bike_plum', 'bike_red', 'bike_teal', 'kick_scooter', 'bike_gold'].forEach((k, i) => add(`park-bike-${i}`, k, 63.1 + i * 1.2, 58.8, 0));
+    add('park-car-park', 'car_park', 50, 57.6, 0);
+    ['car_flying', 'car_teal', 'car_orange_super', 'car_blue', 'car_purple_muscle', 'car_silver_coupe'].forEach((k, i) => add(`park-car-${i}`, k, 44.25 + i * 2.3, 57.6, 0));
     add('park-palm-b', 'palm', 75.8, 34.8);
   }
 
@@ -353,6 +358,44 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
     if (Math.abs(x - 41.75) < 3 || Math.abs(x - 79.25) < 3) continue;
     add(`lamp-n-${x}`, 'lamp_post', x, 29.4);
     add(`lamp-s-${x}`, 'lamp_post', x, 64.1);
+  }
+
+  // ---- the airport, across the boulevard: car parks and bike parks by the road, the terminal
+  // between two parking garages, then the taxiway and the runway, where the planes take off.
+  const runway = { x0: 6, x1: 114, z: 180 };
+  const taxiZ = 167;
+  {
+    zones.push({ id: 'airport', name: 'Airport', type: 'open_area', rect: r(2, 118, 101, 188) });
+    zones.push({ id: 'terminal', name: 'Airport Terminal', type: 'open_area', rect: r(32.4, 87.6, 109, 154.5) });
+    zones.push({ id: 'runway', name: 'Runway', type: 'open_area', rect: r(6, 114, 164.5, 186) });
+    add('ap-terminal', 'airport_terminal', 60, 131.75, 0);
+    add('ap-garage', 'parking_garage', 16.7, 125, 0);
+    add('ap-plaza', 'parking_plaza', 103, 125, 0);
+    add('ap-taxiway', 'taxiway', 60, taxiZ, 0);
+    add('ap-runway', 'runway', 60, runway.z, 0);
+    const lots: [number, string[]][] = [
+      [17, ['car_navy', 'car_red', 'car_gold', 'car_white', 'car_black_muscle', 'car_cyber_pickup']],
+      [103, ['car_olive_suv', 'car_orange_track', 'car_red_super', 'car_white_track', 'car_yellow_coupe', 'car_flying']],
+    ];
+    for (const [i, [x, cars]] of lots.entries()) {
+      add(`ap-car-park-${i}`, 'car_park', x, 104.8, 0);
+      cars.forEach((k, j) => add(`ap-car-${i}-${j}`, k, x - 5.75 + j * 2.3, 104.8, 0));
+    }
+    const bikes: [number, string[]][] = [
+      [33, ['bike_navy', 'moto_cruiser', 'bike_red', 'bike_gold', 'kick_scooter']],
+      [87, ['bike_teal', 'bike_plum', 'moto_cruiser', 'bike_red', 'bike_navy']],
+    ];
+    for (const [i, [x, list]] of bikes.entries()) {
+      add(`ap-bike-park-${i}`, 'bike_park', x, 104.2, 0);
+      list.forEach((k, j) => add(`ap-bike-${i}-${j}`, k, x - 2.4 + j * 1.2, 104.2, 0));
+    }
+    // A paved forecourt from the boulevard to the terminal, with planters and benches.
+    paths.push(r(40, 80, 101, 109));
+    for (const [i, x] of [44, 52, 68, 76].entries()) add(`ap-planter-${i}`, 'planter_box', x, 107.9);
+    add('ap-bench-a', 'bench_stone', 56.5, 107.9, PI);
+    add('ap-bench-b', 'bench_stone', 63.5, 107.9, PI);
+    // Lamps along the boulevard, between the trees.
+    for (const x of [13, 25, 37, 49, 61, 73, 85, 97, 109]) add(`ap-lamp-${x}`, 'lamp_post', x, 96.9);
   }
 
   // ---- trees around the edge of the campus
@@ -366,6 +409,9 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
       tree(1.4, z);
       tree(118.6, z);
     }
+    // Round the airport, and along its far side.
+    for (let z = 106; z <= 160; z += 6) { tree(1.4, z); tree(118.6, z); }
+    for (let x = 4; x <= 116; x += 6) tree(x, 197); // past the runway, clear of the wingtips
     // Hedges along the north side of the HQ grounds.
     add('hq-hedge-a', 'hedge', 34, 27.5, 0);
     add('hq-bush-a', 'bush', 32, 5);
@@ -374,7 +420,7 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
   }
 
   const all = [...objects, ...extra.filter((p) => !objects.some((o) => o.id === p.id))];
-  return { width: CAMPUS_W, depth: CAMPUS_D, hq, buildings, zones, paths, water, objects: all, spawn: { x: 60.5, z: 56 }, walks, plazas };
+  return { width: CAMPUS_W, depth: CAMPUS_D, hq, buildings, zones, paths, water, objects: all, spawn: { x: 60.5, z: 56 }, walks, plazas, airport: { runway, taxiZ } };
 }
 
 // ---------------------------------------------------------------- walls, walking, sitting
