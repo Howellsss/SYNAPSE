@@ -37,6 +37,7 @@ import { watchFromLocation } from '@/lib/streams';
 import { CreateSpaceWizard } from '@/pages/CreateSpaceWizard';
 import { SpacePage } from '@/pages/SpacePage';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
+import { clearCache } from '@/lib/cache/withCache';
 import { GuestJoinPage } from '@/pages/GuestJoinPage';
 import { EventsHomePage } from '@/pages/events/EventsHomePage';
 import { EventDetailPage } from '@/pages/events/EventDetailPage';
@@ -53,8 +54,17 @@ import { cn } from '@/lib/utils';
 const isMenuSection = (section: string) => section === 'dashboard' || section === 'signin' || section === 'signup';
 
 function AppContent() {
-  const { user, loading } = useAuth();
+  const { user, loading, workspace } = useAuth();
   const [path, navigate] = useRouter();
+  // Cached data belongs to one person in one workspace: drop it all when either changes
+  // (signing out, someone else signing in, switching workspace).
+  const cacheOwner = `${user?.id ?? ''}|${workspace?.id ?? ''}`;
+  const lastCacheOwner = useRef(cacheOwner);
+  useEffect(() => {
+    if (lastCacheOwner.current === cacheOwner) return;
+    lastCacheOwner.current = cacheOwner;
+    clearCache();
+  }, [cacheOwner]);
   const [searchQuery, setSearchQuery] = useState('');
   useGmailReturnNotice(path);
 

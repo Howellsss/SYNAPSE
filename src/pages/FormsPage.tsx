@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { withCache, tableTag, ttlMs } from '@/lib/cache';
 import { useToast } from '@/context/ToastContext';
 import { FormStatusPill } from '@/components/ui/StatusPills';
 import { Modal } from '@/components/ui/Modal';
@@ -51,7 +52,7 @@ const USAGE_MODULE_LABELS: Record<FormUsageModule, string> = {
 type FormWithMeta = Form & { submission_count: number; usages: FormUsage[] };
 
 export function FormsPage() {
-  const { workspace } = useAuth();
+  const { workspace, user } = useAuth();
   const { toast } = useToast();
   const [tab, setTab] = useState<Tab>('forms');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
@@ -71,47 +72,58 @@ export function FormsPage() {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   const loadForms = useCallback(async () => {
-    if (!workspace) { setLoading(false); return; }
+    if (!workspace || !user) { setLoading(false); return; }
     setLoading(true);
     setError(false);
-    const { data, error: err } = await supabase
-      .from('forms')
-      .select('*')
-      .eq('workspace_id', workspace.id)
-      .order('updated_at', { ascending: false });
+    const workspaceId = workspace.id;
+    const show = (list: FormWithMeta[]) => { setForms(list); setLoading(false); };
+    try {
+      show(await withCache(
+        { scope: { userId: user.id, workspaceId }, key: ['forms'], ttl: ttlMs('FORMS'), tags: ['forms', 'form_submissions', 'form_usages'].map(tableTag) },
+        async (): Promise<FormWithMeta[]> => {
+          const { data, error: err } = await supabase
+            .from('forms')
+            .select('*')
+            .eq('workspace_id', workspaceId)
+            .order('updated_at', { ascending: false });
+          if (err) throw new Error(err.message);
 
-    if (err) { setError(true); setLoading(false); return; }
+          const formList = (data ?? []) as Form[];
+          if (formList.length === 0) return [];
 
-    const formList = (data ?? []) as Form[];
-    if (formList.length === 0) { setForms([]); setLoading(false); return; }
+          const [subRes, usageRes] = await Promise.all([
+            supabase.rpc('get_form_submission_counts', { form_ids: formList.map(f => f.id) }),
+            supabase.from('form_usages').select('*').in('form_id', formList.map(f => f.id)),
+          ]);
 
-    const [subRes, usageRes] = await Promise.all([
-      supabase.rpc('get_form_submission_counts', { form_ids: formList.map(f => f.id) }),
-      supabase.from('form_usages').select('*').in('form_id', formList.map(f => f.id)),
-    ]);
+          const counts: Record<string, number> = {};
+          if (subRes.data) {
+            for (const row of subRes.data as { form_id: string; count: number }[]) {
+              counts[row.form_id] = row.count;
+            }
+          }
 
-    const counts: Record<string, number> = {};
-    if (subRes.data) {
-      for (const row of subRes.data as { form_id: string; count: number }[]) {
-        counts[row.form_id] = row.count;
-      }
+          const usages: Record<string, FormUsage[]> = {};
+          if (usageRes.data) {
+            for (const u of usageRes.data as FormUsage[]) {
+              if (!usages[u.form_id]) usages[u.form_id] = [];
+              usages[u.form_id].push(u);
+            }
+          }
+
+          return formList.map(f => ({
+            ...f,
+            submission_count: counts[f.id] ?? 0,
+            usages: usages[f.id] ?? [],
+          }));
+        },
+        show,
+      ));
+    } catch {
+      setError(true);
+      setLoading(false);
     }
-
-    const usages: Record<string, FormUsage[]> = {};
-    if (usageRes.data) {
-      for (const u of usageRes.data as FormUsage[]) {
-        if (!usages[u.form_id]) usages[u.form_id] = [];
-        usages[u.form_id].push(u);
-      }
-    }
-
-    setForms(formList.map(f => ({
-      ...f,
-      submission_count: counts[f.id] ?? 0,
-      usages: usages[f.id] ?? [],
-    })));
-    setLoading(false);
-  }, [workspace]);
+  }, [workspace, user]);
 
   useEffect(() => { loadForms(); }, [loadForms]);
 

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { withCache, tableTag, ttlMs } from '@/lib/cache';
 import { listSpaces, type SpaceWithMembers } from '@/lib/spaces';
 import { recentActivity, weeklyActivity, type ActivityItem, type DayCount } from '@/lib/activity';
 import { Skeleton } from '@/components/ui/States';
@@ -41,8 +42,11 @@ const TONES: Record<Tone, string> = {
 const SPACE_COLORS = ['bg-navy-800', 'bg-blue-600', 'bg-cyan-600', 'bg-emerald-600', 'bg-amber-500'];
 const AI_PROMPTS = ['Summarize today’s meetings', 'What are my priorities this week?', 'Show me project updates', 'Generate meeting brief'];
 
+/** What the dashboard reads: a write to any of these refreshes it. */
+const DASHBOARD_TABLES = ['appointments', 'contacts', 'calendars', 'workspace_members', 'messages', 'spaces', 'space_members', 'form_submissions', 'forms', 'profiles'];
+
 export function Dashboard() {
-  const { profile, workspace } = useAuth();
+  const { profile, workspace, user } = useAuth();
   const [, navigate] = useRouter();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -54,13 +58,27 @@ export function Dashboard() {
     return () => window.clearInterval(t);
   }, []);
 
+  const workspaceId = workspace?.id ?? null;
+  const userId = user?.id ?? null;
   useEffect(() => {
-    if (!workspace) { setLoading(false); return; }
+    if (!workspaceId || !userId) { setLoading(false); return; }
+    let alive = true;
     setLoading(true);
-    void loadDashboard(workspace.id);
-  }, [workspace]);
+    // Cached for a short while: coming back to the dashboard shows it at once (refreshing behind
+    // when it's a little old). Today's date is part of the key, so a new day starts fresh.
+    const day = new Date().toDateString();
+    withCache(
+      { scope: { userId, workspaceId }, key: ['dashboard', day], ttl: ttlMs('DASHBOARD'), tags: DASHBOARD_TABLES.map(tableTag) },
+      () => fetchDashboard(workspaceId),
+      (cached) => { if (alive) { setData(cached); setLoading(false); } },
+    )
+      .then((fresh) => { if (alive) setData(fresh); })
+      .catch(() => { /* keeps what's shown; nothing is cached */ })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [workspaceId, userId]);
 
-  async function loadDashboard(workspaceId: string): Promise<void> {
+  async function fetchDashboard(workspaceId: string): Promise<DashboardData> {
     const start = new Date();
     const todayStart = new Date(start.getFullYear(), start.getMonth(), start.getDate());
     const todayEnd = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 23, 59, 59);
@@ -83,7 +101,10 @@ export function Dashboard() {
       weeklyActivity(workspaceId).catch(() => [] as DayCount[]),
     ]);
 
-    setData({
+    // A failed read isn't cached (or shown as zeros).
+    const failed = [todayRes, upcomingRes, contactsRes, membersRes, completedRes, messagesRes].find((r) => r.error);
+    if (failed?.error) throw new Error(failed.error.message);
+    return {
       todayAppointments: (todayRes.data ?? []) as DashboardAppointment[],
       upcomingAppointments: (upcomingRes.data ?? []) as DashboardAppointment[],
       contactCount: contactsRes.count ?? 0,
@@ -93,8 +114,7 @@ export function Dashboard() {
       spaces: spacesRes.data ?? [],
       activity,
       week,
-    });
-    setLoading(false);
+    };
   }
 
   const askAI = (q: string) => navigate('/ai-hub' + (q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''));

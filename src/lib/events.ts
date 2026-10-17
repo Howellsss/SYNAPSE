@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { UPLOAD_CACHE } from '@/lib/cache/config';
 import { publicOrigin } from '@/lib/publicUrl';
 
 // ---------------------------------------------------------------- types
@@ -466,7 +467,7 @@ export async function uploadCover(workspaceId: string, file: File): Promise<{ ur
   if (file.size > 8 * 1024 * 1024) return { url: null, error: 'The image must be under 8 MB.' };
   const ext = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
   const path = `${workspaceId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-  const { error } = await supabase.storage.from('event-covers').upload(path, file, { contentType: file.type, upsert: false });
+  const { error } = await supabase.storage.from('event-covers').upload(path, file, { contentType: file.type, upsert: false, cacheControl: UPLOAD_CACHE });
   if (error) return { url: null, error: error.message };
   return { url: supabase.storage.from('event-covers').getPublicUrl(path).data.publicUrl, error: null };
 }
