@@ -42,6 +42,64 @@ const TONES: Record<Tone, string> = {
 const SPACE_COLORS = ['bg-navy-800', 'bg-blue-600', 'bg-cyan-600', 'bg-emerald-600', 'bg-amber-500'];
 const AI_PROMPTS = ['Summarize today’s meetings', 'What are my priorities this week?', 'Show me project updates', 'Generate meeting brief'];
 
+type Summary = Pick<DashboardData, 'todayAppointments' | 'upcomingAppointments' | 'contactCount' | 'workspaceMemberCount' | 'completedCount' | 'messageCount'>;
+
+/** Set once the database says it has no dashboard_summary yet: then the six reads are used. */
+let summaryMissing = false;
+
+/**
+ * Today's and the week's bookings and the four counts: one request (the dashboard_summary database
+ * function) where it exists, else the six separate reads it replaces. Throws on a failed read.
+ */
+async function dashboardSummary(workspaceId: string, todayStart: Date, todayEnd: Date, now: Date, weekEnd: Date): Promise<Summary> {
+  if (!summaryMissing) {
+    const { data, error } = await supabase.rpc('dashboard_summary', {
+      p_workspace_id: workspaceId,
+      p_today_start: todayStart.toISOString(),
+      p_today_end: todayEnd.toISOString(),
+      p_now: now.toISOString(),
+      p_week_end: weekEnd.toISOString(),
+    });
+    if (!error && data) {
+      const d = data as { today: DashboardAppointment[]; upcoming: DashboardAppointment[]; contacts: number; members: number; completed: number; messages: number };
+      return {
+        todayAppointments: d.today ?? [],
+        upcomingAppointments: d.upcoming ?? [],
+        contactCount: Number(d.contacts) || 0,
+        workspaceMemberCount: Number(d.members) || 0,
+        completedCount: Number(d.completed) || 0,
+        messageCount: Number(d.messages) || 0,
+      };
+    }
+    // Not added to the database yet (PGRST202 / 42883): use the separate reads from now on.
+    if (error && (error.code === 'PGRST202' || error.code === '42883' || /dashboard_summary/.test(error.message))) summaryMissing = true;
+    else if (error) throw new Error(error.message);
+  }
+  const [todayRes, upcomingRes, contactsRes, membersRes, completedRes, messagesRes] = await Promise.all([
+    supabase.from('appointments').select('*, contacts(*), calendars(*)').eq('workspace_id', workspaceId)
+      .in('status', ['confirmed', 'pending']).gte('start_time', todayStart.toISOString()).lte('start_time', todayEnd.toISOString())
+      .order('start_time', { ascending: true }),
+    supabase.from('appointments').select('*, contacts(*), calendars(*)').eq('workspace_id', workspaceId)
+      .in('status', ['confirmed', 'pending']).gte('start_time', now.toISOString()).lte('start_time', weekEnd.toISOString())
+      .order('start_time', { ascending: true }).limit(6),
+    supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
+    supabase.from('workspace_members').select('*', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
+    supabase.from('appointments').select('*', { count: 'exact', head: true }).eq('workspace_id', workspaceId).eq('status', 'completed'),
+    supabase.from('messages').select('*', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
+  ]);
+  // A failed read isn't cached (or shown as zeros).
+  const failed = [todayRes, upcomingRes, contactsRes, membersRes, completedRes, messagesRes].find((r) => r.error);
+  if (failed?.error) throw new Error(failed.error.message);
+  return {
+    todayAppointments: (todayRes.data ?? []) as DashboardAppointment[],
+    upcomingAppointments: (upcomingRes.data ?? []) as DashboardAppointment[],
+    contactCount: contactsRes.count ?? 0,
+    workspaceMemberCount: membersRes.count ?? 0,
+    completedCount: completedRes.count ?? 0,
+    messageCount: messagesRes.count ?? 0,
+  };
+}
+
 /** What the dashboard reads: a write to any of these refreshes it. */
 const DASHBOARD_TABLES = ['appointments', 'contacts', 'calendars', 'workspace_members', 'messages', 'spaces', 'space_members', 'form_submissions', 'forms', 'profiles'];
 
@@ -85,36 +143,13 @@ export function Dashboard() {
     const weekEnd = new Date(start);
     weekEnd.setDate(weekEnd.getDate() + 7);
 
-    const [todayRes, upcomingRes, contactsRes, membersRes, completedRes, messagesRes, spacesRes, activity, week] = await Promise.all([
-      supabase.from('appointments').select('*, contacts(*), calendars(*)').eq('workspace_id', workspaceId)
-        .in('status', ['confirmed', 'pending']).gte('start_time', todayStart.toISOString()).lte('start_time', todayEnd.toISOString())
-        .order('start_time', { ascending: true }),
-      supabase.from('appointments').select('*, contacts(*), calendars(*)').eq('workspace_id', workspaceId)
-        .in('status', ['confirmed', 'pending']).gte('start_time', start.toISOString()).lte('start_time', weekEnd.toISOString())
-        .order('start_time', { ascending: true }).limit(6),
-      supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
-      supabase.from('workspace_members').select('*', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
-      supabase.from('appointments').select('*', { count: 'exact', head: true }).eq('workspace_id', workspaceId).eq('status', 'completed'),
-      supabase.from('messages').select('*', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
+    const [summary, spacesRes, activity, week] = await Promise.all([
+      dashboardSummary(workspaceId, todayStart, todayEnd, start, weekEnd),
       listSpaces(workspaceId).catch(() => ({ data: [] as SpaceWithMembers[], error: null })),
       recentActivity(workspaceId).catch(() => [] as ActivityItem[]),
       weeklyActivity(workspaceId).catch(() => [] as DayCount[]),
     ]);
-
-    // A failed read isn't cached (or shown as zeros).
-    const failed = [todayRes, upcomingRes, contactsRes, membersRes, completedRes, messagesRes].find((r) => r.error);
-    if (failed?.error) throw new Error(failed.error.message);
-    return {
-      todayAppointments: (todayRes.data ?? []) as DashboardAppointment[],
-      upcomingAppointments: (upcomingRes.data ?? []) as DashboardAppointment[],
-      contactCount: contactsRes.count ?? 0,
-      workspaceMemberCount: membersRes.count ?? 0,
-      completedCount: completedRes.count ?? 0,
-      messageCount: messagesRes.count ?? 0,
-      spaces: spacesRes.data ?? [],
-      activity,
-      week,
-    };
+    return { ...summary, spaces: spacesRes.data ?? [], activity, week };
   }
 
   const askAI = (q: string) => navigate('/ai-hub' + (q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''));

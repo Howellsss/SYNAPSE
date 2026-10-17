@@ -7,6 +7,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { supabase } from '@/lib/supabase';
+import { withCache, tableTag, ttlMs } from '@/lib/cache';
 import { useRouter } from '@/lib/router';
 import { Avatar } from '@/components/ui/Avatar';
 import { TagPill } from '@/components/ui/StatusPills';
@@ -56,24 +57,46 @@ export function ContactDetailPage({ contactId }: { contactId: string }) {
   const nav = useMemo<ContactNav | null>(() => readContactNav(), []);
   const navIndex = nav ? nav.ids.indexOf(contactId) : -1;
 
+  // Cached briefly (any edit here refreshes it, see lib/cache): opening a contact again is instant.
+  const scope = useMemo(() => (user && workspace ? { userId: user.id, workspaceId: workspace.id } : null), [user, workspace]);
   const loadContact = useCallback(async () => {
-    const { data } = await supabase.from('contacts').select('*, contact_tags(tag_id, tags(*))').eq('id', contactId).maybeSingle();
-    setContact((data as ContactRow | null) ?? null);
-    return data as ContactRow | null;
-  }, [contactId]);
+    const fetchContact = async () => {
+      const { data, error } = await supabase.from('contacts').select('*, contact_tags(tag_id, tags(*))').eq('id', contactId).maybeSingle();
+      if (error) throw new Error(error.message);
+      return (data as ContactRow | null) ?? null;
+    };
+    const row = await (scope
+      ? withCache({ scope, key: ['contact', contactId], ttl: ttlMs('CONTACTS'), tags: ['contacts', 'contact_tags', 'tags'].map(tableTag) }, fetchContact, setContact)
+      : fetchContact()).catch(() => null);
+    setContact(row);
+    return row;
+  }, [contactId, scope]);
 
   const loadActivity = useCallback(async () => {
-    const [appts, msgs, nts, subs] = await Promise.all([
-      supabase.from('appointments').select('id, title, status, start_time, end_time, created_at, calendars(name)').eq('contact_id', contactId).order('start_time', { ascending: false }).limit(50),
-      supabase.from('messages').select('id, channel, direction, subject, body, status, error, created_at').eq('contact_id', contactId).order('created_at', { ascending: true }).limit(200),
-      supabase.from('notes').select('id, content, created_at, author_id').eq('contact_id', contactId).order('created_at', { ascending: true }).limit(200),
-      supabase.from('form_submissions').select('id, created_at, source, forms(name)').eq('contact_id', contactId).order('created_at', { ascending: false }).limit(50),
-    ]);
-    setAppointments((appts.data ?? []) as unknown as ApptRow[]);
-    setMessages((msgs.data ?? []) as MessageRow[]);
-    setNotes((nts.data ?? []) as NoteRow[]);
-    setSubmissions((subs.data ?? []) as unknown as SubmissionRow[]);
-  }, [contactId]);
+    type Activity = { appts: ApptRow[]; msgs: MessageRow[]; notes: NoteRow[]; subs: SubmissionRow[] };
+    const show = (a: Activity) => { setAppointments(a.appts); setMessages(a.msgs); setNotes(a.notes); setSubmissions(a.subs); };
+    const fetchActivity = async (): Promise<Activity> => {
+      const [appts, msgs, nts, subs] = await Promise.all([
+        supabase.from('appointments').select('id, title, status, start_time, end_time, created_at, calendars(name)').eq('contact_id', contactId).order('start_time', { ascending: false }).limit(50),
+        supabase.from('messages').select('id, channel, direction, subject, body, status, error, created_at').eq('contact_id', contactId).order('created_at', { ascending: true }).limit(200),
+        supabase.from('notes').select('id, content, created_at, author_id').eq('contact_id', contactId).order('created_at', { ascending: true }).limit(200),
+        supabase.from('form_submissions').select('id, created_at, source, forms(name)').eq('contact_id', contactId).order('created_at', { ascending: false }).limit(50),
+      ]);
+      const failed = [appts, msgs, nts, subs].find((r) => r.error);
+      if (failed?.error) throw new Error(failed.error.message);
+      return {
+        appts: (appts.data ?? []) as unknown as ApptRow[],
+        msgs: (msgs.data ?? []) as MessageRow[],
+        notes: (nts.data ?? []) as NoteRow[],
+        subs: (subs.data ?? []) as unknown as SubmissionRow[],
+      };
+    };
+    try {
+      show(await (scope
+        ? withCache({ scope, key: ['contact-activity', contactId], ttl: ttlMs('CONTACTS'), tags: ['appointments', 'messages', 'notes', 'form_submissions', 'calendars', 'forms'].map(tableTag) }, fetchActivity, show)
+        : fetchActivity()));
+    } catch { /* keeps what's shown */ }
+  }, [contactId, scope]);
 
   useEffect(() => {
     let cancelled = false;

@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { withCache, tableTag, ttlMs } from '@/lib/cache';
 import { UPLOAD_CACHE } from '@/lib/cache/config';
 import { useToast } from '@/context/ToastContext';
 import { Avatar } from '@/components/ui/Avatar';
@@ -62,23 +63,37 @@ const LANGUAGES = [
 // Helper: load/save workspace settings by category
 // ============================================================
 function useWorkspaceSettings(category: string) {
-  const { workspace } = useAuth();
+  const { workspace, user } = useAuth();
   const { toast } = useToast();
   const [settings, setSettings] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
 
+  const userId = user?.id ?? null;
   const load = useCallback(async () => {
-    if (!workspace) { setLoading(false); return; }
+    if (!workspace || !userId) { setLoading(false); return; }
     setLoading(true);
-    const { data } = await supabase
-      .from('workspace_settings')
-      .select('settings')
-      .eq('workspace_id', workspace.id)
-      .eq('category', category)
-      .maybeSingle();
-    setSettings((data?.settings as Record<string, unknown>) ?? {});
-    setLoading(false);
-  }, [workspace, category]);
+    const workspaceId = workspace.id;
+    const show = (v: Record<string, unknown>) => { setSettings(v); setLoading(false); };
+    try {
+      // Switching between settings tabs (and back) doesn't read them again; saving refreshes them.
+      show(await withCache(
+        { scope: { userId, workspaceId }, key: ['settings', category], ttl: ttlMs('SETTINGS'), tags: [tableTag('workspace_settings')] },
+        async () => {
+          const { data, error } = await supabase
+            .from('workspace_settings')
+            .select('settings')
+            .eq('workspace_id', workspaceId)
+            .eq('category', category)
+            .maybeSingle();
+          if (error) throw new Error(error.message);
+          return (data?.settings as Record<string, unknown>) ?? {};
+        },
+        show,
+      ));
+    } catch {
+      show({});
+    }
+  }, [workspace, userId, category]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -988,20 +1003,32 @@ function WebhooksSettings() {
 // Billing Settings
 // ============================================================
 function BillingSettings() {
-  const { workspace } = useAuth();
+  const { workspace, user } = useAuth();
   const [counts, setCounts] = useState({ contacts: 0, appointments: 0, forms: 0 });
   const [plan, setPlan] = useState('free');
 
+  const workspaceId = workspace?.id ?? null;
+  const userId = user?.id ?? null;
   useEffect(() => {
-    if (!workspace) return;
-    Promise.all([
-      supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('workspace_id', workspace.id),
-      supabase.from('appointments').select('*', { count: 'exact', head: true }).eq('workspace_id', workspace.id),
-      supabase.from('forms').select('*', { count: 'exact', head: true }).eq('workspace_id', workspace.id),
-    ]).then(([c, a, f]) => {
-      setCounts({ contacts: c.count ?? 0, appointments: a.count ?? 0, forms: f.count ?? 0 });
-    });
-  }, [workspace]);
+    if (!workspaceId || !userId) return;
+    let alive = true;
+    const show = (c: { contacts: number; appointments: number; forms: number }) => { if (alive) setCounts(c); };
+    withCache(
+      { scope: { userId, workspaceId }, key: ['usage-counts'], ttl: ttlMs('SETTINGS'), tags: ['contacts', 'appointments', 'forms'].map(tableTag) },
+      async () => {
+        const [c, a, f] = await Promise.all([
+          supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
+          supabase.from('appointments').select('*', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
+          supabase.from('forms').select('*', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
+        ]);
+        const failed = [c, a, f].find((r) => r.error);
+        if (failed?.error) throw new Error(failed.error.message);
+        return { contacts: c.count ?? 0, appointments: a.count ?? 0, forms: f.count ?? 0 };
+      },
+      show,
+    ).then(show, () => { /* shows zeros, as before */ });
+    return () => { alive = false; };
+  }, [workspaceId, userId]);
 
   const plans = [
     { id: 'free', name: 'Free', price: '$0', limits: '100 contacts, 1 calendar' },

@@ -23,6 +23,10 @@ const DEFAULT_TTL = {
   SPACES: 60,
   /** Forms with their submission counts (submissions arrive from outside, so kept shortish). */
   FORMS: 60,
+  /** Workflows and how many runs are in progress (runs move on the server). */
+  WORKFLOWS: 30,
+  /** Settings: profile, workspace, team (changed here, or rarely elsewhere). */
+  SETTINGS: 120,
 } as const;
 
 export type TtlName = keyof typeof DEFAULT_TTL;
