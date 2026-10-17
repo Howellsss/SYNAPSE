@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { UPLOAD_CACHE } from '@/lib/cache/config';
 import { useToast } from '@/context/ToastContext';
 import { Avatar } from '@/components/ui/Avatar';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -178,7 +179,7 @@ function ProfileSettings() {
       const path = `avatars/${user.id}.${ext}`;
       const { error: upErr } = await supabase.storage
         .from('avatars')
-        .upload(path, file, { upsert: true });
+        .upload(path, file, { upsert: true, cacheControl: UPLOAD_CACHE });
       if (upErr) throw upErr;
       const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
       const publicUrl = `${urlData.publicUrl}?t=${Date.now()}`;
@@ -310,7 +311,7 @@ function WorkspaceSettings() {
       const path = `logos/${workspace.id}.${ext}`;
       const { error: upErr } = await supabase.storage
         .from('workspace-logos')
-        .upload(path, file, { upsert: true });
+        .upload(path, file, { upsert: true, cacheControl: UPLOAD_CACHE });
       if (upErr) throw upErr;
       const { data: urlData } = supabase.storage.from('workspace-logos').getPublicUrl(path);
       const publicUrl = `${urlData.publicUrl}?t=${Date.now()}`;

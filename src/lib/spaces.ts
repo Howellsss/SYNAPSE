@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { UPLOAD_CACHE } from '@/lib/cache/config';
 import { sendInvitations } from '@/lib/invitations';
 import { sizingFor } from '@/spatial/data/sizing';
 import type {
@@ -199,7 +200,7 @@ export async function listCalendars(workspaceId: string, userId: string): Promis
 export async function uploadSpaceLogo(workspaceId: string, file: File): Promise<{ url: string | null; error: string | null }> {
   const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
   const path = `spaces/${workspaceId}/${crypto.randomUUID()}.${ext}`;
-  const { error } = await supabase.storage.from('workspace-logos').upload(path, file, { upsert: false, contentType: file.type });
+  const { error } = await supabase.storage.from('workspace-logos').upload(path, file, { upsert: false, contentType: file.type, cacheControl: UPLOAD_CACHE });
   if (error) return { url: null, error: error.message };
   const { data } = supabase.storage.from('workspace-logos').getPublicUrl(path);
   return { url: data.publicUrl, error: null };

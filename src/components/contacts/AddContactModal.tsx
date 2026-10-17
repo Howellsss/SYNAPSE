@@ -3,6 +3,7 @@ import { User, Pencil, Trash2, Plus, Mail, MessageSquare, Smartphone, PhoneIncom
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { supabase } from '@/lib/supabase';
+import { UPLOAD_CACHE } from '@/lib/cache/config';
 import { Modal } from '@/components/ui/Modal';
 import { TimezoneSelect } from '@/components/ui/TimezoneSelect';
 import { cn } from '@/lib/utils';
@@ -130,7 +131,7 @@ export function AddContactModal({ onClose, onAdded }: { onClose: () => void; onA
     if (imageFile) {
       const ext = imageFile.name.split('.').pop()?.toLowerCase() || 'jpg';
       const path = `contacts/${workspace.id}/${crypto.randomUUID()}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from('avatars').upload(path, imageFile, { contentType: imageFile.type });
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(path, imageFile, { contentType: imageFile.type, cacheControl: UPLOAD_CACHE });
       if (uploadError) {
         toast(`Couldn't upload the image: ${uploadError.message}`, 'error');
         setSaving(false);

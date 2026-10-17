@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { withCache, tableTag, ttlMs } from '@/lib/cache';
 import { useToast } from '@/context/ToastContext';
 import { Avatar } from '@/components/ui/Avatar';
 import { TagPill } from '@/components/ui/StatusPills';
@@ -19,8 +20,15 @@ import type { Contact, Tag as TagType, SmartList } from '@/types';
 
 const PAGE_SIZE = 10;
 
+interface ContactsResult {
+  contacts: (Contact & { tags: TagType[] })[];
+  total: number;
+  newThisMonth: number;
+  withAppointments: number;
+}
+
 export function ContactsPage() {
-  const { workspace } = useAuth();
+  const { workspace, user } = useAuth();
   const { toast } = useToast();
   const [contacts, setContacts] = useState<(Contact & { tags: TagType[] })[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,25 +58,33 @@ export function ContactsPage() {
   };
 
   const loadContacts = useCallback(async () => {
-    if (!workspace) { setLoading(false); return; }
+    if (!workspace || !user) { setLoading(false); return; }
     setLoading(true);
     setError(false);
+    const workspaceId = workspace.id;
+    const smartList = activeSmartList ? smartLists.find((sl) => sl.id === activeSmartList) : undefined;
 
-    let query = supabase
-      .from('contacts')
-      .select('*, contact_tags(tag_id, tags(*))', { count: 'exact' })
-      .eq('workspace_id', workspace.id);
+    const show = (r: ContactsResult) => {
+      setNewThisMonth(r.newThisMonth);
+      setWithAppointments(r.withAppointments);
+      setContacts(r.contacts);
+      setTotal(r.total);
+      setLoading(false);
+    };
+    const fetchContacts = async (): Promise<ContactsResult> => {
+      let query = supabase
+        .from('contacts')
+        .select('*, contact_tags(tag_id, tags(*))', { count: 'exact' })
+        .eq('workspace_id', workspaceId);
 
-    if (search) {
-      query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%`);
-    }
+      if (search) {
+        query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%`);
+      }
 
-    if (activeTag) {
-      query = query.filter('contact_tags.tag_id', 'eq', activeTag);
-    }
+      if (activeTag) {
+        query = query.filter('contact_tags.tag_id', 'eq', activeTag);
+      }
 
-    if (activeSmartList) {
-      const smartList = smartLists.find((sl) => sl.id === activeSmartList);
       if (smartList?.rules) {
         for (const rule of smartList.rules) {
           if (rule.operator === 'equals') {
@@ -80,44 +96,55 @@ export function ContactsPage() {
           }
         }
       }
-    }
 
-    const { data, error, count } = await query
-      .order('created_at', { ascending: false })
-      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+      const { data, error, count } = await query
+        .order('created_at', { ascending: false })
+        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+      if (error) throw new Error(error.message);
 
-    if (error) {
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+      const [monthResult, appointmentsResult] = await Promise.all([
+        supabase
+          .from('contacts')
+          .select('*', { count: 'exact', head: true })
+          .eq('workspace_id', workspaceId)
+          .gte('created_at', monthStart.toISOString()),
+        supabase
+          .from('appointments')
+          .select('*', { count: 'exact', head: true })
+          .eq('workspace_id', workspaceId),
+      ]);
+
+      return {
+        contacts: (data ?? []).map((c) => ({
+          ...c,
+          tags: (c as unknown as { contact_tags: { tags: TagType }[] }).contact_tags?.map((ct) => ct.tags) ?? [],
+        })),
+        total: count ?? 0,
+        newThisMonth: monthResult.count ?? 0,
+        withAppointments: appointmentsResult.count ?? 0,
+      };
+    };
+
+    try {
+      // Cached per page, search, tag and smart list (the list's rules too, so editing it refreshes).
+      show(await withCache(
+        {
+          scope: { userId: user.id, workspaceId },
+          key: ['contacts', page, search, activeTag, activeSmartList, smartList?.rules ?? null],
+          ttl: ttlMs('CONTACTS'),
+          tags: ['contacts', 'contact_tags', 'tags', 'appointments'].map(tableTag),
+        },
+        fetchContacts,
+        show,
+      ));
+    } catch {
       setError(true);
       setLoading(false);
-      return;
     }
-
-    const monthStart = new Date();
-    monthStart.setDate(1);
-    monthStart.setHours(0, 0, 0, 0);
-    const [monthResult, appointmentsResult] = await Promise.all([
-      supabase
-        .from('contacts')
-        .select('*', { count: 'exact', head: true })
-        .eq('workspace_id', workspace.id)
-        .gte('created_at', monthStart.toISOString()),
-      supabase
-        .from('appointments')
-        .select('*', { count: 'exact', head: true })
-        .eq('workspace_id', workspace.id),
-    ]);
-
-    const formatted = (data ?? []).map((c) => ({
-      ...c,
-      tags: (c as unknown as { contact_tags: { tags: TagType }[] }).contact_tags?.map((ct) => ct.tags) ?? [],
-    }));
-
-    setNewThisMonth(monthResult.count ?? 0);
-    setWithAppointments(appointmentsResult.count ?? 0);
-    setContacts(formatted);
-    setTotal(count ?? 0);
-    setLoading(false);
-  }, [workspace, search, page, activeSmartList, activeTag, smartLists]);
+  }, [workspace, user, search, page, activeSmartList, activeTag, smartLists]);
 
   useEffect(() => {
     loadContacts();

@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useRouter } from '@/lib/router';
 import { supabase } from '@/lib/supabase';
+import { withCache, tableTag, ttlMs } from '@/lib/cache';
 import { listSpaces, type SpaceWithMembers } from '@/lib/spaces';
 import { spaceTypeInfo } from '@/spatial/data/spaceTypes';
 import { templateInfo } from '@/spatial/data/templates';
@@ -31,7 +32,7 @@ import type { Profile } from '@/types';
 type MemberProfile = Pick<Profile, 'user_id' | 'first_name' | 'last_name' | 'avatar_url'>;
 
 export function WorkspacesPage() {
-  const { workspace, profile, canManageTeam } = useAuth();
+  const { workspace, profile, canManageTeam, user } = useAuth();
   // Your character downloads while you're here, so you appear as it the moment you enter.
   const avatarConfig = profile?.avatar_config;
   const fetchedFor = useRef<unknown>(undefined);
@@ -51,19 +52,32 @@ export function WorkspacesPage() {
   const [devicesOpen, setDevicesOpen] = useState(false);
   const online = usePresenceCounts(spaces?.map((s) => s.id) ?? []);
 
+  const userId = user?.id ?? null;
   const load = useCallback(async () => {
-    if (!workspace) return;
+    if (!workspace || !userId) return;
     setError(null);
-    const { data, error: err } = await listSpaces(workspace.id);
-    if (err) { setError(err); setSpaces([]); return; }
-    setSpaces(data);
-    const ids = [...new Set(data.flatMap((s) => s.memberIds))];
-    if (ids.length) {
-      // Only profiles this user may read come back; others show as a count.
-      const { data: profs } = await supabase.from('profiles').select('user_id, first_name, last_name, avatar_url').in('user_id', ids);
-      setPeople(Object.fromEntries(((profs ?? []) as MemberProfile[]).map((p) => [p.user_id, p])));
+    const workspaceId = workspace.id;
+    const show = (r: { spaces: SpaceWithMembers[]; people: Record<string, MemberProfile> }) => { setSpaces(r.spaces); setPeople(r.people); };
+    try {
+      show(await withCache(
+        { scope: { userId, workspaceId }, key: ['spaces'], ttl: ttlMs('SPACES'), tags: ['spaces', 'space_members', 'profiles'].map(tableTag) },
+        async () => {
+          const { data, error: err } = await listSpaces(workspaceId);
+          if (err) throw new Error(err);
+          const ids = [...new Set(data.flatMap((s) => s.memberIds))];
+          // Only profiles this user may read come back; others show as a count.
+          const { data: profs } = ids.length
+            ? await supabase.from('profiles').select('user_id, first_name, last_name, avatar_url').in('user_id', ids)
+            : { data: [] };
+          return { spaces: data, people: Object.fromEntries(((profs ?? []) as MemberProfile[]).map((p) => [p.user_id, p])) };
+        },
+        show,
+      ));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setSpaces([]);
     }
-  }, [workspace]);
+  }, [workspace, userId]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {

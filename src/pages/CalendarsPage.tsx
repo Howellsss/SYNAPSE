@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { withCache, tableTag, ttlMs } from '@/lib/cache';
 import { useToast } from '@/context/ToastContext';
 import { Avatar } from '@/components/ui/Avatar';
 import { Drawer } from '@/components/ui/Drawer';
@@ -111,43 +112,44 @@ export function CalendarsPage() {
   const isMobile = useIsMobile();
 
   const loadData = useCallback(async () => {
-    if (!workspace && !user) { setLoading(false); return; }
+    if (!workspace || !user) { setLoading(false); return; }
     setLoading(true);
     setError(false);
-    const filters: string[] = [];
-    if (workspace) filters.push(`workspace_id.eq.${workspace.id}`);
-    if (user) filters.push(`owner_id.eq.${user.id}`);
-    const orFilter = filters.join(',');
-    let calQuery = supabase.from('calendars').select('*').order('created_at', { ascending: false });
-    if (orFilter) calQuery = calQuery.or(orFilter);
+    const workspaceId = workspace.id;
+    const userId = user.id;
+    const show = (r: { calendars: CalendarType[]; appointments: AppointmentWithRelations[] }) => {
+      setCalendars(r.calendars);
+      setAppointments(r.appointments);
+      setVisibleCalendars(new Set(r.calendars.map((c) => c.id)));
+      setLoading(false);
+    };
+    try {
+      show(await withCache(
+        { scope: { userId, workspaceId }, key: ['calendar-view'], ttl: ttlMs('CALENDARS'), tags: ['calendars', 'appointments', 'contacts'].map(tableTag) },
+        async () => {
+          const calRes = await supabase.from('calendars').select('*').order('created_at', { ascending: false })
+            .or(`workspace_id.eq.${workspaceId},owner_id.eq.${userId}`);
+          if (calRes.error) throw new Error(calRes.error.message);
+          const calData = (calRes.data ?? []) as CalendarType[];
+          const calIds = calData.map(c => c.id);
 
-    const calRes = await calQuery;
-    if (calRes.error) {
+          let apptQuery = supabase
+            .from('appointments')
+            .select('*, contacts(*), calendars(*)')
+            .order('start_time', { ascending: true });
+          if (calIds.length > 0) apptQuery = apptQuery.in('calendar_id', calIds);
+          else apptQuery = apptQuery.eq('calendar_id', '00000000-0000-0000-0000-000000000000');
+
+          const apptRes = await apptQuery;
+          if (apptRes.error) throw new Error(apptRes.error.message);
+          return { calendars: calData, appointments: (apptRes.data ?? []) as AppointmentWithRelations[] };
+        },
+        show,
+      ));
+    } catch {
       setError(true);
       setLoading(false);
-      return;
     }
-    const calData = (calRes.data ?? []) as CalendarType[];
-    const calIds = calData.map(c => c.id);
-
-    let apptQuery = supabase
-      .from('appointments')
-      .select('*, contacts(*), calendars(*)')
-      .order('start_time', { ascending: true });
-    if (calIds.length > 0) apptQuery = apptQuery.in('calendar_id', calIds);
-    else apptQuery = apptQuery.eq('calendar_id', '00000000-0000-0000-0000-000000000000');
-
-    const apptRes = await apptQuery;
-    if (apptRes.error) {
-      setError(true);
-      setLoading(false);
-      return;
-    }
-    const apptData = (apptRes.data ?? []) as AppointmentWithRelations[];
-    setCalendars(calData);
-    setAppointments(apptData);
-    setVisibleCalendars(new Set(calIds));
-    setLoading(false);
   }, [workspace, user]);
 
   useEffect(() => { loadData(); }, [loadData]);

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
+import { UPLOAD_CACHE } from '@/lib/cache/config';
 import { PublicGroupCalendarPage } from '@/components/calendar/PublicGroupCalendarPage';
 import { FormRenderer } from '@/components/forms/FormRenderer';
 import { deserializeDefinition } from '@/lib/form-definition';
@@ -442,7 +443,7 @@ function ImageField({ label, hint, value, onChange, folder }: {
     setUploading(true);
     const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
     const path = `group-pages/${folder}/${crypto.randomUUID()}.${ext}`;
-    const { error: uploadError } = await supabase.storage.from(PANEL_IMAGE_BUCKET).upload(path, file, { contentType: file.type });
+    const { error: uploadError } = await supabase.storage.from(PANEL_IMAGE_BUCKET).upload(path, file, { contentType: file.type, cacheControl: UPLOAD_CACHE });
     setUploading(false);
     if (uploadError) { setError(`Upload failed: ${uploadError.message}`); return; }
     onChange(supabase.storage.from(PANEL_IMAGE_BUCKET).getPublicUrl(path).data.publicUrl);
