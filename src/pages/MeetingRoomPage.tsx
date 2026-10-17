@@ -26,7 +26,7 @@ import { CallNotices } from '@/components/spaces/room/CallNotices';
 import { Popover } from '@/components/spaces/room/Popover';
 import { AnnotationLayer } from '@/components/meetings/AnnotationLayer';
 import { AudioButton, ToolButton, VideoButton, darkItem, darkPanel } from '@/components/meetings/MeetingControls';
-import { BackgroundsPanel, CaptionsOverlay, ChatPanel, ParticipantsPanel, PollsPanel, TranscriptPanel, type ChatLine } from '@/components/meetings/MeetingPanels';
+import { BackgroundsPanel, CaptionsOverlay, ChatPanel, LanguageSettings, ParticipantsPanel, PollsPanel, TranscriptPanel, type ChatLine } from '@/components/meetings/MeetingPanels';
 import { useCaptions } from '@/meetings/useCaptions';
 import { useRecorder } from '@/meetings/useRecorder';
 import { documentPip, openPopout } from '@/meetings/popout';
@@ -1078,7 +1078,7 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
           <Popover
             className="hidden lg:block"
             label="Captions"
-            panelClassName={cn('bottom-full left-1/2 mb-3 w-64 -translate-x-1/2', darkPanel)}
+            panelClassName={cn('bottom-full left-1/2 mb-3 w-72 -translate-x-1/2', darkPanel)}
             trigger={({ open, toggle }) => <ToolButton label="Captions" icon={<CaptionsIcon className="h-[22px] w-[22px]" />} pressed={captions.on} aria-expanded={open} aria-haspopup="menu" onClick={toggle} />}
           >
             {(close) => (
@@ -1088,6 +1088,8 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
                   : <button role="menuitem" className={darkItem} onClick={() => { close(); captions.turnOn(); }}><CaptionsIcon className="h-4 w-4" /> Turn on captions</button>}
                 {captions.on && <button role="menuitem" className={darkItem} onClick={() => { close(); captions.setShown(!captions.shown); }}>{captions.shown ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />} {captions.shown ? 'Hide captions on my screen' : 'Show captions'}</button>}
                 <button role="menuitem" className={darkItem} onClick={() => { close(); openPanel('transcript'); }}><FileText className="h-4 w-4" /> View full transcript</button>
+                <div className="my-1 h-px bg-sand" />
+                <LanguageSettings captions={captions} className="px-3 py-2" />
               </>
             )}
           </Popover>

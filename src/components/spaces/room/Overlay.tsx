@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import {
   LocateFixed, ZoomIn, ZoomOut, Map as MapIcon, Gauge, PencilRuler, Mic, MicOff, Video, VideoOff, MonitorUp,
-  SmilePlus, Hand, MessageSquare, Megaphone, MoreHorizontal, PhoneOff, Settings2, Check, Wifi, WifiOff, Loader2, Shirt, Box, Square, Hammer,
+  Captions as CaptionsIcon, SmilePlus, Hand, MessageSquare, Megaphone, MoreHorizontal, PhoneOff, Settings2, Check, Wifi, WifiOff, Loader2, Shirt, Box, Square, Hammer,
   Footprints, Zap, Music,
 } from 'lucide-react';
 import type { ConnectionState } from '@/spatial/net/status';
@@ -11,6 +11,8 @@ import { SHORTCUTS } from '@/spatial/media/shortcuts';
 import type { GraphicsQuality } from '@/spatial/quality';
 import { cn } from '@/lib/utils';
 import { Popover } from './Popover';
+import type { Captions } from '@/meetings/useCaptions';
+import { LanguageSettings } from '@/components/meetings/MeetingPanels';
 import { menuItem } from './styles';
 
 // ---------------------------------------------------------------- right toolbar
@@ -219,7 +221,7 @@ function ActionMenu({ mode, onMode, onDance }: {
   );
 }
 
-export function ControlBar({ call, onLeave, onSettings, onReact, handRaised, onHand, moveMode = 'walk', onMoveMode, onDance }: {
+export function ControlBar({ call, onLeave, onSettings, onReact, handRaised, onHand, moveMode = 'walk', onMoveMode, onDance, captions }: {
   call: Pick<LiveKitRoom, 'micOn' | 'camOn' | 'screenOn' | 'pending' | 'toggleMic' | 'toggleCam' | 'startScreenShare' | 'stopScreenShare'>;
   onLeave: () => void;
   onSettings: () => void;
@@ -229,6 +231,8 @@ export function ControlBar({ call, onLeave, onSettings, onReact, handRaised, onH
   moveMode?: MoveMode;
   onMoveMode?: (m: MoveMode) => void;
   onDance?: () => void;
+  /** Captions and translation for the people you're talking to. */
+  captions?: Captions;
 }) {
   const { micOn: mic, camOn: cam, screenOn: sharing, pending } = call;
   const share = () => (sharing ? call.stopScreenShare() : call.startScreenShare());
@@ -262,7 +266,7 @@ export function ControlBar({ call, onLeave, onSettings, onReact, handRaised, onH
       <BarButton label="Bring your team over" className="hidden sm:flex"><Megaphone className="h-5 w-5" /></BarButton>
       <Popover
         label="More"
-        panelClassName="bottom-full right-0 mb-2 w-52"
+        panelClassName="bottom-full right-0 mb-2 w-72"
         trigger={({ open, toggle }) => <BarButton label="More" pressed={open} onClick={toggle}><MoreHorizontal className="h-5 w-5" /></BarButton>}
       >
         {(close) => (
@@ -271,6 +275,15 @@ export function ControlBar({ call, onLeave, onSettings, onReact, handRaised, onH
             <button role="menuitem" className={cn(menuItem, 'sm:hidden')} onClick={() => { setChat(!chat); close(); }}><MessageSquare className="h-4 w-4 text-gold-600" /> Chat</button>
             <button role="menuitem" className={cn(menuItem, 'sm:hidden')} onClick={close}><Megaphone className="h-4 w-4 text-gold-600" /> Bring your team over</button>
             <button role="menuitem" className={menuItem} onClick={() => { close(); onSettings(); }}><Settings2 className="h-4 w-4 text-gold-600" /> Camera & mic settings</button>
+            {captions && (
+              <>
+                <button role="menuitem" className={menuItem} onClick={() => { close(); if (captions.on) captions.turnOff(); else captions.turnOn(); }}>
+                  <CaptionsIcon className="h-4 w-4 text-gold-600" /> {captions.on ? 'Turn off captions' : 'Turn on captions'}
+                </button>
+                <div className="my-1 h-px bg-ivory-100" />
+                <LanguageSettings captions={captions} className="px-3 py-2" />
+              </>
+            )}
           </>
         )}
       </Popover>

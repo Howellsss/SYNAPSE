@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Ban, BarChart3, Captions as CaptionsIcon, CaptionsOff, Copy, Download, Droplet, Droplets, Hand, ImagePlus, Mic, MicOff, Plus, Send, UserMinus, Video, VideoOff, X } from 'lucide-react';
+import { AudioLines, Ban, BarChart3, Captions as CaptionsIcon, Languages, CaptionsOff, Copy, Download, Droplet, Droplets, Hand, ImagePlus, Mic, MicOff, Plus, Send, UserMinus, Video, VideoOff, X } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { MAX_CHAT } from '@/meetings/messages';
 import { MAX_OPTION, MAX_OPTIONS, MAX_QUESTION, percent } from '@/meetings/polls';
@@ -8,6 +8,7 @@ import { PRESETS, paintPreset, type BackgroundChoice } from '@/meetings/backgrou
 import type { Background } from '@/meetings/useBackground';
 import type { Captions } from '@/meetings/useCaptions';
 import { transcriptText } from '@/meetings/captions';
+import { Interpreter, LANGUAGES, languageName } from '@/meetings/translate';
 import { cn } from '@/lib/utils';
 
 export interface ChatLine {
@@ -317,6 +318,7 @@ export function TranscriptPanel({ captions, title, startedAt, onClose }: { capti
           : <button type="button" onClick={captions.turnOn} className="btn-primary flex-1"><CaptionsIcon className="h-4 w-4" /> Start captions</button>}
         <button type="button" onClick={download} disabled={!captions.transcript.length} className="btn-secondary flex-1 disabled:opacity-50"><Download className="h-4 w-4" /> Save .txt</button>
       </div>
+      <LanguageSettings captions={captions} className="border-b border-sand p-3" />
       {captions.problem && <p role="alert" className="mx-3 mt-3 rounded-lg bg-gold-50 px-3 py-2 text-xs text-navy-900 ring-1 ring-inset ring-gold-200">{captions.problem}</p>}
       <div ref={listRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4" aria-live="polite">
         {!captions.transcript.length && (
@@ -327,7 +329,8 @@ export function TranscriptPanel({ captions, title, startedAt, onClose }: { capti
         {captions.transcript.map((l) => (
           <div key={l.id}>
             <span className="text-[11px] text-ivory-700">{l.name} · {time(l.at)}</span>
-            <p className="text-sm text-navy-900">{l.text}</p>
+            <p className="text-sm text-navy-900">{l.translated ?? l.text}</p>
+            {l.translated && <p className="mt-0.5 text-xs italic text-ivory-700" lang={l.lang}>{languageName(l.lang ?? '')}: {l.text}</p>}
           </div>
         ))}
       </div>
@@ -335,16 +338,63 @@ export function TranscriptPanel({ captions, title, startedAt, onClose }: { capti
   );
 }
 
-/** Captions over the bottom of the call, like subtitles. */
-export function CaptionsOverlay({ captions }: { captions: Captions }) {
-  if (!captions.on || !captions.shown || !captions.live.length) return null;
+/**
+ * My language, and hearing others in it: the language I speak (my captions are made in it, and
+ * everyone else's are translated into it) and the interpreter voice.
+ */
+export function LanguageSettings({ captions, className, dark }: { captions: Captions; className?: string; dark?: boolean }) {
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-12 z-20 flex justify-center px-4" data-captions>
-      <div className="max-w-3xl space-y-1 rounded-xl bg-navy-900/85 px-4 py-2.5 text-center text-white shadow-popover backdrop-blur">
-        {captions.live.map((c) => (
-          <p key={c.who + c.at} className="text-[15px] leading-snug"><span className="font-semibold text-gold-300">{c.name}: </span>{c.text}</p>
-        ))}
-      </div>
+    <div className={cn('space-y-2', className)}>
+      <label className={cn('flex items-center gap-2 text-sm font-medium', dark ? 'text-white' : 'text-navy-900')}>
+        <Languages className="h-4 w-4 shrink-0 text-gold-500" />
+        <span className="flex-1">I speak</span>
+        <select
+          value={captions.language}
+          onChange={(e) => captions.setLanguage(e.target.value)}
+          className={cn('rounded-lg px-2 py-1 text-sm ring-1 ring-inset', dark ? 'bg-navy-800 text-white ring-white/20' : 'bg-white text-navy-900 ring-navy-100')}
+          aria-label="The language I speak"
+        >
+          {LANGUAGES.map((l) => <option key={l.code} value={l.code}>{l.name}</option>)}
+        </select>
+      </label>
+      {Interpreter.supported() && (
+        <label className={cn('flex cursor-pointer items-center gap-2 text-sm font-medium', dark ? 'text-white' : 'text-navy-900')}>
+          <AudioLines className="h-4 w-4 shrink-0 text-gold-500" />
+          <span className="flex-1">Hear others in {languageName(captions.language)}</span>
+          <input type="checkbox" className="h-4 w-4 accent-gold-500" checked={captions.interpreter} onChange={(e) => captions.setInterpreter(e.target.checked)} />
+        </label>
+      )}
+      <p className={cn('text-xs leading-relaxed', dark ? 'text-white/60' : 'text-ivory-700')}>
+        {captions.translates
+          ? 'Everyone else is shown (and, with the switch on, read aloud) in your language. Translation happens on your computer.'
+          : "This browser can't translate. Chrome or Edge can; until then you see what people say as they say it."}
+      </p>
+    </div>
+  );
+}
+
+/** Captions over the bottom of the call, like subtitles: in my language, with what was said underneath. */
+export function CaptionsOverlay({ captions }: { captions: Captions }) {
+  if (!captions.on || !captions.shown) return null;
+  const pending = captions.pending;
+  if (!captions.live.length && !pending) return null;
+  return (
+    <div className="absolute inset-x-0 bottom-12 z-20 flex flex-col items-center gap-2 px-4" data-captions>
+      {pending && (
+        <button type="button" onClick={captions.enableTranslation} className="inline-flex items-center gap-1.5 rounded-full bg-gold-400 px-3 py-1.5 text-xs font-semibold text-navy-900 shadow-popover hover:bg-gold-300">
+          <Languages className="h-3.5 w-3.5" /> Translate {languageName(pending)} into {languageName(captions.language)}
+        </button>
+      )}
+      {captions.live.length > 0 && (
+        <div className="pointer-events-none max-w-3xl space-y-1.5 rounded-xl bg-navy-900/85 px-4 py-2.5 text-center text-white shadow-popover backdrop-blur">
+          {captions.live.map((c) => (
+            <div key={c.who + c.at}>
+              <p className="text-[15px] leading-snug"><span className="font-semibold text-gold-300">{c.name}: </span>{c.text}</p>
+              {c.original && <p className="text-[12px] italic leading-snug text-white/55" lang={c.lang}>{c.original}</p>}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

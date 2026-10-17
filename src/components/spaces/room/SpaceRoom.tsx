@@ -34,6 +34,9 @@ import { useMediaPrefs } from '@/spatial/media/useMediaPrefs';
 import { CallNotices } from './CallNotices';
 import { VideoStrip } from './VideoStrip';
 import { CallStage, SelfView } from './CallStage';
+import { useMeetingBus } from '@/meetings/useMeetingBus';
+import { useCaptions } from '@/meetings/useCaptions';
+import { CaptionsOverlay } from '@/components/meetings/MeetingPanels';
 import { KIT_BY_ID } from '@/spatial/scene/campus/kit';
 import { FloorMap } from './FloorMap';
 import { PeoplePanel, PeopleCountButton } from './PeoplePanel';
@@ -258,6 +261,10 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
   // video disconnect, so nobody hears or sees you without knowing it and your camera and microphone
   // are free for a meeting. Coming back reconnects them.
   const call = useLiveKitRoom(dock.docked ? null : space.id, { prefs: media, onNotice: (m, tone) => toast(m, tone ?? 'info') });
+  // Captions and translation in workspace calls, over the call's own data channel.
+  const bus = useMeetingBus(call.room);
+  const captionNames = useMemo(() => Object.fromEntries(shown.map((p) => [p.userId, p.name])), [shown]);
+  const captions = useCaptions({ bus, room: call.room, me: user?.id ?? '', myName: name, micOn: call.micOn, names: captionNames });
   const stageMe = { id: user?.id ?? '', name, avatarUrl: profile?.avatar_url ?? null, micOn: call.micOn, camera: call.localTracks.camera };
   useCallShortcuts({ mic: () => { void call.toggleMic(); }, cam: () => { void call.toggleCam(); } }, !dock.docked);
   // Movement rides on the call once it's connected (see useSpaceChannel).
@@ -643,6 +650,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
         ))}
 
         <CallNotices call={call} onOpenSettings={() => setDevicesOpen(true)} />
+        <div className="pointer-events-none absolute inset-x-0 bottom-16 z-[22] [&>*]:pointer-events-auto"><div className="relative h-0"><CaptionsOverlay captions={captions} /></div></div>
 
         <div className="absolute inset-x-0 bottom-4 z-[21] flex justify-center px-3">
           <ControlBar
@@ -655,6 +663,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
             moveMode={moveMode}
             onMoveMode={changeMoveMode}
             onDance={() => sceneControls.current?.dance()}
+            captions={captions}
           />
         </div>
 
