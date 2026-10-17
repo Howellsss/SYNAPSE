@@ -8,7 +8,7 @@ export const MAX_LINE = 500;
 
 export type CaptionMsg =
   | { t: 'state'; on: boolean }
-  | { t: 'line'; id: string; text: string; final: boolean };
+  | { t: 'line'; id: string; text: string; final: boolean; lang?: string };
 
 export interface TranscriptLine {
   id: string;
@@ -16,6 +16,9 @@ export interface TranscriptLine {
   name: string;
   text: string;
   at: number;
+  /** The language it was said in, and the words in mine when that's different. */
+  lang?: string;
+  translated?: string;
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -25,7 +28,8 @@ export function parseCaptionMsg(raw: unknown): CaptionMsg | null {
   if (raw.t === 'state' && typeof raw.on === 'boolean') return { t: 'state', on: raw.on };
   if (raw.t === 'line' && typeof raw.id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(raw.id) && typeof raw.text === 'string') {
     const text = raw.text.replace(/\s+/g, ' ').trim().slice(0, MAX_LINE);
-    return text ? { t: 'line', id: raw.id, text, final: raw.final === true } : null;
+    const lang = typeof raw.lang === 'string' && /^[a-z]{2,3}$/.test(raw.lang) ? raw.lang : undefined;
+    return text ? { t: 'line', id: raw.id, text, final: raw.final === true, ...(lang ? { lang } : {}) } : null;
   }
   return null;
 }
@@ -35,7 +39,10 @@ const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-dig
 /** The transcript as plain text: "[10:02:13] Ama Owusu: Shall we start?" */
 export function transcriptText(title: string, lines: TranscriptLine[], startedAt?: number): string {
   const head = [`${title} — transcript`, startedAt ? new Date(startedAt).toLocaleString() : '', ''];
-  return [...head, ...lines.map((l) => `[${clock(l.at)}] ${l.name}: ${l.text}`)].join('\n').trim() + '\n';
+  // Translated lines keep what was really said underneath.
+  return [...head, ...lines.map((l) => (l.translated
+    ? `[${clock(l.at)}] ${l.name}: ${l.translated}\n           (${l.lang}) ${l.text}`
+    : `[${clock(l.at)}] ${l.name}: ${l.text}`))].join('\n').trim() + '\n';
 }
 
 /** Does this browser have speech recognition? */
