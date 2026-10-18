@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import {
-  ArrowLeft, AtSign, Bell, Bold, Check, Code, Copy, Hash, Italic, Link2, List, ListOrdered, Lock, Mail, MessageSquare,
-  CornerUpLeft, Pencil, Plus, Plug, Quote, Search, SendHorizontal, Settings2, Smile, SquareCode, Star, Strikethrough,
-  Trash2, Type, UserPlus, X,
+  ArrowLeft, AtSign, Bell, Bold, Check, ChevronDown, MoreVertical, PanelRight, Send, Code, Copy, ExternalLink, FileText, Hash, House, Italic, Link2, List, ListOrdered, Lock, Mail,
+  MessageCircle, MessageSquare, CornerUpLeft, Pencil, Plus, Plug, Quote, Search, Smile, SquareCode, SquarePen, Star, Strikethrough,
+  Trash2, UserPlus, X,
 } from 'lucide-react';
+import { HowellsLogo } from '@/components/layout/Sidebar';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useRouter } from '@/lib/router';
@@ -18,7 +19,9 @@ import {
   startsGroup, subscribeMessages, unreadCounts, webhookUrl, type Channel, type ChatMessage, type EmailReply, type Webhook,
 } from '@/lib/chat';
 
-type Selection = { kind: 'channel'; id: string } | { kind: 'email' } | { kind: 'activity' } | { kind: 'channels' } | null;
+type Selection = { kind: 'channel'; id: string } | { kind: 'email' } | { kind: 'threads' } | { kind: 'channels' } | null;
+/** The rail on the far left: it picks what the list beside it shows. */
+type Rail = 'home' | 'dms' | 'activity' | 'files';
 
 const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 const ordinal = (n: number) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th'}`;
@@ -42,11 +45,17 @@ const ago = (iso: string) => {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
-/** Each channel keeps one tile colour in the list, picked from its id. */
-const TILES = ['bg-[#B07A1B]', 'bg-[#394560]', 'bg-[#8B2530]', 'bg-[#2F6F73]', 'bg-[#5E3F10]'];
-const tileColour = (id: string) => TILES[[...id].reduce((n, ch) => n + ch.charCodeAt(0), 0) % TILES.length];
+/** Message text without the formatting marks, for one-line previews. */
+const plain = (body: string) => body.replace(/[*_~`>]/g, '').split('\n')[0];
+const hostOf = (url: string) => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } };
+
+/** A count on a list row: quiet grey, or gold when someone needs you. */
+function Count({ n, loud }: { n: number; loud?: boolean }) {
+  return <span className={cn('min-w-[20px] shrink-0 rounded-full px-1.5 text-center text-[11px] font-extrabold leading-[18px]', loud ? 'bg-gold-400 text-navy-900' : 'bg-white/[0.16] text-white')}>{n > 99 ? '99+' : n}</span>;
+}
 
 const STARRED_KEY = 'synapse.starredChannels';
+const GLANCE_KEY = 'synapse.atAGlance';
 const loadStarred = (): string[] => { try { return JSON.parse(localStorage.getItem(STARRED_KEY) ?? '[]') as string[]; } catch { return []; } };
 
 /**
@@ -72,6 +81,11 @@ export function ConversationsPage() {
   const [modal, setModal] = useState<'channel' | 'dm' | null>(null);
   const [starred, setStarred] = useState<string[]>(loadStarred);
   const [openThread, setOpenThread] = useState<string | null>(null);
+  // A message to scroll to and light up (picked from Activity or Files).
+  const [focus, setFocus] = useState<string | null>(null);
+  const [railOn, setRail] = useState<Rail>('home');
+  const [actFilter, setActFilter] = useState<'all' | 'mentions' | 'replies'>('all');
+  const [folded, setFolded] = useState<Set<string>>(new Set());
   // The channel the tabs go back to from the Channels tab.
   const [lastChannel, setLastChannel] = useState<string | null>(null);
   const me = user?.id ?? '';
@@ -127,7 +141,7 @@ export function ConversationsPage() {
     });
   }, [workspace, me]);
 
-  const open = (id: string, thread: string | null = null) => { setSel({ kind: 'channel', id }); setOpenThread(thread); setUnread((u) => ({ ...u, [id]: 0 })); };
+  const open = (id: string, thread: string | null = null, focusOn: string | null = null) => { setSel({ kind: 'channel', id }); setOpenThread(thread); setFocus(focusOn); setUnread((u) => ({ ...u, [id]: 0 })); };
   const title = (c: Channel) => (c.kind === 'dm' ? dmPeople(c, me).map((id) => (byId.get(id) ? memberName(byId.get(id)!) : 'Someone')).join(', ') || 'Just you' : c.name ?? '');
   const toggleStar = (id: string) => setStarred((s) => {
     const next = s.includes(id) ? s.filter((x) => x !== id) : [...s, id];
@@ -146,108 +160,228 @@ export function ConversationsPage() {
   if (loading) return <div className="flex h-[60vh] items-center justify-center"><LoadingSpinner className="h-8 w-8 text-ivory-600" /></div>;
   if (error) return <ErrorState message={error} onRetry={load} />;
 
-  const dmFace = (c: Channel) => {
-    const other = dmPeople(c, me).map((id) => byId.get(id)).find((p): p is DirectoryMember => !!p);
-    return other
-      ? <Avatar firstName={other.first_name} lastName={other.last_name} src={other.avatar_url} size="sm" className="!h-8 !w-8 shrink-0 !rounded-full !text-[11px]" />
-      : <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10"><AtSign className="h-4 w-4" /></span>;
-  };
   const isActive = (c: Channel) => sel?.kind === 'channel' && sel.id === c.id;
   const channelTabs = { channels: named.length + joinable.length, onChannels: () => setSel({ kind: 'channels' }) };
   const back = lastChannel && byChannel.get(lastChannel) ? lastChannel : named[0]?.id ?? null;
+  const where = (c: Channel | undefined) => (c ? (c.kind === 'dm' ? title(c) : `# ${c.name}`) : 'a conversation');
+  const sender = (m: ChatMessage) => {
+    const p = m.user_id ? byId.get(m.user_id) : undefined;
+    return m.source === 'webhook' ? m.sender_name ?? 'App' : p ? memberName(p) : 'Someone';
+  };
+  const dmOther = (c: Channel) => dmPeople(c, me).map((id) => byId.get(id)).find((p): p is DirectoryMember => !!p);
+  const face = (p: DirectoryMember | undefined, size: string) => p
+    ? <Avatar firstName={p.first_name} lastName={p.last_name} src={p.avatar_url} size="sm" className={cn('shrink-0 !rounded-[7px]', size)} />
+    : <span className={cn('flex shrink-0 items-center justify-center rounded-[7px] bg-white/10', size)}><AtSign className="h-3.5 w-3.5" /></span>;
+  // Channels where someone needs you (a mention) show their count in gold, the rest in quiet grey.
+  const mentioned = new Set(activity.map((m) => m.channel_id));
+  const channelUnread = named.reduce((n, c) => n + (unread[c.id] ?? 0), 0);
+  const dmUnread = dms.reduce((n, c) => n + (unread[c.id] ?? 0), 0);
+  const threadsAll = recent.filter((m) => !m.parent_id && m.reply_count > 0 && !m.deleted_at && byChannel.has(m.channel_id))
+    .sort((x, y) => (y.last_reply_at ?? y.created_at).localeCompare(x.last_reply_at ?? x.created_at));
+  const allLinks = linksIn(recent.filter((m) => byChannel.has(m.channel_id)));
+  const shownActivity = actFilter === 'mentions' ? activity.filter((m) => !m.parent_id) : actFilter === 'replies' ? activity.filter((m) => m.parent_id) : activity;
+  const toggle = (k: string) => setFolded((f) => { const n = new Set(f); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+
+  const rowCls = (on: boolean, bold = false) => cn('flex h-8 w-full items-center gap-2.5 rounded-[9px] px-2.5 text-left text-[15px] transition',
+    on ? 'bg-gradient-to-r from-gold-400/25 to-gold-400/[0.08] font-bold text-white shadow-[inset_0_0_0_1px_rgba(228,169,60,0.3)]'
+      : bold ? 'font-bold text-white hover:bg-white/[0.07]' : 'text-white/70 hover:bg-white/[0.07] hover:text-white');
+  const cardCls = (on: boolean) => cn('flex w-full gap-2.5 rounded-xl p-2.5 text-left transition',
+    on ? 'bg-gradient-to-r from-gold-400/25 to-gold-400/[0.08] shadow-[inset_0_0_0_1px_rgba(228,169,60,0.3)]' : 'hover:bg-white/[0.07]');
+  const section = (key: string, label: string, add?: { label: string; onClick: () => void }) => (
+    <div className="mt-3 flex h-7 items-center gap-1.5 px-2.5 text-[13px] font-semibold text-white/50">
+      <button type="button" onClick={() => toggle(key)} aria-expanded={!folded.has(key)} className="flex flex-1 items-center gap-1.5 text-left hover:text-white/80">
+        <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', folded.has(key) && '-rotate-90')} /> <h2>{label}</h2>
+      </button>
+      {add && <button type="button" onClick={add.onClick} aria-label={add.label} title={add.label} className="flex h-6 w-6 items-center justify-center rounded-md hover:bg-white/10 hover:text-white"><Plus className="h-3.5 w-3.5" /></button>}
+    </div>
+  );
+  const channelRow = (c: Channel) => (
+    <button key={c.id} type="button" onClick={() => open(c.id)} aria-current={isActive(c) ? 'page' : undefined} className={rowCls(isActive(c), unread[c.id] > 0)}>
+      <span className="flex w-[18px] justify-center opacity-85">{c.is_private ? <Lock className="h-3.5 w-3.5" aria-label="Private" /> : <Hash className="h-4 w-4" />}</span>
+      <span className="min-w-0 flex-1 truncate">{c.name}</span>
+      {unread[c.id] > 0 && !isActive(c) && <Count n={unread[c.id]} loud={mentioned.has(c.id)} />}
+    </button>
+  );
+  const search = (placeholder: string) => (
+    <label className="mx-0.5 mb-3 flex h-[34px] shrink-0 items-center gap-2 rounded-[10px] bg-white/[0.08] px-2.5 text-sm text-white/55 focus-within:bg-white/[0.12]">
+      <Search className="h-[15px] w-[15px] shrink-0" />
+      <span className="sr-only">{placeholder}</span>
+      <input value={find} onChange={(e) => setFind(e.target.value)} placeholder={placeholder} className="min-w-0 flex-1 border-0 bg-transparent text-white outline-none placeholder:text-white/55" />
+      {find && <button type="button" onClick={() => setFind('')} aria-label="Clear search" className="rounded p-0.5 hover:bg-white/10"><X className="h-4 w-4" /></button>}
+    </label>
+  );
+  const listHead = (label: ReactNode, heading = true) => (
+    <div className="flex items-center gap-2 px-1.5 pb-3 pt-0.5">
+      {heading ? <h2 className="flex-1 truncate text-[19px] font-extrabold tracking-[-0.02em] text-white">{label}</h2> : <span className="flex-1 truncate text-[19px] font-extrabold tracking-[-0.02em] text-white">{label}</span>}
+      <button type="button" onClick={() => setModal('dm')} aria-label="Message someone" title="New message" className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-white/10 text-white hover:bg-white/[0.16]"><SquarePen className="h-4 w-4" /></button>
+    </div>
+  );
+  const segment = <T extends string>(value: T, options: { v: T; label: string }[], onPick: (v: T) => void) => (
+    <div role="tablist" aria-label="Show" className="mx-0.5 mb-3 flex rounded-[10px] bg-white/[0.08] p-0.5">
+      {options.map((o) => (
+        <button key={o.v} type="button" role="tab" aria-selected={value === o.v} onClick={() => onPick(o.v)}
+          className={cn('h-8 flex-1 rounded-lg text-[13px] transition', value === o.v ? 'bg-white/[0.18] font-bold text-white shadow-[0_1px_3px_rgba(0,0,0,0.3)]' : 'font-medium text-white/65 hover:text-white')}>{o.label}</button>
+      ))}
+    </div>
+  );
+
+  const rail: { key: Rail; label: string; icon: ReactNode; count: number }[] = [
+    { key: 'home', label: 'Home', icon: <House className="h-5 w-5" />, count: channelUnread },
+    { key: 'dms', label: 'DMs', icon: <MessageCircle className="h-5 w-5" />, count: dmUnread },
+    { key: 'activity', label: 'Activity', icon: <Bell className="h-5 w-5" />, count: activity.length },
+    { key: 'files', label: 'Files', icon: <FileText className="h-5 w-5" />, count: 0 },
+  ];
 
   return (
     // The whole screen above the feature dock (and below the top bar when the menu is open).
-    <div className="-mx-4 -mt-5 -mb-[calc(var(--dock-h,0px)+24px)] flex h-[calc(100dvh-var(--dock-h,0px)-var(--top-h,0px))] min-h-[480px] overflow-hidden bg-white lg:-mx-6 lg:-mt-6">
-      {/* Everything in one list: what needs you, channels, people, outside. */}
-      <nav aria-label="Conversations" className={cn('w-full shrink-0 flex-col gap-3.5 overflow-y-auto bg-gradient-to-b from-[#0D1C3B] to-navy-900 px-3 py-4 text-white sm:flex sm:w-[290px]', sel ? 'hidden' : 'flex')}>
-        <p className="px-1.5 text-[26px] font-extrabold tracking-[-0.025em]">Conversations</p>
-        <label className="flex h-9 shrink-0 items-center gap-2 rounded-[10px] bg-white/10 px-2.5 text-[15px] text-white/75">
-          <Search className="h-4 w-4 shrink-0" />
-          <span className="sr-only">Search channels and people</span>
-          <input value={find} onChange={(e) => setFind(e.target.value)} placeholder="Search channels and people" className="min-w-0 flex-1 border-0 bg-transparent text-white outline-none placeholder:text-white/60" />
-          {find && <button type="button" onClick={() => setFind('')} aria-label="Clear search" className="rounded p-0.5 hover:bg-white/10"><X className="h-4 w-4" /></button>}
-        </label>
-
-        <button type="button" onClick={() => setSel({ kind: 'activity' })} aria-current={sel?.kind === 'activity' ? 'page' : undefined}
-          className={cn('flex shrink-0 items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition', sel?.kind === 'activity' ? 'bg-gold-400 text-navy-900' : 'bg-gold-400/15 hover:bg-gold-400/25')}>
-          <span className={cn('flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg', sel?.kind === 'activity' ? 'bg-navy-900 text-gold-400' : 'bg-gold-400 text-navy-900')}><Bell className="h-[17px] w-[17px]" /></span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[15px] font-bold">Activity</span>
-            <span className={cn('block truncate text-xs', sel?.kind === 'activity' ? 'text-navy-800' : 'text-white/70')}>{activity.length ? 'Mentions of you and replies to you' : 'Nothing new for you'}</span>
+    <div className="-mx-4 -mt-5 -mb-[calc(var(--dock-h,0px)+24px)] flex h-[calc(100dvh-var(--dock-h,0px)-var(--top-h,0px))] min-h-[480px] overflow-hidden bg-[radial-gradient(120%_80%_at_0%_0%,#13254A_0%,#091530_45%,#050C1E_100%)] lg:-mx-6 lg:-mt-6">
+      <div className={cn('min-w-0 shrink-0 text-white sm:flex', sel ? 'hidden' : 'flex w-full sm:w-auto')}>
+        {/* The rail: where you are. Home, DMs, Activity, Files. */}
+        <nav aria-label="Conversations" className="flex w-[68px] shrink-0 flex-col items-center gap-4 overflow-y-auto py-4 sm:w-[76px]">
+          <span title="SYNAPSE" className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#13254A] to-[#0B1733] shadow-[inset_0_0_0_1px_rgba(228,169,60,0.35),0_6px_18px_rgba(0,0,0,0.35)]">
+            <HowellsLogo className="h-[22px] w-[22px]" />
           </span>
-          {activity.length > 0 && <span className={cn('min-w-[24px] rounded-full px-1.5 text-center text-xs font-extrabold leading-6', sel?.kind === 'activity' ? 'bg-navy-900 text-white' : 'bg-gold-400 text-navy-900')}>{activity.length > 99 ? '99+' : activity.length}</span>}
-        </button>
-
-        <div className="flex shrink-0 flex-col gap-1">
-          <div className="flex items-center justify-between px-1.5 pb-1">
-            <h2 className="text-[13px] font-bold text-white/60">Channels</h2>
-            <button type="button" onClick={() => setModal('channel')} className="h-7 rounded-full px-2.5 text-[13px] font-semibold text-gold-300 hover:bg-white/10">+ New channel</button>
-          </div>
-          <div className="rounded-2xl bg-white/5 p-1">
-            {named.filter(match).map((c) => {
-              const last = latest.get(c.id);
-              return (
-                <button key={c.id} type="button" onClick={() => open(c.id)} aria-current={isActive(c) ? 'page' : undefined}
-                  className={cn('flex w-full items-center gap-2.5 rounded-[10px] px-2 py-2 text-left text-sm transition', isActive(c) ? 'bg-white/[0.16] font-semibold' : 'hover:bg-white/10', unread[c.id] > 0 && !isActive(c) && 'font-bold')}>
-                  <span className={cn('flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg text-white', tileColour(c.id))}>
-                    {c.is_private ? <Lock className="h-3.5 w-3.5" aria-label="Private" /> : <Hash className="h-3.5 w-3.5" />}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-1.5"><span className="truncate">{c.name}</span>{starred.includes(c.id) && <Star className="h-3 w-3 shrink-0 fill-gold-400 text-gold-400" aria-label="Starred" />}</span>
-                    <span className="block truncate text-xs font-normal text-white/60">{last ? ago(last.created_at) : 'Quiet so far'}</span>
-                  </span>
-                  {unread[c.id] > 0 && !isActive(c) && <span className="min-w-[20px] rounded-full bg-[#0A84FF] px-1.5 text-center text-[11px] font-bold leading-5 text-white">{unread[c.id] > 99 ? '99+' : unread[c.id]}</span>}
-                </button>
-              );
-            })}
-            {named.length === 0 && <p className="px-2 py-1.5 text-xs text-white/60">No channels yet. Create one for a team or a topic.</p>}
-            <button type="button" onClick={() => setSel({ kind: 'channels' })} aria-current={sel?.kind === 'channels' ? 'page' : undefined}
-              className="flex h-9 w-full items-center gap-2 rounded-[10px] px-2 text-left text-[13px] font-semibold text-white/80 hover:bg-white/10">
-              <List className="h-4 w-4" /> Browse all channels · {named.length + joinable.length}
+          <span className="h-1" />
+          {rail.map((r) => (
+            <button key={r.key} type="button" onClick={() => { setRail(r.key); setFind(''); }} aria-pressed={railOn === r.key}
+              className={cn('flex flex-col items-center gap-1 text-[11px]', railOn === r.key ? 'font-bold text-white' : 'font-medium text-white/70 hover:text-white')}>
+              <span className={cn('relative flex h-10 w-10 items-center justify-center rounded-xl transition', railOn === r.key ? 'bg-white/[0.14] text-gold-400 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)]' : 'text-white/80 hover:bg-white/[0.08]')}>
+                {r.icon}
+                {r.count > 0 && <span className="absolute -right-1.5 -top-1 min-w-[18px] rounded-full border-2 border-[#091530] bg-gold-400 px-1 text-center text-[10px] font-extrabold leading-[14px] text-navy-900">{r.count > 99 ? '99+' : r.count}</span>}
+              </span>
+              {r.label}
             </button>
-          </div>
-        </div>
+          ))}
+          <span className="flex-1" />
+          <button type="button" onClick={() => setModal('channel')} aria-label="New channel" title="New channel" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/[0.16]"><Plus className="h-[18px] w-[18px]" /></button>
+          <Avatar firstName={profile?.first_name ?? null} lastName={profile?.last_name ?? null} src={profile?.avatar_url ?? null} size="sm" className="!h-9 !w-9 shrink-0 !rounded-[10px]" />
+        </nav>
 
-        <div className="flex shrink-0 flex-col gap-0.5">
-          <div className="flex items-center justify-between px-1.5 pb-1">
-            <h2 className="text-[13px] font-bold text-white/60">People</h2>
-            <button type="button" onClick={() => setModal('dm')} className="h-7 rounded-full px-2.5 text-[13px] font-semibold text-gold-300 hover:bg-white/10">+ Message someone</button>
-          </div>
-          <div className="rounded-2xl bg-white/5 p-1">
-          {dms.filter(match).map((c) => {
-            const last = latest.get(c.id);
-            return (
-              <button key={c.id} type="button" onClick={() => open(c.id)} aria-current={isActive(c) ? 'page' : undefined}
-                className={cn('flex w-full items-center gap-2.5 rounded-[10px] px-2 py-1.5 text-left transition', isActive(c) ? 'bg-white/[0.16]' : 'hover:bg-white/10')}>
-                {dmFace(c)}
-                <span className="min-w-0 flex-1">
-                  <span className={cn('block truncate text-sm', unread[c.id] ? 'font-bold' : 'font-medium')}>{title(c)}</span>
-                  <span className="block truncate text-xs text-white/65">{last ? `${last.user_id === me ? 'You: ' : ''}${last.body}` : 'No messages yet'}</span>
-                </span>
-                {unread[c.id] > 0 && !isActive(c) && <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#0A84FF]" aria-label={`${unread[c.id]} unread`} />}
+        {/* The list: changes with the rail. */}
+        <div className="flex min-w-0 flex-1 flex-col overflow-y-auto px-2.5 py-4 sm:w-[280px] sm:flex-none">
+          {railOn === 'home' && (
+            <>
+              {listHead(<span className="inline-flex items-center gap-1.5">{workspace?.name ?? 'Your company'}</span>, false)}
+              {search('Find a channel or person')}
+              <button type="button" onClick={() => setSel({ kind: 'threads' })} aria-current={sel?.kind === 'threads' ? 'page' : undefined} className={rowCls(sel?.kind === 'threads')}>
+                <span className="flex w-[18px] justify-center"><CornerUpLeft className="h-4 w-4" /></span><span className="flex-1">Threads</span>
+                {threadsAll.length > 0 && <Count n={threadsAll.length} />}
               </button>
-            );
-          })}
-          {dms.length === 0 && <p className="px-2 py-1.5 text-xs text-white/60">Message anyone in your team.</p>}
-          </div>
-        </div>
+              <button type="button" onClick={() => setSel({ kind: 'email' })} aria-current={sel?.kind === 'email' ? 'page' : undefined} className={rowCls(sel?.kind === 'email')}>
+                <span className="flex w-[18px] justify-center"><Mail className="h-4 w-4" /></span><span className="flex-1">Email replies</span>
+              </button>
+              {named.some((c) => starred.includes(c.id)) && (
+                <>
+                  {section('starred', 'Starred')}
+                  {!folded.has('starred') && named.filter((c) => starred.includes(c.id) && match(c)).map(channelRow)}
+                </>
+              )}
+              {section('channels', 'Channels', { label: 'New channel', onClick: () => setModal('channel') })}
+              {!folded.has('channels') && (
+                <>
+                  {named.filter((c) => !starred.includes(c.id) && match(c)).map(channelRow)}
+                  {named.length === 0 && <p className="px-2.5 py-1.5 text-xs text-white/55">No channels yet. Create one for a team or a topic.</p>}
+                  <button type="button" onClick={() => setSel({ kind: 'channels' })} aria-current={sel?.kind === 'channels' ? 'page' : undefined} className={rowCls(sel?.kind === 'channels')}>
+                    <span className="flex w-[18px] justify-center"><List className="h-4 w-4" /></span><span className="flex-1 text-sm">Browse all channels · {named.length + joinable.length}</span>
+                  </button>
+                </>
+              )}
+              {section('people', 'People', { label: 'Message someone', onClick: () => setModal('dm') })}
+              {!folded.has('people') && (
+                <>
+                  {dms.filter(match).slice(0, 8).map((c) => (
+                    <button key={c.id} type="button" onClick={() => open(c.id)} aria-current={isActive(c) ? 'page' : undefined} className={rowCls(isActive(c), unread[c.id] > 0)}>
+                      {face(dmOther(c), '!h-[22px] !w-[22px] !text-[9px]')}
+                      <span className="min-w-0 flex-1 truncate">{title(c)}</span>
+                      {unread[c.id] > 0 && !isActive(c) && <Count n={unread[c.id]} loud />}
+                    </button>
+                  ))}
+                  {dms.length === 0 && <p className="px-2.5 py-1.5 text-xs text-white/55">Message anyone in your team.</p>}
+                </>
+              )}
+            </>
+          )}
 
-        <div className="mt-auto flex shrink-0 flex-col gap-1 pt-2">
-          <h2 className="px-1.5 text-[13px] font-bold text-white/60">From outside</h2>
-          <button type="button" onClick={() => setSel({ kind: 'email' })} aria-current={sel?.kind === 'email' ? 'page' : undefined}
-            className={cn('flex items-center gap-2.5 rounded-2xl px-3 py-2.5 text-left text-sm transition', sel?.kind === 'email' ? 'bg-white/[0.16] font-semibold' : 'bg-white/5 hover:bg-white/10')}>
-            <Mail className="h-4 w-4 text-gold-400" /> Email replies
-          </button>
-        </div>
-      </nav>
+          {railOn === 'dms' && (
+            <>
+              {listHead('Direct messages')}
+              {search('Find a person')}
+              <div className="flex flex-col gap-0.5">
+                {dms.filter(match).map((c) => {
+                  const last = latest.get(c.id);
+                  const u = unread[c.id] > 0 && !isActive(c);
+                  return (
+                    <button key={c.id} type="button" onClick={() => open(c.id)} aria-current={isActive(c) ? 'page' : undefined} className={cardCls(isActive(c))}>
+                      {face(dmOther(c), '!h-[38px] !w-[38px] !rounded-[11px] !text-[13px]')}
+                      <span className="min-w-0 flex-1">
+                        <span className={cn('flex gap-2 text-[15px] text-white', u ? 'font-bold' : 'font-medium')}><span className="min-w-0 flex-1 truncate">{title(c)}</span>{last && <span className="shrink-0 text-xs font-normal text-white/50">{ago(last.created_at)}</span>}</span>
+                        <span className={cn('block truncate text-[13px]', u ? 'text-white/85' : 'text-white/55')}>{last ? `${last.user_id === me ? 'You: ' : ''}${plain(last.body)}` : 'No messages yet'}</span>
+                      </span>
+                      {u && <Count n={unread[c.id]} loud />}
+                    </button>
+                  );
+                })}
+                {dms.length === 0 && <p className="px-2.5 py-2 text-sm text-white/60">No direct messages yet. Use the pencil above to message anyone in your team.</p>}
+              </div>
+            </>
+          )}
 
-      {/* The open conversation */}
-      <section className={cn('min-w-0 flex-1 flex-col bg-white', sel ? 'flex' : 'hidden sm:flex')}>
+          {railOn === 'activity' && (
+            <>
+              {listHead('Activity')}
+              {segment(actFilter, [{ v: 'all', label: 'All' }, { v: 'mentions', label: 'Mentions' }, { v: 'replies', label: 'Replies' }], setActFilter)}
+              <div className="flex flex-col gap-0.5">
+                {shownActivity.slice(0, 80).map((m) => {
+                  const p = m.user_id ? byId.get(m.user_id) : undefined;
+                  const on = focus === m.id || (!!m.parent_id && openThread === m.parent_id && sel?.kind === 'channel');
+                  return (
+                    <button key={m.id} type="button" onClick={() => open(m.channel_id, m.parent_id ?? null, m.parent_id ? null : m.id)} className={cardCls(on)}>
+                      {face(p, '!h-[34px] !w-[34px] !rounded-[10px] !text-[12px]')}
+                      <span className="min-w-0 flex-1">
+                        <span className="flex gap-2 text-sm"><strong className="min-w-0 flex-1 truncate font-bold text-white">{sender(m)}</strong><span className="shrink-0 text-xs text-white/50">{ago(m.created_at)}</span></span>
+                        <span className="block truncate text-xs text-white/60">{m.parent_id ? 'Replied to you' : 'Mentioned you'} · {where(byChannel.get(m.channel_id))}</span>
+                        <span className="mt-0.5 block truncate text-sm text-white/[0.88]">{plain(m.body)}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+                {shownActivity.length === 0 && <p className="px-2.5 py-2 text-sm text-white/60">Nothing here yet. When someone @mentions you or replies to your message, it shows here.</p>}
+              </div>
+            </>
+          )}
+
+          {railOn === 'files' && (
+            <>
+              {listHead('Files & links')}
+              <div className="flex flex-col gap-0.5">
+                {allLinks.slice(0, 80).map((l) => {
+                  const on = focus === l.message.id;
+                  return (
+                    <div key={l.url + l.message.id} className={cn(cardCls(on), 'items-center')}>
+                      <button type="button" onClick={() => open(l.message.channel_id, l.message.parent_id ?? null, l.message.parent_id ? null : l.message.id)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
+                        <span className="flex h-[38px] w-[34px] shrink-0 items-center justify-center rounded-lg bg-[#24375E] text-[9px] font-extrabold text-white">LINK</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold text-white">{hostOf(l.url)}</span>
+                          <span className="block truncate text-xs text-white/55">{sender(l.message)} · {where(byChannel.get(l.message.channel_id))}</span>
+                        </span>
+                      </button>
+                      <a href={l.url} target="_blank" rel="noreferrer noopener" aria-label={`Open ${hostOf(l.url)}`} title="Open" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white/70 hover:bg-white/10 hover:text-white"><ExternalLink className="h-4 w-4" /></a>
+                    </div>
+                  );
+                })}
+                {allLinks.length === 0 && <p className="px-2.5 py-2 text-sm text-white/60">Links shared in any channel collect here by themselves, newest first.</p>}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* The white card: whatever you pick opens here. */}
+      <section className={cn('min-w-0 flex-1 flex-col overflow-hidden bg-white sm:my-2 sm:mr-2 sm:rounded-2xl sm:shadow-[0_20px_60px_rgba(0,0,0,0.35),0_0_0_1px_rgba(255,255,255,0.06)]', sel ? 'flex' : 'hidden sm:flex')}>
         {sel?.kind === 'email' ? (
           <EmailReplies onBack={() => setSel(null)} />
-        ) : sel?.kind === 'activity' ? (
-          <ActivityView items={activity} me={me} byId={byId} byChannel={byChannel} title={title} onOpen={open} onBack={() => setSel(null)} />
+        ) : sel?.kind === 'threads' ? (
+          <ThreadsView items={threadsAll} byId={byId} byChannel={byChannel} where={where} onOpen={(m) => open(m.channel_id, m.id)} onBack={() => setSel(null)} />
         ) : sel?.kind === 'channels' ? (
           <ChannelsDirectory
             mine={named} joinable={joinable} unread={unread} latest={latest} starred={starred} byId={byId}
@@ -265,6 +399,7 @@ export function ConversationsPage() {
             starred={starred.includes(current.id)}
             onStar={() => toggleStar(current.id)}
             initialThread={openThread}
+            focusId={focus}
             canManage={current.kind === 'channel' && (canManageTeam || current.members.some((m) => m.user_id === me && m.role === 'owner'))}
             tabs={channelTabs}
             onBack={() => setSel(null)}
@@ -273,7 +408,7 @@ export function ConversationsPage() {
           />
         ) : (
           <div className="flex flex-1 items-center justify-center">
-            <EmptyState icon={<MessageSquare className="h-6 w-6" />} title="No conversation open" description="Create a channel for a team or topic, or message someone directly." />
+            <EmptyState icon={<MessageSquare className="h-6 w-6" />} title="No conversation open" description="Pick a channel or a person on the left, or start something new." />
           </div>
         )}
       </section>
@@ -315,13 +450,17 @@ export function ConversationsPage() {
 type ChannelTab = 'channels' | 'messages' | 'threads' | 'files';
 function Tabs({ active, counts, onPick, showChannels = true }: { active: ChannelTab; counts: Partial<Record<ChannelTab, number>>; onPick: (t: ChannelTab) => void; showChannels?: boolean }) {
   const label: Record<ChannelTab, string> = { channels: 'Channels', messages: 'Messages', threads: 'Threads', files: 'Files & links' };
-  const tabs: ChannelTab[] = showChannels ? ['channels', 'messages', 'threads', 'files'] : ['messages', 'threads', 'files'];
+  const icon: Record<ChannelTab, ReactNode> = {
+    messages: <MessageCircle className="h-[15px] w-[15px]" />, threads: <CornerUpLeft className="h-[15px] w-[15px]" />,
+    files: <Link2 className="h-[15px] w-[15px]" />, channels: <Hash className="h-[15px] w-[15px]" />,
+  };
+  const tabs: ChannelTab[] = showChannels ? ['messages', 'threads', 'files', 'channels'] : ['messages', 'threads', 'files'];
   return (
-    <div role="tablist" aria-label="In this conversation" className="inline-flex max-w-full shrink-0 overflow-x-auto rounded-[9px] bg-[#E6E9EF] p-0.5">
+    <div role="tablist" aria-label="In this conversation" className="flex max-w-full gap-0.5 overflow-x-auto">
       {tabs.map((t) => (
         <button key={t} type="button" role="tab" aria-selected={active === t} onClick={() => onPick(t)}
-          className={cn('h-8 shrink-0 rounded-[7px] px-3.5 text-[13px] transition', active === t ? 'bg-white font-semibold text-navy-900 shadow-[0_1px_3px_rgba(9,21,48,0.16),0_0_0_0.5px_rgba(9,21,48,0.06)]' : 'font-medium text-navy-700 hover:text-navy-900')}>
-          {label[t]}{counts[t] ? <span className={active === t ? 'text-navy-600' : 'text-ivory-700'}> {counts[t]}</span> : null}
+          className={cn('inline-flex h-[38px] shrink-0 items-center gap-1.5 px-2.5 text-sm transition', active === t ? 'font-bold text-navy-900 shadow-[inset_0_-2px_0_#E4A93C]' : 'font-medium text-[#5A6476] hover:text-navy-900')}>
+          {icon[t]}{label[t]}{counts[t] ? <span className="font-medium text-[#8A93A5]">{counts[t]}</span> : null}
         </button>
       ))}
     </div>
@@ -349,7 +488,7 @@ function ChannelsDirectory({ mine, joinable, unread, latest, starred, byId, onOp
         <button type="button" onClick={onBack} aria-label="Back to conversations" className="rounded-md p-1 text-navy-700 hover:bg-ivory-100 sm:hidden"><ArrowLeft className="h-5 w-5" /></button>
         <h1 className="text-2xl font-extrabold tracking-tight text-navy-900">Channels</h1>
       </header>
-      <div className="px-4 pt-3 sm:px-6"><Tabs active="channels" counts={{ channels: mine.length + joinable.length }} onPick={(t) => { if (t !== 'channels') backTo?.(); }} /></div>
+      <div className="border-b border-[#E8EBF0] px-3 pt-1 sm:px-4"><Tabs active="channels" counts={{ channels: mine.length + joinable.length }} onPick={(t) => { if (t !== 'channels') backTo?.(); }} /></div>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
         <div className="flex flex-wrap items-center gap-2.5">
           <label className="flex h-11 min-w-[220px] flex-1 items-center gap-2 rounded-xl border border-ivory-300 px-3">
@@ -397,70 +536,38 @@ function ChannelsDirectory({ mine, joinable, unread, latest, starred, byId, onOp
   );
 }
 
-/** Activity: when someone @mentions you, and replies in threads you started; answer here or open it. */
-function ActivityView({ items, me, byId, byChannel, title, onOpen, onBack }: {
-  items: ChatMessage[]; me: string; byId: Map<string, DirectoryMember>; byChannel: Map<string, Channel>; title: (c: Channel) => string;
-  onOpen: (channelId: string, thread: string | null) => void; onBack: () => void;
+/** Every thread across your channels, newest reply first. */
+function ThreadsView({ items, byId, byChannel, where, onOpen, onBack }: {
+  items: ChatMessage[]; byId: Map<string, DirectoryMember>; byChannel: Map<string, Channel>; where: (c: Channel | undefined) => string;
+  onOpen: (m: ChatMessage) => void; onBack: () => void;
 }) {
-  const { toast } = useToast();
-  const [filter, setFilter] = useState<'all' | 'mentions' | 'replies'>('all');
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [sent, setSent] = useState<Set<string>>(new Set());
-  const mentionsOnly = items.filter((m) => !m.parent_id);
-  const repliesOnly = items.filter((m) => m.parent_id);
-  const shown = filter === 'mentions' ? mentionsOnly : filter === 'replies' ? repliesOnly : items;
-  const reply = async (m: ChatMessage) => {
-    const text = drafts[m.id]?.trim();
-    if (!text) return;
-    const { error } = await sendMessage(m.channel_id, me, text, m.parent_id ?? m.id);
-    if (error) { toast(error, 'error'); return; }
-    setDrafts((d) => ({ ...d, [m.id]: '' }));
-    setSent((s) => new Set(s).add(m.id));
-  };
-  const pill = (on: boolean) => cn('h-10 rounded-full px-4 text-sm font-semibold transition', on ? 'bg-navy-900 text-white' : 'border border-ivory-300 bg-white text-navy-900 hover:bg-ivory-50');
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-8">
-        <div className="mx-auto max-w-3xl">
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={onBack} aria-label="Back to conversations" className="rounded-md p-1 text-navy-700 hover:bg-ivory-100 sm:hidden"><ArrowLeft className="h-5 w-5" /></button>
-            <h1 className="text-3xl font-extrabold tracking-tight text-navy-900">Activity</h1>
-          </div>
-          <p className="mt-1.5 text-[15px] text-ivory-700">Everything that asks for you: when someone @mentions you, and replies in threads you started. Answer here without leaving.</p>
-          <div role="tablist" aria-label="Show" className="mt-5 flex flex-wrap gap-2">
-            <button type="button" role="tab" aria-selected={filter === 'all'} onClick={() => setFilter('all')} className={pill(filter === 'all')}>All · {items.length}</button>
-            <button type="button" role="tab" aria-selected={filter === 'mentions'} onClick={() => setFilter('mentions')} className={pill(filter === 'mentions')}>Mentions · {mentionsOnly.length}</button>
-            <button type="button" role="tab" aria-selected={filter === 'replies'} onClick={() => setFilter('replies')} className={pill(filter === 'replies')}>Thread replies · {repliesOnly.length}</button>
-          </div>
-          {shown.length === 0 && <p className="mt-10 text-center text-sm text-ivory-700">Nothing here yet. When someone @mentions you or replies to your thread, it shows here.</p>}
-          <ul className="mt-5 space-y-3">
-            {shown.slice(0, 80).map((m) => {
-              const c = byChannel.get(m.channel_id);
+      <header className="flex h-[58px] shrink-0 items-center gap-2 border-b border-[#E8EBF0] px-5">
+        <button type="button" onClick={onBack} aria-label="Back to conversations" className="rounded-md p-1 text-navy-700 hover:bg-ivory-100 sm:hidden"><ArrowLeft className="h-5 w-5" /></button>
+        <h1 className="text-[19px] font-extrabold tracking-[-0.02em] text-navy-900">Threads</h1>
+      </header>
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+        {items.length === 0 ? <p className="py-10 text-center text-sm text-ivory-700">No threads yet. Point at any message and choose Reply to start one.</p> : (
+          <ul className="mx-auto flex max-w-3xl flex-col gap-2.5">
+            {items.map((m) => {
               const p = m.user_id ? byId.get(m.user_id) : undefined;
               const name = m.source === 'webhook' ? m.sender_name ?? 'App' : p ? memberName(p) : 'Someone';
-              const where = c ? (c.kind === 'dm' ? title(c) : `#${c.name}`) : 'a conversation';
               return (
-                <li key={m.id} className="rounded-2xl border border-ivory-300 p-4 sm:p-5">
-                  <p className="flex flex-wrap items-center gap-1.5 text-sm text-ivory-700">
-                    <span className="rounded-md bg-gold-50 px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-wide text-gold-800">{m.parent_id ? 'Reply' : 'Mention'}</span>
-                    <strong className="text-navy-900">{name}</strong> {m.parent_id ? 'replied in a thread in' : 'mentioned you in'} <strong className="text-navy-900">{where}</strong> · {ago(m.created_at)}
-                  </p>
-                  <div className="mt-2"><Body text={m.body} /></div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <label className="flex h-11 min-w-[220px] flex-1 items-center rounded-xl border border-ivory-300 px-3">
-                      <span className="sr-only">Reply to {name}</span>
-                      <input value={drafts[m.id] ?? ''} onChange={(e) => setDrafts((d) => ({ ...d, [m.id]: e.target.value }))}
-                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void reply(m); } }}
-                        placeholder={sent.has(m.id) ? 'Sent. Say more…' : `Reply to ${name.split(' ')[0]}…`} className="min-w-0 flex-1 border-0 bg-transparent text-[15px] text-navy-900 outline-none" />
-                    </label>
-                    <button type="button" onClick={() => void reply(m)} disabled={!drafts[m.id]?.trim()} className="h-11 rounded-xl bg-navy-900 px-4 text-sm font-bold text-white hover:bg-navy-800 disabled:opacity-40">Reply</button>
-                    <button type="button" onClick={() => onOpen(m.channel_id, m.parent_id ?? m.id)} className="h-11 rounded-xl border border-ivory-300 px-4 text-sm font-bold text-navy-900 hover:bg-ivory-50">Open the conversation</button>
-                  </div>
+                <li key={m.id}>
+                  <button type="button" onClick={() => onOpen(m)} className="flex w-full gap-3 rounded-2xl bg-white p-4 text-left shadow-[0_1px_3px_rgba(9,21,48,0.06),0_0_0_1px_#E8EBF0] transition hover:shadow-[0_6px_20px_rgba(9,21,48,0.1),0_0_0_1px_#E4A93C]">
+                    <Avatar firstName={p?.first_name ?? null} lastName={p?.last_name ?? null} src={p?.avatar_url ?? null} size="sm" className="!h-9 !w-9 shrink-0 !rounded-[10px]" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[13px] text-ivory-700"><strong className="text-navy-900">{name}</strong> · {where(byChannel.get(m.channel_id))}</span>
+                      <span className="mt-0.5 line-clamp-2 block text-[15px] text-navy-900">{plain(m.body)}</span>
+                      <span className="mt-1 block text-[13px]"><strong className="text-[#0B63C4]">{m.reply_count} {m.reply_count === 1 ? 'reply' : 'replies'}</strong>{m.last_reply_at && <span className="text-ivory-700"> · last {ago(m.last_reply_at)}</span>}</span>
+                    </span>
+                  </button>
                 </li>
               );
             })}
           </ul>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -499,9 +606,9 @@ function Body({ text, dark }: { text: string; dark?: boolean }) {
   return <span className={cn('block whitespace-pre-wrap break-words text-[15px] leading-relaxed', dark ? '' : 'text-navy-900')}>{out}</span>;
 }
 
-function ChannelView({ channel, title, me, people, byId, starred, onStar, initialThread, canManage, tabs, onBack, onChanged, onLeft }: {
+function ChannelView({ channel, title, me, people, byId, starred, onStar, initialThread, focusId, canManage, tabs, onBack, onChanged, onLeft }: {
   channel: Channel; title: string; me: string; people: DirectoryMember[]; byId: Map<string, DirectoryMember>; starred: boolean; onStar: () => void;
-  initialThread: string | null; canManage: boolean; tabs: { channels: number; onChannels: () => void }; onBack: () => void; onChanged: () => void; onLeft: () => void;
+  initialThread: string | null; focusId: string | null; canManage: boolean; tabs: { channels: number; onChannels: () => void }; onBack: () => void; onChanged: () => void; onLeft: () => void;
 }) {
   const { toast } = useToast();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -513,8 +620,10 @@ function ChannelView({ channel, title, me, people, byId, starred, onStar, initia
   const [searching, setSearching] = useState(false);
   const [q, setQ] = useState('');
   const [menu, setMenu] = useState(false);
+  const [glance, setGlance] = useState(() => { try { return localStorage.getItem(GLANCE_KEY) === '1'; } catch { return false; } });
   const listRef = useRef<HTMLDivElement>(null);
   const member = channel.members.some((m) => m.user_id === me);
+  const showGlance = (on: boolean) => { setGlance(on); try { localStorage.setItem(GLANCE_KEY, on ? '1' : '0'); } catch { /* private mode */ } };
 
   const scrollDown = () => requestAnimationFrame(() => { const el = listRef.current; if (el) el.scrollTop = el.scrollHeight; });
 
@@ -531,6 +640,12 @@ function ChannelView({ channel, title, me, people, byId, starred, onStar, initia
     if (member) void markRead(channel.id, me);
     return () => { alive = false; };
   }, [channel.id, member, me, toast]);
+
+  // Opened from Activity or Files on one message: bring it into view.
+  useEffect(() => {
+    if (!focusId || loading) return;
+    requestAnimationFrame(() => document.getElementById(`msg-${focusId}`)?.scrollIntoView({ block: 'center' }));
+  }, [focusId, loading]);
 
   // Opened from Activity on a thread reply: open that thread.
   useEffect(() => {
@@ -597,49 +712,46 @@ function ChannelView({ channel, title, me, people, byId, starred, onStar, initia
   return (
     <div className="flex min-h-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="relative z-10 flex flex-col gap-3 border-b border-navy-900/[0.08] bg-white/90 px-4 pb-3 pt-4 backdrop-blur-xl backdrop-saturate-150 sm:px-6">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <button type="button" onClick={onBack} aria-label="Back to conversations" className="rounded-full p-1 text-navy-700 hover:bg-ivory-100 sm:hidden"><ArrowLeft className="h-5 w-5" /></button>
-            <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 items-center gap-2">
-                <h1 className="flex min-w-0 items-center gap-1.5 text-[26px] font-extrabold tracking-[-0.025em] text-navy-900 sm:text-[28px]">
-                  {channel.kind === 'channel' ? (channel.is_private ? <Lock className="h-5 w-5 shrink-0" /> : <Hash className="h-5 w-5 shrink-0" />) : null}
-                  <span className="truncate">{title}</span>
-                </h1>
-                <button type="button" onClick={onStar} aria-pressed={starred} aria-label={starred ? 'Starred: click to unstar' : 'Star: keeps it at the top of your list'} title={starred ? 'Unstar' : 'Star (keeps it at the top of your list)'}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-navy-600 hover:bg-[#EEF1F5]">
-                  <Star className={cn('h-[18px] w-[18px]', starred && 'fill-gold-400 text-gold-500')} />
-                </button>
-              </div>
-              <p className="truncate text-[13px] text-ivory-700">
-                {channel.kind === 'dm' ? 'Direct message' : channel.is_private ? 'Private channel' : 'Public channel'}{channel.description ? ` · ${channel.description}` : ''}
-              </p>
-            </div>
-            <span className="inline-flex h-9 items-center gap-2 rounded-full bg-[#EEF1F5] pl-1 pr-3 text-[13px] font-semibold text-navy-900">
+        <header className="relative z-10 border-b border-[#E8EBF0] bg-white/90 backdrop-blur-xl backdrop-saturate-150">
+          <div className="flex min-h-[58px] items-center gap-2 px-3 sm:px-5">
+            <button type="button" onClick={onBack} aria-label="Back to conversations" className="rounded-md p-1 text-navy-700 hover:bg-ivory-100 sm:hidden"><ArrowLeft className="h-5 w-5" /></button>
+            {channel.kind === 'channel' && (
+              <button type="button" onClick={onStar} aria-pressed={starred} aria-label={starred ? 'Starred: click to unstar' : 'Star: keeps it at the top of your list'} title={starred ? 'Unstar' : 'Star (keeps it at the top of your list)'}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#8A93A5] hover:bg-[#F0F2F6]">
+                <Star className={cn('h-[18px] w-[18px]', starred && 'fill-gold-400 text-gold-400')} />
+              </button>
+            )}
+            <h1 className="flex min-w-0 shrink items-center gap-1 text-[19px] font-extrabold tracking-[-0.02em] text-navy-900">
+              {channel.kind === 'channel' ? (channel.is_private ? <Lock className="h-4 w-4 shrink-0" aria-label="Private" /> : <Hash className="h-[18px] w-[18px] shrink-0" />) : null}
+              <span className="truncate">{title}</span>
+            </h1>
+            <span className="hidden min-w-0 flex-1 truncate text-[13px] text-[#6B7486] md:block">{channel.kind === 'dm' ? 'Direct message' : channel.description ?? (channel.is_private ? 'Private channel' : 'Public channel')}</span>
+            <span className="flex-1 md:hidden" />
+            <span title={`${channel.members.length} ${channel.members.length === 1 ? 'member' : 'members'}`} className="hidden h-8 shrink-0 items-center gap-1.5 rounded-[10px] bg-[#F0F2F6] pl-1 pr-2.5 text-[13px] font-semibold text-[#3A4357] sm:inline-flex">
               <span className="flex">
                 {channel.members.slice(0, 3).map((mb, i) => {
                   const p = byId.get(mb.user_id);
-                  return <Avatar key={mb.user_id} firstName={p?.first_name ?? null} lastName={p?.last_name ?? null} src={p?.avatar_url ?? null} size="sm" className={cn('!h-7 !w-7 !rounded-full border-2 border-[#EEF1F5] !text-[9px]', i > 0 && '-ml-2')} />;
+                  return <Avatar key={mb.user_id} firstName={p?.first_name ?? null} lastName={p?.last_name ?? null} src={p?.avatar_url ?? null} size="sm" className={cn('!h-[22px] !w-[22px] !rounded-[7px] ring-2 ring-[#F0F2F6] !text-[8px]', i > 0 && '-ml-1.5')} />;
                 })}
               </span>
-              {channel.members.length} {channel.members.length === 1 ? 'member' : 'members'}
+              {channel.members.length}<span className="sr-only"> {channel.members.length === 1 ? 'member' : 'members'}</span>
             </span>
-          </div>
-          {/* The tabs, and every action for this conversation written out beside them. */}
-          <div className="flex flex-wrap items-center gap-x-1 gap-y-2">
-            <Tabs active={tab} counts={{ channels: tabs.channels, threads: threads.length, files: links.length }}
-              onPick={(t) => { if (t === 'channels') tabs.onChannels(); else { setTab(t); if (t !== 'messages') { setSearching(false); setQ(''); } } }} />
-            <span className="flex-1" />
-            <div role="toolbar" aria-label={channel.kind === 'dm' ? 'Conversation' : 'Channel'} className="flex flex-wrap items-center gap-1">
-              {canManage && <button type="button" onClick={() => setPanel('add')} className="inline-flex h-8 items-center rounded-full px-3 text-[13px] font-semibold text-[#0A6ACF] hover:bg-[#EEF1F5]">+ Add people</button>}
+            <div role="toolbar" aria-label={channel.kind === 'dm' ? 'Conversation' : 'Channel'} className="flex shrink-0 items-center gap-0.5">
               <button type="button" onClick={() => { setSearching((v) => !v); setQ(''); setTab('messages'); }} aria-pressed={searching}
-                className={cn('inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-semibold', searching ? 'bg-navy-900 text-white' : 'text-[#0A6ACF] hover:bg-[#EEF1F5]')}>
-                <Search className="h-3.5 w-3.5" /> Search in this {channel.kind === 'dm' ? 'conversation' : 'channel'}
+                aria-label={`Search in this ${channel.kind === 'dm' ? 'conversation' : 'channel'}`} title={`Search in this ${channel.kind === 'dm' ? 'conversation' : 'channel'}`}
+                className={cn('flex h-[34px] w-[34px] items-center justify-center rounded-[10px]', searching ? 'bg-navy-900 text-white' : 'text-[#3A4357] hover:bg-[#F0F2F6]')}>
+                <Search className="h-[18px] w-[18px]" />
               </button>
+              {channel.kind === 'channel' && (
+                <button type="button" onClick={() => showGlance(!glance)} aria-pressed={glance} aria-label="At a glance: members, threads and links" title="At a glance: members, threads and links"
+                  className={cn('hidden h-[34px] w-[34px] items-center justify-center rounded-[10px] xl:flex', glance ? 'bg-[#ECEEF2] text-navy-900' : 'text-[#3A4357] hover:bg-[#F0F2F6]')}>
+                  <PanelRight className="h-[18px] w-[18px]" />
+                </button>
+              )}
               {(canManage || (channel.kind === 'channel' && member)) && (
                 <div className="relative">
-                  <button type="button" onClick={() => setMenu((v) => !v)} aria-expanded={menu} className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-semibold text-[#0A6ACF] hover:bg-[#EEF1F5]">
-                    <Settings2 className="h-3.5 w-3.5" /> Channel settings
+                  <button type="button" onClick={() => setMenu((v) => !v)} aria-expanded={menu} aria-label="Channel settings" title="Channel settings" className="flex h-[34px] w-[34px] items-center justify-center rounded-[10px] text-[#3A4357] hover:bg-[#F0F2F6]">
+                    <MoreVertical className="h-[18px] w-[18px]" />
                   </button>
                   {menu && (
                     <div role="menu" className="absolute right-0 top-full z-20 mt-1 w-64 overflow-hidden rounded-2xl bg-white/95 py-1 shadow-[0_12px_36px_rgba(9,21,48,0.18),0_0_0_0.5px_rgba(9,21,48,0.1)] backdrop-blur-xl">
@@ -651,6 +763,10 @@ function ChannelView({ channel, title, me, people, byId, starred, onStar, initia
                 </div>
               )}
             </div>
+          </div>
+          <div className="px-2 sm:px-3">
+            <Tabs active={tab} counts={{ channels: tabs.channels, threads: threads.length, files: links.length }} showChannels={channel.kind === 'channel'}
+              onPick={(t) => { if (t === 'channels') tabs.onChannels(); else { setTab(t); if (t !== 'messages') { setSearching(false); setQ(''); } } }} />
           </div>
         </header>
         {searching && (
@@ -721,7 +837,7 @@ function ChannelView({ channel, title, me, people, byId, starred, onStar, initia
                     <li key={m.id}>
                       {newDay && <DayDivider iso={m.created_at} />}
                       <MessageItem message={m} first={newDay || startsGroup(prev, m)} me={me} byId={byId} canModerate={canManage}
-                        onThread={member ? () => setThread(m) : (m.reply_count > 0 ? () => setThread(m) : undefined)} picked={thread?.id === m.id} />
+                        onThread={member ? () => setThread(m) : (m.reply_count > 0 ? () => setThread(m) : undefined)} picked={thread?.id === m.id} focused={focusId === m.id} />
                     </li>
                   );
                 })}
@@ -741,9 +857,12 @@ function ChannelView({ channel, title, me, people, byId, starred, onStar, initia
       </div>
 
       {/* At a glance: who is in it, the open threads and the latest links, without leaving the messages. */}
-      {!thread && channel.kind === 'channel' && (
-        <aside aria-label="At a glance" className="hidden w-[300px] shrink-0 flex-col gap-5 overflow-y-auto border-l border-navy-900/[0.08] px-4 py-5 xl:flex">
-          <h2 className="px-1 text-xl font-extrabold tracking-[-0.02em] text-navy-900">At a glance</h2>
+      {!thread && glance && channel.kind === 'channel' && (
+        <aside aria-label="At a glance" className="hidden w-[320px] shrink-0 flex-col gap-5 overflow-y-auto border-l border-[#E8EBF0] px-4 pb-5 xl:flex">
+          <div className="-mx-4 flex h-[58px] shrink-0 items-center border-b border-[#E8EBF0] px-4">
+            <h2 className="flex-1 text-[17px] font-extrabold text-navy-900">At a glance</h2>
+            <button type="button" onClick={() => showGlance(false)} aria-label="Close At a glance" className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-[#F0F2F6] text-[#3A4357] hover:bg-[#E6E9EF]"><X className="h-4 w-4" /></button>
+          </div>
           <section className="flex flex-col gap-1.5">
             <p className="flex items-center px-1 text-[13px] font-semibold text-ivory-700"><span className="flex-1">{channel.members.length} {channel.members.length === 1 ? 'member' : 'members'}</span>
               {canManage && <button type="button" onClick={() => setPanel('add')} className="font-semibold text-[#0A6ACF] hover:underline">+ Add</button>}</p>
@@ -826,8 +945,10 @@ function ChannelView({ channel, title, me, people, byId, starred, onStar, initia
 /** A date across the conversation, as a pill on a line. */
 function DayDivider({ iso }: { iso: string }) {
   return (
-    <div className="sticky top-0 z-[1] my-2 flex justify-center px-4">
-      <span className="rounded-full bg-white/85 px-3 py-1 text-xs font-semibold text-navy-700 shadow-[0_1px_4px_rgba(9,21,48,0.12)] backdrop-blur-xl">{dayLabel(iso)}</span>
+    <div className="sticky top-0 z-[1] my-2.5 flex items-center">
+      <span className="h-px flex-1 bg-[#ECEEF2]" />
+      <span className="flex h-[26px] items-center rounded-full bg-white px-3.5 text-xs font-bold text-[#3A4357] shadow-[0_1px_4px_rgba(9,21,48,0.1),0_0_0_1px_#ECEEF2]">{dayLabel(iso)}</span>
+      <span className="h-px flex-1 bg-[#ECEEF2]" />
     </div>
   );
 }
@@ -835,15 +956,17 @@ function DayDivider({ iso }: { iso: string }) {
 function SenderAvatar({ m, byId }: { m: ChatMessage; byId: Map<string, DirectoryMember> }) {
   const p = m.user_id ? byId.get(m.user_id) : undefined;
   if (m.source === 'webhook') {
-    return <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gold-100 text-gold-800"><Plug className="h-4 w-4" /></span>;
+    return <span className="flex h-[38px] w-[38px] items-center justify-center rounded-[11px] bg-gradient-to-br from-[#24375E] to-[#13254A] text-gold-400"><Plug className="h-[18px] w-[18px]" /></span>;
   }
-  return <Avatar firstName={p?.first_name ?? null} lastName={p?.last_name ?? null} src={p?.avatar_url ?? null} size="sm" className="!h-9 !w-9 !rounded-full" />;
+  return <Avatar firstName={p?.first_name ?? null} lastName={p?.last_name ?? null} src={p?.avatar_url ?? null} size="sm" className="!h-[38px] !w-[38px] !rounded-[11px]" />;
 }
 
-function MessageItem({ message: m, first, me, byId, canModerate, onThread, inThread, picked }: {
+function MessageItem({ message: m, first, me, byId, canModerate, onThread, inThread, picked, focused }: {
   message: ChatMessage; first: boolean; me: string; byId: Map<string, DirectoryMember>; canModerate: boolean; onThread?: () => void; inThread?: boolean;
   /** The message whose replies are open beside the channel. */
   picked?: boolean;
+  /** The message opened from Activity or Files. */
+  focused?: boolean;
 }) {
   const { toast } = useToast();
   const [editing, setEditing] = useState(false);
@@ -866,17 +989,18 @@ function MessageItem({ message: m, first, me, byId, canModerate, onThread, inThr
   };
 
   return (
-    <div id={inThread ? undefined : `msg-${m.id}`} className={cn('group relative flex gap-2.5 px-4 sm:px-6', first ? 'mt-2 pt-1.5' : '', picked ? 'bg-gold-50 shadow-[inset_3px_0_0_#E4A93C]' : '')}>
-      <div className="w-9 shrink-0">
-        {first ? <SenderAvatar m={m} byId={byId} /> : <time className="hidden pt-1 text-right text-[10px] text-ivory-600 group-hover:block" dateTime={m.created_at}>{time(m.created_at)}</time>}
+    <div id={inThread ? undefined : `msg-${m.id}`} className={cn('group relative flex gap-3 px-4 py-0.5 transition-colors sm:px-5', first ? 'mt-1.5 pt-2' : '',
+      picked || focused ? 'bg-gradient-to-r from-gold-50 to-gold-50/40 shadow-[inset_3px_0_0_#E4A93C]' : 'hover:bg-[#F5F7FA]')}>
+      <div className="w-[38px] shrink-0">
+        {first ? <SenderAvatar m={m} byId={byId} /> : <time className="hidden pt-1 text-right text-[10px] text-[#8A93A5] group-hover:block" dateTime={m.created_at}>{time(m.created_at)}</time>}
       </div>
       <div className="min-w-0 flex-1 pb-1">
         {first && (
-          <p className="flex flex-wrap items-baseline gap-x-2">
+          <p className="flex flex-wrap items-baseline gap-x-[7px]">
             <span className="text-[15px] font-bold text-navy-900">{name}</span>
-            {m.source === 'webhook' && <span className="rounded bg-ivory-200 px-1 text-[10px] font-bold uppercase tracking-wide text-navy-700">App{typeof m.meta?.via === 'string' && m.meta.via !== name ? ` · ${m.meta.via}` : ''}</span>}
-            {p?.title && m.source === 'user' && <span className="text-xs text-ivory-700">{p.title}</span>}
-            <time className="text-xs text-ivory-700" dateTime={m.created_at}>{time(m.created_at)}</time>
+            {m.source === 'webhook' && <span className="rounded bg-[#ECEEF2] px-[5px] py-px text-[10px] font-bold uppercase text-[#5A6476]">App{typeof m.meta?.via === 'string' && m.meta.via !== name ? ` · ${m.meta.via}` : ''}</span>}
+            {p?.title && m.source === 'user' && <span className="text-xs text-[#8A93A5]">{p.title}</span>}
+            <time className="text-xs text-[#8A93A5]" dateTime={m.created_at}>{time(m.created_at)}</time>
           </p>
         )}
         {editing ? (
@@ -888,37 +1012,32 @@ function MessageItem({ message: m, first, me, byId, canModerate, onThread, inThr
         ) : deleted ? (
           <p className="text-sm italic text-ivory-700">This message was deleted.</p>
         ) : (
-          <div className={cn('inline-block max-w-full rounded-[18px] px-3.5 py-2 sm:max-w-[640px]', picked ? 'bg-gold-100' : 'bg-[#EEF1F5]')}>
+          <>
             <Body text={m.body} />
-            {m.edited_at && <span className="text-[11px] text-ivory-700">(edited)</span>}
-          </div>
+            {m.edited_at && <span className="text-[11px] text-[#8A93A5]">(edited)</span>}
+          </>
         )}
-        {picked && <p className="mt-1 text-[11px] font-extrabold uppercase tracking-wider text-gold-800">Replying to this message →</p>}
-        {!inThread && onThread && !deleted && !editing && (
-          <div className="mt-1 flex flex-wrap gap-1.5 pb-1">
-            {m.reply_count > 0 && (
-              <button type="button" onClick={onThread} className="inline-flex h-7 items-center gap-1.5 rounded-full bg-gold-100 px-3 text-[12px] font-bold text-gold-800 hover:bg-gold-200">
-                <MessageSquare className="h-3.5 w-3.5" /> {m.reply_count} {m.reply_count === 1 ? 'reply' : 'replies'}{m.last_reply_at ? ` · last ${ago(m.last_reply_at)}` : ''} · Open replies
-              </button>
-            )}
-            {m.reply_count === 0 && (
-              <button type="button" onClick={onThread} className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-[12px] font-semibold text-[#0A6ACF] transition hover:bg-[#EEF1F5]">
-                <CornerUpLeft className="h-3.5 w-3.5" /> Reply to this message
-              </button>
-            )}
-          </div>
+        {picked && <p className="mt-1 text-xs font-bold text-gold-800">Replying to this message →</p>}
+        {focused && !picked && <p className="mt-1 text-xs font-bold text-gold-800">Opened from your list</p>}
+        {!inThread && onThread && !deleted && !editing && m.reply_count > 0 && (
+          <button type="button" onClick={onThread}
+            className="mb-1 mt-1.5 inline-flex items-center gap-2 rounded-[10px] bg-[#F5F7FA] py-1 pl-1 pr-2.5 text-[13px] shadow-[inset_0_0_0_1px_#E8EBF0] transition hover:bg-white hover:shadow-[inset_0_0_0_1px_#E4A93C]">
+            <MessageSquare className="ml-1 h-3.5 w-3.5 text-[#0B63C4]" />
+            <strong className="text-[#0B63C4]">{m.reply_count} {m.reply_count === 1 ? 'reply' : 'replies'}</strong>
+            {m.last_reply_at && <span className="text-[#8A93A5]">Last reply {ago(m.last_reply_at)}</span>}
+          </button>
         )}
       </div>
       {!deleted && !editing && (
-        <div role="toolbar" aria-label="Message actions" className="absolute -top-4 right-4 hidden items-center gap-0.5 rounded-full bg-white/90 p-1 shadow-[0_6px_20px_rgba(9,21,48,0.16),0_0_0_0.5px_rgba(9,21,48,0.1)] backdrop-blur-xl group-hover:flex group-focus-within:flex">
-          {!inThread && onThread && <button type="button" onClick={onThread} className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-navy-900 hover:bg-ivory-100"><CornerUpLeft className="h-3.5 w-3.5" /> Reply</button>}
-          {mine && <button type="button" onClick={() => { setDraft(m.body); setEditing(true); }} className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold text-navy-900 hover:bg-ivory-100"><Pencil className="h-3.5 w-3.5" /> Edit</button>}
+        <div role="toolbar" aria-label="Message actions" className="absolute -top-[18px] right-4 z-[2] hidden items-center gap-0.5 rounded-xl bg-white/[0.92] p-[3px] text-[#3A4357] shadow-[0_8px_24px_rgba(9,21,48,0.14),0_0_0_1px_rgba(9,21,48,0.06)] backdrop-blur-xl group-hover:flex group-focus-within:flex [@media(hover:none)]:flex">
+          {!inThread && onThread && <button type="button" onClick={onThread} aria-label="Reply" title="Reply in a thread" className="flex h-8 items-center gap-1.5 rounded-[9px] px-2 text-xs font-semibold hover:bg-[#ECEEF2]"><CornerUpLeft className="h-[17px] w-[17px]" /><span className="hidden sm:inline">Reply</span></button>}
+          {mine && <button type="button" onClick={() => { setDraft(m.body); setEditing(true); }} aria-label="Edit" title="Edit your message" className="flex h-8 w-8 items-center justify-center rounded-[9px] hover:bg-[#ECEEF2]"><Pencil className="h-4 w-4" /></button>}
           {(mine || canModerate) && (menu
             ? <span className="inline-flex items-center gap-1 pl-1 text-xs text-navy-900">Delete it?
-                <button type="button" onClick={remove} className="h-8 rounded-full bg-burgundy-500 px-3 text-xs font-bold text-white hover:bg-burgundy-600">Delete</button>
-                <button type="button" onClick={() => setMenu(false)} className="h-8 rounded-full px-3 text-xs font-semibold hover:bg-ivory-100">Keep</button>
+                <button type="button" onClick={remove} className="h-8 rounded-[9px] bg-burgundy-500 px-3 text-xs font-bold text-white hover:bg-burgundy-600">Delete</button>
+                <button type="button" onClick={() => setMenu(false)} className="h-8 rounded-[9px] px-3 text-xs font-semibold hover:bg-[#ECEEF2]">Keep</button>
               </span>
-            : <button type="button" onClick={() => setMenu(true)} className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold text-burgundy-600 hover:bg-burgundy-50"><Trash2 className="h-3.5 w-3.5" /> Delete</button>)}
+            : <button type="button" onClick={() => setMenu(true)} aria-label="Delete" title="Delete the message" className="flex h-8 w-8 items-center justify-center rounded-[9px] text-burgundy-600 hover:bg-burgundy-50"><Trash2 className="h-4 w-4" /></button>)}
         </div>
       )}
     </div>
@@ -940,7 +1059,6 @@ function Composer({ placeholder, people, onSend, compact, label, hint }: {
 }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
-  const [tools, setTools] = useState(!compact);
   const [emoji, setEmoji] = useState(false);
   const [mention, setMention] = useState<{ q: string; at: number } | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -1004,10 +1122,9 @@ function Composer({ placeholder, people, onSend, compact, label, hint }: {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'i') { e.preventDefault(); wrap('_'); return; }
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void submit(); }
   };
-  const tool = 'rounded-lg p-1.5 text-navy-600 hover:bg-[#EEF1F5] hover:text-navy-900';
-  const word = 'inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-semibold text-[#0A6ACF] hover:bg-[#EEF1F5]';
+  const tool = 'flex h-[30px] min-w-[30px] items-center justify-center rounded-lg text-[#5A6476] hover:bg-[#F0F2F6] hover:text-navy-900';
   return (
-    <div className="relative px-4 pb-4 pt-1 sm:px-6">
+    <div className="relative px-3 pb-3 pt-1 sm:px-5 sm:pb-[18px]">
       {label && <p className="mb-1.5 text-xs font-bold text-gold-800">{label}</p>}
       {mention && candidates.length > 0 && (
         <ul role="listbox" aria-label="Mention someone" className="absolute bottom-full left-4 z-20 mb-1 w-72 overflow-hidden rounded-lg border border-ivory-200 bg-white py-1 shadow-popover">
@@ -1020,36 +1137,34 @@ function Composer({ placeholder, people, onSend, compact, label, hint }: {
           ))}
         </ul>
       )}
-      <div className={cn('rounded-[20px] border bg-white shadow-[0_8px_28px_rgba(9,21,48,0.07)] focus-within:border-navy-500', label ? 'border-2 border-gold-400' : 'border-ivory-300')}>
-        {tools && (
-          <div className="flex flex-wrap items-center gap-0.5 rounded-t-[18px] border-b border-ivory-200 px-2 py-1" role="toolbar" aria-label="Formatting">
-            <button type="button" onClick={() => wrap('**')} aria-label="Bold" title="Bold (Ctrl+B)" className={tool}><Bold className="h-4 w-4" /></button>
-            <button type="button" onClick={() => wrap('_')} aria-label="Italic" title="Italic (Ctrl+I)" className={tool}><Italic className="h-4 w-4" /></button>
-            <button type="button" onClick={() => wrap('~')} aria-label="Strikethrough" title="Strikethrough" className={tool}><Strikethrough className="h-4 w-4" /></button>
-            <span className="mx-1 h-4 w-px bg-ivory-300" />
-            <button type="button" onClick={() => wrap('', ' (https://)', 'link text')} aria-label="Link" title="Link" className={tool}><Link2 className="h-4 w-4" /></button>
-            <button type="button" onClick={() => prefix((i) => `${i + 1}. `)} aria-label="Numbered list" title="Numbered list" className={tool}><ListOrdered className="h-4 w-4" /></button>
-            <button type="button" onClick={() => prefix(() => '• ')} aria-label="Bulleted list" title="Bulleted list" className={tool}><List className="h-4 w-4" /></button>
-            <span className="mx-1 h-4 w-px bg-ivory-300" />
-            <button type="button" onClick={() => prefix(() => '> ')} aria-label="Quote" title="Quote" className={tool}><Quote className="h-4 w-4" /></button>
-            <button type="button" onClick={() => wrap('`')} aria-label="Code" title="Code" className={tool}><Code className="h-4 w-4" /></button>
-            <button type="button" onClick={() => wrap('```\n', '\n```', 'code')} aria-label="Code block" title="Code block" className={tool}><SquareCode className="h-4 w-4" /></button>
-          </div>
-        )}
+      <div className={cn('rounded-2xl bg-white transition-shadow', label ? 'shadow-[0_10px_30px_rgba(9,21,48,0.08),0_0_0_2px_#E4A93C]' : 'shadow-[0_10px_30px_rgba(9,21,48,0.08),0_0_0_1px_#DCE1E8] focus-within:shadow-[0_10px_30px_rgba(9,21,48,0.1),0_0_0_2px_#091530]')}>
         <textarea ref={ref} value={text} onChange={(e) => onChange(e.target.value)} onKeyDown={onKey} rows={compact ? 1 : 2} maxLength={8000} placeholder={placeholder} aria-label={placeholder}
-          className="block max-h-48 min-h-[44px] w-full resize-none border-0 bg-transparent px-3 py-2.5 text-[15px] text-navy-900 outline-none placeholder:text-ivory-600 focus:ring-0" />
-        <div className="relative flex flex-wrap items-center gap-1.5 px-2 pb-2">
-          <button type="button" onClick={() => setTools((v) => !v)} aria-pressed={tools} className={cn(word, tools && 'bg-[#EEF1F5]')}><Type className="h-3.5 w-3.5" /> Formatting</button>
-          <button type="button" onClick={() => setEmoji((v) => !v)} aria-expanded={emoji} className={word}><Smile className="h-3.5 w-3.5" /> Emoji</button>
-          <button type="button" onClick={() => { insert('@'); setMention({ q: '', at: (ref.current?.selectionStart ?? text.length) }); }} className={word}><AtSign className="h-3.5 w-3.5" /> Mention</button>
+          className="block max-h-48 min-h-[44px] w-full resize-none rounded-t-2xl border-0 bg-transparent px-4 pb-1.5 pt-3 text-[15px] text-navy-900 outline-none placeholder:text-[#8A93A5] focus:ring-0" />
+        <div className="relative flex flex-wrap items-center gap-0.5 px-2 pb-2 pt-1" role="toolbar" aria-label="Formatting">
+          {
+            <>
+              <button type="button" onClick={() => wrap('**')} aria-label="Bold" title="Bold (Ctrl+B)" className={tool}><Bold className="h-4 w-4" /></button>
+              <button type="button" onClick={() => wrap('_')} aria-label="Italic" title="Italic (Ctrl+I)" className={tool}><Italic className="h-4 w-4" /></button>
+              <button type="button" onClick={() => wrap('~')} aria-label="Strikethrough" title="Strikethrough" className={tool}><Strikethrough className="h-4 w-4" /></button>
+              <button type="button" onClick={() => wrap('', ' (https://)', 'link text')} aria-label="Link" title="Link" className={tool}><Link2 className="h-4 w-4" /></button>
+              <button type="button" onClick={() => prefix((i) => `${i + 1}. `)} aria-label="Numbered list" title="Numbered list" className={tool}><ListOrdered className="h-4 w-4" /></button>
+              <button type="button" onClick={() => prefix(() => '• ')} aria-label="Bulleted list" title="Bulleted list" className={tool}><List className="h-4 w-4" /></button>
+              <button type="button" onClick={() => prefix(() => '> ')} aria-label="Quote" title="Quote" className={tool}><Quote className="h-4 w-4" /></button>
+              <button type="button" onClick={() => wrap('`')} aria-label="Code" title="Code" className={tool}><Code className="h-4 w-4" /></button>
+              <button type="button" onClick={() => wrap('```\n', '\n```', 'code')} aria-label="Code block" title="Code block" className={tool}><SquareCode className="h-4 w-4" /></button>
+              <span className="mx-1.5 h-[18px] w-px bg-[#E3E6EC]" />
+            </>
+          }
+          <button type="button" onClick={() => setEmoji((v) => !v)} aria-expanded={emoji} aria-label="Emoji" title="Emoji" className={tool}><Smile className="h-[18px] w-[18px]" /></button>
+          <button type="button" onClick={() => { insert('@'); setMention({ q: '', at: (ref.current?.selectionStart ?? text.length) }); }} aria-label="Mention someone" title="Mention someone" className={tool}><AtSign className="h-[18px] w-[18px]" /></button>
           {emoji && (
-            <div className="absolute bottom-full left-8 z-20 mb-1 grid w-64 grid-cols-8 gap-0.5 rounded-lg border border-ivory-200 bg-white p-1.5 shadow-popover">
-              {EMOJI.map((e) => <button key={e} type="button" onClick={() => { insert(e); setEmoji(false); }} className="rounded p-1 text-lg hover:bg-ivory-100" aria-label={e}>{e}</button>)}
+            <div className="absolute bottom-full left-8 z-20 mb-1 grid w-64 grid-cols-8 gap-0.5 rounded-xl bg-white p-1.5 shadow-[0_12px_36px_rgba(9,21,48,0.18),0_0_0_1px_rgba(9,21,48,0.08)]">
+              {EMOJI.map((e) => <button key={e} type="button" onClick={() => { insert(e); setEmoji(false); }} className="rounded p-1 text-lg hover:bg-[#F0F2F6]" aria-label={e}>{e}</button>)}
             </div>
           )}
-          <span className="ml-2 hidden min-w-0 truncate text-[11px] text-ivory-700 lg:inline">Enter sends · Shift + Enter for a new line{hint ? ` · ${hint}` : ''}</span>
-          <button type="button" onClick={submit} disabled={!text.trim() || busy} title="Send (Enter)"
-            className={cn('ml-auto inline-flex h-9 items-center gap-1.5 rounded-full px-4 text-sm font-bold transition', text.trim() ? 'bg-navy-900 text-white hover:bg-navy-800' : 'bg-[#E6E9EF] text-ivory-700')}><SendHorizontal className="h-4 w-4" /> Send</button>
+          <span className="ml-2 hidden min-w-0 flex-1 truncate text-xs text-[#8A93A5] lg:inline">Enter sends · Shift + Enter for a new line{hint ? ` · ${hint}` : ''}</span>
+          <button type="button" onClick={submit} disabled={!text.trim() || busy} aria-label="Send" title="Send (Enter)"
+            className={cn('ml-auto flex h-8 w-9 items-center justify-center rounded-[10px] transition', text.trim() ? 'bg-navy-900 text-gold-400 hover:bg-navy-800' : 'bg-[#F0F2F6] text-[#8A93A5]')}><Send className="h-4 w-4" /></button>
         </div>
       </div>
     </div>
@@ -1080,17 +1195,17 @@ function ThreadPanel({ parent, channel, title, me, people, byId, member, canMode
   const who = parent.source === 'webhook' ? parent.sender_name ?? 'the app' : parent.user_id === me ? 'your' : `${p ? p.first_name ?? memberName(p) : 'their'}’s`;
   const heading = who === 'your' ? 'Replies to your message' : `Replies to ${who} message`;
   return (
-    <aside className="fixed inset-0 z-40 flex flex-col bg-white sm:static sm:z-auto sm:w-[420px] sm:shrink-0 sm:border-l sm:border-ivory-300" aria-label={heading}>
-      <header className="flex items-center gap-3 border-b border-ivory-300 px-5 py-4">
+    <aside className="fixed inset-0 z-40 flex flex-col bg-white sm:static sm:z-auto sm:w-[400px] sm:shrink-0 sm:border-l sm:border-[#E8EBF0]" aria-label={heading}>
+      <header className="flex min-h-[58px] items-center gap-3 border-b border-[#E8EBF0] px-4 py-2">
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-lg font-extrabold text-navy-900">{heading}</h3>
-          <p className="truncate text-[13px] text-ivory-700">in {channel.kind === 'dm' ? title : `# ${channel.name}`} · {replies.length} {replies.length === 1 ? 'reply' : 'replies'}</p>
+          <h3 className="truncate text-[17px] font-extrabold text-navy-900">{heading}</h3>
+          <p className="truncate text-[13px] text-[#6B7486]">in {channel.kind === 'dm' ? title : `# ${channel.name}`} · {replies.length} {replies.length === 1 ? 'reply' : 'replies'}</p>
         </div>
-        <button type="button" onClick={onClose} className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-ivory-300 px-3 text-[13px] font-bold text-navy-900 hover:bg-ivory-50">Close <X className="h-4 w-4" /></button>
+        <button type="button" onClick={onClose} aria-label="Close replies" title="Close" className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-[#F0F2F6] text-[#3A4357] hover:bg-[#E6E9EF]"><X className="h-4 w-4" /></button>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto py-2">
-        <div className="mx-4 rounded-2xl bg-gold-50 py-1"><MessageItem message={parent} first me={me} byId={byId} canModerate={canModerate} inThread /></div>
-        <div className="my-2 flex items-center gap-2 px-4 text-xs text-ivory-700"><span>{replies.length} {replies.length === 1 ? 'reply' : 'replies'}</span><span className="h-px flex-1 bg-ivory-200" /></div>
+        <div className="bg-gradient-to-r from-gold-50 to-gold-50/40 py-1"><MessageItem message={parent} first me={me} byId={byId} canModerate={canModerate} inThread /></div>
+        <div className="my-2 flex items-center gap-2.5 px-5 text-xs font-semibold text-[#8A93A5]"><span>{replies.length} {replies.length === 1 ? 'reply' : 'replies'}</span><span className="h-px flex-1 bg-[#ECEEF2]" /></div>
         {replies.map((r, i) => <MessageItem key={r.id} message={r} first={startsGroup(replies[i - 1], r)} me={me} byId={byId} canModerate={canModerate} inThread />)}
         <div ref={endRef} />
       </div>
