@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import {
-  ArrowLeft, AtSign, Bell, Bold, Check, ChevronDown, MoreVertical, PanelRight, Send, Code, Copy, ExternalLink, FileText, Hash, House, Italic, Link2, List, ListOrdered, Lock, Mail,
+  ArrowLeft, AtSign, Bell, Bold, Check, ChevronDown, ChevronRight, LogOut, UserRound, Settings, Moon, MoreVertical, PanelRight, Send, Code, Copy, ExternalLink, FileText, Hash, House, Italic, Link2, List, ListOrdered, Lock, Mail,
   MessageCircle, MessageSquare, CornerUpLeft, Pencil, Plus, Plug, Quote, Search, Smile, SquareCode, SquarePen, Star, Strikethrough,
   Trash2, UserPlus, X,
 } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { HowellsLogo } from '@/components/layout/Sidebar';
+import { CLEAR_LABEL, STATUS_NOT_SET_UP, STATUS_PRESETS, clearAtFor, liveStatus, saveStatus, untilLabel, usePresence, type ClearAfter, type MemberStatus } from '@/lib/presence';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useRouter } from '@/lib/router';
@@ -45,9 +47,46 @@ const ago = (iso: string) => {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
+/** Who is online and what they are up to, for every part of the page. */
+type Presence = { online: Set<string>; statuses: Map<string, MemberStatus>; ready: boolean };
+const PresenceCtx = createContext<Presence>({ online: new Set(), statuses: new Map(), ready: false });
+function usePresent(userId: string | null | undefined) {
+  const { online, statuses } = useContext(PresenceCtx);
+  const s = userId ? statuses.get(userId) : undefined;
+  return { online: !!userId && online.has(userId), away: !!s?.away, status: liveStatus(s), clearAt: s?.clear_at ?? null };
+}
+/** A dot on a face: green when someone is here, hollow when away or offline. */
+function PresenceDot({ userId, ring = '#091530', className }: { userId: string | null | undefined; ring?: string; className?: string }) {
+  const { online, away } = usePresent(userId);
+  const here = online && !away;
+  return <span aria-label={here ? 'Active' : away ? 'Away' : 'Offline'} className={cn('absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2', here ? 'bg-[#30C27B]' : 'bg-transparent', className)}
+    style={{ borderColor: ring, boxShadow: here ? undefined : 'inset 0 0 0 1.5px #AEB5C2' }} />;
+}
+/** Someone's status emoji, with the words on hover. */
+function StatusMark({ userId }: { userId: string | null | undefined }) {
+  const { status, clearAt } = usePresent(userId);
+  if (!status) return null;
+  return <span title={`${status.text}${clearAt ? ` · ${untilLabel(clearAt)}` : ''}`} aria-label={status.text} className="shrink-0 text-[13px] leading-none">{status.emoji ?? '💬'}</span>;
+}
+
 /** Message text without the formatting marks, for one-line previews. */
 const plain = (body: string) => body.replace(/[*_~`>]/g, '').split('\n')[0];
 const hostOf = (url: string) => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } };
+
+/** Under a direct message's name: whether they are here, and what they are up to. */
+function DmLine({ channel, me }: { channel: Channel; me: string }) {
+  const others = dmPeople(channel, me);
+  const one = others.length === 1 ? others[0] : null;
+  const { online, away, status, clearAt } = usePresent(one);
+  if (!one) return <>Direct message · {others.length + 1} people</>;
+  const here = online && !away;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={cn('font-semibold', here ? 'text-[#1F9D55]' : '')}>{here ? 'Active now' : away ? 'Away' : 'Offline'}</span>
+      {status && <span>· {status.emoji} {status.text}{clearAt ? ` (${untilLabel(clearAt)})` : ''}</span>}
+    </span>
+  );
+}
 
 /** A count on a list row: quiet grey, or gold when someone needs you. */
 function Count({ n, loud }: { n: number; loud?: boolean }) {
@@ -89,6 +128,9 @@ export function ConversationsPage() {
   // The channel the tabs go back to from the Channels tab.
   const [lastChannel, setLastChannel] = useState<string | null>(null);
   const me = user?.id ?? '';
+  const presence = usePresence(workspace?.id, me);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const youRef = useRef<HTMLButtonElement>(null);
   const myName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ');
 
   const load = useCallback(async () => {
@@ -233,11 +275,12 @@ export function ConversationsPage() {
   ];
 
   return (
-    // The whole screen above the feature dock (and below the top bar when the menu is open).
+    <PresenceCtx.Provider value={presence}>
+    {/* The whole screen above the feature dock (and below the top bar when the menu is open). */}
     <div className="-mx-4 -mt-5 -mb-[calc(var(--dock-h,0px)+24px)] flex h-[calc(100dvh-var(--dock-h,0px)-var(--top-h,0px))] min-h-[480px] overflow-hidden bg-[radial-gradient(120%_80%_at_0%_0%,#13254A_0%,#091530_45%,#050C1E_100%)] lg:-mx-6 lg:-mt-6">
       <div className={cn('min-w-0 shrink-0 text-white sm:flex', sel ? 'hidden' : 'flex w-full sm:w-auto')}>
         {/* The rail: where you are. Home, DMs, Activity, Files. */}
-        <nav aria-label="Conversations" className="flex w-[68px] shrink-0 flex-col items-center gap-4 overflow-y-auto py-4 sm:w-[76px]">
+        <nav aria-label="Conversations" className="relative flex w-[68px] shrink-0 flex-col items-center gap-4 overflow-y-auto py-4 sm:w-[76px]">
           <span title="SYNAPSE" className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#13254A] to-[#0B1733] shadow-[inset_0_0_0_1px_rgba(228,169,60,0.35),0_6px_18px_rgba(0,0,0,0.35)]">
             <HowellsLogo className="h-[22px] w-[22px]" />
           </span>
@@ -254,7 +297,12 @@ export function ConversationsPage() {
           ))}
           <span className="flex-1" />
           <button type="button" onClick={() => setModal('channel')} aria-label="New channel" title="New channel" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/[0.16]"><Plus className="h-[18px] w-[18px]" /></button>
-          <Avatar firstName={profile?.first_name ?? null} lastName={profile?.last_name ?? null} src={profile?.avatar_url ?? null} size="sm" className="!h-9 !w-9 shrink-0 !rounded-[10px]" />
+          <button ref={youRef} type="button" onClick={() => setProfileOpen((v) => !v)} aria-expanded={profileOpen} aria-label="You: status, profile and sign out" title="You: status, profile and sign out"
+            className="relative shrink-0 rounded-[10px] ring-gold-400/70 transition hover:ring-2">
+            <Avatar firstName={profile?.first_name ?? null} lastName={profile?.last_name ?? null} src={profile?.avatar_url ?? null} size="sm" className="!h-9 !w-9 !rounded-[10px]" />
+            <PresenceDot userId={me} ring="#050C1E" />
+          </button>
+          {profileOpen && workspace && <ProfileMenu anchor={youRef.current} workspaceId={workspace.id} workspaceName={workspace.name ?? 'SYNAPSE'} me={me} title={byId.get(me)?.title ?? null} onSaved={presence.set} onClose={() => setProfileOpen(false)} />}
         </nav>
 
         {/* The list: changes with the rail. */}
@@ -291,8 +339,8 @@ export function ConversationsPage() {
                 <>
                   {dms.filter(match).slice(0, 8).map((c) => (
                     <button key={c.id} type="button" onClick={() => open(c.id)} aria-current={isActive(c) ? 'page' : undefined} className={rowCls(isActive(c), unread[c.id] > 0)}>
-                      {face(dmOther(c), '!h-[22px] !w-[22px] !text-[9px]')}
-                      <span className="min-w-0 flex-1 truncate">{title(c)}</span>
+                      <span className="relative shrink-0">{face(dmOther(c), '!h-[22px] !w-[22px] !text-[9px]')}{dmPeople(c, me).length === 1 && <PresenceDot userId={dmOther(c)?.user_id} ring="#0B1733" />}</span>
+                      <span className="min-w-0 truncate">{title(c)}</span>{dmPeople(c, me).length === 1 && <StatusMark userId={dmOther(c)?.user_id} />}<span className="flex-1" />
                       {unread[c.id] > 0 && !isActive(c) && <Count n={unread[c.id]} loud />}
                     </button>
                   ))}
@@ -312,9 +360,9 @@ export function ConversationsPage() {
                   const u = unread[c.id] > 0 && !isActive(c);
                   return (
                     <button key={c.id} type="button" onClick={() => open(c.id)} aria-current={isActive(c) ? 'page' : undefined} className={cardCls(isActive(c))}>
-                      {face(dmOther(c), '!h-[38px] !w-[38px] !rounded-[11px] !text-[13px]')}
+                      <span className="relative shrink-0">{face(dmOther(c), '!h-[38px] !w-[38px] !rounded-[11px] !text-[13px]')}{dmPeople(c, me).length === 1 && <PresenceDot userId={dmOther(c)?.user_id} ring="#0B1733" className="!h-3 !w-3" />}</span>
                       <span className="min-w-0 flex-1">
-                        <span className={cn('flex gap-2 text-[15px] text-white', u ? 'font-bold' : 'font-medium')}><span className="min-w-0 flex-1 truncate">{title(c)}</span>{last && <span className="shrink-0 text-xs font-normal text-white/50">{ago(last.created_at)}</span>}</span>
+                        <span className={cn('flex items-center gap-1.5 text-[15px] text-white', u ? 'font-bold' : 'font-medium')}><span className="min-w-0 truncate">{title(c)}</span>{dmPeople(c, me).length === 1 && <StatusMark userId={dmOther(c)?.user_id} />}<span className="flex-1" />{last && <span className="shrink-0 text-xs font-normal text-white/50">{ago(last.created_at)}</span>}</span>
                         <span className={cn('block truncate text-[13px]', u ? 'text-white/85' : 'text-white/55')}>{last ? `${last.user_id === me ? 'You: ' : ''}${plain(last.body)}` : 'No messages yet'}</span>
                       </span>
                       {u && <Count n={unread[c.id]} loud />}
@@ -443,6 +491,7 @@ export function ConversationsPage() {
         />
       )}
     </div>
+    </PresenceCtx.Provider>
   );
 }
 
@@ -533,6 +582,140 @@ function ChannelsDirectory({ mine, joinable, unread, latest, starred, byId, onOp
         </ul>
       </div>
     </div>
+  );
+}
+
+/**
+ * You: opened from your photo at the bottom of the rail. Your status (one-click presets or your
+ * own words, clearing itself on time), away or active, your profile, settings and sign out.
+ */
+function ProfileMenu({ anchor, workspaceId, workspaceName, me, title, onSaved, onClose }: {
+  anchor: HTMLElement | null; workspaceId: string; workspaceName: string; me: string; title: string | null; onSaved: (s: MemberStatus) => void; onClose: () => void;
+}) {
+  const { profile, user, signOut } = useAuth();
+  const { toast } = useToast();
+  const [, navigate] = useRouter();
+  const { ready } = useContext(PresenceCtx);
+  const mine = usePresent(me);
+  const [editing, setEditing] = useState(false);
+  const [emoji, setEmoji] = useState(mine.status?.emoji ?? '💬');
+  const [text, setText] = useState(mine.status?.text ?? '');
+  const [clear, setClear] = useState<ClearAfter>('today');
+  const [busy, setBusy] = useState(false);
+  const name = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || user?.email || 'You';
+
+  const save = async (change: Partial<Pick<MemberStatus, 'emoji' | 'text' | 'clear_at' | 'away'>>, done?: string) => {
+    if (!ready) { toast(STATUS_NOT_SET_UP, 'error'); return; }
+    setBusy(true);
+    const { data, error } = await saveStatus(workspaceId, me, change);
+    setBusy(false);
+    if (error || !data) { toast(error ?? 'Could not save.', 'error'); return; }
+    onSaved(data);
+    setEditing(false);
+    if (done) toast(done);
+  };
+  const go = (to: string) => { onClose(); navigate(to); };
+  const item = 'flex w-full items-center gap-3 rounded-[10px] px-3 py-2.5 text-left text-[15px] text-navy-900 hover:bg-[#F0F2F6]';
+  const here = mine.online && !mine.away;
+  useEffect(() => { const k = (e: globalThis.KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
+  // Beside your photo, lined up with its bottom edge, kept on screen.
+  const r = anchor?.getBoundingClientRect();
+  const width = Math.min(340, window.innerWidth - 16);
+  const left = Math.max(8, Math.min((r?.right ?? 76) + 10, window.innerWidth - width - 8));
+  const bottom = Math.max(8, window.innerHeight - (r?.bottom ?? window.innerHeight - 8));
+
+  return createPortal(
+    <>
+      <button type="button" aria-label="Close" onClick={onClose} className="fixed inset-0 z-[70] cursor-default" />
+      <div role="dialog" aria-label="You" style={{ left, bottom, width }} className="fixed z-[71] max-h-[calc(100dvh-16px)] overflow-y-auto rounded-2xl bg-white/95 text-navy-900 shadow-[0_24px_60px_rgba(0,0,0,0.35),0_0_0_1px_rgba(9,21,48,0.08)] backdrop-blur-xl sm:left-[70px]">
+        {!editing ? (
+          <>
+            <div className="flex items-center gap-3 px-4 pb-3 pt-4">
+              <span className="relative">
+                <Avatar firstName={profile?.first_name ?? null} lastName={profile?.last_name ?? null} src={profile?.avatar_url ?? null} size="sm" className="!h-12 !w-12 !rounded-[14px] !text-base" />
+                <PresenceDot userId={me} ring="#FFFFFF" className="!h-3.5 !w-3.5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[17px] font-extrabold">{name}</span>
+                <span className="block truncate text-[13px] text-[#6B7486]">{title ?? user?.email}</span>
+                <span className={cn('mt-0.5 flex items-center gap-1.5 text-[13px] font-semibold', here ? 'text-[#1F9D55]' : 'text-[#6B7486]')}>
+                  <span className={cn('h-2 w-2 rounded-full', here ? 'bg-[#30C27B]' : 'shadow-[inset_0_0_0_1.5px_#AEB5C2]')} />{here ? 'Active' : mine.away ? 'Away' : 'Offline'}
+                </span>
+              </span>
+            </div>
+
+            <div className="px-3">
+              {mine.status ? (
+                <div className="flex items-center gap-3 rounded-xl bg-[#F5F7FA] px-3 py-2.5 shadow-[inset_0_0_0_1px_#E8EBF0]">
+                  <span className="text-xl leading-none">{mine.status.emoji ?? '💬'}</span>
+                  <button type="button" onClick={() => { setEmoji(mine.status?.emoji ?? '💬'); setText(mine.status?.text ?? ''); setEditing(true); }} className="min-w-0 flex-1 text-left">
+                    <span className="block truncate text-[15px] font-semibold">{mine.status.text}</span>
+                    {mine.clearAt && <span className="block text-xs text-[#6B7486]">Clears {untilLabel(mine.clearAt)}</span>}
+                  </button>
+                  <button type="button" disabled={busy} onClick={() => void save({ emoji: null, text: null, clear_at: null }, 'Status cleared')} aria-label="Clear your status" title="Clear your status" className="flex h-8 w-8 items-center justify-center rounded-lg text-[#6B7486] hover:bg-white"><X className="h-4 w-4" /></button>
+                </div>
+              ) : (
+                <>
+                  <button type="button" onClick={() => { setEmoji('💬'); setText(''); setEditing(true); }} className="flex h-11 w-full items-center gap-2.5 rounded-xl px-3 text-left text-[15px] text-[#6B7486] shadow-[inset_0_0_0_1px_#DCE1E8] hover:shadow-[inset_0_0_0_1px_#091530]">
+                    <Smile className="h-[18px] w-[18px]" /> Update your status
+                  </button>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {STATUS_PRESETS.map((p) => (
+                      <button key={p.text} type="button" disabled={busy} onClick={() => void save({ emoji: p.emoji, text: p.text, clear_at: clearAtFor(p.clear)?.toISOString() ?? null }, `Status: ${p.text}`)}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-full bg-[#F0F2F6] px-3 text-[13px] font-semibold hover:bg-[#E6E9EF]">
+                        <span>{p.emoji}</span>{p.text}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="px-2 pb-2 pt-2">
+              <button type="button" disabled={busy} onClick={() => void save({ away: !mine.away }, mine.away ? 'You are active' : 'You are set as away')} className={item}>
+                <Moon className="h-[18px] w-[18px] text-[#5A6476]" /> <span className="flex-1">{mine.away ? 'Set yourself as active' : 'Set yourself as away'}</span>
+              </button>
+              <div className="my-1 h-px bg-[#ECEEF2]" />
+              <button type="button" onClick={() => go('/settings?tab=profile')} className={item}><UserRound className="h-[18px] w-[18px] text-[#5A6476]" /> <span className="flex-1">Profile</span></button>
+              <button type="button" onClick={() => go('/settings?tab=notifications')} className={item}><Bell className="h-[18px] w-[18px] text-[#5A6476]" /> <span className="flex-1">Notifications</span><ChevronRight className="h-4 w-4 text-[#AEB5C2]" /></button>
+              <button type="button" onClick={() => go('/settings')} className={item}><Settings className="h-[18px] w-[18px] text-[#5A6476]" /> <span className="flex-1">Settings</span><ChevronRight className="h-4 w-4 text-[#AEB5C2]" /></button>
+              <div className="my-1 h-px bg-[#ECEEF2]" />
+              <button type="button" onClick={() => { onClose(); void signOut(); }} className={cn(item, 'text-burgundy-600')}><LogOut className="h-[18px] w-[18px]" /> <span className="flex-1 truncate">Sign out of {workspaceName}</span></button>
+            </div>
+          </>
+        ) : (
+          <form className="flex flex-col gap-3 p-4" onSubmit={(e) => { e.preventDefault(); if (text.trim()) void save({ emoji, text: text.trim(), clear_at: clearAtFor(clear)?.toISOString() ?? null }, 'Status updated'); }}>
+            <div className="flex items-center">
+              <h2 className="flex-1 text-[17px] font-extrabold">Your status</h2>
+              <button type="button" onClick={() => setEditing(false)} aria-label="Back" className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-[#F0F2F6] text-[#3A4357] hover:bg-[#E6E9EF]"><X className="h-4 w-4" /></button>
+            </div>
+            <label className="flex h-11 items-center gap-2 rounded-xl px-2 shadow-[inset_0_0_0_1px_#DCE1E8] focus-within:shadow-[inset_0_0_0_2px_#091530]">
+              <span className="text-xl leading-none">{emoji}</span>
+              <span className="sr-only">What are you up to?</span>
+              <input value={text} onChange={(e) => setText(e.target.value)} maxLength={100} autoFocus placeholder="What are you up to?" className="min-w-0 flex-1 border-0 bg-transparent text-[15px] outline-none" />
+            </label>
+            <div className="flex flex-wrap gap-1">
+              {['💬', '📅', '🎧', '🚌', '🤒', '🌴', '🍽️', '🏠', '✈️', '🎉'].map((e) => (
+                <button key={e} type="button" onClick={() => setEmoji(e)} aria-label={`Use ${e}`} aria-pressed={emoji === e} className={cn('flex h-8 w-8 items-center justify-center rounded-lg text-lg', emoji === e ? 'bg-gold-100 shadow-[inset_0_0_0_1.5px_#E4A93C]' : 'hover:bg-[#F0F2F6]')}>{e}</button>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {STATUS_PRESETS.map((p) => (
+                <button key={p.text} type="button" onClick={() => { setEmoji(p.emoji); setText(p.text); setClear(p.clear); }} className="inline-flex h-7 items-center gap-1 rounded-full bg-[#F0F2F6] px-2.5 text-xs font-semibold hover:bg-[#E6E9EF]">{p.emoji} {p.text}</button>
+              ))}
+            </div>
+            <label className="flex items-center gap-2 text-sm text-[#3A4357]">
+              Clear after
+              <select value={clear} onChange={(e) => setClear(e.target.value as ClearAfter)} className="h-9 flex-1 rounded-lg border-0 bg-[#F0F2F6] px-2 text-sm font-semibold text-navy-900">
+                {(Object.keys(CLEAR_LABEL) as ClearAfter[]).map((k) => <option key={k} value={k}>{CLEAR_LABEL[k]}</option>)}
+              </select>
+            </label>
+            <button type="submit" disabled={!text.trim() || busy} className="h-10 rounded-xl bg-navy-900 text-sm font-bold text-white hover:bg-navy-800 disabled:opacity-40">Save status</button>
+          </form>
+        )}
+      </div>
+    </>,
+    document.body,
   );
 }
 
@@ -725,7 +908,7 @@ function ChannelView({ channel, title, me, people, byId, starred, onStar, initia
               {channel.kind === 'channel' ? (channel.is_private ? <Lock className="h-4 w-4 shrink-0" aria-label="Private" /> : <Hash className="h-[18px] w-[18px] shrink-0" />) : null}
               <span className="truncate">{title}</span>
             </h1>
-            <span className="hidden min-w-0 flex-1 truncate text-[13px] text-[#6B7486] md:block">{channel.kind === 'dm' ? 'Direct message' : channel.description ?? (channel.is_private ? 'Private channel' : 'Public channel')}</span>
+            <span className="hidden min-w-0 flex-1 truncate text-[13px] text-[#6B7486] md:block">{channel.kind === 'dm' ? <DmLine channel={channel} me={me} /> : channel.description ?? (channel.is_private ? 'Private channel' : 'Public channel')}</span>
             <span className="flex-1 md:hidden" />
             <span title={`${channel.members.length} ${channel.members.length === 1 ? 'member' : 'members'}`} className="hidden h-8 shrink-0 items-center gap-1.5 rounded-[10px] bg-[#F0F2F6] pl-1 pr-2.5 text-[13px] font-semibold text-[#3A4357] sm:inline-flex">
               <span className="flex">
@@ -871,8 +1054,8 @@ function ChannelView({ channel, title, me, people, byId, starred, onStar, initia
                 const p = byId.get(mb.user_id);
                 return (
                   <li key={mb.user_id} className="flex items-center gap-2.5 border-b border-navy-900/[0.06] px-3 py-2 last:border-0">
-                    <Avatar firstName={p?.first_name ?? null} lastName={p?.last_name ?? null} src={p?.avatar_url ?? null} size="sm" className="!h-7 !w-7 !rounded-full !text-[10px]" />
-                    <span className="min-w-0 flex-1 truncate text-sm text-navy-900">{p ? memberName(p) : 'Former member'}{mb.user_id === me ? ' (you)' : ''}</span>
+                    <span className="relative shrink-0"><Avatar firstName={p?.first_name ?? null} lastName={p?.last_name ?? null} src={p?.avatar_url ?? null} size="sm" className="!h-7 !w-7 !rounded-[8px] !text-[10px]" /><PresenceDot userId={mb.user_id} ring="#EEF1F5" /></span>
+                    <span className="min-w-0 truncate text-sm text-navy-900">{p ? memberName(p) : 'Former member'}{mb.user_id === me ? ' (you)' : ''}</span><StatusMark userId={mb.user_id} /><span className="flex-1" />
                     {mb.role === 'owner' && <span className="text-[11px] font-semibold text-ivory-700">Owner</span>}
                   </li>
                 );
@@ -998,6 +1181,7 @@ function MessageItem({ message: m, first, me, byId, canModerate, onThread, inThr
         {first && (
           <p className="flex flex-wrap items-baseline gap-x-[7px]">
             <span className="text-[15px] font-bold text-navy-900">{name}</span>
+            {m.source === 'user' && <StatusMark userId={m.user_id} />}
             {m.source === 'webhook' && <span className="rounded bg-[#ECEEF2] px-[5px] py-px text-[10px] font-bold uppercase text-[#5A6476]">App{typeof m.meta?.via === 'string' && m.meta.via !== name ? ` · ${m.meta.via}` : ''}</span>}
             {p?.title && m.source === 'user' && <span className="text-xs text-[#8A93A5]">{p.title}</span>}
             <time className="text-xs text-[#8A93A5]" dateTime={m.created_at}>{time(m.created_at)}</time>
@@ -1122,7 +1306,7 @@ function Composer({ placeholder, people, onSend, compact, label, hint }: {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'i') { e.preventDefault(); wrap('_'); return; }
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void submit(); }
   };
-  const tool = 'flex h-[30px] min-w-[30px] items-center justify-center rounded-lg text-[#5A6476] hover:bg-[#F0F2F6] hover:text-navy-900';
+  const tool = cn('flex h-[30px] items-center justify-center rounded-lg text-[#5A6476] hover:bg-[#F0F2F6] hover:text-navy-900', compact ? 'min-w-[27px]' : 'min-w-[30px]');
   return (
     <div className="relative px-3 pb-3 pt-1 sm:px-5 sm:pb-[18px]">
       {label && <p className="mb-1.5 text-xs font-bold text-gold-800">{label}</p>}
@@ -1162,7 +1346,7 @@ function Composer({ placeholder, people, onSend, compact, label, hint }: {
               {EMOJI.map((e) => <button key={e} type="button" onClick={() => { insert(e); setEmoji(false); }} className="rounded p-1 text-lg hover:bg-[#F0F2F6]" aria-label={e}>{e}</button>)}
             </div>
           )}
-          <span className="ml-2 hidden min-w-0 flex-1 truncate text-xs text-[#8A93A5] lg:inline">Enter sends · Shift + Enter for a new line{hint ? ` · ${hint}` : ''}</span>
+          <span className={cn('ml-2 hidden min-w-0 flex-1 truncate text-xs text-[#8A93A5]', !compact && 'lg:inline')}>Enter sends · Shift + Enter for a new line{hint ? ` · ${hint}` : ''}</span>
           <button type="button" onClick={submit} disabled={!text.trim() || busy} aria-label="Send" title="Send (Enter)"
             className={cn('ml-auto flex h-8 w-9 items-center justify-center rounded-[10px] transition', text.trim() ? 'bg-navy-900 text-gold-400 hover:bg-navy-800' : 'bg-[#F0F2F6] text-[#8A93A5]')}><Send className="h-4 w-4" /></button>
         </div>
@@ -1184,10 +1368,17 @@ function ThreadPanel({ parent, channel, title, me, people, byId, member, canMode
     requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }));
   }), [parent.id, channel.workspace_id]);
 
+  const [alsoChannel, setAlsoChannel] = useState(false);
   const send = async (text: string) => {
     const { data, error } = await sendMessage(channel.id, me, text, parent.id);
     if (error) { toast(error, 'error'); return false; }
     if (data) setReplies((list) => (list.some((x) => x.id === data.id) ? list : [...list, data]));
+    // Also in the channel itself, quoting the message it answers, so everyone sees it.
+    if (alsoChannel) {
+      const quote = plain(parent.body).slice(0, 140);
+      const { error: e2 } = await sendMessage(channel.id, me, `${quote ? `> ${quote}\n` : ''}${text}`);
+      if (e2) toast(e2, 'error');
+    }
     return true;
   };
 
@@ -1209,7 +1400,15 @@ function ThreadPanel({ parent, channel, title, me, people, byId, member, canMode
         {replies.map((r, i) => <MessageItem key={r.id} message={r} first={startsGroup(replies[i - 1], r)} me={me} byId={byId} canModerate={canModerate} inThread />)}
         <div ref={endRef} />
       </div>
-      {member && <Composer placeholder="Write your reply…" label={heading.replace('Replies to', 'Reply to')} people={people} onSend={send} compact />}
+      {member && (
+        <>
+          <Composer placeholder="Write your reply…" label={heading.replace('Replies to', 'Reply to')} people={people} onSend={send} compact />
+          <label className="-mt-1 flex cursor-pointer items-center gap-2 px-5 pb-4 text-[13px] text-[#3A4357]">
+            <input type="checkbox" checked={alsoChannel} onChange={(e) => setAlsoChannel(e.target.checked)} className="h-4 w-4 rounded accent-navy-900" />
+            Also send to {channel.kind === 'dm' ? 'the conversation' : `# ${channel.name}`}
+          </label>
+        </>
+      )}
     </aside>
   );
 }

@@ -512,6 +512,13 @@ lit up. Messages are flat rows; pointing at one shows a small bar (Reply, Edit, 
 splits the card, with the replies beside the channel; the header's At a glance button opens
 members, threads and links on the right (remembered per browser). Counts are quiet grey, gold only
 when someone mentioned you.
+Your photo at the bottom of the rail opens **You**: your status (one-click presets like "In a
+meeting · 1 hour", or your own words and emoji, clearing itself on time), Set yourself as away /
+active, Profile, Notifications, Settings and Sign out. Statuses live in `member_status`
+(`20261018090000_member_status.sql`) and show next to names (DM list, People, message authors, At
+a glance, the DM header with "Active now"). Who is online is worked out live with Realtime
+presence (`src/lib/presence.ts`), nothing stored. Replying in a thread can also post the reply in
+the channel ("Also send to # name"), quoting the message it answers.
 One navy list on the left holds everything: search, **Activity** (with its count), **Channels**
 ("+ New channel", starred and private marked, unread counts, "Browse all channels"), **People**
 (direct messages with each one's last message, "+ Message someone") and **From outside** (email
