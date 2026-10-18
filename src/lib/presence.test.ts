@@ -1,3 +1,5 @@
+import { vi } from 'vitest';
+vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 import { describe, expect, it } from 'vitest';
 import { clearAtFor, liveStatus, untilLabel, type MemberStatus } from './presence';
 
