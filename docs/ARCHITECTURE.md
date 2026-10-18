@@ -502,10 +502,16 @@ you back. Inside a workspace the world fills the screen above the dock (a navy s
 editors use `--nav-w`, fill-the-screen pages `--top-h` and `--dock-h` (set by `App.tsx`).
 
 **Conversations** keeps Slack's features but writes every action out, so nothing has to be found.
-It wears an Apple finish: channels and people sit in rounded groups with a coloured # tile each
-(blue badge = unread), the tabs are a segmented control, messages are soft bubbles, the hover bar
-and menus are frosted, and an **At a glance** panel (wide screens, when no replies are open) shows
-the members, the open threads and the latest links, all from real data.
+The layout follows a calm, Apple-finished version of Slack's flow, in three columns that each do
+one job. The **rail** on the far left (SYNAPSE logo, Home · DMs · Activity · Files, counts on the
+icons) picks what the **list** beside it shows: Home lists the company name, Threads, Email replies,
+Starred, Channels and People; DMs lists every direct message with its last line; Activity lists
+mentions and replies (All / Mentions / Replies); Files lists every link shared. Whatever you pick
+opens in the **white card** on the right; an Activity or Files item opens its message in place,
+lit up. Messages are flat rows; pointing at one shows a small bar (Reply, Edit, Delete); Reply
+splits the card, with the replies beside the channel; the header's At a glance button opens
+members, threads and links on the right (remembered per browser). Counts are quiet grey, gold only
+when someone mentioned you.
 One navy list on the left holds everything: search, **Activity** (with its count), **Channels**
 ("+ New channel", starred and private marked, unread counts, "Browse all channels"), **People**
 (direct messages with each one's last message, "+ Message someone") and **From outside** (email
