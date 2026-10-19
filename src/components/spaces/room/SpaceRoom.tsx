@@ -187,6 +187,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
   const rideItem = ridingPiece ? KIT_BY_ID.get(office?.campus?.objects.find((o) => o.id === ridingPiece)?.kind ?? '') : undefined;
   const rideVehicle = rideItem && 'vehicle' in rideItem ? rideItem.vehicle : undefined;
   const rideText = rideVehicle?.plane ? 'Flying: click where to go, or use the arrow keys. Get out lands it back at its stand.'
+    : rideVehicle?.rotor ? 'Flying: click where to go, or use the arrow keys. Get out flies it back to its bay.'
     : rideVehicle?.flies ? 'Flying: click where to go, or use the arrow keys.'
     : `${riding === 'car' ? 'Driving' : 'Riding'}: click where to go, or use the arrow keys.`;
   const onVehicle = useCallback((kind: VehicleKind | null, piece: string | null) => { setRiding(kind); setRidingPiece(piece); }, []);

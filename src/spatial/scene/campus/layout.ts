@@ -96,11 +96,12 @@ const HALF = PI / 2;
 
 /** The plane park: an apron across the airport with a bay for each plane (centre, size). */
 export const PLANE_PARK = { x: 60, z: 139, w: 96, d: 30 };
-/** How many bays it has, and the planes in them, west to east (empty bays stay free). */
+/** How many bays it has, and what's in them, west to east (empty bays stay free). */
 export const PLANE_BAYS = 3;
 const PLANES: [string, string][] = [
   ['ap-plane-airliner', 'plane_airliner'],
   ['ap-plane-jet', 'plane_jet'],
+  ['ap-heli-bronze', 'heli_bronze'],
 ];
 const planeBayX = (i: number) => PLANE_PARK.x - PLANE_PARK.w / 2 + (PLANE_PARK.w / PLANE_BAYS) * (i + 0.5);
 
@@ -408,7 +409,7 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
     zones.push({ id: 'plane-park', name: 'Plane Park', type: 'open_area', rect: r(PLANE_PARK.x - PLANE_PARK.w / 2, PLANE_PARK.x + PLANE_PARK.w / 2, PLANE_PARK.z - PLANE_PARK.d / 2, PLANE_PARK.z + PLANE_PARK.d / 2) });
     zones.push({ id: 'runway', name: 'Runway', type: 'open_area', rect: r(6, 114, 164.5, 186) });
     add('ap-plane-park', 'plane_park', PLANE_PARK.x, PLANE_PARK.z, 0);
-    // A plane in each bay, nose to the runway: walk up to one and board it.
+    // A plane or the helicopter in each bay, nose to the runway: walk up to one and get in.
     PLANES.forEach(([id, kind], i) => add(id, kind, planeBayX(i), PLANE_PARK.z + 1, 0));
     add('ap-taxiway', 'taxiway', 60, taxiZ, 0);
     add('ap-runway', 'runway', 60, runway.z, 0);

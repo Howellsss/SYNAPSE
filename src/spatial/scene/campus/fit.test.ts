@@ -31,7 +31,7 @@ function doorways(c: CampusLayout, depth = 2.5) {
 
 describe('getting in', () => {
   it('finds the planes to board, though they are not in the build menu', () => {
-    for (const id of ['ap-plane-airliner', 'ap-plane-jet']) {
+    for (const id of ['ap-plane-airliner', 'ap-plane-jet', 'ap-heli-bronze']) {
       const plane = campus.objects.find((o) => o.id === id)!;
       expect(pieceAt(campus.objects, plane.x, plane.z)?.id).not.toBe(id); // build mode leaves them alone
       expect(rideAt(campus.objects, plane.x, plane.z)?.id).toBe(id);
@@ -45,7 +45,7 @@ describe('getting in', () => {
   it('can walk up to the back of each plane to get in', () => {
     const map = walkMap({ width: campus.width, depth: campus.depth }, campusObstacles(campus), 0.5, 0.28);
     const start = mapCell(map, 60, 104);
-    for (const id of ['ap-plane-airliner', 'ap-plane-jet']) {
+    for (const id of ['ap-plane-airliner', 'ap-plane-jet', 'ap-heli-bronze']) {
       const plane = campus.objects.find((o) => o.id === id)!;
       const b = placedBlocks(plane)[0];
       const back = { x: plane.x, z: b.z0 - 0.7 };
@@ -77,8 +77,8 @@ describe('the airport', () => {
     expect(campus.objects.some((o) => o.kind === 'airport_terminal')).toBe(false);
     expect(KIT_BY_ID.has('airport_terminal')).toBe(false);
     const park = placedBounds(campus.objects.find((o) => o.kind === 'plane_park')!)!;
-    const planes = campus.objects.filter((o) => { const item = KIT_BY_ID.get(o.kind); return !!item && 'vehicle' in item && !!item.vehicle?.plane; });
-    expect(planes.length).toBeGreaterThan(0);
+    const planes = campus.objects.filter((o) => { const item = KIT_BY_ID.get(o.kind); return !!item && 'vehicle' in item && !!(item.vehicle?.plane || item.vehicle?.rotor); });
+    expect(planes.map((p) => p.kind)).toEqual(['plane_airliner', 'plane_jet', 'heli_bronze']);
     expect(planes.length).toBeLessThanOrEqual(PLANE_BAYS);
     const bay = PLANE_PARK.w / PLANE_BAYS;
     for (const p of planes) {

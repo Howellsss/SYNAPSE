@@ -69,8 +69,11 @@ export interface ProcItem extends Base {
   model?: PropId | PropId[] | ModelPart[];
   /** Model size (1 = as made). */
   scale?: number;
-  /** Cars, bikes and planes: their lights; the flying car and the planes fly. */
-  vehicle?: { lights: 'car' | 'moto' | 'plane'; flies?: boolean; plane?: boolean };
+  /**
+   * Cars, bikes and planes: their lights; the flying car, the planes and the helicopter fly. A
+   * plane uses the runway; the helicopter (rotor) goes straight up and down, from its bay.
+   */
+  vehicle?: { lights: 'car' | 'moto' | 'plane'; flies?: boolean; plane?: boolean; rotor?: boolean };
 }
 
 export type KitItem = GlbItem | ProcItem;
@@ -274,6 +277,7 @@ export const KIT: KitItem[] = [
   // Planes at their stands: board one and fly it (it takes off and lands on the runway).
   { ...prop('plane_airliner', 'Airliner', 'transport', 'airliner', { scale: 0.85 }), proc: 'car', color: '#E8EAEE', vehicle: { lights: 'plane', flies: true, plane: true }, hidden: true },
   { ...prop('plane_jet', 'Private jet', 'transport', 'private_jet'), proc: 'car', color: '#E8EAEE', vehicle: { lights: 'plane', flies: true, plane: true }, hidden: true },
+  { ...prop('heli_bronze', 'Executive helicopter', 'transport', 'helicopter_bronze'), proc: 'car', color: '#8C6A3F', vehicle: { lights: 'plane', flies: true, rotor: true }, hidden: true },
   { id: 'runway', name: 'Runway', category: 'transport', proc: 'runway', w: 108, d: 12, walkable: true, hidden: true },
   { id: 'taxiway', name: 'Taxiway', category: 'transport', proc: 'taxiway', w: 108, d: 5, walkable: true, hidden: true },
   { id: 'stage_large', name: 'Large stage', category: 'events', proc: 'stage', w: 16, d: 5, walkable: true, hidden: true },

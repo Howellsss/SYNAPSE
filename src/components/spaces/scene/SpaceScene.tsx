@@ -146,8 +146,10 @@ const FLY_SPEED = 11;
 const PLANE_HEIGHT = 15;
 const PLANE_SPEED = 19;
 const TAXI_SPEED = 8;
+/** The helicopter: how high it flies (well over the trees). */
+const HELI_HEIGHT = 12;
 /** How high something in the air flies. */
-const cruiseHeight = (ride: Ride | null) => (ride?.item.vehicle?.plane ? PLANE_HEIGHT : FLY_HEIGHT);
+const cruiseHeight = (ride: Ride | null) => (ride?.item.vehicle?.plane ? PLANE_HEIGHT : ride?.item.vehicle?.rotor ? HELI_HEIGHT : FLY_HEIGHT);
 const LABEL_HEIGHT = 2.0;
 /** Where the camera sits relative to what it looks at. */
 const CAMERA_OFFSETS: Record<SceneView, THREE.Vector3> = {
@@ -782,8 +784,18 @@ export default function SpaceScene(props: SpaceSceneProps) {
         ]);
         return;
       }
+      // The helicopter flies back to its bay, comes straight down, and you step out there.
+      if (ride.item.vehicle?.rotor && stand && Math.hypot(me.x - stand.x, me.z - stand.z) > 0.5) {
+        if (me.landing) return;
+        me.landing = true;
+        runLegs([{
+          points: [[me.x, me.z], [stand.x, stand.z]], speed: FLY_SPEED * 1.4, air: true,
+          done: () => { setVehicleMine(null); behind(); me.rot = stand.rot; me.landing = false; },
+        }]);
+        return;
+      }
       setVehicleMine(null);
-      if (ride.item.vehicle?.plane) behind();
+      if (ride.item.vehicle?.plane || ride.item.vehicle?.rotor) behind();
     };
     const walkTo = (x: number, z: number, seat: Seat | null = null, gait: Gait = gaitNow()) => {
       if (!seat) me.pendingVehicle = null;
@@ -1115,7 +1127,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       }
       const pool = real && !item.vehicle?.plane ? headlightPool(item) : null;
       if (pool) group.add(pool);
-      const flames = item.vehicle?.flies && !item.vehicle.plane ? wheelFlames(item) : null;
+      const flames = item.vehicle?.flies && !item.vehicle.plane && !item.vehicle.rotor ? wheelFlames(item) : null;
       if (flames) group.add(flames);
       markGlow(group);
       // A rider sits just behind the middle of the bike; a car is centred on its driver.
@@ -1524,7 +1536,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
         // The flying car rises and settles smoothly, and hovers gently in the air.
         // A plane climbs and comes down gently, along the way; the car lifts straight up.
         const before = a.lift;
-        const rate = riding?.item.vehicle?.plane ? 0.9 : 3;
+        const rate = riding?.item.vehicle?.plane ? 0.9 : riding?.item.vehicle?.rotor ? 1.4 : 3;
         a.lift += ((pose.anim === 'fly' ? cruiseHeight(riding) : 0) - a.lift) * (1 - Math.exp(-Math.min(dt, 0.1) * rate));
         if (a.lift < 0.003) a.lift = 0;
         const climb = dt > 0 ? (a.lift - before) / dt : 0;
