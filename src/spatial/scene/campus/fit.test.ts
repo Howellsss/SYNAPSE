@@ -7,10 +7,10 @@ import { describe, expect, it } from 'vitest';
 import { isFree, mapCell, walkMap } from '../floor';
 import { findPath } from '../pathfinding';
 import type { Rect } from '../offices';
-import { groundOf, RUG_TOP } from './ground';
+import { groundOf, PARK_TOP, RUG_TOP } from './ground';
 import { buildHub } from './hub';
-import { pieceAt, placedBlocks, rideAt, STAGE_H } from './kit';
-import { buildCampus, campusObstacles, campusSeats, wallSegments, type CampusLayout } from './layout';
+import { KIT_BY_ID, pieceAt, placedBlocks, placedBounds, rideAt, STAGE_H } from './kit';
+import { buildCampus, campusObstacles, campusSeats, PLANE_BAYS, PLANE_PARK, wallSegments, type CampusLayout } from './layout';
 
 const campus = buildCampus();
 const hub = buildHub();
@@ -69,6 +69,41 @@ describe('getting in', () => {
     for (const p of narrow) expect(lamps.filter((l) => placedBlocks(l).some((b) => overlaps(b, p))).map((l) => l.id)).toEqual([]);
     // The HQ's way in has a lamp either side of it.
     expect(lamps.filter((l) => Math.abs(l.z - 29.4) < 0.1 && l.x > 16 && l.x < 24).map((l) => l.x).sort()).toEqual([17.6, 22.4]);
+  });
+});
+
+describe('the airport', () => {
+  it('has a plane park with a bay for each plane, and no terminal', () => {
+    expect(campus.objects.some((o) => o.kind === 'airport_terminal')).toBe(false);
+    expect(KIT_BY_ID.has('airport_terminal')).toBe(false);
+    const park = placedBounds(campus.objects.find((o) => o.kind === 'plane_park')!)!;
+    const planes = campus.objects.filter((o) => { const item = KIT_BY_ID.get(o.kind); return !!item && 'vehicle' in item && !!item.vehicle?.plane; });
+    expect(planes.length).toBeGreaterThan(0);
+    expect(planes.length).toBeLessThanOrEqual(PLANE_BAYS);
+    const bay = PLANE_PARK.w / PLANE_BAYS;
+    for (const p of planes) {
+      // Inside the park, wingtips inside its own bay.
+      const b = placedBounds(p)!;
+      expect(b.x0 >= park.x0 && b.x1 <= park.x1 && b.z0 >= park.z0 && b.z1 <= park.z1, p.id).toBe(true);
+      const i = Math.floor((p.x - park.x0) / bay);
+      expect(b.x0 >= park.x0 + i * bay && b.x1 <= park.x0 + (i + 1) * bay, p.id).toBe(true);
+    }
+  });
+});
+
+describe('flat ground that never flickers', () => {
+  it('keeps car, bike and plane parks above the paving where they meet it (never level with it)', () => {
+    for (const c of [campus, hub]) {
+      const parks = c.objects.filter((o) => ['car_park', 'bike_park', 'plane_park'].includes(o.kind));
+      for (const p of parks) {
+        const b = placedBounds(p)!;
+        for (const q of c.paths.filter((x) => overlaps(b, x))) {
+          const mid = { x: (Math.max(b.x0, q.x0) + Math.min(b.x1, q.x1)) / 2, z: (Math.max(b.z0, q.z0) + Math.min(b.z1, q.z1)) / 2 };
+          expect(groundOf(c.buildings, c.objects, c.paths).at(mid.x, mid.z), p.id).toBe(PARK_TOP);
+        }
+        expect(groundOf(c.buildings, c.objects, c.paths).at(p.x, p.z), p.id).toBe(PARK_TOP);
+      }
+    }
   });
 });
 

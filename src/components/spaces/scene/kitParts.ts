@@ -11,6 +11,8 @@ import * as THREE from 'three';
 import { applyRealSurface } from './realSurfaces';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { STAGE_H, STAGE_STEPS, stageStepXs, type ProcItem, type ProcKind } from '@/spatial/scene/campus/kit';
+import { PARK_TOP } from '@/spatial/scene/campus/ground';
+import { PLANE_BAYS } from '@/spatial/scene/campus/layout';
 
 export interface Part { geo: THREE.BufferGeometry; mat: THREE.Material; local: THREE.Matrix4; shadow: boolean }
 
@@ -951,7 +953,7 @@ export function bikeParts(color: string): Part[] {
 }
 
 /** Painted parking bays on asphalt: `bay` m wide, the lines across the piece's depth. */
-function parkingParts(w: number, d: number, bay: number): Part[] {
+function parkingParts(w: number, d: number, bay: number, line = 0.08): Part[] {
   const tex = canvasTex(512, (g, s) => {
     g.fillStyle = '#3A3D44';
     g.fillRect(0, 0, s, s);
@@ -962,10 +964,11 @@ function parkingParts(w: number, d: number, bay: number): Part[] {
   const { G } = kitShared();
   const ground = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 });
   applyRealSurface(ground, 'asphalt', [w, d], 0.5);
-  const parts: Part[] = [P(G.box, ground, mx(0, 0.015, 0, w, 0.02, d), false)];
+  // Its top (PARK_TOP) above the paving's, never level with it: two surfaces at one height flicker.
+  const parts: Part[] = [P(G.box, ground, mx(0, PARK_TOP - 0.01, 0, w, 0.02, d), false)];
   const n = Math.round(w / bay);
-  for (let i = 0; i <= n; i++) parts.push(P(G.box, lines, mx(-w / 2 + (i * w) / n, 0.03, 0.15, 0.08, 0.005, d - 0.3), false));
-  parts.push(P(G.box, lines, mx(0, 0.03, d / 2 - 0.2, w, 0.005, 0.08), false));
+  for (let i = 0; i <= n; i++) parts.push(P(G.box, lines, mx(-w / 2 + (i * w) / n, PARK_TOP + 0.008, 0.15, line, 0.005, d - 0.3), false));
+  parts.push(P(G.box, lines, mx(0, PARK_TOP + 0.008, d / 2 - 0.2, w, 0.005, line), false));
   return parts;
 }
 
@@ -1100,6 +1103,7 @@ export function procParts(kind: ProcKind, item: ProcItem): Part[] {
     case 'bike': return bikeParts(color);
     case 'car_park': return parkingParts(item.w, item.d, 2.3);
     case 'bike_park': return parkingParts(item.w, item.d, 1.2);
+    case 'plane_park': return parkingParts(item.w, item.d, item.w / PLANE_BAYS, 0.3);
     case 'runway': return runwayParts(item.w, item.d, false);
     case 'taxiway': return runwayParts(item.w, item.d, true);
     case 'model': return []; // drawn once its model loads

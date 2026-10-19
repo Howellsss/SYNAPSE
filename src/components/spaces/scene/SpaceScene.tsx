@@ -650,7 +650,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
     const held = new Set<MoveKey>();
     let seats = campusLayout ? campusSeats(campusLayout) : office?.seats ?? [];
     /** How high the floor is underfoot: building floors, rugs, stages and their steps. */
-    let underfootMap = campusLayout ? groundOf(campusLayout.buildings, campusLayout.objects) : null;
+    let underfootMap = campusLayout ? groundOf(campusLayout.buildings, campusLayout.objects, campusLayout.paths) : null;
     /** Seats other people are sitting in (updated every frame). */
     let occupied = new Set<string>();
     /** Parked cars and bikes someone is out in (updated every frame): not drawn in their bays. */
@@ -1374,7 +1374,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
         campusWorld.setObjects(campusLayout.objects);
         map = walkMap(floor, campusObstacles(campusLayout), CAMPUS_CELL, OFFICE_CLEARANCE);
         seats = campusSeats(campusLayout);
-        underfootMap = groundOf(campusLayout.buildings, campusLayout.objects);
+        underfootMap = groundOf(campusLayout.buildings, campusLayout.objects, campusLayout.paths);
         obstaclesCache = [];
         shownSelection = '';
       }

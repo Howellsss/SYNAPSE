@@ -21,7 +21,7 @@ export type ProcKind =
   | 'gazebo' | 'picnic' | 'fire_pit' | 'planter_tree' | 'led_wall' | 'truss' | 'theatre_seat' | 'sofa_p' | 'lounge_chair'
   | 'dining_set' | 'bar_counter' | 'bar_stool' | 'bottle_wall' | 'fireplace' | 'booth' | 'reception' | 'bookcase'
   | 'conference' | 'ping_pong' | 'potted_tree' | 'doorway' | 'car' | 'bike' | 'car_park' | 'bike_park'
-  | 'model' | 'runway' | 'taxiway';
+  | 'model' | 'runway' | 'taxiway' | 'plane_park';
 
 /** One model of a piece made of several (a desk with its screen and chair), placed in the piece's frame. */
 export interface ModelPart {
@@ -269,8 +269,8 @@ export const KIT: KitItem[] = [
   bike('bike_plum', 'Sports bike (green)', 'moto_green', '#2F6B2F'),
   bike('moto_cruiser', 'Cruiser motorbike', 'moto_cruiser', '#1C1E22'),
   bike('kick_scooter', 'Kick scooter', 'kick_scooter', '#2A2D33'),
-  // The airport (laid out in the Campus).
-  { ...prop('airport_terminal', 'Airport terminal', 'transport', 'airport_terminal', { scale: 1.2 }), hidden: true },
+  // The airport (laid out in the Campus): a plane park with a bay for each plane.
+  { id: 'plane_park', name: 'Plane park', category: 'transport', proc: 'plane_park', w: 96, d: 30, walkable: true, hidden: true },
   // Planes at their stands: board one and fly it (it takes off and lands on the runway).
   { ...prop('plane_airliner', 'Airliner', 'transport', 'airliner', { scale: 0.85 }), proc: 'car', color: '#E8EAEE', vehicle: { lights: 'plane', flies: true, plane: true }, hidden: true },
   { ...prop('plane_jet', 'Private jet', 'transport', 'private_jet'), proc: 'car', color: '#E8EAEE', vehicle: { lights: 'plane', flies: true, plane: true }, hidden: true },

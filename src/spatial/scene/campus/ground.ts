@@ -14,9 +14,14 @@ import type { Building } from './layout';
 export const floorTop = (nested: number) => 0.03 + nested * 0.006;
 /** The top of a rug. */
 export const RUG_TOP = 0.082;
+/** The top of the paving (avenues and walks' slabs are 5 cm, centred on y = 0). */
+export const PAVING_TOP = 0.025;
+/** The top of a car, bike or plane park: a little above the paving, so the two never flicker where they meet. */
+export const PARK_TOP = 0.04;
 
 /** Flat things that lie on the ground themselves (drawn at their own height, never lifted). */
-const FLAT = new Set(['rug', 'stage', 'runway', 'taxiway', 'car_park', 'bike_park', 'doorway', 'lilies']);
+const FLAT = new Set(['rug', 'stage', 'runway', 'taxiway', 'car_park', 'bike_park', 'plane_park', 'doorway', 'lilies']);
+const PARKS = new Set(['car_park', 'bike_park', 'plane_park']);
 
 interface Patch { rect: Rect; h: number }
 
@@ -29,8 +34,8 @@ export interface Ground {
 
 const inside = (a: Rect, o: Rect) => a !== o && a.x0 >= o.x0 && a.x1 <= o.x1 && a.z0 >= o.z0 && a.z1 <= o.z1;
 
-export function groundOf(buildings: Building[], objects: Placed[]): Ground {
-  const patches: Patch[] = [];
+export function groundOf(buildings: Building[], objects: Placed[], paths: Rect[] = []): Ground {
+  const patches: Patch[] = paths.map((rect) => ({ rect, h: PAVING_TOP }));
   for (const b of buildings) {
     if (!b.floor) continue;
     const nested = buildings.filter((o) => o.floor && inside(b.rect, o.rect)).length;
@@ -39,9 +44,9 @@ export function groundOf(buildings: Building[], objects: Placed[]): Ground {
   for (const p of objects) {
     const item = KIT_BY_ID.get(p.kind);
     if (!item || isGlb(item)) continue;
-    if (item.proc === 'rug') {
+    if (item.proc === 'rug' || PARKS.has(item.proc)) {
       const rect = placedBounds(p);
-      if (rect) patches.push({ rect, h: RUG_TOP });
+      if (rect) patches.push({ rect, h: item.proc === 'rug' ? RUG_TOP : PARK_TOP });
     } else if (item.proc === 'stage') {
       const rect = placedBounds(p);
       if (rect) patches.push({ rect, h: STAGE_H });

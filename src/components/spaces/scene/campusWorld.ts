@@ -505,7 +505,7 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
     const tuft = keep(grassTuft());
     const mat = kitShared().M.leaves;
     const rand = rng(101);
-    // Not indoors (the HQ), nor under paving, car parks, the runway or big pieces like the terminal.
+    // Not indoors (the HQ), nor under paving, car parks, the plane park or the runway.
     const hq = layout.hq;
     const covered = layout.objects.flatMap((p) => {
       const item = KIT_BY_ID.get(p.kind);
@@ -605,7 +605,7 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
     const world = new THREE.Matrix4();
     const tmp = new THREE.Matrix4();
     // Each piece stands on what's under it: the floor's top, a rug, a stage.
-    const ground = groundOf(layout.buildings, current);
+    const ground = groundOf(layout.buildings, current, layout.paths);
     for (const [kind, list] of byKind) {
       const parts = partsByKind.get(kind);
       if (!parts) continue; // a GLB piece before the kit has loaded

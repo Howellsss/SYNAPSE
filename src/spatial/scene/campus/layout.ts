@@ -94,6 +94,16 @@ const r = (x0: number, x1: number, z0: number, z1: number): Rect => ({ x0, x1, z
 const PI = Math.PI;
 const HALF = PI / 2;
 
+/** The plane park: an apron across the airport with a bay for each plane (centre, size). */
+export const PLANE_PARK = { x: 60, z: 139, w: 96, d: 30 };
+/** How many bays it has, and the planes in them, west to east (empty bays stay free). */
+export const PLANE_BAYS = 3;
+const PLANES: [string, string][] = [
+  ['ap-plane-airliner', 'plane_airliner'],
+  ['ap-plane-jet', 'plane_jet'],
+];
+const planeBayX = (i: number) => PLANE_PARK.x - PLANE_PARK.w / 2 + (PLANE_PARK.w / PLANE_BAYS) * (i + 0.5);
+
 /** Default names for the team areas when the account has no departments yet. */
 export const DEFAULT_TEAM_NAMES = ['Team Area 1', 'Team Area 2', 'Team Area 3', 'Team Area 4'];
 
@@ -355,8 +365,8 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
     add('park-lights', 'string_lights', 48.1, 35.2);
     add('park-bench-ne', 'bench', 74.5, 36.6, -HALF);
     // Cars and bikes by the park: click one to ride somewhere (the flying car flies).
-    add('park-bike-park', 'bike_park', 67, 58.8, 0);
-    ['bike_plum', 'bike_red', 'bike_teal', 'kick_scooter', 'bike_gold'].forEach((k, i) => add(`park-bike-${i}`, k, 64.6 + i * 1.2, 58.8, 0));
+    add('park-bike-park', 'bike_park', 67, 58.6, 0);
+    ['bike_plum', 'bike_red', 'bike_teal', 'kick_scooter', 'bike_gold'].forEach((k, i) => add(`park-bike-${i}`, k, 64.6 + i * 1.2, 58.6, 0));
     add('park-car-park', 'car_park', 50, 57.6, 0);
     ['car_flying', 'car_teal', 'car_orange_super', 'car_blue', 'car_purple_muscle', 'car_silver_coupe'].forEach((k, i) => add(`park-car-${i}`, k, 44.25 + i * 2.3, 57.6, 0));
     add('park-palm-b', 'palm', 75.8, 34.8);
@@ -389,18 +399,17 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
     }
   }
 
-  // ---- the airport, across the boulevard: car parks and bike parks by the road, the terminal
-  // with a plane at a stand on each side, then the taxiway and the runway.
+  // ---- the airport, across the boulevard: car parks and bike parks by the road, then the plane
+  // park (an apron with a bay for each plane, like the car parks), the taxiway and the runway.
   const runway = { x0: 6, x1: 114, z: 180 };
   const taxiZ = 167;
   {
     zones.push({ id: 'airport', name: 'Airport', type: 'open_area', rect: r(2, 118, 101, 188) });
-    zones.push({ id: 'terminal', name: 'Airport Terminal', type: 'open_area', rect: r(32.4, 87.6, 109, 154.5) });
+    zones.push({ id: 'plane-park', name: 'Plane Park', type: 'open_area', rect: r(PLANE_PARK.x - PLANE_PARK.w / 2, PLANE_PARK.x + PLANE_PARK.w / 2, PLANE_PARK.z - PLANE_PARK.d / 2, PLANE_PARK.z + PLANE_PARK.d / 2) });
     zones.push({ id: 'runway', name: 'Runway', type: 'open_area', rect: r(6, 114, 164.5, 186) });
-    add('ap-terminal', 'airport_terminal', 60, 131.75, 0);
-    // Planes at their stands, nose to the runway: walk up to one and board it.
-    add('ap-plane-airliner', 'plane_airliner', 17.5, 136, 0);
-    add('ap-plane-jet', 'plane_jet', 103, 138, 0);
+    add('ap-plane-park', 'plane_park', PLANE_PARK.x, PLANE_PARK.z, 0);
+    // A plane in each bay, nose to the runway: walk up to one and board it.
+    PLANES.forEach(([id, kind], i) => add(id, kind, planeBayX(i), PLANE_PARK.z + 1, 0));
     add('ap-taxiway', 'taxiway', 60, taxiZ, 0);
     add('ap-runway', 'runway', 60, runway.z, 0);
     const lots: [number, string[]][] = [
@@ -419,8 +428,9 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
       add(`ap-bike-park-${i}`, 'bike_park', x, 104.2, 0);
       list.forEach((k, j) => add(`ap-bike-${i}-${j}`, k, x - 2.4 + j * 1.2, 104.2, 0));
     }
-    // A paved forecourt from the boulevard to the terminal, with planters and benches.
+    // A paved forecourt by the boulevard, with planters and benches, and a walk on to the planes.
     paths.push(r(40, 80, 101, 109));
+    paths.push(r(57, 63, 109, PLANE_PARK.z - PLANE_PARK.d / 2));
     for (const [i, x] of [44, 52, 68, 76].entries()) add(`ap-planter-${i}`, 'planter_box', x, 107.9);
     add('ap-bench-a', 'bench_stone', 56.5, 107.9, PI);
     add('ap-bench-b', 'bench_stone', 63.5, 107.9, PI);
@@ -511,7 +521,7 @@ export function campusSeats(c: CampusLayout): Seat[] {
   const at = c.hq;
   const hq = at ? (OFFICE_02.seats ?? []).map((s) => ({ ...s, id: `hq-${s.id}`, x: s.x + at.x, z: s.z + at.z })) : [];
   // A seat is as high as its chair plus what the chair stands on (a floor, a rug, a stage).
-  const ground = groundOf(c.buildings, c.objects);
+  const ground = groundOf(c.buildings, c.objects, c.paths);
   return [...hq, ...c.objects.flatMap((p) => {
     const base = ground.base(p);
     return placedSeats(p).map((s) => (base ? { ...s, y: +(s.y + base).toFixed(3) } : s));
