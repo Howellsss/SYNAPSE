@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { applyRealSurface } from './realSurfaces';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import type { ProcItem, ProcKind } from '@/spatial/scene/campus/kit';
+import { STAGE_H, STAGE_STEPS, stageStepXs, type ProcItem, type ProcKind } from '@/spatial/scene/campus/kit';
 
 export interface Part { geo: THREE.BufferGeometry; mat: THREE.Material; local: THREE.Matrix4; shadow: boolean }
 
@@ -1014,14 +1014,29 @@ function bench(): Part[] {
   return [...slats, P(G.box, M.metal, mx(-0.8, 0.4, -0.02, 0.06, 0.8, 0.55)), P(G.box, M.metal, mx(0.8, 0.4, -0.02, 0.06, 0.8, 0.55))];
 }
 
+/** A raised stage (people stand on top, at STAGE_H), with steps up at both ends of its front. */
 function stage(w: number, d: number): Part[] {
   const { M, G } = kitShared();
-  return [
-    // Low, so people walking on it stand on it rather than in it.
-    P(G.box, M.woodDark, mx(0, 0.09, 0, w, 0.18, d)),
-    P(G.box, M.brass, mx(0, 0.185, d / 2 - 0.03, w, 0.02, 0.06), false),
-    P(G.box, glowing(new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 1.5, 0.7), toneMapped: false })), mx(0, 0.06, d / 2 + 0.005, w, 0.03, 0.01), false),
+  const h = STAGE_H;
+  const { w: sw, d: sd, n } = STAGE_STEPS;
+  const glow = glowing(new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 1.5, 0.7), toneMapped: false }));
+  const parts: Part[] = [
+    // The deck, a dark skirt under its lip, a brass nosing and a warm light strip along the front.
+    P(G.box, M.woodDark, mx(0, h - 0.04, 0, w, 0.08, d)),
+    P(G.box, M.navy, mx(0, (h - 0.08) / 2, -0.03, w - 0.06, h - 0.08, d - 0.06)),
+    P(G.box, M.brass, mx(0, h + 0.005, d / 2 - 0.03, w, 0.02, 0.06), false),
+    P(G.box, glow, mx(0, 0.06, d / 2 - 0.025, w, 0.03, 0.01), false),
   ];
+  // The steps: each tread one rise lower than the one behind it, down to the floor.
+  for (const sx of stageStepXs(w)) {
+    for (let k = 0; k < n; k++) {
+      const top = (h * (n - k)) / (n + 1);
+      const z = d / 2 + k * sd + sd / 2;
+      parts.push(P(G.box, M.woodDark, mx(sx, top / 2, z, sw, top, sd)));
+      parts.push(P(G.box, M.brass, mx(sx, top + 0.005, z + sd / 2 - 0.025, sw, 0.02, 0.05), false));
+    }
+  }
+  return parts;
 }
 
 export function procParts(kind: ProcKind, item: ProcItem): Part[] {

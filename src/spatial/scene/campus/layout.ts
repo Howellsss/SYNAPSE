@@ -12,6 +12,7 @@ import type { RoomType } from '@/types';
 import type { Rect } from '../offices';
 import { OFFICE_02 } from '../offices';
 import type { Seat } from '../seats';
+import { groundOf } from './ground';
 import { placedBlocks, placedSeats, type Placed } from './kit';
 
 export const CAMPUS_W = 120;
@@ -148,7 +149,7 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
   // ---- café & lounge
   {
     const b = r(84, 117, 4, 26);
-    buildings.push({ id: 'cafe', rect: b, floor: 'oak', wall: 'solid', doors: [{ side: 's', at: 16, width: 4 }, { side: 'w', at: 11, width: 3 }] });
+    buildings.push({ id: 'cafe', rect: b, floor: 'oak', wall: 'solid', doors: [{ side: 's', at: 16, width: 4 }, { side: 'w', at: 18.2, width: 3 }] });
     zones.push({ id: 'cafe', name: 'Café', type: 'lounge', rect: r(84, 100, 4, 26) });
     zones.push({ id: 'lounge', name: 'Lounge', type: 'lounge', rect: r(100, 117, 4, 26) });
     add('cafe-bar-a', 'coffee_bar', 88.5, 4.75);
@@ -157,8 +158,8 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
     for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) add(`cafe-set-${i}-${j}`, 'cafe_set', 87.5 + i * 4.2, 10 + j * 4.6, j % 2 ? 0.6 : 0);
     add('cafe-plant-a', 'monstera', 85.2, 24.8);
     add('cafe-plant-b', 'planter_small', 98.8, 5.2);
-    // A soft line of plants between the café and the lounge.
-    for (let i = 0; i < 4; i++) add(`cafe-divide-${i}`, i % 2 ? 'monstera' : 'planter_small', 100, 9 + i * 4.2);
+    // A soft line of plants between the café and the lounge (stopping short of the door).
+    for (let i = 0; i < 3; i++) add(`cafe-divide-${i}`, i % 2 ? 'monstera' : 'planter_small', 100, 9 + i * 4.2);
     // Lounge: two sofa groups around coffee tables, armchairs, lamps, books.
     add('lounge-rug-a', 'rug_navy', 108, 10, 0);
     add('lounge-sofa-a', 'sofa', 105.1, 10, HALF);
@@ -184,7 +185,10 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
     areas.forEach((a, n) => {
       const id = `team-${n + 1}`;
       const doorSide: Side = n % 2 === 0 ? 'e' : 'w';
-      buildings.push({ id, rect: a, floor: finishes[n], wall: 'glass', doors: [{ side: doorSide, at: 5.75, width: 2.6 }, { side: n < 2 ? 'n' : 's', at: 8.5, width: 3 }] });
+      // The side door opens onto the walkway in front of the desks, not into a row of them.
+      const end: Side = n < 2 ? 'n' : 's';
+      const sideAt = end === 'n' ? 2.6 : a.z1 - a.z0 - 2.6;
+      buildings.push({ id, rect: a, floor: finishes[n], wall: 'glass', doors: [{ side: doorSide, at: sideAt, width: 2.6 }, { side: end, at: 8.5, width: 3 }] });
       zones.push({ id, name: names[n], type: 'open_area', rect: a });
       const cz = (a.z0 + a.z1) / 2 + 0.3;
       for (const [p, cx] of [[0, a.x0 + 4.75], [1, a.x0 + 12.25]] as const) {
@@ -195,7 +199,9 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
         }
         add(`${id}-divider-${p}`, 'divider', cx, cz, 0);
       }
-      add(`${id}-credenza`, 'credenza', (a.x0 + a.x1) / 2, a.z0 + 0.55, 0);
+      // The credenza against the wall without a door.
+      if (end === 'n') add(`${id}-credenza`, 'credenza', (a.x0 + a.x1) / 2, a.z1 - 0.55, PI);
+      else add(`${id}-credenza`, 'credenza', (a.x0 + a.x1) / 2, a.z0 + 0.55, 0);
       add(`${id}-plant-a`, 'monstera', a.x0 + 1.1, a.z0 + 1.1);
       add(`${id}-plant-b`, 'palm_pot', a.x1 - 1.1, a.z1 - 1.1);
     });
@@ -230,7 +236,7 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
       }
     }
     paths.push(r(4, 39, 73.5, 75.5));
-    paths.push(r(20, 23, 63.5, 73.5));
+    paths.push(r(21, 22, 63.5, 73.5)); // the gap between booths 2 and 3
     zones.push({ id: 'focus', name: 'Focus Booths', type: 'quiet_zone', rect: r(3, 40, 64, 94) });
   }
 
@@ -239,24 +245,27 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
     const game = r(84, 99.5, 66, 92);
     buildings.push({ id: 'game', rect: game, floor: 'carpet_plum', wall: 'solid', doors: [{ side: 'n', at: 7.75, width: 3 }] });
     zones.push({ id: 'game', name: 'Game Room', type: 'lounge', rect: game });
-    add('game-pool-a', 'pool_table', 91.75, 72);
-    add('game-pool-b', 'pool_table', 91.75, 78.5);
+    // An aisle in from the door, the two pool tables either side of it, arcades along the far
+    // wall, and beanbags round a rug in the corner.
+    add('game-pool-a', 'pool_table', 88, 73.5);
+    add('game-pool-b', 'pool_table', 95.5, 73.5);
     for (let i = 0; i < 4; i++) add(`game-arcade-${i}`, 'arcade', 86 + i * 1.2, 91.2, PI);
-    add('game-rug', 'rug_gold', 91.75, 86.5);
-    for (let i = 0; i < 4; i++) add(`game-bean-${i}`, 'beanbag', 88.5 + i * 2.2, 86.5 + (i % 2 ? 0.4 : -0.4), PI);
+    add('game-rug', 'rug_gold', 95.2, 85.6);
+    for (const [i, [x, z, rot]] of ([[93.9, 84.9, HALF], [93.9, 86.4, HALF], [96.5, 84.9, -HALF], [96.5, 86.4, -HALF]] as const).entries()) add(`game-bean-${i}`, 'beanbag', x, z, rot);
     add('game-plant', 'monstera_tall', 98.3, 67.3);
+    add('game-plant-b', 'monstera', 85.2, 67.3);
 
     const lib = r(101.5, 117, 66, 92);
     buildings.push({ id: 'library', rect: lib, floor: 'walnut', wall: 'solid', doors: [{ side: 'n', at: 7.75, width: 3 }] });
     zones.push({ id: 'library', name: 'Library', type: 'quiet_zone', rect: lib });
     for (let i = 0; i < 5; i++) add(`lib-shelf-e-${i}`, 'bookshelf', 116.4, 69 + i * 4.6, -HALF);
     for (let i = 0; i < 4; i++) add(`lib-shelf-w-${i}`, 'bookshelf', 102.1, 72 + i * 4.8, HALF);
-    for (let i = 0; i < 3; i++) {
-      const z = 72 + i * 6.5;
-      add(`lib-rug-${i}`, i % 2 ? 'rug_green' : 'rug_navy', 109.2, z, 0);
-      add(`lib-arm-${i}a`, 'armchair', 107.6, z, HALF);
-      add(`lib-arm-${i}b`, 'armchair', 110.8, z, -HALF);
-      add(`lib-side-${i}`, 'side_table', 109.2, z - 0.9);
+    // Reading corners either side of an aisle in from the door, staggered: two chairs facing on a rug.
+    for (const [i, [cx, z]] of ([[105.6, 72], [112.9, 76.5], [105.6, 81], [112.9, 85.5]] as const).entries()) {
+      add(`lib-rug-${i}`, i % 2 ? 'rug_green' : 'rug_navy', cx, z, 0);
+      add(`lib-arm-${i}a`, 'armchair', cx - 1.6, z, HALF);
+      add(`lib-arm-${i}b`, 'armchair', cx + 1.6, z, -HALF);
+      add(`lib-side-${i}`, 'side_table', cx, z - 0.9);
     }
     add('lib-lamp', 'arc_lamp', 103.5, 90, HALF);
     paths.push(r(81, 117, 63.5, 66));
@@ -283,7 +292,7 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
     add('garden-flowers-c', 'flowers_round', 54.5, 89);
     add('garden-flowers-d', 'flowers_round', 66.5, 89);
     add('garden-rock-a', 'boulder', 67.4, 75.7, 0.6);
-    add('garden-rock-b', 'boulder', 53.2, 82.6, 2.1);
+    add('garden-rock-b', 'boulder', 54, 83.6, 2.1);
     add('garden-fountain', 'fountain', 60.5, 67.2);
     paths.push(r(59, 62, 63.5, 72));
     // Water lilies and reeds; a pergola over the west bench; umbrella tables; a fire pit.
@@ -332,7 +341,7 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
     // Flower beds and bushes on the lawns inside the loop.
     for (const [i, a] of [PI / 4, (3 * PI) / 4, (5 * PI) / 4, (7 * PI) / 4].entries()) {
       add(`park-bed-${i}`, 'flowers_round', cx + Math.cos(a) * 9.6, cz + Math.sin(a) * 7.4);
-      add(`park-bush-${i}`, i % 2 ? 'bush_flower' : 'bush', cx + Math.cos(a + 0.35) * 12.6, cz + Math.sin(a + 0.35) * 9.8);
+      add(`park-bush-${i}`, i % 2 ? 'bush_flower' : 'bush', cx + Math.cos(a) * 12.6, cz + Math.sin(a) * 9.8);
     }
     // Lamps along the loop.
     for (let i = 0; i < 8; i++) {
@@ -341,23 +350,43 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
     }
     // A gazebo on the south-east lawn, a picnic lawn under string lights to the north-west.
     add('park-gazebo', 'gazebo', 72.6, 56.2);
-    add('park-picnic-a', 'picnic', 47.6, 36.6);
-    add('park-picnic-b', 'picnic', 52.4, 36.6);
-    add('park-lights', 'string_lights', 50, 35.2);
+    add('park-picnic-a', 'picnic', 46.2, 36.6);
+    add('park-picnic-b', 'picnic', 50, 36.6);
+    add('park-lights', 'string_lights', 48.1, 35.2);
     add('park-bench-ne', 'bench', 74.5, 36.6, -HALF);
     // Cars and bikes by the park: click one to ride somewhere (the flying car flies).
-    add('park-bike-park', 'bike_park', 65.5, 58.8, 0);
-    ['bike_plum', 'bike_red', 'bike_teal', 'kick_scooter', 'bike_gold'].forEach((k, i) => add(`park-bike-${i}`, k, 63.1 + i * 1.2, 58.8, 0));
+    add('park-bike-park', 'bike_park', 67, 58.8, 0);
+    ['bike_plum', 'bike_red', 'bike_teal', 'kick_scooter', 'bike_gold'].forEach((k, i) => add(`park-bike-${i}`, k, 64.6 + i * 1.2, 58.8, 0));
     add('park-car-park', 'car_park', 50, 57.6, 0);
     ['car_flying', 'car_teal', 'car_orange_super', 'car_blue', 'car_purple_muscle', 'car_silver_coupe'].forEach((k, i) => add(`park-car-${i}`, k, 44.25 + i * 2.3, 57.6, 0));
     add('park-palm-b', 'palm', 75.8, 34.8);
   }
 
-  // ---- along the avenues: lamps and hedges
-  for (let x = 8; x < 116; x += 12) {
-    if (Math.abs(x - 41.75) < 3 || Math.abs(x - 79.25) < 3) continue;
-    add(`lamp-n-${x}`, 'lamp_post', x, 29.4);
-    add(`lamp-s-${x}`, 'lamp_post', x, 64.1);
+  // ---- along the avenues: lamps, never in a doorway or the middle of a way in
+  {
+    const ways = paths.filter((p) => Math.min(p.x1 - p.x0, p.z1 - p.z0) < 4);
+    const doorways = buildings.flatMap((b) => b.doors.map((d) => {
+      const { x0, x1, z0, z1 } = b.rect;
+      const h = d.width / 2 + 0.4;
+      if (d.side === 'n') return r(x0 + d.at - h, x0 + d.at + h, z0 - 3, z0);
+      if (d.side === 's') return r(x0 + d.at - h, x0 + d.at + h, z1, z1 + 3);
+      if (d.side === 'w') return r(x0 - 3, x0, z0 + d.at - h, z0 + d.at + h);
+      return r(x1, x1 + 3, z0 + d.at - h, z0 + d.at + h);
+    }));
+    const clear = (x: number, z: number) => ![...ways, ...doorways].some((b) => x > b.x0 - 0.3 && x < b.x1 + 0.3 && z > b.z0 - 0.3 && z < b.z1 + 0.3);
+    const lamp = (id: string, x: number, z: number) => {
+      const at = [x, x - 2.4, x + 2.4].find((t) => clear(t, z));
+      if (at !== undefined) add(id, 'lamp_post', at, z);
+    };
+    for (let x = 8; x < 116; x += 12) {
+      if (Math.abs(x - 41.75) < 3 || Math.abs(x - 79.25) < 3) continue;
+      if (x === 20) {
+        // A pair either side of the HQ's way in, not one in the middle of it.
+        add('lamp-n-20', 'lamp_post', 17.6, 29.4);
+        add('lamp-n-20b', 'lamp_post', 22.4, 29.4);
+      } else lamp(`lamp-n-${x}`, x, 29.4);
+      lamp(`lamp-s-${x}`, x, 64.1);
+    }
   }
 
   // ---- the airport, across the boulevard: car parks and bike parks by the road, the terminal
@@ -481,7 +510,12 @@ export function campusObstacles(c: CampusLayout): Rect[] {
 export function campusSeats(c: CampusLayout): Seat[] {
   const at = c.hq;
   const hq = at ? (OFFICE_02.seats ?? []).map((s) => ({ ...s, id: `hq-${s.id}`, x: s.x + at.x, z: s.z + at.z })) : [];
-  return [...hq, ...c.objects.flatMap(placedSeats)];
+  // A seat is as high as its chair plus what the chair stands on (a floor, a rug, a stage).
+  const ground = groundOf(c.buildings, c.objects);
+  return [...hq, ...c.objects.flatMap((p) => {
+    const base = ground.base(p);
+    return placedSeats(p).map((s) => (base ? { ...s, y: +(s.y + base).toFixed(3) } : s));
+  })];
 }
 
 /** The most specific zone at a point (smallest area wins: a stage inside a hall). */
