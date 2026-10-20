@@ -4,6 +4,11 @@ import { TOPICS, type MeetingBus } from './useMeetingBus';
 import { newChatId } from './messages';
 import { parseCaptionMsg, speechRecognitionCtor, VoiceTimeline, type SpeechRecognitionLike, type TranscriptLine } from './captions';
 import { canTranslate, enablePair, Interpreter, loadMyLanguage, needsClick, saveMyLanguage, translate, voiceTag } from './translate';
+import { Interpretation } from './interpretation';
+
+/** "Don't ask me again" for the speaking-language question. */
+const ASK_KEY = 'synapse.askLanguage';
+const askedNever = () => { try { return localStorage.getItem(ASK_KEY) === 'never'; } catch { return false; } };
 
 /**
  * A caption on screen: someone's words as they speak, in my language when they speak another
@@ -36,6 +41,15 @@ export interface Captions {
   /** Hear others in my language (they're turned down underneath). */
   interpreter: boolean;
   setInterpreter: (on: boolean) => void;
+  /**
+   * Asking me which language I speak: someone turned translation (or captions) on, or spoke
+   * another language. Null when not asking.
+   */
+  ask: 'translation' | 'captions' | null;
+  /** Ask now (from a menu). */
+  openAsk: () => void;
+  /** My answer (null: cancel). `hear` turns the interpreter voice on or off. */
+  answerAsk: (a: { language: string; hear: boolean; dontAskAgain: boolean } | null) => void;
 }
 
 const SHOW_MS = 6000;
@@ -62,6 +76,13 @@ export function useCaptions({ bus, room, me, myName, micOn, names }: { bus: Meet
   interpreterRef.current = interpreter;
   const voice = useRef<Interpreter | null>(null);
   const [shown, setShown] = useState(true);
+  const [ask, setAsk] = useState<Captions['ask']>(null);
+  const asked = useRef(false);
+  const askOnce = useCallback((why: 'translation' | 'captions') => {
+    if (asked.current || askedNever()) return;
+    asked.current = true;
+    setAsk(why);
+  }, []);
   const [problem, setProblem] = useState<string | null>(null);
   const [live, setLive] = useState<LiveCaption[]>([]);
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
@@ -85,31 +106,44 @@ export function useCaptions({ bus, room, me, myName, micOn, names }: { bus: Meet
   // Someone's words: as they are when they speak my language, otherwise translated into mine (and
   // read aloud by the interpreter voice when that's on). Interim words are translated too, but
   // only the latest of them matters.
-  const latestFor = useRef(new Map<string, number>());
+  const interp = useRef<Interpretation | null>(null);
+  interp.current ??= new Interpretation({
+    me,
+    myLanguage: () => langRef.current,
+    interpreter: () => interpreterRef.current,
+    translate,
+    needsClick,
+  });
+  const roomRef = useRef(room);
+  roomRef.current = room;
+  /** Someone's own voice: turned down under the interpreter when they speak another language. */
+  const level = useCallback((who: string) => {
+    const p = roomRef.current?.remoteParticipants.get(who) as { setVolume?: (n: number) => void } | undefined;
+    p?.setVolume?.(interp.current!.volume(who));
+  }, []);
   const show = useCallback((who: string, name: string, text: string, final: boolean, id: string, lang?: string) => {
-    const mine = langRef.current;
-    if (!lang || lang === mine || who === me) { put(who, name, text, final, id, lang ? { lang } : {}); return; }
-    const ticket = (latestFor.current.get(who) ?? 0) + 1;
-    latestFor.current.set(who, ticket);
-    void translate(text, lang, mine).then((out) => {
-      if (!final && latestFor.current.get(who) !== ticket) return;
-      if (out === null) {
-        if (needsClick(lang, mine)) setPending(lang);
-        put(who, name, text, final, id, { lang, untranslated: true });
-        return;
-      }
-      put(who, name, out, final, id, { lang, original: text });
-      if (final && interpreterRef.current) voice.current?.say(out);
+    const known = interp.current!.languageOf(who);
+    void interp.current!.hear(who, text, final, lang).then((h) => {
+      if (!h) return;
+      if (h.pending) setPending(h.pending);
+      put(who, name, h.text, final, id, { ...(h.lang ? { lang: h.lang } : {}), ...(h.original ? { original: h.original } : {}), ...(h.untranslated ? { untranslated: true } : {}) });
+      if (h.speak) voice.current?.say(h.speak);
+      if (who !== me) level(who);
     });
-  }, [me, put]);
+    if (who !== me && lang && lang !== known && lang !== langRef.current) askOnce('translation');
+  }, [me, put, level, askOnce]);
 
   useEffect(() => bus.on(TOPICS.captions, (raw, from) => {
     const msg = parseCaptionMsg(raw);
     if (!msg) return;
-    if (msg.t === 'state') { setOn(msg.on); if (msg.on) setShown(true); return; }
+    if (msg.t === 'state') {
+      setOn(msg.on);
+      if (msg.on) { setShown(true); askOnce(msg.translation ? 'translation' : 'captions'); }
+      return;
+    }
     if (!onRef.current) setOn(true); // joined after they were turned on
     show(from, namesRef.current[from] ?? 'Guest', msg.text, msg.final, msg.id, msg.lang);
-  }), [bus, show]);
+  }), [bus, show, askOnce]);
 
   // Tell newcomers captions are on.
   useEffect(() => {
@@ -152,14 +186,15 @@ export function useCaptions({ bus, room, me, myName, micOn, names }: { bus: Meet
           const now = Date.now();
           if (!lineStart) lineStart = now;
           if (r.isFinal) {
-            // Someone else's voice coming out of your speakers is not yours to caption.
-            if (mine(lineStart - LEAD_MS, now)) {
+            // Someone else's voice coming out of your speakers is not yours to caption, and nor
+            // is the interpreter's (it reads others aloud in your language).
+            if (mine(lineStart - LEAD_MS, now) && !voice.current?.spokeDuring(lineStart - LEAD_MS, now)) {
               void bus.send(TOPICS.captions, { t: 'line', id: lineId, text, final: true, lang: language });
               show(me, myName, text, true, lineId);
             }
             lineId = newChatId();
             lineStart = 0;
-          } else if (now - lastSent > 250 && mine(now - INTERIM_WINDOW_MS, now)) {
+          } else if (now - lastSent > 250 && mine(now - INTERIM_WINDOW_MS, now) && !voice.current?.spokeDuring(now - INTERIM_WINDOW_MS, now)) {
             lastSent = now;
             void bus.send(TOPICS.captions, { t: 'line', id: lineId, text, final: false, lang: language }, { reliable: false });
             show(me, myName, text, false, lineId);
@@ -185,17 +220,24 @@ export function useCaptions({ bus, room, me, myName, micOn, names }: { bus: Meet
     if (!interpreter || !room) return;
     const v = new Interpreter(langRef.current);
     voice.current = v;
-    const quiet = (p: { setVolume?: (n: number) => void }) => p.setVolume?.(0.15);
-    room.remoteParticipants.forEach(quiet);
-    room.on('participantConnected', quiet);
+    // Only people speaking another language are turned down (the interpreter reads them aloud);
+    // people speaking mine stay at full volume.
+    const all = () => room.remoteParticipants.forEach((p) => level(p.identity));
+    all();
+    const join = (p: { identity: string }) => level(p.identity);
+    room.on('participantConnected', join);
     return () => {
-      room.off('participantConnected', quiet);
+      room.off('participantConnected', join);
       room.remoteParticipants.forEach((p) => p.setVolume?.(1));
       v.stop();
       voice.current = null;
     };
-  }, [interpreter, room]);
-  useEffect(() => { voice.current?.setLanguage(language); }, [language]);
+  }, [interpreter, room, level]);
+  // A new language of mine: the interpreter speaks it, and who is turned down changes.
+  useEffect(() => {
+    voice.current?.setLanguage(language);
+    room?.remoteParticipants.forEach((p) => level(p.identity));
+  }, [language, room, level]);
 
   const setLanguage = useCallback((code: string) => { setLanguageState(code); saveMyLanguage(code); setPending(null); }, []);
   const enableTranslation = useCallback(() => {
@@ -209,11 +251,22 @@ export function useCaptions({ bus, room, me, myName, micOn, names }: { bus: Meet
   // The interpreter needs everyone's words, so it turns captions on for the meeting.
   const setInterpreter = useCallback((v: boolean) => {
     setInterpreterState(v);
-    if (v && !onRef.current) turnOn();
-  }, [turnOn]);
+    if (v && !onRef.current) setOn(true);
+    // Tell everyone translation is on, so they're asked which language they speak.
+    if (v) { setShown(true); void bus.send(TOPICS.captions, { t: 'state', on: true, translation: true }); }
+  }, [bus]);
+  const openAsk = useCallback(() => setAsk('translation'), []);
+  const answerAsk = useCallback((a: { language: string; hear: boolean; dontAskAgain: boolean } | null) => {
+    setAsk(null);
+    if (!a) return;
+    if (a.dontAskAgain) { try { localStorage.setItem(ASK_KEY, 'never'); } catch { /* private mode */ } }
+    setLanguage(a.language);
+    if (a.hear !== interpreterRef.current) setInterpreter(a.hear);
+  }, [setLanguage, setInterpreter]);
 
   return {
     on, shown, setShown, supported: !!Ctor, problem, live, transcript, turnOn, turnOff,
     language, setLanguage, translates: canTranslate(), pending, enableTranslation, interpreter, setInterpreter,
+    ask, openAsk, answerAsk,
   };
 }

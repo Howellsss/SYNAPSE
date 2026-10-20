@@ -36,7 +36,7 @@ import { VideoStrip } from './VideoStrip';
 import { CallStage, SelfView } from './CallStage';
 import { useMeetingBus } from '@/meetings/useMeetingBus';
 import { useCaptions } from '@/meetings/useCaptions';
-import { CaptionsOverlay } from '@/components/meetings/MeetingPanels';
+import { CaptionsOverlay, SpeakingLanguageDialog } from '@/components/meetings/MeetingPanels';
 import { KIT_BY_ID } from '@/spatial/scene/campus/kit';
 import { FloorMap } from './FloorMap';
 import { PeoplePanel, PeopleCountButton } from './PeoplePanel';
@@ -652,6 +652,7 @@ export function SpaceRoom({ space, closedNote, onSpaceChange }: { space: Space; 
 
         <CallNotices call={call} onOpenSettings={() => setDevicesOpen(true)} />
         <div className="pointer-events-none absolute inset-x-0 bottom-16 z-[22] [&>*]:pointer-events-auto"><div className="relative h-0"><CaptionsOverlay captions={captions} /></div></div>
+        <SpeakingLanguageDialog captions={captions} />
 
         <div className="absolute inset-x-0 bottom-4 z-[21] flex justify-center px-3">
           <ControlBar
