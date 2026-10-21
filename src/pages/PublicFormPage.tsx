@@ -75,6 +75,7 @@ export function PublicFormPage({ formId }: { formId: string }) {
         viewport={window.innerWidth < 640 ? 'mobile' : 'desktop'}
         initialAnswers={prefillAnswers(def, params)}
         onSubmit={submit}
+        formId={form.id}
         done={paid === 'ok' ? { note: 'Payment received. Thank you!' } : undefined}
       />
     </Shell>

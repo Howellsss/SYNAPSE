@@ -5,6 +5,7 @@ import {
   type Answers, type FormKind, type PaymentDue, type QuizScore,
 } from '@/lib/form-engine';
 import { FormRenderer, type FormRuntime } from './FormRenderer';
+import { dataUrlToBlob, uploadFormResponseFile } from '@/lib/form-files';
 
 /** What the player hands over when someone submits. */
 export interface FormPayload {
@@ -30,8 +31,10 @@ export function rememberedDetails(): Record<string, string> {
  * pages; a survey goes slide by slide), with the logic, checks, quiz result and payment. Used by
  * the public page and the builder's preview (`onSubmit` absent: nothing is sent).
  */
-export function FormPlayer({ definition, formName, formDescription, kind, viewport = 'desktop', initialAnswers, onSubmit, done: doneFromOutside }: {
+export function FormPlayer({ definition, formName, formDescription, kind, viewport = 'desktop', initialAnswers, onSubmit, done: doneFromOutside, formId }: {
   definition: FormDefinition;
+  /** Where files and signatures are sent (File Upload, Signature). */
+  formId?: string;
   formName: string;
   formDescription?: string | null;
   kind: FormKind;
@@ -83,6 +86,20 @@ export function FormPlayer({ definition, formName, formDescription, kind, viewpo
   const finish = async (disqualified: boolean) => {
     const quiz = scoreQuiz(steps.def, finalAnswers(steps.def, answers, state));
     const payload: FormPayload = { answers: finalAnswers(steps.def, answers, state), quiz, payment: disqualified ? null : due, disqualified, trap: trap.current };
+    // Signatures are drawings until now: send each as a picture and keep its link.
+    const drawn = Object.entries(payload.answers).filter(([, v]) => typeof v === 'string' && v.startsWith('data:image/'));
+    if (drawn.length && onSubmit) {
+      if (!formId) { setFailure('Signatures can’t be sent from here.'); return; }
+      setBusy(true);
+      setFailure(null);
+      try {
+        for (const [id, v] of drawn) payload.answers[id] = await uploadFormResponseFile(formId, dataUrlToBlob(v), 'signature.png');
+      } catch (e) {
+        setBusy(false);
+        setFailure(`Your signature couldn’t be sent: ${(e as Error).message}`);
+        return;
+      }
+    }
     if (definition.settings.rememberRespondent) {
       const saved = rememberedDetails();
       for (const el of Object.values(definition.elements)) {
@@ -148,6 +165,7 @@ export function FormPlayer({ definition, formName, formDescription, kind, viewpo
     submitLabel: due ? `Continue to payment · ${new Intl.NumberFormat(undefined, { style: 'currency', currency: due.currency.toUpperCase() }).format(due.amount / 100)}` : kind === 'survey' ? 'Finish' : 'Submit',
     autoComplete: definition.settings.disableAutofill ? 'off' : 'on',
     onPicked,
+    formId,
   };
 
   if (end) {

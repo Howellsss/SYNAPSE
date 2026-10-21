@@ -20,6 +20,16 @@ to run more than once.
    - Makes form and survey submissions start "Form submitted" workflows.
    - Makes the once-a-minute job send a form's own emails.
 
+3. `supabase/migrations/20261022090000_form_files.sql`
+   - On GitHub: https://github.com/Howellsss/SYNAPSE/blob/main/supabase/migrations/20261022090000_form_files.sql
+   - Plain text to copy: https://raw.githubusercontent.com/Howellsss/SYNAPSE/main/supabase/migrations/20261022090000_form_files.sql
+   - Lets the builder upload images and logos from the device.
+   - Lets people send files (File Upload) and signatures with a form.
+
+To see which updates a project still needs at any time, run `supabase/check-missing-updates.sql`
+(https://raw.githubusercontent.com/Howellsss/SYNAPSE/main/supabase/check-missing-updates.sql). It
+lists each missing update and links to the file to paste.
+
 Check it worked by running this in the SQL Editor. It should return 2 rows.
 
 ```sql

@@ -182,6 +182,7 @@ Deno.serve(async (req: Request) => {
     const answers: Record<string, string> = {};
     for (const el of fields) {
       const v = (body.answers as Record<string, unknown>)[el.field.fieldId];
+      if (el.type === "captcha") continue;
       if (v !== undefined && v !== null && String(v).trim() !== "") answers[el.field.fieldId] = String(v).slice(0, 5000);
     }
     const quiz = scoreQuiz(def, answers);
@@ -294,7 +295,16 @@ async function saveContact(db: SupabaseClient, form: Record<string, unknown>, de
   const data: Record<string, string> = {};
   for (const el of fieldsOf(def)) {
     const key = el.field.mappedContactField;
-    if (key && answers[el.field.fieldId] && ["first_name", "last_name", "email", "phone", "company", "job_title"].includes(key)) data[key] = answers[el.field.fieldId];
+    const v = answers[el.field.fieldId]?.trim();
+    if (!key || !v) continue;
+    if (key === "full_name") {
+      // "Ada Grace Lovelace" -> first "Ada", last "Grace Lovelace".
+      const [first, ...rest] = v.split(/\s+/);
+      if (!data.first_name) data.first_name = first;
+      if (rest.length && !data.last_name) data.last_name = rest.join(" ");
+    } else if (key === "date_of_birth") {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(v)) data.date_of_birth = v;
+    } else if (["first_name", "last_name", "email", "phone", "company", "job_title"].includes(key)) data[key] = v;
   }
   if (!Object.keys(data).length) { console.warn(`form ${form.id}: no answers mapped to contact fields, so no contact`); return null; }
   const ws = form.workspace_id as string;
@@ -359,6 +369,19 @@ async function notify(
   const fill = (t: string) => {
     let out = t.replace(/{{form\.name}}/g, String(form.name)).replace(/{{submission\.id}}/g, submissionId).replace(/{{submission\.created_at}}/g, new Date().toISOString());
     for (const [k, v] of Object.entries(answers)) out = out.split(`{{submission.${k}}}`).join(v);
+    // {{submission.first_name}}, {{submission.email}}…: the field saved to that contact field.
+    for (const f of fields) {
+      const v = answers[f.field.fieldId];
+      const key = f.field.mappedContactField;
+      if (!key || v === undefined) continue;
+      out = out.split(`{{submission.${key}}}`).join(v);
+      if (key === "full_name") {
+        const [first, ...rest] = v.trim().split(/\s+/);
+        out = out.split("{{submission.first_name}}").join(first ?? "").split("{{submission.last_name}}").join(rest.join(" "));
+      }
+    }
+    // Anything still unfilled (no answer) reads as nothing rather than as code.
+    out = out.replace(/{{submission\.[a-z_]+}}/g, "");
     if (quiz) out = out.replace(/{{quiz\.score}}/g, `${quiz.percent}%`).replace(/{{quiz\.result}}/g, quiz.result ?? "");
     return out;
   };
@@ -383,8 +406,11 @@ async function notify(
     const body = `${fill(internal.message || "A new response came in.")}\n\n${lines(internal.includeAllFields === false && internal.includeFields?.length ? internal.includeFields : null)}${extras ? `\n\n${extras}` : ""}`;
     for (const to of (internal.recipients ?? []).filter((r) => EMAIL_RE.test(r)).slice(0, 20)) await queue("internal", to, subject, body, null);
   }
-  if (respondent?.enabled && respondent.emailFieldId && !disqualified) {
-    const to = answers[respondent.emailFieldId];
+  // To the email they gave: the field chosen, or else the field saved to the contact's email.
+  const emailField = (respondent?.emailFieldId && fields.some((f) => f.field.fieldId === respondent.emailFieldId) ? respondent.emailFieldId : null)
+    ?? fields.find((f) => f.field.mappedContactField === "email")?.field.fieldId ?? fields.find((f) => f.type === "email")?.field.fieldId;
+  if (respondent?.enabled && emailField && !disqualified) {
+    const to = answers[emailField];
     if (to && EMAIL_RE.test(to)) {
       const which = respondent.includeAnswers === "all" ? null : respondent.includeAnswers === "selected" ? respondent.includedFields ?? [] : [];
       const answersText = which && !which.length ? "" : `\n\nYour answers:\n${lines(which)}`;

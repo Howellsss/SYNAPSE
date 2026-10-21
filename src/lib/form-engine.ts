@@ -17,6 +17,11 @@ export type Answers = Record<string, string>;
 
 const CHOICE = new Set(['radio', 'checkbox', 'dropdown', 'multi_select', 'yes_no']);
 const MULTI = new Set(['checkbox', 'multi_select']);
+/** Fields people never see: their value comes from the link or a default. */
+const UNSEEN = new Set(['hidden', 'source']);
+/** Bot protection's answer once the sum is right (and while it's wrong). */
+export const CAPTCHA_OK = 'verified';
+export const CAPTCHA_WRONG = 'wrong';
 const EMAIL_RE = /^[^\s@<>(),;:"\\]+@[^\s@<>(),;:"\\]+\.[^\s@<>(),;:"\\]+$/;
 
 // ---------- reading the definition ----------
@@ -39,6 +44,9 @@ export const fieldElements = (def: FormDefinition) => orderedElements(def).filte
 const fieldById = (def: FormDefinition, fieldId: string) => fieldElements(def).find((e) => e.field.fieldId === fieldId);
 
 /** The picks in a choice answer (checkboxes are stored comma-separated). */
+/** Checkbox / multi-select answers, one per pick. */
+export const splitMulti = (value: string | undefined) => (value ? value.split(',').map((v) => v.trim()).filter(Boolean) : []);
+
 export function picks(type: string, value: string | undefined): string[] {
   if (!value) return [];
   return MULTI.has(type) ? value.split(',').map((v) => v.trim()).filter(Boolean) : [value];
@@ -112,7 +120,7 @@ export function runLogic(def: FormDefinition, answers: Answers): LogicState {
   }
   for (const [id, shown] of shownBy) if (!shown) hidden.add(id);
   for (const el of Object.values(def.elements)) {
-    if (el.field?.visible === false && el.type !== 'hidden') hidden.add(el.id);
+    if (el.field?.visible === false && !UNSEEN.has(el.type)) hidden.add(el.id);
     if (el.field?.required && !hidden.has(el.id)) required.add(el.field.fieldId);
   }
   // A hidden field is never required.
@@ -214,7 +222,10 @@ export function fieldError(el: FormElement & { field: FieldDefinition }, value: 
     if (!pay || pay.amount <= 0) return f.payment?.mode === 'custom' ? `Enter an amount${f.payment.minAmount ? ` of at least ${money(f.payment.minAmount * 100, f.payment.currency)}` : ''}.` : 'Choose what you’d like to pay for.';
     return null;
   }
-  if (!v) return required ? (el.type === 'consent' ? 'Please tick this box to continue.' : 'This is required.') : null;
+  if (el.type === 'captcha') return v === CAPTCHA_OK ? null : v ? 'That’s not right. Try the sum again.' : 'Please answer the quick check.';
+  if (!v) return required ? (el.type === 'consent' ? 'Please tick this box to continue.' : el.type === 'signature' ? 'Please sign here.' : el.type === 'file_upload' ? 'Please add a file.' : 'This is required.') : null;
+  if (el.type === 'monetary' && (Number.isNaN(Number(v)) || Number(v) < 0)) return 'Enter an amount.';
+  if (el.type === 'date_of_birth' && v > new Date().toISOString().slice(0, 10)) return 'That date is in the future.';
   if (el.type === 'email' && !EMAIL_RE.test(v)) return 'Enter a valid email address.';
   if (el.type === 'phone' && v.replace(/\D/g, '').length < 7) return 'Enter a valid phone number.';
   if (el.type === 'website' && !/^(https?:\/\/)?[^\s.]+\.[^\s]{2,}$/i.test(v)) return 'Enter a valid web address.';
@@ -237,7 +248,7 @@ export function fieldError(el: FormElement & { field: FieldDefinition }, value: 
 export function stepErrors(def: FormDefinition, step: number, answers: Answers, state: LogicState): Record<string, string> {
   const out: Record<string, string> = {};
   for (const el of visibleOnStep(def, step, state)) {
-    if (!isField(el) || el.type === 'hidden') continue;
+    if (!isField(el) || UNSEEN.has(el.type)) continue;
     const e = fieldError(el, answers[el.field.fieldId] ?? '', state.required.has(el.field.fieldId));
     if (e) out[el.field.fieldId] = e;
   }
@@ -255,14 +266,15 @@ export function queryKeysFor(el: FormElement & { field: FieldDefinition }): stri
     .filter((k): k is string => !!k).map((k) => k.toLowerCase());
 }
 
-/** Answers filled in from the link (?email=…&first_name=…), plus hidden fields' default values. */
+/** Answers filled in from the link (?email=…&first_name=…), and every field's default value. */
 export function prefillAnswers(def: FormDefinition, params: URLSearchParams): Answers {
   const lower = new Map<string, string>();
   params.forEach((v, k) => lower.set(k.toLowerCase(), v));
   const out: Answers = {};
   for (const el of fieldElements(def)) {
     if (el.type === 'payment') continue;
-    if (el.type === 'hidden' && el.field.defaultValue) out[el.field.fieldId] = el.field.defaultValue;
+    // Default values first; a link that sets the field wins.
+    if (el.field.defaultValue && el.type !== 'captcha') out[el.field.fieldId] = el.field.defaultValue;
     if (def.settings.prefillFromUrl === false) continue;
     const key = queryKeysFor(el).find((k) => lower.has(k));
     if (key) out[el.field.fieldId] = lower.get(key)!.slice(0, 2000);
@@ -413,7 +425,7 @@ export function money(minor: number, currency: string): string {
 export function closedReason(def: FormDefinition, status: string, responses: number, now = Date.now()): string | null {
   const s = def.settings;
   const msg = s.closedMessage?.trim() || 'This form is no longer accepting responses.';
-  if (status !== 'published') return status === 'archived' ? msg : 'This form isn’t published yet.';
+  if (status !== 'published') return status === 'archived' || status === 'inactive' ? msg : 'This form isn’t published yet.';
   if (s.closeAt && new Date(s.closeAt).getTime() <= now) return msg;
   if (s.maxResponses && responses >= s.maxResponses) return msg;
   return null;
@@ -423,7 +435,8 @@ export function closedReason(def: FormDefinition, status: string, responses: num
 export function finalAnswers(def: FormDefinition, answers: Answers, state: LogicState): Answers {
   const out: Answers = {};
   for (const el of fieldElements(def)) {
-    if (state.hidden.has(el.id) && el.type !== 'hidden') continue;
+    if (state.hidden.has(el.id) && !UNSEEN.has(el.type)) continue;
+    if (el.type === 'captcha') continue;
     const v = state.values[el.field.fieldId] ?? answers[el.field.fieldId];
     if (v !== undefined && v !== '') out[el.field.fieldId] = v;
   }

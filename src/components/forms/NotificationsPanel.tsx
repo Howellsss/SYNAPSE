@@ -1,4 +1,5 @@
-import { supabaseKey } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
+import { functionErrorMessage, useEmailAccounts } from '@/lib/email-accounts';
 import { useState } from 'react';
 import {
   Bell, Mail, MessageSquare, Send, ChevronDown, ChevronRight,
@@ -11,6 +12,7 @@ import type {
   InternalNotification, RespondentNotification, PostSubmissionConfig,
   ThankYouPage, PostSubmissionType,
 } from '@/lib/form-builder-types';
+import { ImagePicker } from './ImagePicker';
 
 interface Props {
   definition: FormDefinition;
@@ -164,26 +166,6 @@ function InternalNotificationEditor({
       {config.enabled && (
         <>
           <div>
-            <label className="block text-sm font-medium text-navy-700 mb-1.5">Delivery channel</label>
-            <div className="grid grid-cols-3 gap-2">
-              {(['email', 'in_app', 'both'] as const).map(ch => (
-                <button
-                  key={ch}
-                  onClick={() => onChange({ channel: ch })}
-                  className={cn(
-                    'px-3 py-2 rounded-lg text-sm font-medium border transition-colors',
-                    config.channel === ch
-                      ? 'border-gold-400 bg-gold-50 text-navy-800'
-                      : 'border-navy-100 text-ivory-600 hover:bg-ivory-50'
-                  )}
-                >
-                  {ch === 'email' ? 'Email' : ch === 'in_app' ? 'In-App' : 'Both'}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
             <label className="block text-sm font-medium text-navy-700 mb-1.5">Recipients</label>
             <div className="flex gap-2">
               <input
@@ -312,14 +294,14 @@ function RespondentNotificationEditor({
                   value={config.emailFieldId || ''}
                   onChange={e => onChange({ emailFieldId: e.target.value || null })}
                 >
-                  <option value="">Select an email field</option>
+                  <option value="">The contact’s email field (automatic)</option>
                   {emailFields.map(el => (
                     <option key={el.id} value={el.field!.fieldId}>{el.field!.label || el.displayLabel}</option>
                   ))}
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-navy-700 mb-1.5">Sender name</label>
                   <input
@@ -327,15 +309,6 @@ function RespondentNotificationEditor({
                     value={config.senderName}
                     onChange={e => onChange({ senderName: e.target.value })}
                     placeholder="SYNAPSE"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-navy-700 mb-1.5">Reply-to</label>
-                  <input
-                    className="input-field text-sm"
-                    value={config.replyTo}
-                    onChange={e => onChange({ replyTo: e.target.value })}
-                    placeholder="noreply@example.com"
                   />
                 </div>
               </div>
@@ -521,15 +494,7 @@ function ThankYouPageEditor({
           placeholder="Your submission has been received."
         />
       </div>
-      <div>
-        <label className="block text-sm font-medium text-navy-700 mb-1.5">Image or logo URL (optional)</label>
-        <input
-          className="input-field text-sm"
-          value={page.imageUrl || ''}
-          onChange={e => onChange({ imageUrl: e.target.value || null })}
-          placeholder="https://example.com/logo.png"
-        />
-      </div>
+      <ImagePicker label="Picture or logo (optional)" compact value={page.imageUrl} onChange={url => onChange({ imageUrl: url || null })} />
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-sm font-medium text-navy-700 mb-1.5">Button text (optional)</label>
@@ -560,9 +525,7 @@ function ThankYouPageEditor({
 
 function WorkflowInfo() {
   const events = [
-    { name: 'form.submitted', desc: 'Fires when a form is successfully submitted and persisted' },
-    { name: 'form.started', desc: 'Fires when a respondent begins filling out a form' },
-    { name: 'form.abandoned', desc: 'Fires when a respondent leaves without submitting (requires consent tracking)' },
+    { name: 'Form submitted', desc: 'Starts any workflow whose trigger is this form (or any form), once the contact is saved' },
   ];
   return (
     <div className="space-y-3">
@@ -632,7 +595,7 @@ function DynamicVariablesHint() {
 // ============================================================
 
 function TestEmailButton({
-  config, formName, toast,
+  config, formName, toast, definition,
 }: {
   config: RespondentNotification;
   formName: string;
@@ -642,39 +605,32 @@ function TestEmailButton({
   const [sending, setSending] = useState(false);
   const [testEmail, setTestEmail] = useState('');
 
+  const { accounts } = useEmailAccounts();
+  // Sent for real, from your connected Gmail, with sample answers in the placeholders.
   const sendTest = async () => {
-    if (!testEmail.trim()) {
-      toast('Enter an email address to send a test', 'error');
-      return;
-    }
+    const to = testEmail.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) { toast('Enter the email address to send the test to', 'error'); return; }
+    const live = accounts.filter((a) => a.status === 'active');
+    const account = live.find((a) => a.id === definition.settings.senderAccountId) ?? live[0];
+    if (!account) { toast('Connect your Gmail first (Settings → Email), then send a test.', 'error'); return; }
+    const sample: Record<string, string> = { first_name: 'Alex', last_name: 'Morgan', full_name: 'Alex Morgan', email: to, phone: '+1 555 010 2030', company: 'Example Ltd' };
+    const fill = (t: string) => t
+      .replace(/{{form\.name}}/g, formName)
+      .replace(/{{submission\.created_at}}/g, new Date().toLocaleString())
+      .replace(/{{submission\.([a-z_]+)}}/g, (_, k: string) => sample[k] ?? '')
+      .replace(/{{quiz\.score}}/g, '80%').replace(/{{quiz\.result}}/g, 'Sample result');
     setSending(true);
-    try {
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/form-submit`;
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseKey}`,
-        },
-        body: JSON.stringify({
-          mode: 'test_email',
-          testEmail: testEmail.trim(),
-          config: {
-            subject: config.subject,
-            senderName: config.senderName,
-            replyTo: config.replyTo,
-            message: config.message,
-          },
-          formName,
-        }),
-      });
-      if (!response.ok) throw new Error('Test email failed');
-      toast('Test email sent successfully');
-    } catch {
-      toast('Failed to send test email', 'error');
-    } finally {
-      setSending(false);
-    }
+    const { error } = await supabase.functions.invoke('send-email', {
+      body: {
+        account_id: account.id, to: [to],
+        subject: `[Test] ${fill(config.subject || `Thanks for your response to ${formName}`)}`,
+        text: `${fill(config.message || 'Thanks, we’ve received your response.')}\n\n(This is a test with sample answers.)`,
+        from_name: config.senderName || undefined,
+      },
+    });
+    setSending(false);
+    if (error) toast(await functionErrorMessage(error, 'The test email couldn’t be sent'), 'error');
+    else toast(`Test sent to ${to} from ${account.email}`);
   };
 
   return (

@@ -555,7 +555,14 @@ with expected(migration, kind, sch, a, b) as (values
   ('20261021120000_form_workflow_trigger.sql','function','public','wf_on_form_submission','c930d576617c1c036b40f3f7e175ac06'),
   ('20261021120000_form_workflow_trigger.sql','trigger',null,'wf_form_events',null),
   ('20261021120000_form_workflow_trigger.sql','trigger',null,'wf_form_contact_events',null),
-  ('20261021120000_form_workflow_trigger.sql','function','public','wf_tick','dd9a19d7ca0f84d94155069477c462ff')
+  ('20261021120000_form_workflow_trigger.sql','function','public','wf_tick','dd9a19d7ca0f84d94155069477c462ff'),
+  ('20261022090000_form_files.sql','policy','storage','objects','form_files_assets_insert'),
+  ('20261022090000_form_files.sql','policy','storage','objects','form_files_assets_update'),
+  ('20261022090000_form_files.sql','policy','storage','objects','form_files_assets_delete'),
+  ('20261022090000_form_files.sql','function','public','form_accepts_files','33f73ec27ed0dee13d04b5458bcaf959'),
+  ('20261022090000_form_files.sql','policy','storage','objects','form_files_responses_insert'),
+  ('20261022090000_form_files.sql','policy','storage','objects','form_files_responses_delete'),
+  ('20261022090000_form_files.sql','policy','storage','objects','form_files_read')
 ), missing as (
   select e.*, case e.kind
       when 'function' then case when exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = e.a)

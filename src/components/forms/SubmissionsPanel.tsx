@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Download, Inbox, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { FormDefinition } from '@/lib/form-builder-types';
-import { fieldElements, money } from '@/lib/form-engine';
+import { isField, fieldElements, money } from '@/lib/form-engine';
 import { LoadingSpinner } from '@/components/ui/States';
 import { cn } from '@/lib/utils';
 
@@ -19,11 +19,14 @@ export function SubmissionsPanel({ formId, definition, isSurvey }: { formId: str
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
   const [open, setOpen] = useState<Row | null>(null);
+  // Every field, also in hidden sections and on removed pages' leftovers, so answers keep their names.
+  const all = useMemo(() => Object.values(definition.elements).filter(isField), [definition]);
   const fields = useMemo(() => fieldElements(definition).filter((el) => el.type !== 'payment'), [definition]);
-  const label = (fid: string) => fields.find((f) => f.field.fieldId === fid)?.field.label ?? fid;
+  const label = (fid: string) => all.find((f) => f.field.fieldId === fid)?.field.label ?? (fid.startsWith('fld_') ? 'Removed field' : fid);
+  const typeOf = (fid: string) => all.find((f) => f.field.fieldId === fid)?.type;
   const nameOf = (r: Row) => {
-    const pick = (k: string) => { const f = fields.find((x) => x.field.mappedContactField === k); return f ? r.answers?.[f.field.fieldId] : undefined; };
-    return [pick('first_name'), pick('last_name')].filter(Boolean).join(' ') || pick('email') || 'Anonymous';
+    const pick = (k: string) => { const f = all.find((x) => x.field.mappedContactField === k); return f ? r.answers?.[f.field.fieldId] : undefined; };
+    return [pick('first_name'), pick('last_name')].filter(Boolean).join(' ') || pick('full_name') || pick('email') || 'Anonymous';
   };
   const quizOn = !!definition.settings.quiz?.enabled;
   const payOn = fieldElements(definition).some((el) => el.type === 'payment');
@@ -111,7 +114,7 @@ export function SubmissionsPanel({ formId, definition, isSurvey }: { formId: str
           </div>
           <dl className="mt-4 space-y-3">
             {Object.entries(open.answers ?? {}).map(([k, v]) => (
-              <div key={k}><dt className="text-xs font-semibold text-ivory-600">{label(k)}</dt><dd className="whitespace-pre-wrap text-sm text-navy-900">{v}</dd></div>
+              <div key={k}><dt className="text-xs font-semibold text-ivory-600">{label(k)}</dt><dd className="whitespace-pre-wrap text-sm text-navy-900"><AnswerValue type={typeOf(k)} value={v} /></dd></div>
             ))}
             {open.score_percent != null && <div><dt className="text-xs font-semibold text-ivory-600">Quiz score</dt><dd className="text-sm text-navy-900">{open.score} / {open.score_max} ({open.score_percent}%) {open.quiz_result ? `· ${open.quiz_result}` : ''}</dd></div>}
             {open.payment_amount ? <div><dt className="text-xs font-semibold text-ivory-600">Payment</dt><dd className="text-sm capitalize text-navy-900">{money(open.payment_amount, open.payment_currency ?? 'usd')} · {open.payment_status}</dd></div> : null}
@@ -122,4 +125,19 @@ export function SubmissionsPanel({ formId, definition, isSurvey }: { formId: str
       )}
     </div>
   );
+}
+
+/** Files and signatures as links (a signature as its picture); everything else as text. */
+function AnswerValue({ type, value }: { type?: string; value: string }) {
+  const links = value.split('\n').map((x) => x.trim()).filter((x) => /^https?:\/\//.test(x));
+  if (type === 'signature' && links[0]) return <img src={links[0]} alt="Signature" className="mt-1 h-20 rounded-lg bg-white ring-1 ring-navy-100" />;
+  if ((type === 'file_upload' || links.length) && links.length) {
+    return (
+      <span className="flex flex-col gap-1">
+        {links.map((u) => <a key={u} href={u} target="_blank" rel="noreferrer" className="truncate font-medium text-[#0066CC] hover:underline">{decodeURIComponent(u.split('/').pop() ?? 'File')}</a>)}
+      </span>
+    );
+  }
+  if (type === 'consent') return <>{value === 'true' ? 'Agreed' : value}</>;
+  return <>{value}</>;
 }
