@@ -88,7 +88,8 @@ Both changed for forms: `form-submit` saves submissions, and `send-email` sends 
   - Open each function, then **Code**, paste the file, and **Deploy**.
   - The sources:
     - https://github.com/Howellsss/SYNAPSE/blob/main/supabase/functions/form-submit/index.ts
-    - https://github.com/Howellsss/SYNAPSE/tree/main/supabase/functions/send-email (`index.ts` and `replies.ts`)
+    - https://raw.githubusercontent.com/Howellsss/SYNAPSE/main/supabase/paste/send-email.ts
+      (one file, made from `send-email/index.ts` + `replies.ts`, so the dashboard needs nothing else)
   - In each function's settings, turn **Enforce JWT verification** off. Both check logins themselves, and
     the public form has no login.
 - Or from a computer with the Supabase CLI, in the SYNAPSE folder:
