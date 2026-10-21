@@ -26,24 +26,59 @@ Check it worked by running this in the SQL Editor. It should return 2 rows.
 select tgname from pg_trigger where tgname in ('wf_form_events', 'wf_form_contact_events');
 ```
 
-## 2. Check the once-a-minute job
+## 2. Turn on the once-a-minute job
 
-Workflows and all queued emails run from a job every minute. It needs the **pg_cron** and
-**pg_net** extensions.
+**What it is.** Supabase runs a small job every minute. It is what actually does the work:
 
-- Extensions: https://supabase.com/dashboard/project/parmtumfpsdtdtgwvscq/database/extensions
-  Search for each one and switch it on.
-- Then check the job exists in the SQL Editor:
+- starts the workflows for new submissions;
+- sends the waiting emails (workflow emails, form alerts and auto-replies).
+
+If the job isn't running, forms still save contacts, but no workflow starts and no email goes out.
+The job needs two Supabase add-ons, called extensions: **pg_cron** (the clock) and **pg_net** (lets
+the database call the email function).
+
+### A. Check where things stand
+
+Open the SQL Editor: https://supabase.com/dashboard/project/parmtumfpsdtdtgwvscq/sql/new
+
+Paste this, then click **Run**:
 
 ```sql
-select jobname, schedule, active from cron.job where jobname = 'synapse-workflows';
+select
+  case when exists (select 1 from pg_extension where extname = 'pg_cron') then 'ON' else 'OFF: switch it on (step B)' end as "pg_cron",
+  case when exists (select 1 from pg_extension where extname = 'pg_net')  then 'ON' else 'OFF: switch it on (step B)' end as "pg_net",
+  case
+    when not exists (select 1 from pg_extension where extname = 'pg_cron') then 'Can''t check yet: pg_cron is off'
+    when query_to_xml('select 1 from cron.job where jobname = ''synapse-workflows'' and active', false, false, '')::text like '%<row>%' then 'OK: runs every minute'
+    else 'MISSING: do step C'
+  end as "minute job";
 ```
 
-If that returns nothing (pg_cron was switched on after the workflow update ran), create the job:
+You get one row with three answers. If all three say **ON / ON / OK: runs every minute**, skip to
+step 3.
+
+### B. If pg_cron or pg_net says OFF
+
+1. Open https://supabase.com/dashboard/project/parmtumfpsdtdtgwvscq/database/extensions
+2. Type `pg_cron` in the search box and switch it on. If it asks for a schema, keep the default.
+3. Do the same for `pg_net`.
+4. Run the check in step A again.
+
+### C. If the minute job says MISSING
+
+In the SQL Editor, run:
 
 ```sql
 select cron.schedule('synapse-workflows', '* * * * *', 'SELECT public.wf_tick()');
 ```
+
+- `synapse-workflows` is the job's name.
+- `* * * * *` means "every minute".
+- `SELECT public.wf_tick()` is what it runs.
+
+It answers with a number, the job's id. That means it worked. Running it again does no harm: it
+updates the same job. Run the check in step A once more, and it should say
+**OK: runs every minute**.
 
 ## 3. Deploy the two functions
 
