@@ -154,7 +154,7 @@ export function buildHub(): CampusLayout {
     ([[14, 20.5], [50, 20.5], [14, 31.5], [50, 31.5]] as const).forEach(([x, z], i) => C.add(`bed-${i}`, 'flowers_round', x, z));
     ([[8, 3.2], [16, 3.2], [48, 3.2], [56, 3.2], [3.2, 13], [60.8, 13], [3.2, 39], [60.8, 39]] as const)
       .forEach(([x, z], i) => C.add(`bush-${i}`, i % 2 ? 'bush_flower' : 'bush', x, z));
-    ([[27, 21.5], [37, 21.5], [27, 30.5], [37, 30.5], [27, 8], [37, 8], [27, 44], [37, 44], [8, 26], [56, 26]] as const)
+    ([[25.4, 19.4], [38.6, 19.4], [25.4, 32.6], [38.6, 32.6], [27, 8], [37, 8], [27, 44], [37, 44], [8, 22.7], [56, 22.7]] as const)
       .forEach(([x, z], i) => C.add(`lamp-${i}`, 'lamp_post', x, z));
     // A picnic lawn under string lights (south-west) and a gazebo (south-east).
     C.add('picnic-a', 'picnic', 13, 41);

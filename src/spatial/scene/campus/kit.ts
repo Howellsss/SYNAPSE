@@ -495,11 +495,13 @@ export function placedBounds(p: Placed): Rect | null {
 }
 
 /** Build mode: the piece under a point (the smallest, so a lamp beats the rug it stands on). Layout-only pieces can't be picked. */
-export function pieceAt(objects: Placed[], x: number, z: number): Placed | null {
+export function pieceAt(objects: Placed[], x: number, z: number, opts: { vehicles?: boolean } = {}): Placed | null {
   let best: Placed | null = null;
   let bestArea = Infinity;
   for (const p of objects) {
-    if (KIT_BY_ID.get(p.kind)?.hidden) continue;
+    const item = KIT_BY_ID.get(p.kind);
+    // Layout-only pieces can't be picked, except vehicles when looking for something to ride (the planes).
+    if (item?.hidden && !(opts.vehicles && 'vehicle' in item && item.vehicle)) continue;
     const b = placedBounds(p);
     if (!b || x < b.x0 || x > b.x1 || z < b.z0 || z > b.z1) continue;
     const area = (b.x1 - b.x0) * (b.z1 - b.z0);

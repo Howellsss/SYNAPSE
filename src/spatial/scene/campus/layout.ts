@@ -230,7 +230,7 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
       }
     }
     paths.push(r(4, 39, 73.5, 75.5));
-    paths.push(r(20, 23, 63.5, 73.5));
+    paths.push(r(21, 22, 63.5, 73.5)); // the alley between booths 2 and 3
     zones.push({ id: 'focus', name: 'Focus Booths', type: 'quiet_zone', rect: r(3, 40, 64, 94) });
   }
 
@@ -284,7 +284,7 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
     add('garden-flowers-d', 'flowers_round', 66.5, 89);
     add('garden-rock-a', 'boulder', 67.4, 75.7, 0.6);
     add('garden-rock-b', 'boulder', 53.2, 82.6, 2.1);
-    add('garden-fountain', 'fountain', 60.5, 67.2);
+    add('garden-fountain', 'fountain', 56.6, 67.2); // beside the entrance path, not in it
     paths.push(r(59, 62, 63.5, 72));
     // Water lilies and reeds; a pergola over the west bench; umbrella tables; a fire pit.
     add('garden-lilies-a', 'lilies', 56.4, 77.4);
@@ -353,11 +353,18 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
     add('park-palm-b', 'palm', 75.8, 34.8);
   }
 
-  // ---- along the avenues: lamps and hedges
+  // ---- along the avenues: lamps and hedges. A lamp never stands in an entrance or a footpath
+  // off the avenue (the HQ doorway, the booth alley…): it moves along a little, or is left out.
+  const avenues = paths.slice(0, 2);
+  const inWay = (x: number, z: number) => paths.some((p) => !avenues.includes(p) && x > p.x0 - 0.5 && x < p.x1 + 0.5 && z > p.z0 - 0.5 && z < p.z1 + 0.5);
+  const lamp = (id: string, x: number, z: number) => {
+    const at = [0, 2.5, -2.5, 4, -4].map((d) => x + d).find((nx) => !inWay(nx, z));
+    if (at !== undefined) add(id, 'lamp_post', at, z);
+  };
   for (let x = 8; x < 116; x += 12) {
     if (Math.abs(x - 41.75) < 3 || Math.abs(x - 79.25) < 3) continue;
-    add(`lamp-n-${x}`, 'lamp_post', x, 29.4);
-    add(`lamp-s-${x}`, 'lamp_post', x, 64.1);
+    lamp(`lamp-n-${x}`, x, 29.4);
+    lamp(`lamp-s-${x}`, x, 64.1);
   }
 
   // ---- the airport, across the boulevard: car parks and bike parks by the road, the terminal
@@ -420,11 +427,28 @@ export function buildCampus(teamNames: string[] = DEFAULT_TEAM_NAMES, extra: Pla
     add('hq-tree-a', 'blossom', 35, 17);
   }
 
-  const all = [...objects, ...extra.filter((p) => !objects.some((o) => o.id === p.id))];
+  // (Only the built-in pieces are tidied: what people place themselves stays where they put it.)
+  const base = clearPlants(objects);
+  const all = [...base, ...extra.filter((p) => !base.some((o) => o.id === p.id))];
   return { width: CAMPUS_W, depth: CAMPUS_D, hq, buildings, zones, paths, water, objects: all, spawn: { x: 60.5, z: 56 }, walks, plazas, airport: { runway, taxiZ } };
 }
 
 // ---------------------------------------------------------------- walls, walking, sitting
+
+/** Trees, bushes and rocks that would grow into another piece (a bike, a picnic table, a lamp) are left out. */
+const PLANTS = new Set(['tree', 'oak', 'pine', 'blossom', 'bush', 'bush_flower', 'boulder']);
+function clearPlants(objects: Placed[]): Placed[] {
+  const touch = (a: Rect, b: Rect) => a.x0 < b.x1 - 0.05 && a.x1 > b.x0 + 0.05 && a.z0 < b.z1 - 0.05 && a.z1 > b.z0 + 0.05;
+  const blocks = new Map(objects.map((p) => [p.id, placedBlocks(p)]));
+  const drop = new Set<string>();
+  objects.forEach((p, i) => {
+    if (!PLANTS.has(p.kind)) return;
+    const mine = blocks.get(p.id)!;
+    const hit = objects.some((q, j) => q.id !== p.id && !drop.has(q.id) && (!PLANTS.has(q.kind) || j < i) && blocks.get(q.id)!.some((b) => mine.some((m) => touch(m, b))));
+    if (hit) drop.add(p.id);
+  });
+  return objects.filter((p) => !drop.has(p.id));
+}
 
 export const WALL_T = 0.2;
 
