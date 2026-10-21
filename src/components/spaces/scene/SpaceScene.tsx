@@ -643,6 +643,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
       seat: null as Seat | null,
       pathSeat: null as Seat | null,
     };
+    // Development only: lets browser checks reach the scene (never in a production build).
+    if (import.meta.env.DEV) (window as unknown as { __scene?: unknown }).__scene = { scene, camera, renderer, me };
     target.set(me.x, 0, me.z);
     const held = new Set<MoveKey>();
     let seats = campusLayout ? campusSeats(campusLayout) : office?.seats ?? [];
@@ -1163,7 +1165,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       // A parked car or scooter (when you're on foot): walk over to it and get in.
       if (campusLayout && !me.vehicle) {
         const ground = raycaster.intersectObject(floorMesh)[0];
-        const piece = ground ? pieceAt(campusLayout.objects, ground.point.x, ground.point.z) : null;
+        const piece = ground ? pieceAt(campusLayout.objects, ground.point.x, ground.point.z, { vehicles: true }) : null;
         const ride = rideOf(piece ?? undefined);
         // (Not one someone else has taken: it's out on the road.)
         if (piece && ride && !taken.has(piece.id)) {
