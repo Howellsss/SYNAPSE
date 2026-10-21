@@ -86,7 +86,7 @@ docs/                    This file, GMAIL_SETUP.md, ART-BRIEF.md (3D art commiss
 6. Otherwise the shell (`Sidebar` + `TopBar`) around `renderPage()`, which matches `path` with
    `startsWith`/regex: `/contacts/:id` → `ContactDetailPage`, `/contacts` → `ContactsPage`,
    `/calendars/groups/:id` → `GroupCalendarSettingsPage`, `/calendars` → `CalendarsPage`,
-   `/forms/:id/edit` → `FormBuilder`, `/forms` → `FormsPage`, `/workflows`, `/recordings`, `/characters`,
+   `/forms/:id/edit` → `FormBuilder`, `/forms` → `FormsPage`, `/f/:id` → `PublicFormPage` (public), `/workflows`, `/recordings`, `/characters`,
    `/workspace/:slug` → `SpacePage` (rendered full height next to the sidebar, without the top bar), `/workspace` → `WorkspacesPage`,
    `/ai-hub`, `/settings`, and the placeholder routes below. Unknown paths show the Dashboard.
 
@@ -176,6 +176,30 @@ Migration `20261016090000_conversations.sql`.
   once-a-minute scheduler run also checks up to 40 recent threads (`reply_checked_at` order) and saves
   new replies as inbound `messages` on the same contact (`send-email/replies.ts`). Needs the
   `gmail.readonly` scope, so accounts connected before need reconnecting.
+
+## Forms and surveys (`src/lib/form-engine.ts`, `FormBuilder`, `PublicFormPage`, `form-submit`)
+
+People fill them in at **`/f/<id>`** (older links `/forms/<id>` still open), no account needed;
+`FormPlayer` runs it and the builder's Preview uses the same player. **A form** is one long page
+(or its pages in turn when it has several); **a survey** goes slide by slide (its pages, or one
+question per slide when it has one page). Settings → Layout overrides either.
+
+`form-engine.ts` holds the rules (unit-tested): **logic** (when all/any conditions match: show,
+hide, require, set an answer, jump to a page, disqualify with a message or link, redirect after
+submit), the **steps** and **checks**, **prefill** from the link (`?email=…`, or a field's own
+key) and **where they came from** (utm tags, `?source=`, referrer), the **quiz** (points per
+option and/or right answers, categories; the result by score range or the strongest category),
+and the **payment** (a set price, products with quantities, or an amount they choose). Settings
+also close it on a date or after N responses, remember people on their device, turn off autofill,
+and catch bots with a hidden trap field.
+
+`form-submit` (single file) re-checks on the server what matters: open or closed, the quiz score,
+and the amount to charge (from the form, never the browser). A payment goes through **Stripe
+Checkout** (`STRIPE_SECRET_KEY`); on the way back `confirm_payment` checks it with Stripe. The
+team alert and the auto-reply are queued as `messages` (with `form_submission_id`) and sent by the
+`send-email` mailer from the form's chosen connected Gmail; for paid forms, once payment clears.
+Submissions keep `meta`, `score*`, `quiz_result`, `disqualified` and `payment_*`
+(`20261021090000_forms_upgrade.sql`); the builder's Submissions tab lists and exports them.
 
 ## Streams (`src/lib/streams.ts`, `StreamsPage`, `StreamStudioPage`, `WatchPage`)
 

@@ -15,6 +15,7 @@ import { ContactDetailPage } from '@/pages/ContactDetailPage';
 import { CalendarsPage } from '@/pages/CalendarsPage';
 import { FormsPage } from '@/pages/FormsPage';
 import { FormBuilder } from '@/pages/FormBuilder';
+import { PublicFormPage } from '@/pages/PublicFormPage';
 import { WorkflowsHome } from '@/components/workflows/WorkflowsHome';
 import { Builder } from '@/components/workflows/Builder';
 import { RecordingsPage } from '@/pages/RecordingsPage';
@@ -107,6 +108,8 @@ function AppContent() {
   }), [spaceSlug, dockedSpace, navigate, setNavOpen]);
 
   const authPath = path === '/signin' || path === '/signup';
+  // A form or survey to fill in: /f/<id> (older shared links: /forms/<id>). Open to everyone.
+  const publicFormId = (path.match(/^\/f\/([0-9a-f-]{36})(?:[/?]|$)/i) ?? path.match(/^\/forms\/([0-9a-f-]{36})(?:\?|$)/i))?.[1] ?? null;
   // Public events pages: /e, /e/<slug>, /e/ticket/<token>. Open to everyone, signed in or not.
   const isPublicEvents = path === '/e' || path.startsWith('/e/') || path.startsWith('/e?');
   // A meeting invite link (/meetings/CODE?invite=…) opens for everyone, signed in or not.
@@ -116,10 +119,10 @@ function AppContent() {
   useEffect(() => {
     if (loading) return;
     if (user && authPath) { navigate('/dashboard'); return; }
-    if (!user && !authPath && path !== '/' && !path.startsWith('/book/') && !path.startsWith('/group/') && !path.startsWith('/reset-password') && !path.startsWith('/invite/') && !path.startsWith('/join/') && !path.startsWith('/live/') && !isPublicEvents && !meetingInvite) {
+    if (!user && !authPath && path !== '/' && !path.startsWith('/book/') && !path.startsWith('/group/') && !path.startsWith('/reset-password') && !path.startsWith('/invite/') && !path.startsWith('/join/') && !path.startsWith('/live/') && !isPublicEvents && !meetingInvite && !publicFormId) {
       navigate('/');
     }
-  }, [user, loading, path, authPath, isPublicEvents, meetingInvite, navigate]);
+  }, [user, loading, path, authPath, isPublicEvents, meetingInvite, publicFormId, navigate]);
 
   if (loading) {
     return (
@@ -128,6 +131,8 @@ function AppContent() {
       </div>
     );
   }
+
+  if (publicFormId) return <PublicFormPage key={publicFormId} formId={publicFormId} />;
 
   // Public booking page (no auth required)
   if (path.startsWith('/book/') || path.startsWith('/group/')) {

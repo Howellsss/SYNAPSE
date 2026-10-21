@@ -22,7 +22,7 @@ const ELEMENT_CATEGORY_MAP: Record<ElementType, ElementCategory> = {
   website: 'fields', address: 'fields',
   radio: 'choice', checkbox: 'choice', dropdown: 'choice', multi_select: 'choice', yes_no: 'choice',
   rating: 'advanced', scale: 'advanced', file_upload: 'advanced', signature: 'advanced',
-  consent: 'advanced', hidden: 'advanced',
+  consent: 'advanced', hidden: 'advanced', payment: 'advanced',
 };
 
 const ELEMENT_LABELS: Record<ElementType, string> = {
@@ -35,14 +35,14 @@ const ELEMENT_LABELS: Record<ElementType, string> = {
   radio: 'Radio', checkbox: 'Checkbox', dropdown: 'Dropdown', multi_select: 'Multi-select',
   yes_no: 'Yes / No',
   rating: 'Rating', scale: 'Scale', file_upload: 'File Upload', signature: 'Signature',
-  consent: 'Consent', hidden: 'Hidden Field',
+  consent: 'Consent', hidden: 'Hidden Field', payment: 'Payment',
 };
 
 const FIELD_TYPES = new Set<ElementType>([
   'first_name', 'last_name', 'text_field', 'long_text', 'phone', 'email',
   'number', 'date', 'time', 'website', 'address',
   'radio', 'checkbox', 'dropdown', 'multi_select', 'yes_no',
-  'rating', 'scale', 'file_upload', 'signature', 'consent', 'hidden',
+  'rating', 'scale', 'file_upload', 'signature', 'consent', 'hidden', 'payment',
 ]);
 
 const CHOICE_TYPES = new Set<ElementType>(['radio', 'checkbox', 'dropdown', 'multi_select']);
@@ -168,6 +168,7 @@ function createDefaultField(type: ElementType): FieldDefinition {
   if (type === 'yes_no') { base.label = 'Yes or No?'; base.options = ['Yes', 'No']; }
   if (type === 'consent') { base.label = 'Consent'; base.required = true; }
   if (type === 'hidden') { base.label = 'Hidden Field'; base.visible = false; }
+  if (type === 'payment') { base.label = 'Payment'; base.required = true; base.payment = { mode: 'fixed', currency: 'usd', amount: 50, description: '' }; }
 
   if (CHOICE_TYPES.has(type)) {
     base.options = ['Option 1', 'Option 2', 'Option 3'];
@@ -383,13 +384,16 @@ export class HistoryManager<T> {
 
 export function serializeDefinition(def: FormDefinition): string { return JSON.stringify(def); }
 
-export function deserializeDefinition(json: string): FormDefinition | null {
+export function deserializeDefinition(json: string | object | null | undefined): FormDefinition | null {
   try {
-    const parsed = JSON.parse(json);
+    // Saved as a JSON string inside the jsonb column; older rows may hold the object itself.
+    const parsed = typeof json === 'string' ? JSON.parse(json) : json;
     if (parsed && parsed.pages && parsed.sections && parsed.elements) {
       if (!parsed.notifications) {
         parsed.notifications = createDefaultDefinition('').notifications;
       }
+      if (!parsed.logic) parsed.logic = [];
+      if (!parsed.settings) parsed.settings = createDefaultDefinition('').settings;
       return parsed as FormDefinition;
     }
     return null;

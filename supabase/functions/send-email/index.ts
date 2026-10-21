@@ -358,13 +358,14 @@ async function sendQueued(key: string): Promise<Response> {
     const { data: secret } = await db.rpc("wf_mailer_secret");
     if (!secret || typeof secret !== "string" || !sameKey(key, secret)) return json({ error: "Not allowed" }, 403);
 
-    const { data: queued, error } = await db
-      .from("messages")
-      .select("id, subject, body, body_html, to_address, from_name, email_account_id")
-      .eq("status", "queued")
-      .not("wf_run_id", "is", null)
-      .order("created_at")
-      .limit(QUEUE_BATCH);
+    // Workflow emails, and form notifications (linked to their submission). Before the forms
+    // database update (no form_submission_id column) only workflow emails are picked up.
+    const pick = (both: boolean) => {
+      const q = db.from("messages").select("id, subject, body, body_html, to_address, from_name, email_account_id").eq("status", "queued");
+      return (both ? q.or("wf_run_id.not.is.null,form_submission_id.not.is.null") : q.not("wf_run_id", "is", null)).order("created_at").limit(QUEUE_BATCH);
+    };
+    let { data: queued, error } = await pick(true);
+    if (error && /form_submission_id/.test(error.message)) ({ data: queued, error } = await pick(false));
     if (error) throw new Error(error.message);
 
     let sent = 0;
@@ -380,7 +381,7 @@ async function sendQueued(key: string): Promise<Response> {
       try {
         const { data: account } = await db.from("email_accounts").select("id, email, display_name, status").eq("id", m.email_account_id).maybeSingle();
         if (!account) throw new Error("The sending Gmail account was disconnected.");
-        if (!m.to_address || !EMAIL_RE.test(m.to_address)) throw new Error("The contact's email address isn't valid.");
+        if (!m.to_address || !EMAIL_RE.test(m.to_address)) throw new Error("The recipient's email address isn't valid.");
         const accessToken = await accessTokenFor(db, account.id);
         const mime = buildMime({
           from: account.email, fromName: m.from_name ?? account.display_name, to: [m.to_address], cc: [], bcc: [],

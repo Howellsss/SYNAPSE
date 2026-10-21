@@ -4,7 +4,7 @@ import {
   MousePointerClick, SquareStack, Box, Columns3, LayoutPanelTop,
   User, Phone, Mail, Hash, Calendar, Clock, Globe, MapPin,
   CircleDot, CheckSquare, ChevronDown, ListChecks, ToggleLeft,
-  Star, SlidersHorizontal, Upload, PenTool, ShieldCheck, EyeOff,
+  Star, SlidersHorizontal, Upload, PenTool, ShieldCheck, EyeOff, CreditCard,
   Plus,
 } from 'lucide-react';
 import { ELEMENT_LIBRARY, ELEMENT_GROUPS, type ElementType } from '@/lib/form-builder-types';
@@ -14,7 +14,7 @@ const ICON_MAP: Record<string, typeof Heading> = {
   SquareStack, Box, Columns3, LayoutPanelTop,
   User, Phone, Mail, Hash, Calendar, Clock, Globe, MapPin,
   CircleDot, CheckSquare, ChevronDown, ListChecks, ToggleLeft,
-  Star, SlidersHorizontal, Upload, PenTool, ShieldCheck, EyeOff,
+  Star, SlidersHorizontal, Upload, PenTool, ShieldCheck, EyeOff, CreditCard,
 };
 
 interface ElementLibraryProps {

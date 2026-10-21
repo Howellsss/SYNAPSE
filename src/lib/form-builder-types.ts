@@ -9,7 +9,7 @@ export type ElementType =
   | 'first_name' | 'last_name' | 'text_field' | 'long_text' | 'phone' | 'email'
   | 'number' | 'date' | 'time' | 'website' | 'address'
   | 'radio' | 'checkbox' | 'dropdown' | 'multi_select' | 'yes_no'
-  | 'rating' | 'scale' | 'file_upload' | 'signature' | 'consent' | 'hidden';
+  | 'rating' | 'scale' | 'file_upload' | 'signature' | 'consent' | 'hidden' | 'payment';
 
 export type ElementCategory = 'content' | 'layout' | 'fields' | 'choice' | 'advanced';
 export type ColumnCount = 1 | 2 | 3;
@@ -80,7 +80,36 @@ export interface FieldDefinition {
   visible?: boolean;
   allowedFileTypes?: string[];
   maxFileSizeMB?: number;
+  /** URL parameter that fills this field (?key=value). Defaults to the field id, its contact field or type. */
+  queryKey?: string;
+  /** Quiz: points for each option picked. */
+  optionScores?: Record<string, number>;
+  /** Quiz: the right answer(s); getting it right earns `points` (default 1). */
+  correctOptions?: string[];
+  points?: number;
+  /** Quiz: which category this question counts towards. */
+  quizCategory?: string;
+  /** Payment element only. */
+  payment?: PaymentConfig;
 }
+
+/** A payment taken with the submission (Stripe Checkout). Amounts are in major units (e.g. 25 = $25.00). */
+export interface PaymentConfig {
+  /** fixed: one set price · products: pick from a list · custom: they type the amount (donations). */
+  mode: 'fixed' | 'products' | 'custom';
+  currency: string;
+  amount?: number;
+  description?: string;
+  products?: PaymentProduct[];
+  /** products: allow more than one product. */
+  multiple?: boolean;
+  /** products: let them choose how many of each. */
+  quantity?: boolean;
+  /** custom: smallest amount accepted, and amounts to suggest as buttons. */
+  minAmount?: number;
+  suggested?: number[];
+}
+export interface PaymentProduct { id: string; name: string; price: number; description?: string }
 
 export interface FieldValidation {
   minLength?: number;
@@ -288,14 +317,52 @@ export interface FormTheme {
   progress: ThemeProgress;
 }
 
+export type LogicOperator = 'equals' | 'not_equals' | 'contains' | 'not_contains' | 'is_empty' | 'is_not_empty' | 'greater_than' | 'less_than' | 'starts_with';
+export interface LogicCondition { fieldId: string; operator: LogicOperator; value: string }
+
+/**
+ * When the conditions are met (all of them, or any one), do the action:
+ * show / hide / require an element, set a field's value, jump to a page or slide ('navigate'),
+ * disqualify (end the form with a message or a link), or send them to a link when they submit.
+ * Older rules have a single trigger (triggerFieldId / operator / triggerValue).
+ */
 export interface FormLogicRule {
   id: string;
   targetElementId: string;
-  action: 'show' | 'hide' | 'require' | 'navigate' | 'set_value';
+  action: 'show' | 'hide' | 'require' | 'navigate' | 'set_value' | 'disqualify' | 'redirect';
   triggerFieldId: string;
-  operator: 'equals' | 'not_equals' | 'contains' | 'is_empty' | 'is_not_empty';
+  operator: LogicOperator;
   triggerValue: string;
   targetPageId?: string;
+  conditions?: LogicCondition[];
+  match?: 'all' | 'any';
+  /** set_value: the value; disqualify: the message shown. */
+  value?: string;
+  message?: string;
+  /** redirect, and disqualify when it should send them somewhere. */
+  redirectUrl?: string;
+}
+
+/** A quiz: questions score points; the total (or the top category) picks the result shown. */
+export interface QuizSettings {
+  enabled: boolean;
+  showScore: 'percent' | 'points' | 'out_of_10' | 'none';
+  scoring: 'total' | 'top_category';
+  categories: string[];
+  results: QuizResult[];
+  /** After submitting, show which answers were right. */
+  showAnswers?: boolean;
+}
+export interface QuizResult {
+  id: string;
+  heading: string;
+  message: string;
+  /** total: the score range (in %) this result covers. */
+  minPercent?: number;
+  maxPercent?: number;
+  /** top_category: the category this result is for. */
+  category?: string;
+  redirectUrl?: string;
 }
 
 export interface FormSettings {
@@ -306,6 +373,29 @@ export interface FormSettings {
   redirectUrl: string | null;
   showProgressBar: boolean;
   allowBackNavigation: boolean;
+  /**
+   * How it is shown. auto: a form is one long page (or its pages, if it has several); a survey goes
+   * slide by slide. one_page · pages · one_question (each question its own slide).
+   */
+  presentation?: 'auto' | 'one_page' | 'pages' | 'one_question';
+  /** Slides: move on as soon as a single choice is picked. */
+  autoAdvance?: boolean;
+  /** Fill fields from the link (?email=…&first_name=…). On unless turned off. */
+  prefillFromUrl?: boolean;
+  /** Remember the person on this device and fill their details next time. */
+  rememberRespondent?: boolean;
+  disableAutofill?: boolean;
+  /** Stop taking responses after this time, or after this many. */
+  closeAt?: string | null;
+  maxResponses?: number | null;
+  closedMessage?: string;
+  /** A hidden trap field bots fill in; on unless turned off. */
+  spamProtection?: boolean;
+  /** Redirect: open the link in a new tab. */
+  redirectNewTab?: boolean;
+  /** The connected email account notifications are sent from. */
+  senderAccountId?: string | null;
+  quiz?: QuizSettings;
 }
 
 // ============================================================
@@ -417,6 +507,7 @@ export const ELEMENT_LIBRARY: ElementLibraryItem[] = [
   { type: 'signature', category: 'advanced', label: 'Signature', icon: 'PenTool', isField: true },
   { type: 'consent', category: 'advanced', label: 'Consent', icon: 'ShieldCheck', isField: true },
   { type: 'hidden', category: 'advanced', label: 'Hidden Field', icon: 'EyeOff', isField: true },
+  { type: 'payment', category: 'advanced', label: 'Payment', icon: 'CreditCard', isField: true },
 ];
 
 export const ELEMENT_GROUPS: { label: string; category: ElementCategory }[] = [

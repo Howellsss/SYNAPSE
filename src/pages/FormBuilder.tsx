@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   ArrowLeft, Eye, Share2, Upload, Undo2, Redo2,
   Layers, Palette, GitBranch, Settings, Bell, Inbox,
-  Plus, Loader2, Check, AlertCircle, Send,
+  Plus, Loader2, Check, AlertCircle,
   Monitor, Tablet, Smartphone, X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -11,7 +11,10 @@ import { cn } from '@/lib/utils';
 import { ElementLibrary } from '@/components/forms/ElementLibrary';
 import { FormCanvas } from '@/components/forms/FormCanvas';
 import { PropertyPanel } from '@/components/forms/PropertyPanel';
-import { FormRenderer } from '@/components/forms/FormRenderer';
+import { FormPlayer } from '@/components/forms/FormPlayer';
+import { LogicPanel } from '@/components/forms/LogicPanel';
+import { SettingsExtras } from '@/components/forms/SettingsExtras';
+import { SubmissionsPanel } from '@/components/forms/SubmissionsPanel';
 import { DesignStudio } from '@/components/forms/DesignStudio';
 import { NotificationsPanel } from '@/components/forms/NotificationsPanel';
 import {
@@ -92,7 +95,7 @@ export function FormBuilder({ formId, onBack }: FormBuilderProps) {
       setDefinition(def);
       definitionRef.current = def;
       setLoading(false);
-      setShareUrl(`${publicOrigin()}/forms/${formId}`);
+      setShareUrl(`${publicOrigin()}/f/${formId}`);
     }
     load();
     return () => { cancelled = true; };
@@ -461,7 +464,7 @@ export function FormBuilder({ formId, onBack }: FormBuilderProps) {
         />
       )}
 
-      {tab === 'logic' && <ComingSoonTab label="Logic" icon={GitBranch} />}
+      {tab === 'logic' && definition && <LogicPanel definition={definition} onChange={(logic) => withHistory({ ...definition, logic })} />}
       {tab === 'notifications' && definition && (
         <NotificationsPanel
           definition={definition}
@@ -469,7 +472,7 @@ export function FormBuilder({ formId, onBack }: FormBuilderProps) {
           onUpdateNotifications={(updates) => withHistory(updateNotifications(definition, updates))}
         />
       )}
-      {tab === 'submissions' && <ComingSoonTab label="Submissions" icon={Inbox} />}
+      {tab === 'submissions' && formId && definition && <SubmissionsPanel formId={formId} definition={definition} isSurvey={form?.type === 'survey'} />}
 
       {/* === PREVIEW MODAL === */}
       {previewOpen && (
@@ -477,6 +480,7 @@ export function FormBuilder({ formId, onBack }: FormBuilderProps) {
           definition={definition}
           formName={form?.name || 'Untitled'}
           formDescription={form?.description}
+          kind={form?.type === 'survey' ? 'survey' : 'form'}
           viewport={previewViewport}
           onViewportChange={setPreviewViewport}
           onClose={() => setPreviewOpen(false)}
@@ -519,7 +523,7 @@ function SettingsTab({ form, definition, onUpdateForm, onUpdateSettings, onUpdat
   onUpdateFooter: (updates: Partial<typeof definition.footer>) => void;
 }) {
   return (
-    <div className="flex-1 overflow-y-auto p-8 max-w-2xl mx-auto w-full space-y-8">
+    <div className="flex-1 overflow-y-auto p-8 pb-28 max-w-2xl mx-auto w-full space-y-8">
       <div>
         <h2 className="text-lg font-semibold text-navy-800 mb-4">Form Details</h2>
         <div className="space-y-4">
@@ -573,33 +577,19 @@ function SettingsTab({ form, definition, onUpdateForm, onUpdateSettings, onUpdat
           <ToggleRow label="Show progress bar" checked={definition.settings.showProgressBar} onChange={v => onUpdateSettings({ showProgressBar: v })} />
         </div>
       </div>
+
+      <SettingsExtras definition={definition} kind={form?.type === 'survey' ? 'survey' : 'form'} workspaceId={form?.workspace_id ?? null} onUpdate={onUpdateSettings} />
     </div>
   );
 }
 
-// ============================================================
-// COMING SOON TAB
-// ============================================================
-
-function ComingSoonTab({ label, icon: Icon }: { label: string; icon: typeof Layers }) {
-  return (
-    <div className="flex-1 flex items-center justify-center">
-      <div className="text-center">
-        <div className="w-14 h-14 rounded-2xl bg-ivory-100 flex items-center justify-center text-ivory-500 mx-auto mb-4">
-          <Icon className="w-7 h-7" />
-        </div>
-        <h3 className="text-lg font-semibold text-navy-800 mb-1">{label}</h3>
-        <p className="text-sm text-ivory-600">This tab is coming soon.</p>
-      </div>
-    </div>
-  );
-}
 
 // ============================================================
 // PREVIEW MODAL
 // ============================================================
 
-function PreviewModal({ definition, formName, formDescription, viewport, onViewportChange, onClose }: {
+function PreviewModal({ definition, formName, formDescription, kind, viewport, onViewportChange, onClose }: {
+  kind: 'form' | 'survey';
   definition: FormDefinition;
   formName: string;
   formDescription?: string | null;
@@ -607,9 +597,7 @@ function PreviewModal({ definition, formName, formDescription, viewport, onViewp
   onViewportChange: (v: Viewport) => void;
   onClose: () => void;
 }) {
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [currentPage, setCurrentPage] = useState(0);
-  const [submitted, setSubmitted] = useState(false);
+  const [restart, setRestart] = useState(0);
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-navy-900/80">
@@ -635,87 +623,19 @@ function PreviewModal({ definition, formName, formDescription, viewport, onViewp
       {/* Preview content */}
       <div className="flex-1 overflow-y-auto flex justify-center p-6 bg-ivory-50">
         <div className="w-full" style={{ maxWidth: viewport === 'mobile' ? '375px' : viewport === 'tablet' ? '768px' : '900px' }}>
-          {submitted ? (
-            <PostSubmissionPreview definition={definition} />
-          ) : (
-            <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-              <FormRenderer
-                definition={definition}
-                formName={formName}
-                formDescription={formDescription}
-                viewport={viewport}
-                currentPageIndex={currentPage}
-                currentPage={currentPage}
-                totalPages={definition.pages.length}
-                answers={answers}
-                onAnswerChange={(fid, val) => setAnswers(prev => ({ ...prev, [fid]: val }))}
-                onSubmit={() => setSubmitted(true)}
-                onNext={() => setCurrentPage(p => Math.min(p + 1, definition.pages.length - 1))}
-                onPrevious={() => setCurrentPage(p => Math.max(p - 1, 0))}
-              />
-            </div>
-          )}
+          {/* The real thing: steps, logic, checks, quiz result and the end screen (nothing is sent). */}
+          <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+            <FormPlayer key={restart} definition={definition} formName={formName} formDescription={formDescription} kind={kind} viewport={viewport} />
+          </div>
+          <div className="mt-3 text-center">
+            <button type="button" onClick={() => setRestart((n) => n + 1)} className="btn-ghost btn-sm">Start again</button>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-// ============================================================
-// POST-SUBMISSION PREVIEW
-// ============================================================
-
-function PostSubmissionPreview({ definition }: { definition: FormDefinition }) {
-  const ps = definition.notifications.postSubmission;
-
-  if (ps.type === 'redirect' && ps.redirectUrl) {
-    return (
-      <div className="bg-white rounded-xl shadow-lg p-12 text-center">
-        <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-4">
-          <Send className="w-7 h-7 text-blue-600" />
-        </div>
-        <p className="text-lg font-semibold text-navy-800 mb-1">Redirecting...</p>
-        <p className="text-sm text-ivory-500">{ps.redirectUrl}</p>
-      </div>
-    );
-  }
-
-  if (ps.type === 'custom_message') {
-    return (
-      <div className="bg-white rounded-xl shadow-lg p-12 text-center">
-        <div className="w-14 h-14 rounded-2xl bg-green-50 flex items-center justify-center mx-auto mb-4">
-          <Check className="w-7 h-7 text-green-600" />
-        </div>
-        <p className="text-base text-navy-700 whitespace-pre-wrap">{ps.customMessage || definition.settings.successMessage}</p>
-      </div>
-    );
-  }
-
-  // thank_you page
-  const ty = ps.thankYouPage;
-  return (
-    <div className="bg-white rounded-xl shadow-lg p-12 text-center">
-      {ty.imageUrl && (
-        <img src={ty.imageUrl} alt="" className="max-h-24 mx-auto mb-4 rounded-lg" />
-      )}
-      <div className="w-14 h-14 rounded-2xl bg-green-50 flex items-center justify-center mx-auto mb-4">
-        <Check className="w-7 h-7 text-green-600" />
-      </div>
-      <h2 className="text-xl font-bold text-navy-800 mb-2">{ty.heading}</h2>
-      <p className="text-sm text-ivory-600 mb-6">{ty.message}</p>
-      {ty.buttonText && ty.buttonLink && (
-        <a
-          href={ty.buttonLink}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-navy-800 text-white text-sm font-medium hover:bg-navy-700 transition-colors"
-        >
-          {ty.buttonText}
-        </a>
-      )}
-    </div>
-  );
-}
 
 // ============================================================
 // SHARED UI
