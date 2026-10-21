@@ -3,7 +3,7 @@ import {
   Monitor, Tablet, Smartphone, Plus, Copy, Trash2, GripVertical,
   Eye, EyeOff, Layers, Image as ImageIcon,
 } from 'lucide-react';
-import type { FormDefinition, FormSection, FormElement, Viewport, ElementType } from '@/lib/form-builder-types';
+import { ELEMENT_LIBRARY, type FormDefinition, type FormSection, type FormElement, type Viewport, type ElementType } from '@/lib/form-builder-types';
 import { cn } from '@/lib/utils';
 
 interface FormCanvasProps {
@@ -19,8 +19,10 @@ interface FormCanvasProps {
   onAddSection: () => void;
   onRemoveSection: (id: string) => void;
   onToggleSectionVisibility: (id: string) => void;
-  onReorderElement: (elementId: string, toSectionId: string, toIndex: number) => void;
-  onDropNewElement?: (type: ElementType, sectionId: string) => void;
+  /** Move an element to a position in a section (index in the section's list) and column (1-based). */
+  onReorderElement: (elementId: string, toSectionId: string, toIndex: number, toColumn?: number) => void;
+  /** A new element dragged in from the library. sectionId '' means the page has no section yet. */
+  onDropNewElement?: (type: ElementType, sectionId: string, index: number, column: number) => void;
   currentPageIndex: number;
 }
 
@@ -35,25 +37,37 @@ export function FormCanvas({
 }: FormCanvasProps) {
   const [viewport, setViewport] = useState<Viewport>('desktop');
   const [dragElementId, setDragElementId] = useState<string | null>(null);
-  const [dragOverInfo, setDragOverInfo] = useState<{ sectionId: string; index: number } | null>(null);
+  const [dragOverInfo, setDragOverInfo] = useState<DragOver | null>(null);
 
   const page = definition.pages[currentPageIndex];
   if (!page) return null;
 
-  const handleDrop = (sectionId: string, index: number) => {
-    if (dragElementId) {
-      onReorderElement(dragElementId, sectionId, index);
+  /** A drop in a section: `column` is 0-based, `index` counts within that column. */
+  const handleDrop = (e: React.DragEvent, section: FormSection, column: number, index: number, columnIds: string[]) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Where that is in the section's own list.
+    let at = index < columnIds.length ? section.elementIds.indexOf(columnIds[index])
+      : columnIds.length ? section.elementIds.indexOf(columnIds[columnIds.length - 1]) + 1 : section.elementIds.length;
+    if (at < 0) at = section.elementIds.length;
+    const moving = dragElementId;
+    const type = libraryType(e);
+    if (moving) {
+      // Moving down within the same section: the element leaves its old place first.
+      const from = section.elementIds.indexOf(moving);
+      if (from >= 0 && from < at) at -= 1;
+      onReorderElement(moving, section.id, at, column + 1);
+    } else if (type && onDropNewElement) {
+      onDropNewElement(type, section.id, at, column + 1);
     }
     setDragElementId(null);
     setDragOverInfo(null);
   };
 
-  const handleDropNew = (e: React.DragEvent, sectionId: string) => {
+  const handleDropOnEmptyPage = (e: React.DragEvent) => {
     e.preventDefault();
-    const type = e.dataTransfer.getData('text/plain') as ElementType;
-    if (type && onDropNewElement) {
-      onDropNewElement(type, sectionId);
-    }
+    const type = libraryType(e);
+    if (type && onDropNewElement) onDropNewElement(type, '', 0, 1);
     setDragOverInfo(null);
   };
 
@@ -82,9 +96,12 @@ export function FormCanvas({
 
             <div className="px-6 py-6 sm:px-8 sm:py-8">
               {page.sectionIds.length === 0 ? (
-                <div className="text-center py-16">
+                <div className={cn('text-center py-16 rounded-lg border-2 border-dashed', dragOverInfo ? 'border-gold-400 bg-gold-50/30' : 'border-transparent')}
+                  onDragOver={e => { e.preventDefault(); setDragOverInfo({ sectionId: '', column: 0, index: 0 }); }}
+                  onDragLeave={() => setDragOverInfo(null)}
+                  onDrop={handleDropOnEmptyPage}>
                   <Layers className="w-10 h-10 mx-auto text-ivory-300 mb-3" />
-                  <p className="text-sm text-ivory-600 mb-4">This page is empty</p>
+                  <p className="text-sm text-ivory-600 mb-4">This page is empty. Drag an element here, or</p>
                   <button onClick={onAddSection} className="btn-primary btn-sm"><Plus className="w-4 h-4" /> Add Section</button>
                 </div>
               ) : (
@@ -99,7 +116,7 @@ export function FormCanvas({
                         onSelectElement={onSelectElement} onSelectSection={onSelectSection}
                         onDuplicateElement={onDuplicateElement} onRemoveElement={onRemoveElement}
                         onRemoveSection={onRemoveSection} onToggleSectionVisibility={onToggleSectionVisibility}
-                        onDragStart={setDragElementId} onDrop={handleDrop} onDropNew={handleDropNew}
+                        onDragStart={setDragElementId} onDragEnd={() => { setDragElementId(null); setDragOverInfo(null); }} onDrop={handleDrop}
                         dragOverInfo={dragOverInfo} setDragOverInfo={setDragOverInfo}
                       />
                     );
@@ -127,10 +144,20 @@ interface CanvasSectionProps {
   onSelectElement: (id: string | null) => void; onSelectSection: (id: string | null) => void;
   onDuplicateElement: (id: string) => void; onRemoveElement: (id: string) => void;
   onRemoveSection: (id: string) => void; onToggleSectionVisibility: (id: string) => void;
-  onDragStart: (id: string) => void; onDrop: (sectionId: string, index: number) => void;
-  onDropNew: (e: React.DragEvent, sectionId: string) => void;
-  dragOverInfo: { sectionId: string; index: number } | null;
-  setDragOverInfo: (info: { sectionId: string; index: number } | null) => void;
+  onDragStart: (id: string) => void; onDragEnd: () => void;
+  onDrop: (e: React.DragEvent, section: FormSection, column: number, index: number, columnIds: string[]) => void;
+  dragOverInfo: DragOver | null;
+  setDragOverInfo: (info: DragOver | null) => void;
+}
+
+/** Where a drag would land: a section, a column (0-based) and a place in that column. */
+type DragOver = { sectionId: string; column: number; index: number };
+
+const LIBRARY_TYPES = new Set<string>(ELEMENT_LIBRARY.map((i) => i.type));
+/** The element type dragged in from the library, if that's what this drag is. */
+function libraryType(e: React.DragEvent): ElementType | null {
+  const t = e.dataTransfer.getData('text/plain');
+  return LIBRARY_TYPES.has(t) ? t as ElementType : null;
 }
 
 function CanvasSection({
@@ -139,7 +166,7 @@ function CanvasSection({
   onSelectElement, onSelectSection,
   onDuplicateElement, onRemoveElement,
   onRemoveSection, onToggleSectionVisibility,
-  onDragStart, onDrop, onDropNew,
+  onDragStart, onDragEnd, onDrop,
   dragOverInfo, setDragOverInfo,
 }: CanvasSectionProps) {
   const isSectionSelected = selectedSectionId === section.id;
@@ -158,7 +185,7 @@ function CanvasSection({
       className={cn('relative mb-6 last:mb-0 group/section', isSectionSelected && 'ring-2 ring-gold-400 rounded-lg')}
       onClick={e => { e.stopPropagation(); onSelectSection(section.id); }}
       onDragOver={e => { e.preventDefault(); }}
-      onDrop={e => { e.preventDefault(); e.stopPropagation(); onDropNew(e, section.id); onDrop(section.id, section.elementIds.length); }}
+      onDrop={e => onDrop(e, section, 0, columns[0].length, columns[0])}
       style={{ backgroundColor: style?.backgroundColor, backgroundImage: style?.backgroundImage ? `url(${style.backgroundImage})` : undefined, backgroundSize: style?.backgroundSize, borderRadius: style?.borderRadius, padding: style?.padding }}
     >
       {style?.overlayColor && style?.overlayOpacity !== undefined && style?.backgroundImage && (
@@ -180,20 +207,30 @@ function CanvasSection({
         {columns.map((colElementIds, colIdx) => (
           <div
             key={colIdx} className="space-y-3 min-h-[40px]"
-            onDragOver={e => { e.preventDefault(); setDragOverInfo({ sectionId: section.id, index: colElementIds.length }); }}
-            onDrop={e => { e.preventDefault(); e.stopPropagation(); onDrop(section.id, colElementIds.length); onDropNew(e, section.id); }}
+            onDragOver={e => { e.preventDefault(); if (e.target === e.currentTarget) setDragOverInfo({ sectionId: section.id, column: colIdx, index: colElementIds.length }); }}
+            onDrop={e => {
+              const over = dragOverInfo?.sectionId === section.id && dragOverInfo.column === colIdx ? dragOverInfo.index : colElementIds.length;
+              onDrop(e, section, colIdx, over, colElementIds);
+            }}
           >
             {colElementIds.map((elId, elIdx) => {
               const el = definition.elements[elId];
               if (!el) return null;
               const isSelected = selectedElementId === elId;
-              const isDragOver = dragOverInfo?.sectionId === section.id && dragOverInfo?.index === elIdx;
+              const isDragOver = dragOverInfo?.sectionId === section.id && dragOverInfo.column === colIdx && dragOverInfo.index === elIdx;
               return (
                 <div key={elId}>
                   {isDragOver && <div className="h-0.5 bg-gold-400 rounded-full mb-1" />}
                   <div
-                    draggable onDragStart={() => onDragStart(elId)}
-                    onDragOver={e => { e.preventDefault(); setDragOverInfo({ sectionId: section.id, index: elIdx }); }}
+                    draggable
+                    onDragStart={e => { e.stopPropagation(); e.dataTransfer.setData('application/x-synapse-element', elId); e.dataTransfer.effectAllowed = 'move'; onDragStart(elId); }}
+                    onDragEnd={onDragEnd}
+                    onDragOver={e => {
+                      e.preventDefault(); e.stopPropagation();
+                      // Top half: before this element; bottom half: after it.
+                      const r = e.currentTarget.getBoundingClientRect();
+                      setDragOverInfo({ sectionId: section.id, column: colIdx, index: e.clientY > r.top + r.height / 2 ? elIdx + 1 : elIdx });
+                    }}
                     onClick={e => { e.stopPropagation(); onSelectElement(elId); }}
                     className={cn('relative group/el rounded-lg transition-all cursor-pointer', isSelected ? 'ring-2 ring-gold-400 ring-offset-1' : 'hover:ring-1 hover:ring-navy-200')}
                   >
@@ -209,8 +246,9 @@ function CanvasSection({
                 </div>
               );
             })}
+            {colElementIds.length > 0 && dragOverInfo?.sectionId === section.id && dragOverInfo.column === colIdx && dragOverInfo.index === colElementIds.length && <div className="h-0.5 bg-gold-400 rounded-full" />}
             {colElementIds.length === 0 && (
-              <div className={cn('min-h-[60px] rounded-lg border-2 border-dashed flex items-center justify-center text-xs', dragOverInfo?.sectionId === section.id ? 'border-gold-400 bg-gold-50/30 text-gold-700' : 'border-navy-100 text-ivory-400')}>Drop elements here</div>
+              <div className={cn('min-h-[60px] rounded-lg border-2 border-dashed flex items-center justify-center text-xs', dragOverInfo?.sectionId === section.id && dragOverInfo.column === colIdx ? 'border-gold-400 bg-gold-50/30 text-gold-700' : 'border-navy-100 text-ivory-400')}>Drop elements here</div>
             )}
           </div>
         ))}

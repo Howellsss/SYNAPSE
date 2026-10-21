@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 import { ElementLibrary } from '@/components/forms/ElementLibrary';
 import { FormCanvas } from '@/components/forms/FormCanvas';
 import { PropertyPanel } from '@/components/forms/PropertyPanel';
-import { FormPlayer } from '@/components/forms/FormPlayer';
+import { FormPlayer, type FormPayload, type SubmitOutcome } from '@/components/forms/FormPlayer';
 import { LogicPanel } from '@/components/forms/LogicPanel';
 import { SettingsExtras } from '@/components/forms/SettingsExtras';
 import { SubmissionsPanel } from '@/components/forms/SubmissionsPanel';
@@ -89,6 +89,8 @@ export function FormBuilder({ formId, onBack }: FormBuilderProps) {
         if (legacyFields && legacyFields.length > 0) {
           def = migrateLegacyFields(def, legacyFields as unknown as Parameters<typeof migrateLegacyFields>[1]);
         }
+        // Keep it, so the live form (and a copy of it) has these fields even before any edit.
+        await supabase.from('forms').update({ definition: serializeDefinition(def) }).eq('id', formId);
       }
 
       if (cancelled) return;
@@ -213,10 +215,35 @@ export function FormBuilder({ formId, onBack }: FormBuilderProps) {
     }
   }, [definition, withHistory]);
 
-  const handleReorderElement = useCallback((elementId: string, toSectionId: string, toIndex: number) => {
+  const handleReorderElement = useCallback((elementId: string, toSectionId: string, toIndex: number, toColumn?: number) => {
     if (!definition) return;
-    withHistory(moveElement(definition, elementId, toSectionId, toIndex));
+    withHistory(moveElement(definition, elementId, toSectionId, toIndex, toColumn));
+    setSelectedElementId(elementId);
   }, [definition, withHistory]);
+
+  // Dragged in from the element panel: goes exactly where it was dropped.
+  const handleDropNewElement = useCallback((type: ElementType, sectionId: string, index: number, column: number) => {
+    if (!definition) return;
+    let def = definition;
+    let target = sectionId;
+    if (!target) {
+      const pageId = def.pages[currentPageIndex]?.id ?? def.pages[0].id;
+      const before = new Set(Object.keys(def.sections));
+      def = addSection(def, pageId);
+      target = Object.keys(def.sections).find((id) => !before.has(id)) ?? '';
+      if (!target) return;
+    }
+    const el = createElement(type, def.sections[target].elementIds.length);
+    def = addElementToSection(def, target, el);
+    withHistory(moveElement(def, el.id, target, index, column));
+    setSelectedElementId(el.id);
+  }, [definition, currentPageIndex, withHistory]);
+
+  // Save now (not in 1.5 s), e.g. before a preview is sent, so the server checks the latest form.
+  const saveNow = useCallback(async () => {
+    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+    if (definitionRef.current) await save(definitionRef.current);
+  }, [save]);
 
   const handleUpdateElement = useCallback((id: string, updates: Partial<FormElement>) => {
     if (!definition) return;
@@ -418,6 +445,7 @@ export function FormBuilder({ formId, onBack }: FormBuilderProps) {
               onRemoveSection={handleRemoveSection}
               onToggleSectionVisibility={handleToggleSectionVisibility}
               onReorderElement={handleReorderElement}
+              onDropNewElement={handleDropNewElement}
               currentPageIndex={currentPageIndex}
             />
           </div>
@@ -484,6 +512,8 @@ export function FormBuilder({ formId, onBack }: FormBuilderProps) {
           viewport={previewViewport}
           onViewportChange={setPreviewViewport}
           onClose={() => setPreviewOpen(false)}
+          formId={formId}
+          beforeSend={saveNow}
         />
       )}
     </div>
@@ -588,8 +618,11 @@ function SettingsTab({ form, definition, onUpdateForm, onUpdateSettings, onUpdat
 // PREVIEW MODAL
 // ============================================================
 
-function PreviewModal({ definition, formName, formDescription, kind, viewport, onViewportChange, onClose }: {
+function PreviewModal({ definition, formName, formDescription, kind, viewport, onViewportChange, onClose, formId, beforeSend }: {
   kind: 'form' | 'survey';
+  formId: string;
+  /** Saves the builder's latest changes first. */
+  beforeSend: () => Promise<void>;
   definition: FormDefinition;
   formName: string;
   formDescription?: string | null;
@@ -598,6 +631,24 @@ function PreviewModal({ definition, formName, formDescription, kind, viewport, o
   onClose: () => void;
 }) {
   const [restart, setRestart] = useState(0);
+  const [contactId, setContactId] = useState<string | null>(null);
+
+  // A real submission (source "preview"): makes or updates the contact and starts workflows,
+  // like the live form, but works on drafts and never charges a card.
+  const submit = async (p: FormPayload): Promise<SubmitOutcome> => {
+    await beforeSend();
+    const { data, error } = await supabase.functions.invoke('form-submit', {
+      body: { mode: 'submit', preview: true, formId, answers: p.answers, disqualified: p.disqualified, trap: p.trap, source: 'preview' },
+    });
+    if (error || !data?.success) {
+      let msg = data?.error as string | undefined;
+      const ctx = (error as { context?: Response } | null)?.context;
+      if (!msg && ctx && typeof ctx.json === 'function') { try { msg = (await ctx.json())?.error; } catch { /* not JSON */ } }
+      return { ok: false, error: msg ?? 'The preview couldn’t be sent. Check that the form-submit function is deployed.' };
+    }
+    setContactId((data.contactId as string | null) ?? null);
+    return { ok: true, checkoutUrl: null };
+  };
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-navy-900/80">
@@ -625,11 +676,15 @@ function PreviewModal({ definition, formName, formDescription, kind, viewport, o
         <div className="w-full" style={{ maxWidth: viewport === 'mobile' ? '375px' : viewport === 'tablet' ? '768px' : '900px' }}>
           {/* The real thing: steps, logic, checks, quiz result and the end screen (nothing is sent). */}
           <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-            <FormPlayer key={restart} definition={definition} formName={formName} formDescription={formDescription} kind={kind} viewport={viewport} />
+            <FormPlayer key={restart} definition={definition} formName={formName} formDescription={formDescription} kind={kind} viewport={viewport} onSubmit={submit} />
           </div>
-          <div className="mt-3 text-center">
-            <button type="button" onClick={() => setRestart((n) => n + 1)} className="btn-ghost btn-sm">Start again</button>
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-2 text-sm">
+            {contactId && (
+              <a href={`#/contacts/${contactId}`} target="_blank" rel="noreferrer" className="btn-primary btn-sm">Open the contact</a>
+            )}
+            <button type="button" onClick={() => { setRestart((n) => n + 1); setContactId(null); }} className="btn-ghost btn-sm">Start again</button>
           </div>
+          <p className="mt-2 text-center text-xs text-ivory-600">Submitting here saves a real response (marked “Preview”), makes or updates the contact and starts this form’s workflows. Cards are never charged.</p>
         </div>
       </div>
     </div>

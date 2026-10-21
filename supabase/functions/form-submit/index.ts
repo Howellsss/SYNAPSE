@@ -6,6 +6,8 @@
 //   POST { mode: "confirm_payment", formId, submissionId, sessionId }   (back from Stripe)
 //     -> { paid: true } once Stripe says it is paid
 //   POST { mode: "test_email", ... }  -> acknowledged (the builder's "send a test")
+//   POST { ..., preview: true } with the builder's login: the builder's Preview. Works on drafts,
+//     ignores the close date and response limit, never charges, and is saved with source "preview".
 //
 // On the server it re-checks what matters: the form is open, the quiz score, and the amount to
 // charge (worked out from the form, never taken from the browser). Notification emails (to the
@@ -159,12 +161,16 @@ Deno.serve(async (req: Request) => {
     if (body.mode !== "submit" && body.mode !== undefined) return json({ error: "Unknown mode" }, 400);
     if (!body.answers || typeof body.answers !== "object") return json({ error: "answers are required" }, 400);
 
+    // The builder's Preview: only for people in the form's workspace.
+    const preview = body.preview === true;
+    if (preview && !(await isTeamMember(req, form.workspace_id as string))) return json({ success: false, error: "Sign in to SYNAPSE to send a preview." }, 401);
+
     // Open?
     const s = def.settings ?? {};
     const closedMsg = s.closedMessage?.trim() || "This form is no longer accepting responses.";
-    if (form.status !== "published") return json({ success: false, closed: true, error: form.status === "archived" ? closedMsg : "This form isn’t published yet." });
-    if (s.closeAt && new Date(s.closeAt).getTime() <= Date.now()) return json({ success: false, closed: true, error: closedMsg });
-    if (s.maxResponses) {
+    if (!preview && form.status !== "published") return json({ success: false, closed: true, error: form.status === "archived" ? closedMsg : "This form isn’t published yet." });
+    if (!preview && s.closeAt && new Date(s.closeAt).getTime() <= Date.now()) return json({ success: false, closed: true, error: closedMsg });
+    if (!preview && s.maxResponses) {
       const { count } = await db.from("form_submissions").select("id", { count: "exact", head: true }).eq("form_id", form.id);
       if ((count ?? 0) >= s.maxResponses) return json({ success: false, closed: true, error: closedMsg });
     }
@@ -181,7 +187,7 @@ Deno.serve(async (req: Request) => {
     const quiz = scoreQuiz(def, answers);
     const disqualified = body.disqualified === true;
     let pay: ReturnType<typeof paymentFor> = null;
-    if (body.payment && !disqualified) {
+    if (body.payment && !disqualified && !preview) {
       const el = fields.find((f) => f.type === "payment" && f.field.fieldId === body.payment.fieldId);
       pay = el ? paymentFor(el.field.payment, answers[el.field.fieldId] ?? String(body.payment.answer ?? "")) : null;
       if (!pay) return json({ success: false, error: "Choose what you’d like to pay for." }, 400);
@@ -190,17 +196,17 @@ Deno.serve(async (req: Request) => {
     if (body.meta && typeof body.meta === "object") for (const [k, v] of Object.entries(body.meta)) if (typeof v === "string") meta[k.slice(0, 40)] = v.slice(0, 500);
 
     const row: Record<string, unknown> = {
-      form_id: form.id, workspace_id: form.workspace_id, answers, source: String(body.source || "public").slice(0, 60),
+      form_id: form.id, workspace_id: form.workspace_id, answers, source: preview ? "preview" : String(body.source || "public").slice(0, 60),
     };
     const extra: Record<string, unknown> = {
       meta, disqualified,
       ...(quiz ? { score: quiz.score, score_max: quiz.max, score_percent: quiz.percent, quiz_result: quiz.result } : {}),
       ...(pay ? { payment_status: "pending", payment_amount: pay.amount, payment_currency: pay.currency } : {}),
     };
-    // With the new columns if the database has them (03_forms_upgrade.sql), else the basics.
+    // With the new columns if the database has them (migration 20261021090000_forms_upgrade.sql), else the basics.
     let { data: sub, error: subErr } = await db.from("form_submissions").insert({ ...row, ...extra }).select("id").single();
     if (subErr && /column/i.test(subErr.message)) {
-      if (pay) return json({ success: false, error: "Payments need the database update 03_forms_upgrade.sql." }, 500);
+      if (pay) return json({ success: false, error: "Payments need the database update 20261021090000_forms_upgrade.sql (run it in the Supabase SQL Editor)." }, 500);
       ({ data: sub, error: subErr } = await db.from("form_submissions").insert(row).select("id").single());
     }
     if (subErr || !sub) return json({ error: "Failed to save submission" }, 500);
@@ -244,6 +250,19 @@ Deno.serve(async (req: Request) => {
     return json({ error: "Internal server error" }, 500);
   }
 });
+
+/** The caller is signed in and belongs to the workspace (checked with their own login). */
+async function isTeamMember(req: Request, workspaceId: string): Promise<boolean> {
+  const jwt = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (!jwt) return false;
+  const user = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
+    global: { headers: { Authorization: `Bearer ${jwt}` } }, auth: { persistSession: false },
+  });
+  const { data: who } = await user.auth.getUser(jwt);
+  if (!who?.user) return false;
+  const { data } = await user.rpc("can_access_workspace", { check_workspace_id: workspaceId });
+  return data === true;
+}
 
 /** Back to the form's own page only (never somewhere else). */
 function safeReturn(url: string, formId: string): string {

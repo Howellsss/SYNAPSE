@@ -73,6 +73,9 @@ export function createDefaultDefinition(formName: string, description?: string |
   const email = makeField('email', 'Email Address', 3, { required: true, placeholder: 'john@example.com', mappedContactField: 'email' });
   const consent = makeField('consent', 'Consent', 4, { required: true });
   consent.content = { text: 'I agree to be contacted regarding my submission.' };
+  // Two columns: first and last name side by side, then phone and email.
+  lastName.column = 2;
+  email.column = 2;
 
   const elements: Record<string, FormElement> = {};
   [firstName, lastName, phone, email, consent].forEach(el => { elements[el.id] = el; });

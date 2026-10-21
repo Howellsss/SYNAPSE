@@ -200,6 +200,10 @@ team alert and the auto-reply are queued as `messages` (with `form_submission_id
 `send-email` mailer from the form's chosen connected Gmail; for paid forms, once payment clears.
 Submissions keep `meta`, `score*`, `quiz_result`, `disqualified` and `payment_*`
 (`20261021090000_forms_upgrade.sql`); the builder's Submissions tab lists and exports them.
+The contact is attached just after the submission is saved, so `20261021120000_form_workflow_trigger.sql`
+starts "Form submitted" workflows on that update too, and wakes the mailer for form emails. The
+builder's Preview sends `preview: true` with the member's login: it works on drafts, never charges,
+and is saved with source `preview`. Going live: `docs/FORMS_GO_LIVE.md`.
 
 ## Streams (`src/lib/streams.ts`, `StreamsPage`, `StreamStudioPage`, `WatchPage`)
 
