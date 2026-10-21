@@ -5,7 +5,7 @@ import {
   type ColumnCount, type ContactFieldKey, type ElementContent, type ElementStyle, type FieldDefinition,
   type FormDefinition, type FormElement, type FormHeader, type FormSection, type FormTheme, type QuizSettings,
 } from '@/lib/form-builder-types';
-import { LinkKeyEditor, PaymentEditor, QuizScoringEditor } from './FieldExtras';
+import { LinkKeyEditor, QuizScoringEditor } from './FieldExtras';
 import { ImagePicker } from './ImagePicker';
 import { ColorField, Field, Group, PanelButton, Segmented, SwitchRow, areaCls, inputCls } from './builder-ui';
 import { cn } from '@/lib/utils';
@@ -235,7 +235,7 @@ function ElementSettings({ element, quiz, onUpdateElementField, onUpdateElementC
         </Group>
       )}
 
-      {type === 'payment' && <PaymentEditor element={element} onUpdate={onUpdateElementField} />}
+      {type === 'payment' && <p className="rounded-[12px] bg-[#FFF8E6] p-3 text-[12.5px] leading-relaxed text-[#8A5A00]">Forms don’t take payments, so this field isn’t shown. You can delete it.</p>}
       {quiz?.enabled && CHOICE.has(type) && <QuizScoringEditor element={element} quiz={quiz} onUpdate={onUpdateElementField} />}
 
       {MAPPABLE.has(type) && (

@@ -1,21 +1,16 @@
-// A form or survey being submitted from its public page (/f/<id>), or a payment being confirmed.
+// A form or survey being submitted from its public page (/f/<id>), or from the builder's Preview.
 //
-//   POST { mode: "submit", formId, answers, disqualified?, trap?, source?, meta?, payment?, returnUrl? }
-//     -> { success, submissionId, checkoutUrl? }        (checkoutUrl: pay by card first)
+//   POST { mode: "submit", formId, answers, disqualified?, trap?, source?, meta? }
+//     -> { success, submissionId, contactId }
 //     -> { success: false, closed: true, error }         (closed, or the response limit is reached)
-//   POST { mode: "confirm_payment", formId, submissionId, sessionId }   (back from Stripe)
-//     -> { paid: true } once Stripe says it is paid
-//   POST { mode: "test_email", ... }  -> acknowledged (the builder's "send a test")
 //   POST { ..., preview: true } with the builder's login: the builder's Preview. Works on drafts,
-//     ignores the close date and response limit, never charges, and is saved with source "preview".
+//     ignores the close date and response limit, and is saved with source "preview".
 //
-// On the server it re-checks what matters: the form is open, the quiz score, and the amount to
-// charge (worked out from the form, never taken from the browser). Notification emails (to the
-// team, and the auto-reply to the person) are queued as messages and sent by the send-email
-// mailer from the form's chosen connected account; for paid forms they go once payment clears.
-//
-// Secrets: STRIPE_SECRET_KEY (only for forms that take payment). Single file, so it can be pasted
-// into the Supabase dashboard. The quiz and payment rules mirror src/lib/form-engine.ts.
+// On the server it re-checks what matters: the form is open and the quiz score. It makes or
+// updates the contact, and queues the notification emails (to the team, and the auto-reply to
+// the person) as messages that the send-email mailer sends from the form's connected account.
+// Forms don't take payments. Single file, so it can be pasted into the Supabase dashboard.
+// The quiz rules mirror src/lib/form-engine.ts.
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
@@ -103,44 +98,7 @@ function scoreQuiz(def: Definition, answers: Record<string, string>) {
   return { score, max, percent, result: result?.heading ?? null, top };
 }
 
-// ---------- payment (mirrors src/lib/form-engine.ts) ----------
-const cents = (n: number) => Math.round((Number(n) || 0) * 100);
-function paymentFor(cfg: PaymentConfig | undefined, value: string) {
-  if (!cfg) return null;
-  const currency = (cfg.currency || "usd").toLowerCase();
-  if (cfg.mode === "fixed") { const a = cents(cfg.amount ?? 0); return a > 0 ? { amount: a, currency, items: [{ name: cfg.description || "Payment", unitAmount: a, quantity: 1 }] } : null; }
-  if (cfg.mode === "custom") {
-    const t = cents(Number(String(value).replace(/[^0-9.]/g, "")));
-    if (t <= 0 || t < cents(cfg.minAmount ?? 0)) return null;
-    return { amount: t, currency, items: [{ name: cfg.description || "Payment", unitAmount: t, quantity: 1 }] };
-  }
-  const items: { name: string; unitAmount: number; quantity: number }[] = [];
-  for (const part of String(value || "").split(",")) {
-    const [id, q] = part.split(":");
-    const p = cfg.products?.find((x) => x.id === id);
-    const quantity = Math.max(1, Math.min(99, Math.floor(Number(q) || 1)));
-    if (p) items.push({ name: p.name, unitAmount: cents(p.price), quantity: cfg.quantity ? quantity : 1 });
-    if (!cfg.multiple && items.length) break;
-  }
-  const amount = items.reduce((n, i) => n + i.unitAmount * i.quantity, 0);
-  return amount > 0 ? { amount, currency, items } : null;
-}
 const money = (minor: number, cur: string) => `${(minor / 100).toFixed(2)} ${cur.toUpperCase()}`;
-
-// ---------- Stripe ----------
-async function stripe(path: string, init: { method?: string; form?: Record<string, string> } = {}) {
-  const key = (Deno.env.get("STRIPE_SECRET_KEY") ?? "").trim();
-  if (!key) throw new PaymentsOff();
-  const res = await fetch(`https://api.stripe.com/v1/${path}`, {
-    method: init.method ?? (init.form ? "POST" : "GET"),
-    headers: { Authorization: `Bearer ${key}`, ...(init.form ? { "Content-Type": "application/x-www-form-urlencoded" } : {}) },
-    body: init.form ? new URLSearchParams(init.form).toString() : undefined,
-  });
-  const out = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(out?.error?.message ?? `Stripe returned ${res.status}`);
-  return out;
-}
-class PaymentsOff extends Error { constructor() { super("Payments aren’t set up for this form yet. Please contact the organiser."); } }
 
 // ---------- main ----------
 Deno.serve(async (req: Request) => {
@@ -157,7 +115,6 @@ Deno.serve(async (req: Request) => {
     if (!form) return json({ error: "Form not found" }, 404);
     const def = parseDefinition(form.definition) ?? {};
 
-    if (body.mode === "confirm_payment") return await confirmPayment(db, form, def, String(body.submissionId ?? ""), String(body.sessionId ?? ""));
     if (body.mode !== "submit" && body.mode !== undefined) return json({ error: "Unknown mode" }, 400);
     if (!body.answers || typeof body.answers !== "object") return json({ error: "answers are required" }, 400);
 
@@ -182,17 +139,11 @@ Deno.serve(async (req: Request) => {
     const answers: Record<string, string> = {};
     for (const el of fields) {
       const v = (body.answers as Record<string, unknown>)[el.field.fieldId];
-      if (el.type === "captcha") continue;
+      if (el.type === "captcha" || el.type === "payment") continue;
       if (v !== undefined && v !== null && String(v).trim() !== "") answers[el.field.fieldId] = String(v).slice(0, 5000);
     }
     const quiz = scoreQuiz(def, answers);
     const disqualified = body.disqualified === true;
-    let pay: ReturnType<typeof paymentFor> = null;
-    if (body.payment && !disqualified && !preview) {
-      const el = fields.find((f) => f.type === "payment" && f.field.fieldId === body.payment.fieldId);
-      pay = el ? paymentFor(el.field.payment, answers[el.field.fieldId] ?? String(body.payment.answer ?? "")) : null;
-      if (!pay) return json({ success: false, error: "Choose what you’d like to pay for." }, 400);
-    }
     const meta: Record<string, string> = {};
     if (body.meta && typeof body.meta === "object") for (const [k, v] of Object.entries(body.meta)) if (typeof v === "string") meta[k.slice(0, 40)] = v.slice(0, 500);
 
@@ -202,47 +153,16 @@ Deno.serve(async (req: Request) => {
     const extra: Record<string, unknown> = {
       meta, disqualified,
       ...(quiz ? { score: quiz.score, score_max: quiz.max, score_percent: quiz.percent, quiz_result: quiz.result } : {}),
-      ...(pay ? { payment_status: "pending", payment_amount: pay.amount, payment_currency: pay.currency } : {}),
     };
     // With the new columns if the database has them (migration 20261021090000_forms_upgrade.sql), else the basics.
     let { data: sub, error: subErr } = await db.from("form_submissions").insert({ ...row, ...extra }).select("id").single();
     if (subErr && /column/i.test(subErr.message)) {
-      if (pay) return json({ success: false, error: "Payments need the database update 20261021090000_forms_upgrade.sql (run it in the Supabase SQL Editor)." }, 500);
       ({ data: sub, error: subErr } = await db.from("form_submissions").insert(row).select("id").single());
     }
     if (subErr || !sub) return json({ error: "Failed to save submission" }, 500);
     const submissionId = sub.id as string;
 
     const contactId = await saveContact(db, form, def, answers, submissionId);
-
-    if (pay) {
-      try {
-        const emailField = fields.find((f) => f.field.mappedContactField === "email");
-        const email = emailField ? answers[emailField.field.fieldId] : undefined;
-        const back = safeReturn(String(body.returnUrl ?? ""), form.id);
-        const f: Record<string, string> = {
-          mode: "payment",
-          success_url: `${back}?paid=${submissionId}&session_id={CHECKOUT_SESSION_ID}`,
-          cancel_url: `${back}?cancelled=${submissionId}`,
-          client_reference_id: submissionId,
-          "metadata[submission_id]": submissionId,
-          "metadata[form_id]": form.id,
-        };
-        if (email && EMAIL_RE.test(email)) f.customer_email = email;
-        pay.items.forEach((it, i) => {
-          f[`line_items[${i}][quantity]`] = String(it.quantity);
-          f[`line_items[${i}][price_data][currency]`] = pay!.currency;
-          f[`line_items[${i}][price_data][unit_amount]`] = String(it.unitAmount);
-          f[`line_items[${i}][price_data][product_data][name]`] = `${it.name}`.slice(0, 250);
-        });
-        const session = await stripe("checkout/sessions", { form: f });
-        await db.from("form_submissions").update({ stripe_session_id: session.id }).eq("id", submissionId);
-        return json({ success: true, submissionId, contactId, checkoutUrl: session.url });
-      } catch (e) {
-        await db.from("form_submissions").update({ payment_status: "failed" }).eq("id", submissionId);
-        return json({ success: false, error: (e as Error).message }, e instanceof PaymentsOff ? 503 : 502);
-      }
-    }
 
     await notify(db, form, def, answers, submissionId, contactId, quiz, null, disqualified);
     return json({ success: true, submissionId, contactId });
@@ -263,28 +183,6 @@ async function isTeamMember(req: Request, workspaceId: string): Promise<boolean>
   if (!who?.user) return false;
   const { data } = await user.rpc("can_access_workspace", { check_workspace_id: workspaceId });
   return data === true;
-}
-
-/** Back to the form's own page only (never somewhere else). */
-function safeReturn(url: string, formId: string): string {
-  try { const u = new URL(url); if ((u.protocol === "https:" || u.protocol === "http:") && u.pathname.endsWith(`/f/${formId}`)) return `${u.origin}${u.pathname}`; } catch { /* fall through */ }
-  return `${Deno.env.get("PUBLIC_APP_URL") ?? "https://synapse-dj3a.vercel.app"}/f/${formId}`;
-}
-
-async function confirmPayment(db: SupabaseClient, form: Record<string, unknown>, def: Definition, submissionId: string, sessionId: string) {
-  const { data: sub } = await db.from("form_submissions").select("id, answers, contact_id, payment_status, stripe_session_id, payment_amount, payment_currency, score, score_max, score_percent, quiz_result")
-    .eq("id", submissionId).eq("form_id", form.id as string).maybeSingle();
-  if (!sub || !sessionId || sub.stripe_session_id !== sessionId) return json({ paid: false, error: "We couldn’t find that payment." }, 404);
-  if (sub.payment_status === "paid") return json({ paid: true });
-  const session = await stripe(`checkout/sessions/${encodeURIComponent(sessionId)}`);
-  if (session.payment_status !== "paid" || session.metadata?.submission_id !== submissionId) return json({ paid: false, error: "The payment hasn’t gone through yet." });
-  const { data: claimed } = await db.from("form_submissions").update({ payment_status: "paid" }).eq("id", submissionId).neq("payment_status", "paid").select("id");
-  // Only the first confirmation sends the emails.
-  if (claimed?.length) {
-    const quiz = sub.score !== null ? { score: Number(sub.score), max: Number(sub.score_max), percent: Number(sub.score_percent), result: sub.quiz_result, top: null } : null;
-    await notify(db, form, def, sub.answers ?? {}, submissionId, sub.contact_id, quiz, { amount: sub.payment_amount, currency: sub.payment_currency }, false);
-  }
-  return json({ paid: true });
 }
 
 async function saveContact(db: SupabaseClient, form: Record<string, unknown>, def: Definition, answers: Record<string, string>, submissionId: string): Promise<string | null> {

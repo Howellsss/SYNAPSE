@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormDefinition, Viewport } from '@/lib/form-builder-types';
 import {
-  finalAnswers, nextStep, paymentDue, runLogic, scoreLabel, scoreQuiz, stepErrors, stepsOf,
+  finalAnswers, nextStep, runLogic, scoreLabel, scoreQuiz, stepErrors, stepsOf,
   type Answers, type FormKind, type PaymentDue, type QuizScore,
 } from '@/lib/form-engine';
 import { FormRenderer, type FormRuntime } from './FormRenderer';
@@ -72,7 +72,8 @@ export function FormPlayer({ definition, formName, formDescription, kind, viewpo
   const next = nextStep(steps, step, answers, state);
   const isLast = next === -1;
   const quizOn = !!definition.settings.quiz?.enabled;
-  const due = paymentDue(steps.def, answers, state);
+  // Forms don't take payments.
+  const due = null;
 
   // Back to the top of the card when the step changes.
   useEffect(() => { top.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, [step, end]);
@@ -162,7 +163,7 @@ export function FormPlayer({ definition, formName, formDescription, kind, viewpo
     hidden: state.hidden, required: state.required, errors,
     canGoBack: history.length > 0 && definition.settings.allowBackNavigation !== false,
     isLast: isLast || !!state.disqualify, busy,
-    submitLabel: due ? `Continue to payment · ${new Intl.NumberFormat(undefined, { style: 'currency', currency: due.currency.toUpperCase() }).format(due.amount / 100)}` : kind === 'survey' ? 'Finish' : 'Submit',
+    submitLabel: kind === 'survey' ? 'Finish' : 'Submit',
     autoComplete: definition.settings.disableAutofill ? 'off' : 'on',
     onPicked,
     formId,

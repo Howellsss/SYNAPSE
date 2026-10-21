@@ -188,17 +188,15 @@ question per slide when it has one page). Settings → Layout overrides either.
 hide, require, set an answer, jump to a page, disqualify with a message or link, redirect after
 submit), the **steps** and **checks**, **prefill** from the link (`?email=…`, or a field's own
 key) and **where they came from** (utm tags, `?source=`, referrer), the **quiz** (points per
-option and/or right answers, categories; the result by score range or the strongest category),
-and the **payment** (a set price, products with quantities, or an amount they choose). Settings
+option and/or right answers, categories; the result by score range or the strongest category).
+Forms don't take payments (a Payment field left in an older form is not shown or sent). Settings
 also close it on a date or after N responses, remember people on their device, turn off autofill,
 and catch bots with a hidden trap field.
 
-`form-submit` (single file) re-checks on the server what matters: open or closed, the quiz score,
-and the amount to charge (from the form, never the browser). A payment goes through **Stripe
-Checkout** (`STRIPE_SECRET_KEY`); on the way back `confirm_payment` checks it with Stripe. The
-team alert and the auto-reply are queued as `messages` (with `form_submission_id`) and sent by the
-`send-email` mailer from the form's chosen connected Gmail; for paid forms, once payment clears.
-Submissions keep `meta`, `score*`, `quiz_result`, `disqualified` and `payment_*`
+`form-submit` (single file) re-checks on the server what matters: open or closed, and the quiz
+score. The team alert and the auto-reply are queued as `messages` (with `form_submission_id`) and
+sent by the `send-email` mailer from the form's chosen connected Gmail.
+Submissions keep `meta`, `score*`, `quiz_result` and `disqualified`
 (`20261021090000_forms_upgrade.sql`); the builder's Submissions tab lists and exports them.
 The contact is attached just after the submission is saved, so `20261021120000_form_workflow_trigger.sql`
 starts "Form submitted" workflows on that update too, and wakes the mailer for form emails. The

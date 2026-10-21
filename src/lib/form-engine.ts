@@ -19,6 +19,8 @@ const CHOICE = new Set(['radio', 'checkbox', 'dropdown', 'multi_select', 'yes_no
 const MULTI = new Set(['checkbox', 'multi_select']);
 /** Fields people never see: their value comes from the link or a default. */
 const UNSEEN = new Set(['hidden', 'source']);
+/** Fields from older forms that do nothing now (forms don't take payments). */
+const RETIRED = new Set(['payment']);
 /** Bot protection's answer once the sum is right (and while it's wrong). */
 export const CAPTCHA_OK = 'verified';
 export const CAPTCHA_WRONG = 'wrong';
@@ -248,7 +250,7 @@ export function fieldError(el: FormElement & { field: FieldDefinition }, value: 
 export function stepErrors(def: FormDefinition, step: number, answers: Answers, state: LogicState): Record<string, string> {
   const out: Record<string, string> = {};
   for (const el of visibleOnStep(def, step, state)) {
-    if (!isField(el) || UNSEEN.has(el.type)) continue;
+    if (!isField(el) || UNSEEN.has(el.type) || RETIRED.has(el.type)) continue;
     const e = fieldError(el, answers[el.field.fieldId] ?? '', state.required.has(el.field.fieldId));
     if (e) out[el.field.fieldId] = e;
   }
@@ -436,7 +438,7 @@ export function finalAnswers(def: FormDefinition, answers: Answers, state: Logic
   const out: Answers = {};
   for (const el of fieldElements(def)) {
     if (state.hidden.has(el.id) && !UNSEEN.has(el.type)) continue;
-    if (el.type === 'captcha') continue;
+    if (el.type === 'captcha' || RETIRED.has(el.type)) continue;
     const v = state.values[el.field.fieldId] ?? answers[el.field.fieldId];
     if (v !== undefined && v !== '') out[el.field.fieldId] = v;
   }

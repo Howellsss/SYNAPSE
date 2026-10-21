@@ -532,7 +532,7 @@ function FieldRenderer({ element, definition, builderMode, value, onChange }: {
   const disabled = builderMode;
   const required = runtime ? runtime.required.has(f.fieldId) : f.required;
   const error = runtime?.errors[f.fieldId];
-  if (element.type === 'hidden' || element.type === 'source') return null;
+  if (element.type === 'hidden' || element.type === 'source' || element.type === 'payment') return null;
 
   return (
     <div id={`field-${f.fieldId}`} data-invalid={error ? 'true' : undefined}>

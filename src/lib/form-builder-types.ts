@@ -528,7 +528,6 @@ export const ELEMENT_LIBRARY: ElementLibraryItem[] = [
   { type: 'captcha', category: 'advanced', group: 'other', label: 'Bot Protection', icon: 'Bot', isField: true, keywords: 'captcha spam' },
   { type: 'source', category: 'advanced', group: 'other', label: 'Source', icon: 'Link2', isField: true, keywords: 'utm tracking campaign' },
   { type: 'hidden', category: 'advanced', group: 'other', label: 'Hidden Field', icon: 'EyeOff', isField: true, keywords: 'tracking' },
-  { type: 'payment', category: 'advanced', group: 'payments', label: 'Collect Payment', icon: 'CreditCard', isField: true, keywords: 'stripe pay products' },
   { type: 'heading', category: 'content', group: 'content', label: 'Heading', icon: 'Heading1', keywords: 'title' },
   { type: 'text', category: 'content', group: 'content', label: 'Text', icon: 'Type' },
   { type: 'paragraph', category: 'content', group: 'content', label: 'Paragraph', icon: 'Pilcrow' },
@@ -551,7 +550,6 @@ export const ELEMENT_GROUPS: { label: string; group: ElementGroup; tab: 'fields'
   { label: 'Choices', group: 'choice', tab: 'fields' },
   { label: 'Rating', group: 'rating', tab: 'fields' },
   { label: 'More', group: 'other', tab: 'fields' },
-  { label: 'Payments', group: 'payments', tab: 'fields' },
   { label: 'Content', group: 'content', tab: 'layout' },
   { label: 'Layout', group: 'layout', tab: 'layout' },
 ];

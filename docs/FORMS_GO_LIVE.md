@@ -12,7 +12,7 @@ to run more than once.
 1. `supabase/migrations/20261021090000_forms_upgrade.sql`
    - On GitHub: https://github.com/Howellsss/SYNAPSE/blob/main/supabase/migrations/20261021090000_forms_upgrade.sql
    - Plain text to copy: https://raw.githubusercontent.com/Howellsss/SYNAPSE/main/supabase/migrations/20261021090000_forms_upgrade.sql
-   - Adds quiz scores, disqualified, payments, where people came from, and the link between form
+   - Adds quiz scores, disqualified, where people came from, and the link between form
      emails and their submission.
 2. `supabase/migrations/20261021120000_form_workflow_trigger.sql`
    - On GitHub: https://github.com/Howellsss/SYNAPSE/blob/main/supabase/migrations/20261021120000_form_workflow_trigger.sql
@@ -109,17 +109,11 @@ supabase functions deploy form-submit --project-ref parmtumfpsdtdtgwvscq --no-ve
 supabase functions deploy send-email --project-ref parmtumfpsdtdtgwvscq --no-verify-jwt
 ```
 
-## 4. Add the secrets
+## 4. Secrets
 
-Add them on the Edge Function secrets page: https://supabase.com/dashboard/project/parmtumfpsdtdtgwvscq/functions/secrets
-
-| Name | Value | Needed for |
-|---|---|---|
-| `STRIPE_SECRET_KEY` | Your Stripe secret key (`sk_live_…`, or `sk_test_…` to try it first), from https://dashboard.stripe.com/apikeys | Forms with a Payment element only |
-| `PUBLIC_APP_URL` | The address of the live app, e.g. `https://synapse-dj3a.vercel.app` (no slash at the end) | Bringing people back to the form after Stripe |
-
-The Gmail secrets the mailer already uses stay as they are (`GOOGLE_CLIENT_ID`,
-`GOOGLE_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`).
+Forms need no new secrets (they don't take payments). The Gmail secrets the mailer already uses
+stay as they are (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`):
+https://supabase.com/dashboard/project/parmtumfpsdtdtgwvscq/functions/secrets
 
 ## 5. In SYNAPSE
 
