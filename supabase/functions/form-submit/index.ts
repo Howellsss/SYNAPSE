@@ -290,22 +290,43 @@ async function saveContact(db: SupabaseClient, form: Record<string, unknown>, de
   const s = def.settings ?? {};
   const create = s.createContact ?? (form.create_contact as boolean) ?? false;
   const update = s.updateContact ?? (form.update_contact as boolean) ?? false;
-  if (!create) return null;
+  if (!create) { console.warn(`form ${form.id}: "Create contact on submission" is off, so no contact`); return null; }
   const data: Record<string, string> = {};
   for (const el of fieldsOf(def)) {
     const key = el.field.mappedContactField;
     if (key && answers[el.field.fieldId] && ["first_name", "last_name", "email", "phone", "company", "job_title"].includes(key)) data[key] = answers[el.field.fieldId];
   }
-  if (!Object.keys(data).length) return null;
+  if (!Object.keys(data).length) { console.warn(`form ${form.id}: no answers mapped to contact fields, so no contact`); return null; }
   const ws = form.workspace_id as string;
-  let existing: { id: string } | null = null;
-  if (data.email) existing = (await db.from("contacts").select("id").eq("workspace_id", ws).ilike("email", data.email).maybeSingle()).data;
-  if (!existing && data.phone) existing = (await db.from("contacts").select("id").eq("workspace_id", ws).eq("phone", data.phone).maybeSingle()).data;
-  let id: string | null = existing?.id ?? null;
-  if (existing && update) await db.from("contacts").update({ ...data, last_activity_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", existing.id);
-  if (!existing) id = (await db.from("contacts").insert({ workspace_id: ws, ...data, source: "form" }).select("id").single()).data?.id ?? null;
+  // The oldest matching contact (there may be more than one with the same email or phone).
+  const find = async (col: "email" | "phone", value: string) => {
+    const q = db.from("contacts").select("id").eq("workspace_id", ws);
+    const { data: rows, error } = await (col === "email" ? q.ilike("email", value.replace(/[\\%_]/g, (c) => `\\${c}`)) : q.eq("phone", value)).order("created_at").limit(1);
+    if (error) console.error(`form ${form.id}: looking up contact by ${col} failed: ${error.message}`);
+    return rows?.[0]?.id as string | undefined;
+  };
+  let id: string | null = (data.email ? await find("email", data.email) : undefined) ?? (data.phone ? await find("phone", data.phone) : undefined) ?? null;
+  if (id && update) {
+    const { error } = await db.from("contacts").update({ ...data, last_activity_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", id);
+    if (error) console.error(`form ${form.id}: updating contact ${id} failed: ${error.message}`);
+  }
+  if (!id) {
+    let { data: made, error } = await db.from("contacts").insert({ workspace_id: ws, ...data, source: "form" }).select("id").single();
+    if (error) {
+      // An older database may lack a column (company, job title) or limit "source": keep the basics.
+      console.error(`form ${form.id}: creating contact failed: ${error.message}; trying with name, email and phone only`);
+      const basic: Record<string, string> = {};
+      for (const k of ["first_name", "last_name", "email", "phone"]) if (data[k]) basic[k] = data[k];
+      ({ data: made, error } = await db.from("contacts").insert({ workspace_id: ws, ...basic }).select("id").single());
+      if (error) console.error(`form ${form.id}: creating contact failed again: ${error.message}`);
+    }
+    id = (made?.id as string | undefined) ?? null;
+  }
   if (!id) return null;
-  await db.from("form_submissions").update({ contact_id: id }).eq("id", submissionId);
+  {
+    const { error } = await db.from("form_submissions").update({ contact_id: id }).eq("id", submissionId);
+    if (error) console.error(`form ${form.id}: linking submission ${submissionId} to contact ${id} failed: ${error.message}`);
+  }
   await db.from("form_activity_timeline").insert({ contact_id: id, submission_id: submissionId, form_id: form.id, workspace_id: ws, form_name: form.name });
   for (const name of s.autoTags ?? (form.auto_tags as string[]) ?? []) {
     let tagId = (await db.from("tags").select("id").eq("workspace_id", ws).eq("name", name).maybeSingle()).data?.id;
