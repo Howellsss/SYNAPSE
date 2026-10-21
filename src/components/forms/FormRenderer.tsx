@@ -1,9 +1,30 @@
 import type {
   FormDefinition, FormElement, FormSection, Viewport,
-  FormTheme, ThemeButtonStyle,
+  FormTheme, ThemeButtonStyle, PaymentConfig,
 } from '@/lib/form-builder-types';
 import { RADIUS_MAP as RADIUS, SHADOW_MAP as SHADOW, WIDTH_MAP as WIDTH } from '@/lib/form-builder-types';
 import { cn } from '@/lib/utils';
+import { createContext, useContext } from 'react';
+import { money, paymentFor } from '@/lib/form-engine';
+
+/**
+ * While someone fills the form in (the public page and the preview): what logic hides or
+ * requires right now, mistakes to show, and how the buttons read. The builder canvas leaves it out.
+ */
+export interface FormRuntime {
+  hidden: Set<string>;
+  required: Set<string>;
+  errors: Record<string, string>;
+  /** The buttons: whether Back shows, and whether this is the last step. */
+  canGoBack: boolean;
+  isLast: boolean;
+  busy?: boolean;
+  submitLabel?: string;
+  autoComplete?: 'on' | 'off';
+  /** Slides that move on by themselves when a single choice is picked. */
+  onPicked?: () => void;
+}
+const RuntimeCtx = createContext<FormRuntime | null>(null);
 
 // ============================================================
 // FORM RENDERER — shared by builder canvas, preview, published
@@ -25,6 +46,7 @@ interface FormRendererProps {
   onSubmit?: () => void;
   onNext?: () => void;
   onPrevious?: () => void;
+  runtime?: FormRuntime;
 }
 
 // Helper: resolve effective background CSS
@@ -54,7 +76,7 @@ export function FormRenderer({
   builderMode = false, selectedElementId, onSelectElement,
   answers = {}, onAnswerChange,
   currentPage = 0, totalPages = 1,
-  onSubmit, onNext, onPrevious,
+  onSubmit, onNext, onPrevious, runtime,
 }: FormRendererProps) {
   const theme = definition.theme;
   const page = definition.pages[currentPageIndex];
@@ -86,7 +108,7 @@ export function FormRenderer({
 
   // Render the form body (shared across layout presets)
   const formBody = (
-    <>
+    <RuntimeCtx.Provider value={runtime ?? null}>
       {definition.header.enabled && (
         <FormHeader definition={definition} formName={formName} formDescription={formDescription} currentPage={currentPage} totalPages={totalPages} />
       )}
@@ -98,14 +120,25 @@ export function FormRenderer({
           return <RenderSection key={sectionId} section={section} definition={definition} builderMode={builderMode} selectedElementId={selectedElementId} onSelectElement={onSelectElement} answers={answers} onAnswerChange={onAnswerChange} viewport={viewport} />;
         })}
 
-        {!builderMode && totalPages > 1 && (
+        {!builderMode && runtime && (
+          <div className="flex items-center justify-between gap-3 mt-8 pt-6 border-t" style={{ borderColor: theme.colors.border }}>
+            <div>{runtime.canGoBack && <button type="button" onClick={onPrevious} disabled={runtime.busy} style={getButtonStyle(theme, theme.buttonStyle, 'outline')}>Back</button>}</div>
+            <div style={{ flex: theme.buttonStyle.width === 'full' && !runtime.canGoBack ? 1 : undefined }}>
+              {runtime.isLast
+                ? <button type="button" onClick={onSubmit} disabled={runtime.busy} style={{ ...getButtonStyle(theme, theme.buttonStyle, undefined, theme.buttonStyle.width === 'full' ? '100%' : 'auto'), opacity: runtime.busy ? 0.6 : 1 }}>{runtime.busy ? 'Sending…' : runtime.submitLabel || 'Submit'}</button>
+                : <button type="button" onClick={onNext} disabled={runtime.busy} style={getButtonStyle(theme, theme.buttonStyle)}>Next</button>}
+            </div>
+          </div>
+        )}
+
+        {!builderMode && !runtime && totalPages > 1 && (
           <div className="flex items-center justify-between mt-8 pt-6 border-t" style={{ borderColor: theme.colors.border }}>
             <div>{currentPage > 0 && <button onClick={onPrevious} style={getButtonStyle(theme, theme.buttonStyle, 'outline')}>Back</button>}</div>
             <div>{currentPage < totalPages - 1 ? <button onClick={onNext} style={getButtonStyle(theme, theme.buttonStyle)}>Next</button> : <button onClick={onSubmit} style={getButtonStyle(theme, theme.buttonStyle)}>Submit</button>}</div>
           </div>
         )}
 
-        {!builderMode && totalPages === 1 && page.sectionIds.some(sid => { const sec = definition.sections[sid]; return sec?.elementIds.some(eid => definition.elements[eid]?.field); }) && (
+        {!builderMode && !runtime && totalPages === 1 && page.sectionIds.some(sid => { const sec = definition.sections[sid]; return sec?.elementIds.some(eid => definition.elements[eid]?.field); }) && (
           <div className="mt-8 pt-6 border-t" style={{ borderColor: theme.colors.border, textAlign: theme.buttonStyle.align }}>
             <button onClick={onSubmit} style={getButtonStyle(theme, theme.buttonStyle, undefined, theme.buttonStyle.width === 'full' ? '100%' : 'auto')}>Submit</button>
           </div>
@@ -117,7 +150,7 @@ export function FormRenderer({
           {definition.footer.content}
         </div>
       )}
-    </>
+    </RuntimeCtx.Provider>
   );
 
   // Split layout
@@ -279,9 +312,10 @@ function RenderSection({ section, definition, builderMode, selectedElementId, on
   const style = section.style;
   const effectiveColumnCount = viewport === 'mobile' ? 1 : section.columnCount;
   const columns: FormElement[][] = Array.from({ length: effectiveColumnCount }, () => []);
+  const runtime = useContext(RuntimeCtx);
   for (const elId of section.elementIds) {
     const el = definition.elements[elId];
-    if (!el) continue;
+    if (!el || runtime?.hidden.has(el.id)) continue;
     const col = viewport === 'mobile' ? 0 : Math.min((el.column ?? 1) - 1, effectiveColumnCount - 1);
     columns[col].push(el);
   }
@@ -402,20 +436,34 @@ function FieldRenderer({ element, definition, builderMode, value, onChange }: {
     fontFamily: theme.typography.bodyFont,
     marginBottom: `${fs.labelSpacing}px`,
   };
-  const handleChange = (val: string) => { if (!builderMode) onChange(val); };
+  const runtime = useContext(RuntimeCtx);
+  const handleChange = (val: string) => {
+    if (builderMode) return;
+    onChange(val);
+    // A single choice on a slide that moves on by itself.
+    if (runtime?.onPicked && ['radio', 'yes_no', 'dropdown'].includes(element.type) && val) runtime.onPicked();
+  };
   const disabled = builderMode;
+  const required = runtime ? runtime.required.has(f.fieldId) : f.required;
+  const error = runtime?.errors[f.fieldId];
+  if (element.type === 'hidden') return renderFieldInput(element, f, value, handleChange, inputStyle, theme, disabled);
 
   return (
-    <div>
-      <label style={labelStyle}>{f.label}{f.required && <span style={{ color: theme.colors.error, marginLeft: '2px' }}>*</span>}</label>
+    <div id={`field-${f.fieldId}`} data-invalid={error ? 'true' : undefined}>
+      <label style={labelStyle}>{f.label}{required && <span style={{ color: theme.colors.error, marginLeft: '2px' }}>*</span>}</label>
       {f.description && <p style={helpStyle}>{f.description}</p>}
-      {renderFieldInput(element, f, value, handleChange, inputStyle, theme, disabled)}
+      <div style={error ? ({ ['--err' as string]: theme.colors.error } as React.CSSProperties) : undefined}
+        className={error ? '[&_input]:!border-[color:var(--err)] [&_select]:!border-[color:var(--err)] [&_textarea]:!border-[color:var(--err)]' : undefined}>
+        {renderFieldInput(element, f, value, handleChange, inputStyle, theme, disabled)}
+      </div>
+      {error && <p role="alert" style={{ color: theme.colors.error, fontSize: theme.fieldStyle.errorSize, marginTop: `${theme.fieldStyle.errorSpacing}px`, fontFamily: theme.typography.bodyFont }}>{error}</p>}
     </div>
   );
 }
 
 function renderFieldInput(element: FormElement, f: NonNullable<FormElement['field']>, value: string, onChange: (v: string) => void, inputStyle: React.CSSProperties, theme: FormTheme, disabled: boolean): React.ReactNode {
   const type = element.type;
+  if (type === 'payment') return <PaymentInput config={f.payment} value={value} onChange={onChange} theme={theme} inputStyle={inputStyle} disabled={disabled} />;
   const fs = theme.fieldStyle;
   const baseClass = "w-full transition-colors focus:outline-none";
   const focusBorder = { onFocus: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => { e.target.style.borderColor = fs.focusBorder; }, onBlur: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => { e.target.style.borderColor = fs.border; } };
@@ -467,4 +515,89 @@ function renderFieldInput(element: FormElement, f: NonNullable<FormElement['fiel
   if (type === 'hidden') return <input type="hidden" value={f.defaultValue || ''} />;
 
   return null;
+}
+
+// ============================================================
+// PAYMENT — a set price, products to pick, or an amount they type
+// ============================================================
+
+function PaymentInput({ config, value, onChange, theme, inputStyle, disabled }: {
+  config: PaymentConfig | undefined; value: string; onChange: (v: string) => void; theme: FormTheme; inputStyle: React.CSSProperties; disabled: boolean;
+}) {
+  if (!config) return null;
+  const cur = config.currency || 'usd';
+  const due = paymentFor(config, value);
+  const box: React.CSSProperties = { border: `1px solid ${theme.colors.border}`, borderRadius: RADIUS[theme.fieldStyle.borderRadius], padding: '12px 14px', background: theme.colors.surfaceBackground, fontFamily: theme.typography.bodyFont };
+  const text = { color: theme.colors.bodyText, fontSize: theme.typography.bodySize };
+  const muted = { color: theme.colors.mutedText, fontSize: '13px' };
+  const total = (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${theme.colors.border}`, ...text }}>
+      <span style={{ fontWeight: 600 }}>Total</span><span style={{ fontWeight: 700 }}>{money(due?.amount ?? 0, cur)}</span>
+    </div>
+  );
+
+  if (config.mode === 'fixed') {
+    return (
+      <div style={box}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', ...text }}>
+          <span>{config.description || 'Amount due'}</span><span style={{ fontWeight: 700 }}>{money(Math.round((config.amount ?? 0) * 100), cur)}</span>
+        </div>
+        <p style={{ ...muted, marginTop: '6px' }}>You’ll pay securely by card after you submit.</p>
+      </div>
+    );
+  }
+
+  if (config.mode === 'custom') {
+    const typed = value.replace(/[^0-9.]/g, '');
+    return (
+      <div style={box}>
+        {config.description && <p style={{ ...text, marginBottom: '8px' }}>{config.description}</p>}
+        {!!config.suggested?.length && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
+            {config.suggested.map((n) => {
+              const on = Number(typed) === n;
+              return <button key={n} type="button" disabled={disabled} onClick={() => onChange(String(n))}
+                style={{ padding: '8px 14px', borderRadius: '999px', border: `1px solid ${on ? theme.colors.primary : theme.colors.border}`, background: on ? theme.colors.primary : 'transparent', color: on ? '#fff' : theme.colors.bodyText, fontWeight: 600, cursor: 'pointer' }}>{money(n * 100, cur)}</button>;
+            })}
+          </div>
+        )}
+        <input type="text" inputMode="decimal" aria-label="Amount" placeholder={config.minAmount ? `${money(config.minAmount * 100, cur)} or more` : 'Amount'} value={typed} disabled={disabled} onChange={(e) => onChange(e.target.value)} style={inputStyle} />
+        <p style={{ ...muted, marginTop: '6px' }}>You’ll pay securely by card after you submit.</p>
+      </div>
+    );
+  }
+
+  // Products
+  const chosen = new Map(value.split(',').filter(Boolean).map((p) => { const [id, q] = p.split(':'); return [id, Math.max(1, Number(q) || 1)] as const; }));
+  const set = (next: Map<string, number>) => onChange([...next].map(([id, q]) => `${id}:${q}`).join(','));
+  return (
+    <div style={box}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        {(config.products ?? []).map((p) => {
+          const on = chosen.has(p.id);
+          const toggle = () => {
+            const next = new Map(config.multiple ? chosen : []);
+            if (on) next.delete(p.id); else next.set(p.id, 1);
+            set(next);
+          };
+          return (
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', borderRadius: '10px', border: `1px solid ${on ? theme.colors.primary : theme.colors.border}` }}>
+              <input type={config.multiple ? 'checkbox' : 'radio'} checked={on} disabled={disabled} onChange={toggle} aria-label={p.name} style={{ accentColor: theme.colors.primary, width: '16px', height: '16px' }} />
+              <span style={{ flex: 1, ...text }}>
+                <span style={{ fontWeight: 600 }}>{p.name}</span>
+                {p.description && <span style={{ display: 'block', ...muted }}>{p.description}</span>}
+              </span>
+              {config.quantity && on && (
+                <input type="number" min={1} max={99} aria-label={`How many ${p.name}`} value={chosen.get(p.id)} disabled={disabled}
+                  onChange={(e) => { const next = new Map(chosen); next.set(p.id, Math.max(1, Math.min(99, Number(e.target.value) || 1))); set(next); }}
+                  style={{ ...inputStyle, width: '64px', height: '34px', padding: '0 8px' }} />
+              )}
+              <span style={{ fontWeight: 700, ...text }}>{money(Math.round(p.price * 100), cur)}</span>
+            </div>
+          );
+        })}
+      </div>
+      {total}
+    </div>
+  );
 }

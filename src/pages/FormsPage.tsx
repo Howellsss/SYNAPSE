@@ -164,7 +164,7 @@ export function FormsPage() {
   }), [forms, tab]);
 
   const copyLink = (form: Form) => {
-    const url = `${publicOrigin()}/forms/${form.id}`;
+    const url = `${publicOrigin()}/f/${form.id}`;
     navigator.clipboard.writeText(url);
     toast('Link copied to clipboard');
   };
@@ -427,7 +427,7 @@ export function FormsPage() {
               form={form}
               isSurvey={tab === 'surveys'}
               onEdit={() => { window.location.hash = `/forms/${form.id}/edit`; }}
-              onPreview={() => { window.open(`/forms/${form.id}`, '_blank'); }}
+              onPreview={() => { window.open(`/f/${form.id}`, '_blank'); }}
               onShare={() => setShareForm(form)}
               onDuplicate={() => duplicateForm(form)}
               onSubmissions={() => setSubmissionsForm(form)}
@@ -446,7 +446,7 @@ export function FormsPage() {
           forms={formsForTab}
           isSurvey={tab === 'surveys'}
           onEdit={(f) => { window.location.hash = `/forms/${f.id}/edit`; }}
-          onPreview={(f) => { window.open(`/forms/${f.id}`, '_blank'); }}
+          onPreview={(f) => { window.open(`/f/${f.id}`, '_blank'); }}
           onShare={(f) => setShareForm(f)}
           onDuplicate={(f) => duplicateForm(f)}
           onSubmissions={(f) => setSubmissionsForm(f)}
@@ -754,9 +754,9 @@ function ActionMenu({ form, onRename, onDuplicate, onArchive, onUnarchive, onTog
     <div className="absolute right-0 top-full mt-1 z-30 bg-white rounded-xl border border-navy-100 shadow-popover py-1 min-w-[180px]">
       <MenuItem icon={Edit} label="Rename" onClick={onRename} />
       <MenuItem icon={Copy} label="Duplicate" onClick={onDuplicate} />
-      <MenuItem icon={Eye} label="Preview" onClick={() => window.open(`/forms/${form.id}`, '_blank')} />
+      <MenuItem icon={Eye} label="Preview" onClick={() => window.open(`/f/${form.id}`, '_blank')} />
       <MenuItem icon={Link2} label="Share link" onClick={() => {
-        const url = `${publicOrigin()}/forms/${form.id}`;
+        const url = `${publicOrigin()}/f/${form.id}`;
         navigator.clipboard.writeText(url);
       }} />
       <div className="my-1 border-t border-sand" />
@@ -835,7 +835,7 @@ function ShareModal({ form, onClose, onCopy }: {
   onCopy: (form: Form) => void;
 }) {
   if (!form) return null;
-  const url = `${publicOrigin()}/forms/${form.id}`;
+  const url = `${publicOrigin()}/f/${form.id}`;
   return (
     <Modal open={!!form} onClose={onClose} title="Share form" size="md"
       footer={<button onClick={() => { onCopy(form); onClose(); }} className="btn-primary"><Link2 className="w-4 h-4" /> Copy link</button>}

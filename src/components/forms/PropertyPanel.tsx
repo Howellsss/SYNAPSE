@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Copy, Trash2, X, Plus, GripVertical } from 'lucide-react';
-import type { FormDefinition, FormElement, FieldDefinition, ElementContent, ElementStyle, ColumnCount } from '@/lib/form-builder-types';
+import type { FormDefinition, FormElement, FieldDefinition, ElementContent, ElementStyle, ColumnCount, QuizSettings } from '@/lib/form-builder-types';
+import { LinkKeyEditor, PaymentEditor, QuizScoringEditor } from './FieldExtras';
 import { cn } from '@/lib/utils';
 
 interface PropertyPanelProps {
@@ -46,7 +47,7 @@ export function PropertyPanel({
             <button onClick={() => onRemoveElement(element.id)} className="btn-ghost btn-sm text-xs text-red-500 hover:bg-red-50"><Trash2 className="w-3 h-3" /> Delete</button>
           </div>
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-            {tab === 'general' && <GeneralTab element={element} onUpdateElementField={onUpdateElementField} onUpdateElementContent={onUpdateElementContent} />}
+            {tab === 'general' && <GeneralTab element={element} quiz={definition.settings.quiz} onUpdateElementField={onUpdateElementField} onUpdateElementContent={onUpdateElementContent} />}
             {tab === 'style' && <StyleTab element={element} onUpdateElementStyle={onUpdateElementStyle} />}
           </div>
         </>
@@ -86,8 +87,9 @@ function ColorInput({ value, onChange }: { value: string; onChange: (v: string) 
 // GENERAL TAB
 // ============================================================
 
-function GeneralTab({ element, onUpdateElementField, onUpdateElementContent }: {
+function GeneralTab({ element, quiz, onUpdateElementField, onUpdateElementContent }: {
   element: FormElement;
+  quiz?: QuizSettings;
   onUpdateElementField: (id: string, updates: Partial<FieldDefinition>) => void;
   onUpdateElementContent: (id: string, updates: Partial<ElementContent>) => void;
 }) {
@@ -116,15 +118,18 @@ function GeneralTab({ element, onUpdateElementField, onUpdateElementContent }: {
     <div className="space-y-4">
       <Field label="Field label"><input className="input-field" value={f.label} onChange={e => onUpdateElementField(element.id, { label: e.target.value })} /></Field>
       <Field label="Description (optional)"><input className="input-field" value={f.description || ''} onChange={e => onUpdateElementField(element.id, { description: e.target.value })} placeholder="Help text shown below the field" /></Field>
-      {element.type !== 'consent' && element.type !== 'hidden' && element.type !== 'date' && element.type !== 'time' && <Field label="Placeholder (optional)"><input className="input-field" value={f.placeholder || ''} onChange={e => onUpdateElementField(element.id, { placeholder: e.target.value })} /></Field>}
+      {!['consent', 'hidden', 'date', 'time', 'payment'].includes(element.type) && <Field label="Placeholder (optional)"><input className="input-field" value={f.placeholder || ''} onChange={e => onUpdateElementField(element.id, { placeholder: e.target.value })} /></Field>}
       <label className="flex items-center justify-between cursor-pointer"><span className="text-sm font-medium text-navy-700">Required</span><Toggle checked={f.required} onChange={v => onUpdateElementField(element.id, { required: v })} /></label>
       {element.type !== 'hidden' && <label className="flex items-center justify-between cursor-pointer"><span className="text-sm font-medium text-navy-700">Visible</span><Toggle checked={f.visible !== false} onChange={v => onUpdateElementField(element.id, { visible: v })} /></label>}
-      {element.type !== 'consent' && element.type !== 'hidden' && <Field label="Default value (optional)"><input className="input-field" value={f.defaultValue || ''} onChange={e => onUpdateElementField(element.id, { defaultValue: e.target.value })} /></Field>}
+      {element.type !== 'consent' && element.type !== 'payment' && <Field label={element.type === 'hidden' ? 'Value (when the link doesn’t set one)' : 'Default value (optional)'}><input className="input-field" value={f.defaultValue || ''} onChange={e => onUpdateElementField(element.id, { defaultValue: e.target.value })} /></Field>}
       {isChoice && <ChoiceOptionsEditor options={f.options || []} allowOther={f.allowOther || false} onOptionsChange={opts => onUpdateElementField(element.id, { options: opts })} onAllowOtherChange={v => onUpdateElementField(element.id, { allowOther: v })} />}
       {element.type === 'consent' && <Field label="Consent text"><textarea className="input-field min-h-[60px] resize-y" value={element.content?.text || ''} onChange={e => onUpdateElementContent(element.id, { text: e.target.value })} /></Field>}
       {['first_name', 'last_name', 'email', 'phone', 'text_field'].includes(element.type) && <Field label="Map to contact field"><select className="input-field" value={f.mappedContactField || ''} onChange={e => onUpdateElementField(element.id, { mappedContactField: (e.target.value || null) as FieldDefinition['mappedContactField'] })}><option value="">No mapping</option><option value="first_name">Contact First Name</option><option value="last_name">Contact Last Name</option><option value="email">Contact Email</option><option value="phone">Contact Phone</option><option value="company">Contact Company</option><option value="job_title">Contact Job Title</option></select></Field>}
       {['text_field', 'long_text', 'number'].includes(element.type) && <ValidationEditor element={element} onUpdate={onUpdateElementField} />}
       {element.type === 'file_upload' && <><Field label="Allowed file types (comma separated)"><input className="input-field" value={(f.allowedFileTypes || []).join(', ')} onChange={e => onUpdateElementField(element.id, { allowedFileTypes: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} placeholder="pdf, jpg, png" /></Field><Field label="Max file size (MB)"><input type="number" className="input-field" value={f.maxFileSizeMB || ''} onChange={e => onUpdateElementField(element.id, { maxFileSizeMB: Number(e.target.value) || undefined })} /></Field></>}
+      {element.type === 'payment' && <PaymentEditor element={element} onUpdate={onUpdateElementField} />}
+      {quiz?.enabled && ['radio', 'checkbox', 'dropdown', 'multi_select', 'yes_no'].includes(element.type) && <QuizScoringEditor element={element} quiz={quiz} onUpdate={onUpdateElementField} />}
+      {element.type !== 'payment' && <LinkKeyEditor element={element} onUpdate={onUpdateElementField} />}
     </div>
   );
 }
