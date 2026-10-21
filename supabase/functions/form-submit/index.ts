@@ -197,6 +197,9 @@ Deno.serve(async (req: Request) => {
       ...(quiz ? { score: quiz.score, score_max: quiz.max, score_percent: quiz.percent, quiz_result: quiz.result } : {}),
       ...(pay ? { payment_status: "pending", payment_amount: pay.amount, payment_currency: pay.currency } : {}),
     };
+    // The contact first, so the submission is saved with it and its workflows start ("Form submitted").
+    const contactId = await resolveContact(db, form, def, answers);
+    if (contactId) row.contact_id = contactId;
     // With the new columns if the database has them (03_forms_upgrade.sql), else the basics.
     let { data: sub, error: subErr } = await db.from("form_submissions").insert({ ...row, ...extra }).select("id").single();
     if (subErr && /column/i.test(subErr.message)) {
@@ -206,7 +209,7 @@ Deno.serve(async (req: Request) => {
     if (subErr || !sub) return json({ error: "Failed to save submission" }, 500);
     const submissionId = sub.id as string;
 
-    const contactId = await saveContact(db, form, def, answers, submissionId);
+    if (contactId) await linkContact(db, form, def, contactId, submissionId);
 
     if (pay) {
       try {
@@ -267,33 +270,69 @@ async function confirmPayment(db: SupabaseClient, form: Record<string, unknown>,
   return json({ paid: true });
 }
 
-async function saveContact(db: SupabaseClient, form: Record<string, unknown>, def: Definition, answers: Record<string, string>, submissionId: string): Promise<string | null> {
+const CONTACT_KEYS = ["first_name", "last_name", "email", "phone", "company", "job_title"];
+/** The contact field an answer fills: its mapping, else what the question plainly is (its type or label). */
+function contactKeyOf(el: Element & { field: Field }): string | null {
+  const mapped = el.field.mappedContactField;
+  if (mapped && CONTACT_KEYS.includes(mapped)) return mapped;
+  if (el.type && CONTACT_KEYS.includes(el.type)) return el.type;
+  const l = (el.field.label ?? "").toLowerCase();
+  if (/e-?mail/.test(l)) return "email";
+  if (/phone|mobile|whatsapp/.test(l)) return "phone";
+  if (/first name/.test(l)) return "first_name";
+  if (/last name|surname/.test(l)) return "last_name";
+  if (/^(full )?name$|your name/.test(l)) return "full_name";
+  if (/company|business name|organi[sz]ation/.test(l)) return "company";
+  if (/job title|role|position/.test(l)) return "job_title";
+  return null;
+}
+
+/** Find the person by email (or phone) in the workspace, or add them. Returns their contact id. */
+async function resolveContact(db: SupabaseClient, form: Record<string, unknown>, def: Definition, answers: Record<string, string>): Promise<string | null> {
   const s = def.settings ?? {};
-  const create = s.createContact ?? (form.create_contact as boolean) ?? false;
-  const update = s.updateContact ?? (form.update_contact as boolean) ?? false;
-  if (!create) return null;
+  const create = s.createContact ?? (form.create_contact as boolean | null) ?? true;
+  const update = s.updateContact ?? (form.update_contact as boolean | null) ?? true;
+  if (create === false) return null;
   const data: Record<string, string> = {};
   for (const el of fieldsOf(def)) {
-    const key = el.field.mappedContactField;
-    if (key && answers[el.field.fieldId] && ["first_name", "last_name", "email", "phone", "company", "job_title"].includes(key)) data[key] = answers[el.field.fieldId];
+    const key = contactKeyOf(el);
+    const v = (answers[el.field.fieldId] ?? "").trim();
+    if (!key || !v) continue;
+    if (key === "full_name") {
+      const [first, ...rest] = v.split(/\s+/);
+      data.first_name ??= first;
+      if (rest.length) data.last_name ??= rest.join(" ");
+    } else if (key === "email") {
+      if (EMAIL_RE.test(v)) data.email ??= v.toLowerCase();
+    } else data[key] ??= v;
   }
-  if (!Object.keys(data).length) return null;
+  if (!data.email && !data.phone && !data.first_name) return null;
   const ws = form.workspace_id as string;
   let existing: { id: string } | null = null;
-  if (data.email) existing = (await db.from("contacts").select("id").eq("workspace_id", ws).ilike("email", data.email).maybeSingle()).data;
-  if (!existing && data.phone) existing = (await db.from("contacts").select("id").eq("workspace_id", ws).eq("phone", data.phone).maybeSingle()).data;
-  let id: string | null = existing?.id ?? null;
-  if (existing && update) await db.from("contacts").update({ ...data, last_activity_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", existing.id);
-  if (!existing) id = (await db.from("contacts").insert({ workspace_id: ws, ...data, source: "form" }).select("id").single()).data?.id ?? null;
-  if (!id) return null;
-  await db.from("form_submissions").update({ contact_id: id }).eq("id", submissionId);
+  if (data.email) existing = (await db.from("contacts").select("id").eq("workspace_id", ws).ilike("email", data.email).order("created_at").limit(1).maybeSingle()).data;
+  if (!existing && data.phone) existing = (await db.from("contacts").select("id").eq("workspace_id", ws).eq("phone", data.phone).order("created_at").limit(1).maybeSingle()).data;
+  if (existing) {
+    if (update) {
+      const { error } = await db.from("contacts").update({ ...data, last_activity_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", existing.id);
+      if (error) console.error("form-submit: contact update failed", error.message);
+    }
+    return existing.id;
+  }
+  const { data: added, error } = await db.from("contacts").insert({ workspace_id: ws, ...data, source: "form" }).select("id").single();
+  if (error) console.error("form-submit: contact insert failed", error.message);
+  return added?.id ?? null;
+}
+
+/** The contact's timeline entry and the form's tags. */
+async function linkContact(db: SupabaseClient, form: Record<string, unknown>, def: Definition, id: string, submissionId: string) {
+  const s = def.settings ?? {};
+  const ws = form.workspace_id as string;
   await db.from("form_activity_timeline").insert({ contact_id: id, submission_id: submissionId, form_id: form.id, workspace_id: ws, form_name: form.name });
   for (const name of s.autoTags ?? (form.auto_tags as string[]) ?? []) {
     let tagId = (await db.from("tags").select("id").eq("workspace_id", ws).eq("name", name).maybeSingle()).data?.id;
     if (!tagId) tagId = (await db.from("tags").insert({ workspace_id: ws, name }).select("id").single()).data?.id;
     if (tagId) await db.from("contact_tags").upsert({ contact_id: id, tag_id: tagId });
   }
-  return id;
 }
 
 /** Queue the team alert and the auto-reply (sent by the mailer from the chosen connected account). */
