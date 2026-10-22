@@ -14,10 +14,6 @@ export function PublicFormPage({ formId }: { formId: string }) {
   const [form, setForm] = useState<PublicForm | null>(null);
   const [missing, setMissing] = useState(false);
   const params = useMemo(() => new URLSearchParams(window.location.hash.split('?')[1] ?? window.location.search), []);
-  // Back from paying: ?paid=<submission>&session_id=…  (or ?cancelled=<submission>)
-  const [paid, setPaid] = useState<null | 'checking' | 'ok' | 'failed'>(params.get('paid') ? 'checking' : null);
-  const [payError, setPayError] = useState<string | null>(null);
-
   useEffect(() => {
     let alive = true;
     supabase.from('forms').select('id, name, description, type, status, definition').eq('id', formId).maybeSingle().then(({ data }) => {
@@ -29,30 +25,18 @@ export function PublicFormPage({ formId }: { formId: string }) {
     return () => { alive = false; };
   }, [formId]);
 
-  useEffect(() => {
-    const submission = params.get('paid');
-    const session = params.get('session_id');
-    if (!submission || !session) return;
-    supabase.functions.invoke('form-submit', { body: { mode: 'confirm_payment', formId, submissionId: submission, sessionId: session } }).then(({ data, error }) => {
-      if (error || !data?.paid) { setPaid('failed'); setPayError(data?.error ?? 'We couldn’t confirm your payment yet. If you were charged, you’ll get a receipt by email.'); }
-      else setPaid('ok');
-    });
-  }, [formId, params]);
-
   if (missing) return <Shell><Notice title="This form isn’t available" text="It may have been unpublished or the link is wrong. Check with whoever sent it to you." /></Shell>;
-  if (!form?.definition || paid === 'checking') return <Shell><div className="flex min-h-[60vh] items-center justify-center"><LoadingSpinner className="h-8 w-8 text-ivory-600" /></div></Shell>;
+  if (!form?.definition) return <Shell><div className="flex min-h-[60vh] items-center justify-center"><LoadingSpinner className="h-8 w-8 text-ivory-600" /></div></Shell>;
 
   const def = form.definition;
   const closed = closedReason(def, form.status, 0);
   if (closed) return <Shell><Notice title={form.name} text={closed} /></Shell>;
 
-  const cancelled = params.get('cancelled');
   const submit = async (p: FormPayload): Promise<SubmitOutcome> => {
     const { data, error } = await supabase.functions.invoke('form-submit', {
       body: {
         mode: 'submit', formId: form.id, answers: p.answers, disqualified: p.disqualified, trap: p.trap,
         source: params.get('source') ?? 'link', meta: attribution(params, document.referrer),
-        payment: p.payment ? { fieldId: p.payment.fieldId, answer: p.answers[p.payment.fieldId] ?? '' } : null,
         returnUrl: `${publicOrigin()}/f/${form.id}`,
       },
     });
@@ -60,13 +44,11 @@ export function PublicFormPage({ formId }: { formId: string }) {
       const msg = (data?.error as string | undefined) ?? (await readError(error)) ?? 'Something went wrong sending this. Please try again.';
       return { ok: false, error: msg, closed: !!data?.closed };
     }
-    return { ok: true, checkoutUrl: data.checkoutUrl ?? null };
+    return { ok: true };
   };
 
   return (
     <Shell background={def.theme.background.type === 'solid' ? def.theme.background.color : def.theme.colors.pageBackground}>
-      {cancelled && <Banner text="Your payment wasn’t completed, so nothing was charged. You can submit again to pay." />}
-      {paid === 'failed' && <Banner text={payError ?? ''} />}
       <FormPlayer
         definition={def}
         formName={form.name}
@@ -75,7 +57,7 @@ export function PublicFormPage({ formId }: { formId: string }) {
         viewport={window.innerWidth < 640 ? 'mobile' : 'desktop'}
         initialAnswers={prefillAnswers(def, params)}
         onSubmit={submit}
-        done={paid === 'ok' ? { note: 'Payment received. Thank you!' } : undefined}
+        formId={form.id}
       />
     </Shell>
   );
@@ -99,7 +81,4 @@ function Notice({ title, text }: { title: string; text: string }) {
       <p className="mt-3 text-[15px] leading-relaxed text-ivory-700">{text}</p>
     </div>
   );
-}
-function Banner({ text }: { text: string }) {
-  return <p role="status" className="mx-auto mb-4 max-w-2xl rounded-xl bg-gold-50 px-4 py-3 text-sm font-medium text-gold-900">{text}</p>;
 }

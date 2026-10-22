@@ -49,7 +49,7 @@ export function LogicPanel({ definition, onChange }: { definition: FormDefinitio
   const elLabel = (id: string) => { const el = definition.elements[id]; return el?.field?.label || el?.content?.text || el?.displayLabel || 'Element'; };
 
   return (
-    <div className="flex-1 overflow-y-auto bg-ivory-50">
+    <div className="flex-1 overflow-y-auto bg-[#F2F2F5]">
       <div className="mx-auto w-full max-w-3xl space-y-4 p-6 pb-28 sm:p-8 sm:pb-28">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -113,7 +113,13 @@ export function LogicPanel({ definition, onChange }: { definition: FormDefinitio
 
               <div className="flex flex-wrap items-center gap-2 border-t border-navy-100 pt-3">
                 <span className="w-14 text-sm font-semibold text-navy-700">Then</span>
-                <select aria-label="Action" className="input-field !w-auto" value={r.action} onChange={(e) => set(i, { action: e.target.value as FormLogicRule['action'] })}>
+                <select aria-label="Action" className="input-field !w-auto" value={r.action} onChange={(e) => {
+                  const action = e.target.value as FormLogicRule['action'];
+                  // Require and Set value need a field: move off a heading or picture.
+                  const needsField = action === 'require' || action === 'set_value';
+                  const ok = targets.find((t) => t.id === r.targetElementId && (!needsField || t.field));
+                  set(i, { action, ...(ok ? {} : { targetElementId: (needsField ? targets.find((t) => t.field) : targets[0])?.id ?? '' }) });
+                }}>
                   {ACTIONS.map((a) => <option key={a.v} value={a.v}>{a.label}</option>)}
                 </select>
                 {['show', 'hide', 'require', 'set_value'].includes(r.action) && (

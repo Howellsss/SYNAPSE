@@ -5944,3 +5944,1336 @@ DROP POLICY IF EXISTS "characters_delete" ON storage.objects;
 CREATE POLICY "characters_delete" ON storage.objects FOR DELETE TO authenticated
   USING (bucket_id = 'characters' AND is_platform_admin());
 
+
+-- ============ 20261014090000_company_foundations.sql ============
+/*
+# Company foundations: roles, departments, safe invitations
+
+For company accounts (e.g. a support company with 200 staff): a Supervisor role, departments
+that supervisors lead, job titles, invitations that carry a department and title, and fixes
+to how people join a workspace.
+
+## 1. Security fixes
+- `wm_insert_self` let any signed-in user add themselves to ANY workspace with ANY role
+  (including owner/admin). Now a member row can only be added by a workspace admin, by the
+  workspace's owner for themselves, or by someone holding a pending, unexpired invitation for
+  that workspace, for their own email, with exactly the invited role.
+- `wm_update` let members update their own row, including `role` and `status` (promote
+  themselves to admin, un-suspend themselves). A trigger now stops anyone but a workspace admin
+  changing role, status, title or department; `owner` can only ever be the workspace's owner.
+- `team_inv_public_select_token` let anyone (even signed out) list EVERY pending invitation with
+  its email and token. Replaced by:
+    - `get_invitation(token)`: the one invitation for a token (for the accept page), and
+    - a policy letting a signed-in user see invitations sent to their own email.
+- Invitees could not mark their invitation accepted (update was admin-only), so invitations stayed
+  "pending" forever. `accept_invitation(token)` does the whole accept server-side, and a policy
+  lets invitees mark their own invitation accepted.
+
+## 2. Supervisor role
+`workspace_members.role` and `team_invitations.role`: owner, admin, supervisor, member.
+
+## 3. Departments
+- `departments` (name, color, description) per workspace.
+- `department_members` (department, member, is_lead). A lead is a supervisor of that department.
+- Everyone in the workspace can see departments; admins create/rename/delete them; admins and
+  the department's leads add and remove members (only admins choose leads).
+
+## 4. Job titles and invitation details
+- `workspace_members.title`
+- `team_invitations.title`, `team_invitations.department_id` (joined on accept)
+*/
+
+-- ============================================================
+-- 1. Roles: add 'supervisor'
+-- ============================================================
+
+DO $$
+DECLARE c record;
+BEGIN
+  FOR c IN
+    SELECT conrelid::regclass AS tbl, conname
+    FROM pg_constraint
+    WHERE contype = 'c'
+      AND conrelid IN ('public.workspace_members'::regclass, 'public.team_invitations'::regclass)
+      AND pg_get_constraintdef(oid) ILIKE '%role%'
+  LOOP
+    EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I', c.tbl, c.conname);
+  END LOOP;
+END $$;
+
+ALTER TABLE workspace_members ADD CONSTRAINT workspace_members_role_check
+  CHECK (role IN ('owner', 'admin', 'supervisor', 'member'));
+-- NOT VALID: any old 'owner' invitation stays readable; new and changed ones must use these roles.
+ALTER TABLE team_invitations ADD CONSTRAINT team_invitations_role_check
+  CHECK (role IN ('admin', 'supervisor', 'member')) NOT VALID;
+
+-- ============================================================
+-- 2. Departments
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS departments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  name text NOT NULL CHECK (length(trim(name)) BETWEEN 1 AND 80),
+  description text CHECK (description IS NULL OR length(description) <= 500),
+  color text NOT NULL DEFAULT '#0D1C3B' CHECK (color ~ '^#[0-9A-Fa-f]{6}$'),
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (workspace_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_departments_workspace ON departments(workspace_id);
+ALTER TABLE departments ENABLE ROW LEVEL SECURITY;
+
+CREATE TABLE IF NOT EXISTS department_members (
+  department_id uuid NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  is_lead boolean NOT NULL DEFAULT false,
+  added_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (department_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_department_members_user ON department_members(workspace_id, user_id);
+ALTER TABLE department_members ENABLE ROW LEVEL SECURITY;
+
+-- The department's workspace must match (no cross-workspace rows).
+CREATE OR REPLACE FUNCTION department_members_check() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM departments d WHERE d.id = NEW.department_id AND d.workspace_id = NEW.workspace_id) THEN
+    RAISE EXCEPTION 'Department is not in this workspace';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM workspace_members m WHERE m.workspace_id = NEW.workspace_id AND m.user_id = NEW.user_id) THEN
+    RAISE EXCEPTION 'Only members of the workspace can join its departments';
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS department_members_check ON department_members;
+CREATE TRIGGER department_members_check BEFORE INSERT OR UPDATE ON department_members
+  FOR EACH ROW EXECUTE FUNCTION department_members_check();
+
+-- Leads of a department (its supervisors).
+CREATE OR REPLACE FUNCTION is_department_lead(check_department_id uuid)
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM department_members dm
+    JOIN workspace_members m ON m.workspace_id = dm.workspace_id AND m.user_id = dm.user_id
+    WHERE dm.department_id = check_department_id AND dm.user_id = auth.uid()
+      AND dm.is_lead AND m.status = 'active'
+  );
+$$;
+
+DROP POLICY IF EXISTS departments_select ON departments;
+CREATE POLICY departments_select ON departments FOR SELECT TO authenticated
+  USING (is_workspace_member(workspace_id));
+DROP POLICY IF EXISTS departments_insert ON departments;
+CREATE POLICY departments_insert ON departments FOR INSERT TO authenticated
+  WITH CHECK (is_workspace_admin(workspace_id));
+DROP POLICY IF EXISTS departments_update ON departments;
+CREATE POLICY departments_update ON departments FOR UPDATE TO authenticated
+  USING (is_workspace_admin(workspace_id)) WITH CHECK (is_workspace_admin(workspace_id));
+DROP POLICY IF EXISTS departments_delete ON departments;
+CREATE POLICY departments_delete ON departments FOR DELETE TO authenticated
+  USING (is_workspace_admin(workspace_id));
+
+DROP POLICY IF EXISTS department_members_select ON department_members;
+CREATE POLICY department_members_select ON department_members FOR SELECT TO authenticated
+  USING (is_workspace_member(workspace_id));
+-- Admins add anyone (and choose leads); a department's leads add plain members to it.
+DROP POLICY IF EXISTS department_members_insert ON department_members;
+CREATE POLICY department_members_insert ON department_members FOR INSERT TO authenticated
+  WITH CHECK (is_workspace_admin(workspace_id) OR (is_department_lead(department_id) AND NOT is_lead));
+DROP POLICY IF EXISTS department_members_update ON department_members;
+CREATE POLICY department_members_update ON department_members FOR UPDATE TO authenticated
+  USING (is_workspace_admin(workspace_id)) WITH CHECK (is_workspace_admin(workspace_id));
+DROP POLICY IF EXISTS department_members_delete ON department_members;
+CREATE POLICY department_members_delete ON department_members FOR DELETE TO authenticated
+  USING (is_workspace_admin(workspace_id) OR (is_department_lead(department_id) AND NOT is_lead));
+
+-- ============================================================
+-- 3. Job titles, invitation department/title
+-- ============================================================
+
+ALTER TABLE workspace_members ADD COLUMN IF NOT EXISTS title text
+  CHECK (title IS NULL OR length(title) <= 80);
+ALTER TABLE team_invitations ADD COLUMN IF NOT EXISTS title text
+  CHECK (title IS NULL OR length(title) <= 80);
+ALTER TABLE team_invitations ADD COLUMN IF NOT EXISTS department_id uuid
+  REFERENCES departments(id) ON DELETE SET NULL;
+
+-- ============================================================
+-- 4. Who may add and change member rows
+-- ============================================================
+
+DROP POLICY IF EXISTS "wm_insert_self" ON workspace_members;
+CREATE POLICY "wm_insert_self" ON workspace_members FOR INSERT TO authenticated
+  WITH CHECK (
+    -- Admins add people.
+    is_workspace_admin(workspace_id)
+    -- The workspace's owner restores their own owner row.
+    OR (user_id = auth.uid() AND role = 'owner'
+        AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = workspace_id AND w.owner_id = auth.uid()))
+    -- Someone accepting their own pending invitation, with exactly the invited role.
+    OR (user_id = auth.uid() AND role <> 'owner' AND EXISTS (
+      SELECT 1 FROM team_invitations i
+      WHERE i.workspace_id = workspace_members.workspace_id
+        AND i.status = 'pending' AND i.expires_at > now()
+        AND lower(i.email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+        AND i.role = workspace_members.role
+    ))
+  );
+
+-- Role, status, title and departments are the admins' to change. 'owner' is only ever the
+-- workspace's owner. Server-side code (no signed-in user) is not limited.
+CREATE OR REPLACE FUNCTION workspace_members_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE ws_owner uuid;
+BEGIN
+  SELECT owner_id INTO ws_owner FROM workspaces WHERE id = NEW.workspace_id;
+  IF NEW.role = 'owner' AND NEW.user_id IS DISTINCT FROM ws_owner THEN
+    RAISE EXCEPTION 'Only the workspace owner can have the owner role';
+  END IF;
+  IF TG_OP = 'UPDATE' AND auth.uid() IS NOT NULL THEN
+    IF OLD.role = 'owner' AND NEW.role <> 'owner' THEN
+      RAISE EXCEPTION 'The owner''s role cannot be changed';
+    END IF;
+    IF (NEW.role IS DISTINCT FROM OLD.role OR NEW.status IS DISTINCT FROM OLD.status
+        OR NEW.title IS DISTINCT FROM OLD.title)
+       AND NOT is_workspace_admin(NEW.workspace_id) AND auth.uid() IS DISTINCT FROM ws_owner THEN
+      RAISE EXCEPTION 'Only workspace admins can change roles, status or titles';
+    END IF;
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS workspace_members_guard ON workspace_members;
+CREATE TRIGGER workspace_members_guard BEFORE INSERT OR UPDATE ON workspace_members
+  FOR EACH ROW EXECUTE FUNCTION workspace_members_guard();
+
+-- ============================================================
+-- 5. Invitations: no public listing; accept on the server
+-- ============================================================
+
+DROP POLICY IF EXISTS "team_inv_public_select_token" ON team_invitations;
+
+-- Signed-in people see invitations sent to their own email (used when they sign in).
+DROP POLICY IF EXISTS "team_inv_select_own" ON team_invitations;
+CREATE POLICY "team_inv_select_own" ON team_invitations FOR SELECT TO authenticated
+  USING (lower(email) = lower(coalesce(auth.jwt() ->> 'email', '')));
+
+-- ... and can mark them accepted.
+DROP POLICY IF EXISTS "team_inv_accept_own" ON team_invitations;
+CREATE POLICY "team_inv_accept_own" ON team_invitations FOR UPDATE TO authenticated
+  USING (lower(email) = lower(coalesce(auth.jwt() ->> 'email', '')) AND status = 'pending')
+  WITH CHECK (lower(email) = lower(coalesce(auth.jwt() ->> 'email', '')) AND status = 'accepted');
+
+-- One invitation by its token, for the accept page (works signed out). Nothing else is listable.
+CREATE OR REPLACE FUNCTION get_invitation(p_token text)
+RETURNS TABLE (
+  id uuid, workspace_id uuid, workspace_name text, email text, role text, title text,
+  department_name text, status text, expires_at timestamptz
+)
+LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT i.id, i.workspace_id, w.name, i.email, i.role, i.title, d.name, i.status, i.expires_at
+  FROM team_invitations i
+  JOIN workspaces w ON w.id = i.workspace_id
+  LEFT JOIN departments d ON d.id = i.department_id
+  WHERE p_token IS NOT NULL AND length(p_token) >= 32 AND i.token = p_token;
+$$;
+REVOKE ALL ON FUNCTION get_invitation(text) FROM public;
+GRANT EXECUTE ON FUNCTION get_invitation(text) TO anon, authenticated;
+
+-- Accept an invitation for the signed-in user: join with the invited role, title and department.
+CREATE OR REPLACE FUNCTION accept_invitation(p_token text)
+RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  inv team_invitations%ROWTYPE;
+  me uuid := auth.uid();
+  my_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
+BEGIN
+  IF me IS NULL THEN RAISE EXCEPTION 'Sign in to accept this invitation'; END IF;
+  SELECT * INTO inv FROM team_invitations WHERE token = p_token FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'This invitation link is not valid'; END IF;
+  IF inv.status = 'revoked' THEN RAISE EXCEPTION 'This invitation was cancelled'; END IF;
+  IF inv.status = 'pending' AND inv.expires_at <= now() THEN RAISE EXCEPTION 'This invitation has expired. Ask for a new one.'; END IF;
+  IF lower(inv.email) <> my_email THEN
+    RAISE EXCEPTION 'This invitation is for %. Sign in with that email.', inv.email;
+  END IF;
+
+  INSERT INTO workspace_members (workspace_id, user_id, role, status, title)
+  VALUES (inv.workspace_id, me, inv.role, 'active', inv.title)
+  ON CONFLICT (workspace_id, user_id) DO UPDATE
+    SET status = 'active',
+        title = coalesce(workspace_members.title, EXCLUDED.title);
+
+  IF inv.department_id IS NOT NULL THEN
+    INSERT INTO department_members (department_id, workspace_id, user_id, is_lead, added_by)
+    VALUES (inv.department_id, inv.workspace_id, me, inv.role = 'supervisor', inv.invited_by)
+    ON CONFLICT (department_id, user_id) DO NOTHING;
+  END IF;
+
+  UPDATE team_invitations SET status = 'accepted', accepted_at = coalesce(accepted_at, now()) WHERE id = inv.id;
+  RETURN inv.workspace_id;
+END $$;
+REVOKE ALL ON FUNCTION accept_invitation(text) FROM public, anon;
+GRANT EXECUTE ON FUNCTION accept_invitation(text) TO authenticated;
+
+-- ============================================================
+-- 6. Team directory
+-- ============================================================
+
+-- Teammates can see each other's name and avatar (people in a shared workspace).
+DROP POLICY IF EXISTS "profiles_select_teammates" ON profiles;
+CREATE POLICY "profiles_select_teammates" ON profiles FOR SELECT TO authenticated
+  USING (EXISTS (
+    SELECT 1 FROM workspace_members a
+    JOIN workspace_members b ON b.workspace_id = a.workspace_id
+    WHERE a.user_id = auth.uid() AND b.user_id = profiles.user_id
+  ));
+
+-- Everyone in a workspace, for the team page: name, avatar, role, status, title and departments.
+-- Emails only for the workspace's admins.
+CREATE OR REPLACE FUNCTION workspace_directory(p_workspace_id uuid)
+RETURNS TABLE (
+  member_id uuid, user_id uuid, first_name text, last_name text, avatar_url text, email text,
+  role text, status text, title text, joined_at timestamptz, department_ids uuid[], lead_department_ids uuid[]
+)
+LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT m.id, m.user_id, p.first_name, p.last_name, p.avatar_url,
+         CASE WHEN is_workspace_admin(p_workspace_id) THEN u.email::text END,
+         m.role, m.status, m.title, m.created_at,
+         coalesce(array_agg(dm.department_id) FILTER (WHERE dm.department_id IS NOT NULL), '{}'),
+         coalesce(array_agg(dm.department_id) FILTER (WHERE dm.is_lead), '{}')
+  FROM workspace_members m
+  LEFT JOIN profiles p ON p.user_id = m.user_id
+  LEFT JOIN auth.users u ON u.id = m.user_id
+  LEFT JOIN department_members dm ON dm.workspace_id = m.workspace_id AND dm.user_id = m.user_id
+  WHERE m.workspace_id = p_workspace_id AND is_workspace_member(p_workspace_id)
+  GROUP BY m.id, p.first_name, p.last_name, p.avatar_url, u.email
+  ORDER BY lower(coalesce(p.first_name, '')), lower(coalesce(p.last_name, ''));
+$$;
+REVOKE ALL ON FUNCTION workspace_directory(uuid) FROM public, anon;
+GRANT EXECUTE ON FUNCTION workspace_directory(uuid) TO authenticated;
+
+
+-- ============ 20261015090000_company_rooms.sql ============
+/*
+  # Company rooms: rooms supervisors create and assign, links experts send to clients
+
+  Needs 20261014090000_company_foundations.sql (supervisor role, departments) first.
+  Safe to run more than once.
+
+  1. company_rooms
+     A standing video room of the account (e.g. "Video Support 3"), optionally in a department.
+     Admins and supervisors create them; experts cannot. Shows busy while a call is going on in it.
+     - open_to_department: everyone in the room's department may use it (not only those assigned)
+     - busy_until / busy_meeting / busy_by: kept fresh by the person in the call (room_heartbeat)
+
+  2. company_room_assignees
+     Who may use a room: start a call in it and create links for clients or teammates.
+
+  3. meetings.room_id, meetings.for_whom
+     A link made in a room is a meeting in that room ("Video Support 3 · Jane Client"). Only
+     people who may use the room can put a meeting in it (trigger meetings_room_guard).
+
+  4. Who can do what
+     - see rooms and who is assigned: everyone in the account
+     - create rooms: admins, and supervisors (in departments they lead, or with no department)
+     - change, assign, delete: admins, the supervisor who created the room, or a lead of its department
+     - use a room: those above, the people assigned, and (if open_to_department) its department
+*/
+
+-- ---------------------------------------------------------------- tables
+
+CREATE TABLE IF NOT EXISTS company_rooms (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  department_id uuid REFERENCES departments(id) ON DELETE SET NULL,
+  name text NOT NULL CHECK (char_length(btrim(name)) BETWEEN 1 AND 80),
+  description text CHECK (description IS NULL OR char_length(description) <= 500),
+  open_to_department boolean NOT NULL DEFAULT false,
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  busy_until timestamptz,
+  busy_meeting uuid,
+  busy_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  UNIQUE (workspace_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_company_rooms_workspace ON company_rooms(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_company_rooms_department ON company_rooms(department_id);
+
+CREATE TABLE IF NOT EXISTS company_room_assignees (
+  room_id uuid NOT NULL REFERENCES company_rooms(id) ON DELETE CASCADE,
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  assigned_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (room_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_company_room_assignees_user ON company_room_assignees(user_id);
+
+ALTER TABLE meetings ADD COLUMN IF NOT EXISTS room_id uuid REFERENCES company_rooms(id) ON DELETE SET NULL;
+ALTER TABLE meetings ADD COLUMN IF NOT EXISTS for_whom text CHECK (for_whom IS NULL OR char_length(for_whom) <= 120);
+CREATE INDEX IF NOT EXISTS idx_meetings_room ON meetings(room_id, created_at DESC) WHERE room_id IS NOT NULL;
+
+-- ---------------------------------------------------------------- helpers
+
+/** Admins, and active supervisors, can create rooms in this account. */
+CREATE OR REPLACE FUNCTION can_create_rooms(p_workspace uuid)
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT is_workspace_admin(p_workspace) OR has_workspace_role(p_workspace, ARRAY['supervisor']);
+$$;
+
+/** Change, assign or delete this room. */
+CREATE OR REPLACE FUNCTION can_manage_room(p_room uuid)
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM company_rooms r
+    WHERE r.id = p_room
+      AND (
+        is_workspace_admin(r.workspace_id)
+        OR (has_workspace_role(r.workspace_id, ARRAY['supervisor'])
+            AND (r.created_by = auth.uid() OR (r.department_id IS NOT NULL AND is_department_lead(r.department_id))))
+      )
+  );
+$$;
+
+/** Start a call or make links in this room. */
+CREATE OR REPLACE FUNCTION can_use_room(p_room uuid)
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT can_manage_room(p_room) OR EXISTS (
+    SELECT 1 FROM company_rooms r
+    WHERE r.id = p_room
+      AND has_workspace_role(r.workspace_id, ARRAY['owner', 'admin', 'supervisor', 'member'])
+      AND (
+        EXISTS (SELECT 1 FROM company_room_assignees a WHERE a.room_id = r.id AND a.user_id = auth.uid())
+        OR (r.open_to_department AND r.department_id IS NOT NULL AND EXISTS (
+          SELECT 1 FROM department_members dm WHERE dm.department_id = r.department_id AND dm.user_id = auth.uid()))
+      )
+  );
+$$;
+
+REVOKE ALL ON FUNCTION can_create_rooms(uuid) FROM public, anon;
+REVOKE ALL ON FUNCTION can_manage_room(uuid) FROM public, anon;
+REVOKE ALL ON FUNCTION can_use_room(uuid) FROM public, anon;
+GRANT EXECUTE ON FUNCTION can_create_rooms(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION can_manage_room(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION can_use_room(uuid) TO authenticated;
+
+-- ---------------------------------------------------------------- row-level security
+
+ALTER TABLE company_rooms ENABLE ROW LEVEL SECURITY;
+ALTER TABLE company_room_assignees ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "company_rooms_select" ON company_rooms;
+CREATE POLICY "company_rooms_select" ON company_rooms FOR SELECT TO authenticated
+  USING (is_workspace_member(workspace_id));
+
+DROP POLICY IF EXISTS "company_rooms_insert" ON company_rooms;
+CREATE POLICY "company_rooms_insert" ON company_rooms FOR INSERT TO authenticated
+  WITH CHECK (
+    created_by = auth.uid()
+    AND can_create_rooms(workspace_id)
+    AND (department_id IS NULL OR is_workspace_admin(workspace_id) OR is_department_lead(department_id))
+  );
+
+DROP POLICY IF EXISTS "company_rooms_update" ON company_rooms;
+CREATE POLICY "company_rooms_update" ON company_rooms FOR UPDATE TO authenticated
+  USING (can_manage_room(id))
+  WITH CHECK (department_id IS NULL OR is_workspace_admin(workspace_id) OR is_department_lead(department_id));
+
+DROP POLICY IF EXISTS "company_rooms_delete" ON company_rooms;
+CREATE POLICY "company_rooms_delete" ON company_rooms FOR DELETE TO authenticated
+  USING (can_manage_room(id));
+
+DROP POLICY IF EXISTS "company_room_assignees_select" ON company_room_assignees;
+CREATE POLICY "company_room_assignees_select" ON company_room_assignees FOR SELECT TO authenticated
+  USING (is_workspace_member(workspace_id));
+
+DROP POLICY IF EXISTS "company_room_assignees_insert" ON company_room_assignees;
+CREATE POLICY "company_room_assignees_insert" ON company_room_assignees FOR INSERT TO authenticated
+  WITH CHECK (can_manage_room(room_id));
+
+DROP POLICY IF EXISTS "company_room_assignees_delete" ON company_room_assignees;
+CREATE POLICY "company_room_assignees_delete" ON company_room_assignees FOR DELETE TO authenticated
+  USING (can_manage_room(room_id));
+
+-- ---------------------------------------------------------------- guards
+
+-- Rooms: the workspace never changes, busy fields only change through room_heartbeat/room_release,
+-- and a room's department belongs to the same account.
+CREATE OR REPLACE FUNCTION company_rooms_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NEW.department_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM departments d WHERE d.id = NEW.department_id AND d.workspace_id = NEW.workspace_id) THEN
+    RAISE EXCEPTION 'That department belongs to another account';
+  END IF;
+  IF TG_OP = 'UPDATE' THEN
+    IF NEW.workspace_id <> OLD.workspace_id THEN RAISE EXCEPTION 'A room cannot move to another account'; END IF;
+    IF current_setting('synapse.room_busy', true) IS DISTINCT FROM 'on'
+       AND (NEW.busy_until IS DISTINCT FROM OLD.busy_until OR NEW.busy_meeting IS DISTINCT FROM OLD.busy_meeting OR NEW.busy_by IS DISTINCT FROM OLD.busy_by) THEN
+      NEW.busy_until := OLD.busy_until; NEW.busy_meeting := OLD.busy_meeting; NEW.busy_by := OLD.busy_by;
+    END IF;
+  ELSIF current_setting('synapse.room_busy', true) IS DISTINCT FROM 'on' THEN
+    NEW.busy_until := NULL; NEW.busy_meeting := NULL; NEW.busy_by := NULL;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS company_rooms_guard ON company_rooms;
+CREATE TRIGGER company_rooms_guard BEFORE INSERT OR UPDATE ON company_rooms
+  FOR EACH ROW EXECUTE FUNCTION company_rooms_guard();
+
+-- Assignees: same account as the room, and an active member of it.
+CREATE OR REPLACE FUNCTION company_room_assignees_check() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  SELECT r.workspace_id INTO NEW.workspace_id FROM company_rooms r WHERE r.id = NEW.room_id;
+  IF NEW.workspace_id IS NULL THEN RAISE EXCEPTION 'Room not found'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM workspace_members m WHERE m.workspace_id = NEW.workspace_id AND m.user_id = NEW.user_id AND m.status = 'active') THEN
+    RAISE EXCEPTION 'Only people in this account can be assigned to its rooms';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS company_room_assignees_check ON company_room_assignees;
+CREATE TRIGGER company_room_assignees_check BEFORE INSERT OR UPDATE ON company_room_assignees
+  FOR EACH ROW EXECUTE FUNCTION company_room_assignees_check();
+
+-- Meetings in a room: only people who may use the room, in the same account.
+CREATE OR REPLACE FUNCTION meetings_room_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NEW.room_id IS NULL OR auth.uid() IS NULL THEN RETURN NEW; END IF;
+  IF TG_OP = 'UPDATE' AND NEW.room_id IS NOT DISTINCT FROM OLD.room_id THEN RETURN NEW; END IF;
+  IF NOT EXISTS (SELECT 1 FROM company_rooms r WHERE r.id = NEW.room_id AND r.workspace_id = NEW.workspace_id) THEN
+    RAISE EXCEPTION 'That room belongs to another account';
+  END IF;
+  IF NOT can_use_room(NEW.room_id) THEN
+    RAISE EXCEPTION 'You are not assigned to this room. Ask a supervisor to assign you.';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS meetings_room_guard ON meetings;
+CREATE TRIGGER meetings_room_guard BEFORE INSERT OR UPDATE OF room_id ON meetings
+  FOR EACH ROW EXECUTE FUNCTION meetings_room_guard();
+
+-- ---------------------------------------------------------------- busy
+
+/** Mark the room of this meeting busy for the next 90 seconds (called every ~45 s during the call). */
+CREATE OR REPLACE FUNCTION room_heartbeat(p_meeting uuid)
+RETURNS timestamptz LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_room uuid; v_ws uuid; v_until timestamptz := now() + interval '90 seconds';
+BEGIN
+  SELECT m.room_id, m.workspace_id INTO v_room, v_ws FROM meetings m WHERE m.id = p_meeting AND m.ended_at IS NULL;
+  IF v_room IS NULL OR NOT is_workspace_member(v_ws) THEN RETURN NULL; END IF;
+  PERFORM set_config('synapse.room_busy', 'on', true);
+  UPDATE company_rooms SET busy_until = v_until, busy_meeting = p_meeting, busy_by = auth.uid() WHERE id = v_room;
+  RETURN v_until;
+END;
+$$;
+
+/** The call in this meeting is over: the room is free again (unless another call took it over). */
+CREATE OR REPLACE FUNCTION room_release(p_meeting uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_room uuid; v_ws uuid;
+BEGIN
+  SELECT m.room_id, m.workspace_id INTO v_room, v_ws FROM meetings m WHERE m.id = p_meeting;
+  IF v_room IS NULL OR NOT is_workspace_member(v_ws) THEN RETURN; END IF;
+  PERFORM set_config('synapse.room_busy', 'on', true);
+  UPDATE company_rooms SET busy_until = NULL, busy_meeting = NULL, busy_by = NULL WHERE id = v_room AND busy_meeting = p_meeting;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION room_heartbeat(uuid) FROM public, anon;
+REVOKE ALL ON FUNCTION room_release(uuid) FROM public, anon;
+GRANT EXECUTE ON FUNCTION room_heartbeat(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION room_release(uuid) TO authenticated;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON company_rooms, company_room_assignees TO authenticated;
+
+
+-- ============ 20261016090000_conversations.sql ============
+/*
+  # Conversations: channels, direct messages, threads, incoming webhooks, email replies
+
+  Needs 20261014090000_company_foundations.sql first. Safe to run more than once.
+
+  1. chat_channels      a channel (#general, #video-team) or a direct message between people
+                        - kind: 'channel' | 'dm'; private channels are visible to their members only
+                        - dm_key: the sorted user ids of a direct message, so each pair has one
+  2. chat_members       who is in a channel; last_read_at drives unread counts
+  3. chat_messages      messages; parent_id makes a thread reply
+                        - source: 'user' | 'webhook' (Zapier, Airtable, Modal…) | 'system'
+                        - sender_name: shown for webhook posts (no SYNAPSE person behind them)
+  4. chat_webhooks      incoming webhook links per channel (a secret token in the URL).
+                        The chat-webhook Edge Function posts with it; only channel owners and
+                        admins see or manage them.
+  5. messages.provider_thread_id, messages.reply_checked_at
+                        the Gmail thread an email went out in, so replies can be brought back
+                        (send-email's scheduler run reads new replies and saves them as inbound;
+                        reply_checked_at spreads the checking over the sent emails)
+
+  Who can do what
+  - everyone in the account sees public channels and their messages; private channels and direct
+    messages only their members
+  - anyone in the account can create a channel (they own it) and join public ones
+  - channel owners and admins rename, archive, add or remove people, and manage webhooks
+  - you edit and delete your own messages; owners and admins can delete any in their channels
+*/
+
+-- ---------------------------------------------------------------- tables
+
+CREATE TABLE IF NOT EXISTS chat_channels (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  kind text NOT NULL DEFAULT 'channel' CHECK (kind IN ('channel', 'dm')),
+  name text CHECK (name IS NULL OR name ~ '^[a-z0-9][a-z0-9_-]{0,79}$'),
+  description text CHECK (description IS NULL OR char_length(description) <= 500),
+  is_private boolean NOT NULL DEFAULT false,
+  department_id uuid REFERENCES departments(id) ON DELETE SET NULL,
+  dm_key text,
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  archived_at timestamptz,
+  last_message_at timestamptz,
+  CHECK ((kind = 'channel' AND name IS NOT NULL AND dm_key IS NULL) OR (kind = 'dm' AND dm_key IS NOT NULL AND is_private))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS chat_channels_name_key ON chat_channels(workspace_id, name) WHERE kind = 'channel';
+CREATE UNIQUE INDEX IF NOT EXISTS chat_channels_dm_key ON chat_channels(workspace_id, dm_key) WHERE kind = 'dm';
+CREATE INDEX IF NOT EXISTS idx_chat_channels_workspace ON chat_channels(workspace_id);
+
+CREATE TABLE IF NOT EXISTS chat_members (
+  channel_id uuid NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  role text NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'member')),
+  last_read_at timestamptz NOT NULL DEFAULT now(),
+  muted boolean NOT NULL DEFAULT false,
+  joined_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (channel_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_chat_members_user ON chat_members(user_id, workspace_id);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  channel_id uuid NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  parent_id uuid REFERENCES chat_messages(id) ON DELETE CASCADE,
+  body text NOT NULL CHECK (char_length(body) BETWEEN 1 AND 8000),
+  source text NOT NULL DEFAULT 'user' CHECK (source IN ('user', 'webhook', 'system')),
+  sender_name text CHECK (sender_name IS NULL OR char_length(sender_name) <= 80),
+  webhook_id uuid,
+  meta jsonb NOT NULL DEFAULT '{}'::jsonb,
+  reply_count integer NOT NULL DEFAULT 0,
+  last_reply_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  edited_at timestamptz,
+  deleted_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_channel ON chat_messages(channel_id, created_at DESC) WHERE parent_id IS NULL;
+CREATE INDEX IF NOT EXISTS idx_chat_messages_thread ON chat_messages(parent_id, created_at) WHERE parent_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_chat_messages_workspace ON chat_messages(workspace_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS chat_webhooks (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  channel_id uuid NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  name text NOT NULL CHECK (char_length(btrim(name)) BETWEEN 1 AND 80),
+  token text NOT NULL UNIQUE DEFAULT encode(gen_random_bytes(24), 'hex'),
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  last_used_at timestamptz,
+  revoked_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS idx_chat_webhooks_channel ON chat_webhooks(channel_id);
+
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS provider_thread_id text;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS reply_checked_at timestamptz;
+CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(provider_thread_id) WHERE provider_thread_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS messages_provider_message_key ON messages(workspace_id, provider_message_id) WHERE provider_message_id IS NOT NULL AND direction = 'inbound';
+
+-- ---------------------------------------------------------------- helpers
+
+CREATE OR REPLACE FUNCTION is_chat_member(p_channel uuid)
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT EXISTS (SELECT 1 FROM chat_members WHERE channel_id = p_channel AND user_id = auth.uid());
+$$;
+
+/** See a channel: its members, or anyone active in the account when it's public. */
+CREATE OR REPLACE FUNCTION can_see_channel(p_channel uuid)
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM chat_channels c
+    WHERE c.id = p_channel
+      AND has_workspace_role(c.workspace_id, ARRAY['owner', 'admin', 'supervisor', 'member'])
+      AND (NOT c.is_private OR is_chat_member(c.id))
+  );
+$$;
+
+/** Rename, archive, add or remove people, manage webhooks. */
+CREATE OR REPLACE FUNCTION can_manage_channel(p_channel uuid)
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM chat_channels c
+    WHERE c.id = p_channel AND c.kind = 'channel'
+      AND (is_workspace_admin(c.workspace_id)
+           OR EXISTS (SELECT 1 FROM chat_members m WHERE m.channel_id = c.id AND m.user_id = auth.uid() AND m.role = 'owner'))
+  );
+$$;
+
+REVOKE ALL ON FUNCTION is_chat_member(uuid) FROM public, anon;
+REVOKE ALL ON FUNCTION can_see_channel(uuid) FROM public, anon;
+REVOKE ALL ON FUNCTION can_manage_channel(uuid) FROM public, anon;
+GRANT EXECUTE ON FUNCTION is_chat_member(uuid), can_see_channel(uuid), can_manage_channel(uuid) TO authenticated;
+
+-- ---------------------------------------------------------------- row-level security
+
+ALTER TABLE chat_channels ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_webhooks ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "chat_channels_select" ON chat_channels;
+CREATE POLICY "chat_channels_select" ON chat_channels FOR SELECT TO authenticated USING (can_see_channel(id));
+
+-- Channels are created through create_channel / open_dm (they add the creator as owner).
+DROP POLICY IF EXISTS "chat_channels_update" ON chat_channels;
+CREATE POLICY "chat_channels_update" ON chat_channels FOR UPDATE TO authenticated
+  USING (can_manage_channel(id)) WITH CHECK (can_manage_channel(id));
+
+DROP POLICY IF EXISTS "chat_channels_delete" ON chat_channels;
+CREATE POLICY "chat_channels_delete" ON chat_channels FOR DELETE TO authenticated
+  USING (kind = 'channel' AND is_workspace_admin(workspace_id));
+
+DROP POLICY IF EXISTS "chat_members_select" ON chat_members;
+CREATE POLICY "chat_members_select" ON chat_members FOR SELECT TO authenticated USING (can_see_channel(channel_id));
+
+-- Join a public channel yourself; owners and admins add anyone in the account.
+DROP POLICY IF EXISTS "chat_members_insert" ON chat_members;
+CREATE POLICY "chat_members_insert" ON chat_members FOR INSERT TO authenticated
+  WITH CHECK (
+    role = 'member'
+    AND (
+      (user_id = auth.uid() AND EXISTS (SELECT 1 FROM chat_channels c WHERE c.id = channel_id AND c.kind = 'channel' AND NOT c.is_private AND c.archived_at IS NULL)
+        AND can_see_channel(channel_id))
+      OR can_manage_channel(channel_id)
+    )
+  );
+
+-- Your own read marker and mute; owners and admins can make someone an owner.
+DROP POLICY IF EXISTS "chat_members_update" ON chat_members;
+CREATE POLICY "chat_members_update" ON chat_members FOR UPDATE TO authenticated
+  USING (user_id = auth.uid() OR can_manage_channel(channel_id))
+  WITH CHECK (user_id = auth.uid() OR can_manage_channel(channel_id));
+
+DROP POLICY IF EXISTS "chat_members_delete" ON chat_members;
+CREATE POLICY "chat_members_delete" ON chat_members FOR DELETE TO authenticated
+  USING (user_id = auth.uid() OR can_manage_channel(channel_id));
+
+DROP POLICY IF EXISTS "chat_messages_select" ON chat_messages;
+CREATE POLICY "chat_messages_select" ON chat_messages FOR SELECT TO authenticated USING (can_see_channel(channel_id));
+
+DROP POLICY IF EXISTS "chat_messages_insert" ON chat_messages;
+CREATE POLICY "chat_messages_insert" ON chat_messages FOR INSERT TO authenticated
+  WITH CHECK (
+    user_id = auth.uid() AND source = 'user' AND webhook_id IS NULL AND sender_name IS NULL
+    AND is_chat_member(channel_id)
+    AND EXISTS (SELECT 1 FROM chat_channels c WHERE c.id = channel_id AND c.archived_at IS NULL)
+  );
+
+DROP POLICY IF EXISTS "chat_messages_update" ON chat_messages;
+CREATE POLICY "chat_messages_update" ON chat_messages FOR UPDATE TO authenticated
+  USING (user_id = auth.uid() OR can_manage_channel(channel_id))
+  WITH CHECK (user_id = auth.uid() OR can_manage_channel(channel_id));
+
+DROP POLICY IF EXISTS "chat_webhooks_select" ON chat_webhooks;
+CREATE POLICY "chat_webhooks_select" ON chat_webhooks FOR SELECT TO authenticated USING (can_manage_channel(channel_id));
+DROP POLICY IF EXISTS "chat_webhooks_insert" ON chat_webhooks;
+CREATE POLICY "chat_webhooks_insert" ON chat_webhooks FOR INSERT TO authenticated
+  WITH CHECK (can_manage_channel(channel_id) AND created_by = auth.uid());
+DROP POLICY IF EXISTS "chat_webhooks_update" ON chat_webhooks;
+CREATE POLICY "chat_webhooks_update" ON chat_webhooks FOR UPDATE TO authenticated
+  USING (can_manage_channel(channel_id)) WITH CHECK (can_manage_channel(channel_id));
+DROP POLICY IF EXISTS "chat_webhooks_delete" ON chat_webhooks;
+CREATE POLICY "chat_webhooks_delete" ON chat_webhooks FOR DELETE TO authenticated USING (can_manage_channel(channel_id));
+
+-- ---------------------------------------------------------------- guards
+
+-- Members and webhooks: same account as the channel; members must be active in it.
+CREATE OR REPLACE FUNCTION chat_members_check() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  SELECT c.workspace_id INTO NEW.workspace_id FROM chat_channels c WHERE c.id = NEW.channel_id;
+  IF NEW.workspace_id IS NULL THEN RAISE EXCEPTION 'Channel not found'; END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM workspace_members m WHERE m.workspace_id = NEW.workspace_id AND m.user_id = NEW.user_id AND m.status = 'active') THEN
+    RAISE EXCEPTION 'Only people in this account can be in its channels';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION chat_webhooks_check() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  SELECT c.workspace_id INTO NEW.workspace_id FROM chat_channels c WHERE c.id = NEW.channel_id AND c.kind = 'channel';
+  IF NEW.workspace_id IS NULL THEN RAISE EXCEPTION 'Channel not found'; END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS chat_members_check ON chat_members;
+CREATE TRIGGER chat_members_check BEFORE INSERT OR UPDATE OF channel_id, user_id ON chat_members
+  FOR EACH ROW EXECUTE FUNCTION chat_members_check();
+DROP TRIGGER IF EXISTS chat_webhooks_check ON chat_webhooks;
+CREATE TRIGGER chat_webhooks_check BEFORE INSERT OR UPDATE OF channel_id ON chat_webhooks
+  FOR EACH ROW EXECUTE FUNCTION chat_webhooks_check();
+
+-- Messages: account from the channel, thread replies stay in their channel (one level deep),
+-- edits only change the text, and the channel and thread counters stay current.
+CREATE OR REPLACE FUNCTION chat_messages_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_parent chat_messages;
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    SELECT c.workspace_id INTO NEW.workspace_id FROM chat_channels c WHERE c.id = NEW.channel_id;
+    IF NEW.workspace_id IS NULL THEN RAISE EXCEPTION 'Channel not found'; END IF;
+    NEW.reply_count := 0; NEW.last_reply_at := NULL; NEW.edited_at := NULL; NEW.deleted_at := NULL;
+    NEW.created_at := now();
+    IF NEW.parent_id IS NOT NULL THEN
+      SELECT * INTO v_parent FROM chat_messages WHERE id = NEW.parent_id;
+      IF v_parent.id IS NULL OR v_parent.channel_id <> NEW.channel_id THEN RAISE EXCEPTION 'Reply to a message in this channel'; END IF;
+      IF v_parent.parent_id IS NOT NULL THEN NEW.parent_id := v_parent.parent_id; END IF;
+    END IF;
+    RETURN NEW;
+  END IF;
+  -- UPDATE: only the text (an edit) or a delete marker; counters only from the trigger below.
+  IF NEW.channel_id <> OLD.channel_id OR NEW.user_id IS DISTINCT FROM OLD.user_id OR NEW.parent_id IS DISTINCT FROM OLD.parent_id
+     OR NEW.source <> OLD.source OR NEW.created_at <> OLD.created_at OR NEW.sender_name IS DISTINCT FROM OLD.sender_name THEN
+    RAISE EXCEPTION 'Only the text of a message can change';
+  END IF;
+  IF current_setting('synapse.chat_counts', true) IS DISTINCT FROM 'on' THEN
+    NEW.reply_count := OLD.reply_count; NEW.last_reply_at := OLD.last_reply_at;
+    IF OLD.deleted_at IS NOT NULL THEN RAISE EXCEPTION 'This message was deleted'; END IF;
+    IF NEW.deleted_at IS NOT NULL THEN
+      -- Deleting removes the words; the gap stays so threads still make sense.
+      NEW.deleted_at := now(); NEW.body := 'This message was deleted.'; NEW.meta := '{}'::jsonb;
+      RETURN NEW;
+    END IF;
+    IF NEW.body <> OLD.body THEN
+      IF OLD.user_id IS DISTINCT FROM auth.uid() THEN RAISE EXCEPTION 'You can only edit your own messages'; END IF;
+      NEW.edited_at := now();
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS chat_messages_guard ON chat_messages;
+CREATE TRIGGER chat_messages_guard BEFORE INSERT OR UPDATE ON chat_messages
+  FOR EACH ROW EXECUTE FUNCTION chat_messages_guard();
+
+CREATE OR REPLACE FUNCTION chat_messages_after() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  PERFORM set_config('synapse.chat_counts', 'on', true);
+  IF NEW.parent_id IS NOT NULL THEN
+    UPDATE chat_messages SET reply_count = reply_count + 1, last_reply_at = NEW.created_at WHERE id = NEW.parent_id;
+  END IF;
+  UPDATE chat_channels SET last_message_at = NEW.created_at WHERE id = NEW.channel_id;
+  -- Posting counts as reading.
+  IF NEW.user_id IS NOT NULL THEN
+    UPDATE chat_members SET last_read_at = NEW.created_at WHERE channel_id = NEW.channel_id AND user_id = NEW.user_id;
+  END IF;
+  PERFORM set_config('synapse.chat_counts', 'off', true);
+  RETURN NULL;
+END;
+$$;
+DROP TRIGGER IF EXISTS chat_messages_after ON chat_messages;
+CREATE TRIGGER chat_messages_after AFTER INSERT ON chat_messages
+  FOR EACH ROW EXECUTE FUNCTION chat_messages_after();
+
+-- Channels: kind, account and direct-message pairs never change.
+CREATE OR REPLACE FUNCTION chat_channels_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NEW.workspace_id <> OLD.workspace_id OR NEW.kind <> OLD.kind OR NEW.dm_key IS DISTINCT FROM OLD.dm_key THEN
+    RAISE EXCEPTION 'That cannot change';
+  END IF;
+  IF NEW.department_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM departments d WHERE d.id = NEW.department_id AND d.workspace_id = NEW.workspace_id) THEN
+    RAISE EXCEPTION 'That department belongs to another account';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS chat_channels_guard ON chat_channels;
+CREATE TRIGGER chat_channels_guard BEFORE UPDATE ON chat_channels
+  FOR EACH ROW EXECUTE FUNCTION chat_channels_guard();
+
+-- ---------------------------------------------------------------- actions
+
+/** Create a channel; you become its owner. Name: lowercase letters, numbers, - and _. */
+CREATE OR REPLACE FUNCTION create_channel(p_workspace uuid, p_name text, p_description text DEFAULT NULL, p_private boolean DEFAULT false, p_department uuid DEFAULT NULL)
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_id uuid; v_name text := lower(btrim(p_name));
+BEGIN
+  IF NOT has_workspace_role(p_workspace, ARRAY['owner', 'admin', 'supervisor', 'member']) THEN RAISE EXCEPTION 'Not in this account'; END IF;
+  IF p_department IS NOT NULL AND NOT EXISTS (SELECT 1 FROM departments WHERE id = p_department AND workspace_id = p_workspace) THEN
+    RAISE EXCEPTION 'That department belongs to another account';
+  END IF;
+  INSERT INTO chat_channels (workspace_id, kind, name, description, is_private, department_id, created_by)
+  VALUES (p_workspace, 'channel', v_name, nullif(btrim(p_description), ''), coalesce(p_private, false), p_department, auth.uid())
+  RETURNING id INTO v_id;
+  INSERT INTO chat_members (channel_id, workspace_id, user_id, role) VALUES (v_id, p_workspace, auth.uid(), 'owner');
+  RETURN v_id;
+END;
+$$;
+
+/** The direct message between you and these people (made the first time). */
+CREATE OR REPLACE FUNCTION open_dm(p_workspace uuid, p_users uuid[])
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_ids uuid[]; v_key text; v_id uuid; v_user uuid;
+BEGIN
+  IF NOT has_workspace_role(p_workspace, ARRAY['owner', 'admin', 'supervisor', 'member']) THEN RAISE EXCEPTION 'Not in this account'; END IF;
+  SELECT array_agg(DISTINCT u ORDER BY u) INTO v_ids FROM unnest(array_append(p_users, auth.uid())) u;
+  IF array_length(v_ids, 1) < 2 OR array_length(v_ids, 1) > 9 THEN RAISE EXCEPTION 'A direct message is between 2 and 9 people'; END IF;
+  IF EXISTS (SELECT 1 FROM unnest(v_ids) u WHERE NOT EXISTS (
+      SELECT 1 FROM workspace_members m WHERE m.workspace_id = p_workspace AND m.user_id = u AND m.status = 'active')) THEN
+    RAISE EXCEPTION 'Everyone in a direct message must be in this account';
+  END IF;
+  v_key := array_to_string(v_ids, ',');
+  SELECT id INTO v_id FROM chat_channels WHERE workspace_id = p_workspace AND kind = 'dm' AND dm_key = v_key;
+  IF v_id IS NOT NULL THEN RETURN v_id; END IF;
+  INSERT INTO chat_channels (workspace_id, kind, is_private, dm_key, created_by) VALUES (p_workspace, 'dm', true, v_key, auth.uid())
+  RETURNING id INTO v_id;
+  FOREACH v_user IN ARRAY v_ids LOOP
+    INSERT INTO chat_members (channel_id, workspace_id, user_id, role) VALUES (v_id, p_workspace, v_user, 'member');
+  END LOOP;
+  RETURN v_id;
+END;
+$$;
+
+/** Unread messages per channel you're in (top-level and thread replies by others since you last read). */
+CREATE OR REPLACE FUNCTION chat_unread(p_workspace uuid)
+RETURNS TABLE (channel_id uuid, unread bigint) LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT m.channel_id, count(x.id)
+  FROM chat_members m
+  JOIN chat_messages x ON x.channel_id = m.channel_id AND x.created_at > m.last_read_at
+    AND x.deleted_at IS NULL AND x.user_id IS DISTINCT FROM auth.uid()
+  WHERE m.user_id = auth.uid() AND m.workspace_id = p_workspace
+  GROUP BY m.channel_id;
+$$;
+
+REVOKE ALL ON FUNCTION create_channel(uuid, text, text, boolean, uuid) FROM public, anon;
+REVOKE ALL ON FUNCTION open_dm(uuid, uuid[]) FROM public, anon;
+REVOKE ALL ON FUNCTION chat_unread(uuid) FROM public, anon;
+GRANT EXECUTE ON FUNCTION create_channel(uuid, text, text, boolean, uuid), open_dm(uuid, uuid[]), chat_unread(uuid) TO authenticated;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON chat_channels, chat_members, chat_messages, chat_webhooks TO authenticated;
+
+-- Live updates: new and edited messages and channels reach the app as they happen.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'chat_messages') THEN
+      ALTER PUBLICATION supabase_realtime ADD TABLE chat_messages;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'chat_members') THEN
+      ALTER PUBLICATION supabase_realtime ADD TABLE chat_members;
+    END IF;
+  END IF;
+END $$;
+
+
+-- ============ 20261017090000_streams.sql ============
+/*
+  # Streams: one person broadcasts, many watch
+
+  A stream is a LiveKit room (stream_<id>) where only the host sends video and sound; viewers
+  watch, chat and react. Viewers join with the watch link (/live/CODE?watch=<token>), no account
+  needed; people in the account can open it from Streams. The call-token function only lets
+  viewers in while the stream is live. Safe to run more than once.
+
+  1. streams
+     - code: like meetings (FOCU-358), used in links
+     - watch_token: the private part of the watch link
+     - status: scheduled -> live -> ended (started_at / ended_at are set on the way)
+  2. stream_by_watch(code, token): what the public watch page needs, only with the right token
+  3. RLS: everyone in the account sees its streams; members create streams they host; the host
+     or an admin changes or deletes them
+*/
+
+CREATE TABLE IF NOT EXISTS streams (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  host_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  title text NOT NULL CHECK (char_length(btrim(title)) BETWEEN 1 AND 120),
+  description text CHECK (description IS NULL OR char_length(description) <= 1000),
+  code text NOT NULL UNIQUE CHECK (code ~ '^[A-Z]{4}-[0-9]{3}$'),
+  watch_token text NOT NULL UNIQUE DEFAULT encode(gen_random_bytes(16), 'hex'),
+  status text NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'live', 'ended')),
+  scheduled_at timestamptz,
+  started_at timestamptz,
+  ended_at timestamptz,
+  chat_enabled boolean NOT NULL DEFAULT true,
+  peak_viewers integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_streams_workspace ON streams(workspace_id, created_at DESC);
+
+ALTER TABLE streams ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "streams_select" ON streams;
+CREATE POLICY "streams_select" ON streams FOR SELECT TO authenticated USING (is_workspace_member(workspace_id));
+
+DROP POLICY IF EXISTS "streams_insert" ON streams;
+CREATE POLICY "streams_insert" ON streams FOR INSERT TO authenticated
+  WITH CHECK (host_id = auth.uid() AND has_workspace_role(workspace_id, ARRAY['owner', 'admin', 'supervisor', 'member']));
+
+DROP POLICY IF EXISTS "streams_update" ON streams;
+CREATE POLICY "streams_update" ON streams FOR UPDATE TO authenticated
+  USING (host_id = auth.uid() OR is_workspace_admin(workspace_id))
+  WITH CHECK (host_id = auth.uid() OR is_workspace_admin(workspace_id));
+
+DROP POLICY IF EXISTS "streams_delete" ON streams;
+CREATE POLICY "streams_delete" ON streams FOR DELETE TO authenticated
+  USING (host_id = auth.uid() OR is_workspace_admin(workspace_id));
+
+-- Status only moves forward, with its times; the account, host and code never change.
+CREATE OR REPLACE FUNCTION streams_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    NEW.status := 'scheduled'; NEW.started_at := NULL; NEW.ended_at := NULL; NEW.peak_viewers := 0;
+    RETURN NEW;
+  END IF;
+  IF NEW.workspace_id <> OLD.workspace_id OR NEW.host_id <> OLD.host_id OR NEW.code <> OLD.code THEN
+    RAISE EXCEPTION 'That cannot change';
+  END IF;
+  IF OLD.status = 'ended' AND NEW.status <> 'ended' THEN RAISE EXCEPTION 'This stream has ended'; END IF;
+  IF OLD.status = 'live' AND NEW.status = 'scheduled' THEN RAISE EXCEPTION 'A live stream can only end'; END IF;
+  IF NEW.status = 'live' AND OLD.status <> 'live' THEN NEW.started_at := now(); END IF;
+  IF NEW.status = 'ended' AND OLD.status <> 'ended' THEN NEW.ended_at := now(); END IF;
+  NEW.peak_viewers := greatest(OLD.peak_viewers, NEW.peak_viewers);
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS streams_guard ON streams;
+CREATE TRIGGER streams_guard BEFORE INSERT OR UPDATE ON streams FOR EACH ROW EXECUTE FUNCTION streams_guard();
+
+/** The public watch page: title, status and who's hosting, only with the right watch token. */
+CREATE OR REPLACE FUNCTION stream_by_watch(p_code text, p_token text)
+RETURNS jsonb LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT jsonb_build_object(
+    'id', s.id, 'title', s.title, 'description', s.description, 'code', s.code, 'status', s.status,
+    'scheduled_at', s.scheduled_at, 'started_at', s.started_at, 'ended_at', s.ended_at, 'chat_enabled', s.chat_enabled,
+    'host_id', s.host_id,
+    'host_name', coalesce(nullif(btrim(concat_ws(' ', p.first_name, p.last_name)), ''), w.name, ''),
+    'workspace_name', w.name
+  )
+  FROM streams s
+  LEFT JOIN profiles p ON p.user_id = s.host_id
+  LEFT JOIN workspaces w ON w.id = s.workspace_id
+  WHERE s.code = upper(btrim(p_code)) AND coalesce(btrim(p_token), '') <> '' AND s.watch_token = btrim(p_token)
+  LIMIT 1;
+$$;
+REVOKE ALL ON FUNCTION stream_by_watch(text, text) FROM public;
+GRANT EXECUTE ON FUNCTION stream_by_watch(text, text) TO anon, authenticated;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON streams TO authenticated;
+
+
+-- ============ 20261017120000_dashboard_summary.sql ============
+-- Dashboard in one request: today's and the week's bookings (with their contact and calendar) and
+-- the four counts, which the dashboard used to fetch with six separate requests.
+--
+-- SECURITY INVOKER: it runs as the person asking, so row-level security decides exactly what it
+-- sees, the same as the six requests did. Safe to run more than once.
+
+create or replace function public.dashboard_summary(
+  p_workspace_id uuid,
+  p_today_start timestamptz,
+  p_today_end timestamptz,
+  p_now timestamptz,
+  p_week_end timestamptz
+)
+returns jsonb
+language sql
+stable
+security invoker
+set search_path = public
+as $$
+  with booked as (
+    select a.start_time,
+           to_jsonb(a)
+             || jsonb_build_object(
+                  'contacts', case when c.id is null then null else to_jsonb(c) end,
+                  'calendars', case when cal.id is null then null else to_jsonb(cal) end
+                ) as row
+    from appointments a
+    left join contacts c on c.id = a.contact_id
+    left join calendars cal on cal.id = a.calendar_id
+    where a.workspace_id = p_workspace_id
+      and a.status in ('confirmed', 'pending')
+      and a.start_time >= least(p_today_start, p_now)
+      and a.start_time <= greatest(p_today_end, p_week_end)
+  )
+  select jsonb_build_object(
+    'today', coalesce((
+      select jsonb_agg(b.row order by b.start_time)
+      from booked b
+      where b.start_time >= p_today_start and b.start_time <= p_today_end
+    ), '[]'::jsonb),
+    'upcoming', coalesce((
+      select jsonb_agg(u.row order by u.start_time)
+      from (
+        select b.row, b.start_time from booked b
+        where b.start_time >= p_now and b.start_time <= p_week_end
+        order by b.start_time
+        limit 6
+      ) u
+    ), '[]'::jsonb),
+    'contacts', (select count(*) from contacts where workspace_id = p_workspace_id),
+    'members', (select count(*) from workspace_members where workspace_id = p_workspace_id),
+    'completed', (select count(*) from appointments where workspace_id = p_workspace_id and status = 'completed'),
+    'messages', (select count(*) from messages where workspace_id = p_workspace_id)
+  );
+$$;
+
+revoke all on function public.dashboard_summary(uuid, timestamptz, timestamptz, timestamptz, timestamptz) from public, anon;
+grant execute on function public.dashboard_summary(uuid, timestamptz, timestamptz, timestamptz, timestamptz) to authenticated;
+
+
+-- ============ 20261018090000_member_status.sql ============
+/*
+  # Member status: what people are up to, and whether they are away
+
+  Everyone in the account sees each other's status (an emoji and a short line, like "In a
+  meeting"), when it clears, and whether they set themselves away. Each person sets only their
+  own. Who is online right now is not stored: the app works that out live. Safe to run more
+  than once.
+
+  1. member_status: one row per person per account
+  2. RLS: members read the account's statuses; each person writes only their own row
+  3. Realtime: changes reach everyone straight away
+*/
+
+CREATE TABLE IF NOT EXISTS member_status (
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  emoji text CHECK (emoji IS NULL OR char_length(emoji) <= 16),
+  text text CHECK (text IS NULL OR char_length(text) <= 100),
+  clear_at timestamptz,
+  away boolean NOT NULL DEFAULT false,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (workspace_id, user_id)
+);
+
+ALTER TABLE member_status ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "member_status_select" ON member_status;
+CREATE POLICY "member_status_select" ON member_status FOR SELECT TO authenticated USING (is_workspace_member(workspace_id));
+
+DROP POLICY IF EXISTS "member_status_insert" ON member_status;
+CREATE POLICY "member_status_insert" ON member_status FOR INSERT TO authenticated
+  WITH CHECK (user_id = auth.uid() AND is_workspace_member(workspace_id));
+
+DROP POLICY IF EXISTS "member_status_update" ON member_status;
+CREATE POLICY "member_status_update" ON member_status FOR UPDATE TO authenticated
+  USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid() AND is_workspace_member(workspace_id));
+
+DROP POLICY IF EXISTS "member_status_delete" ON member_status;
+CREATE POLICY "member_status_delete" ON member_status FOR DELETE TO authenticated USING (user_id = auth.uid());
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'member_status') THEN
+      ALTER PUBLICATION supabase_realtime ADD TABLE member_status;
+    END IF;
+  END IF;
+END $$;
+
+
+-- ============ 20261021090000_forms_upgrade.sql ============
+/*
+  # Forms and surveys: quiz scores, disqualified leads, payments, where people came from, emails
+
+  Each submission keeps its quiz score and result, whether logic disqualified the person, the
+  payment taken with it (Stripe Checkout), and where they came from (utm tags, ?source=, the page
+  that sent them). Form notification emails are queued as messages linked to their submission and
+  sent by the same mailer as workflow emails. Safe to run more than once.
+
+  1. form_submissions: meta, score / score_max / score_percent / quiz_result, disqualified,
+     payment_status / payment_amount / payment_currency / stripe_session_id
+  2. messages.form_submission_id: the submission a queued email belongs to
+*/
+
+ALTER TABLE form_submissions ADD COLUMN IF NOT EXISTS meta jsonb NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE form_submissions ADD COLUMN IF NOT EXISTS score numeric;
+ALTER TABLE form_submissions ADD COLUMN IF NOT EXISTS score_max numeric;
+ALTER TABLE form_submissions ADD COLUMN IF NOT EXISTS score_percent integer;
+ALTER TABLE form_submissions ADD COLUMN IF NOT EXISTS quiz_result text;
+ALTER TABLE form_submissions ADD COLUMN IF NOT EXISTS disqualified boolean NOT NULL DEFAULT false;
+ALTER TABLE form_submissions ADD COLUMN IF NOT EXISTS payment_status text NOT NULL DEFAULT 'none';
+ALTER TABLE form_submissions ADD COLUMN IF NOT EXISTS payment_amount integer;
+ALTER TABLE form_submissions ADD COLUMN IF NOT EXISTS payment_currency text;
+ALTER TABLE form_submissions ADD COLUMN IF NOT EXISTS stripe_session_id text;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'form_submissions_payment_status_check') THEN
+    ALTER TABLE form_submissions ADD CONSTRAINT form_submissions_payment_status_check
+      CHECK (payment_status IN ('none', 'pending', 'paid', 'failed'));
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_form_submissions_form_created ON form_submissions(form_id, created_at DESC);
+
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS form_submission_id uuid REFERENCES form_submissions(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_messages_form_queued ON messages(created_at) WHERE status = 'queued' AND form_submission_id IS NOT NULL;
+
+
+-- ============ 20261021120000_form_workflow_trigger.sql ============
+/*
+  # Forms: start "Form submitted" workflows when the contact is attached
+
+  The form-submit function saves the submission first and attaches the contact a moment later
+  (an UPDATE). The workflow trigger only listened for INSERTs with a contact already set, so
+  form and survey submissions never started a workflow.
+
+  This adds a second trigger for the moment a submission gets its contact. A submission saved
+  with its contact already set still fires once (on INSERT); one saved without a contact fires
+  once when the contact is attached.
+
+  It also wakes the mailer for a form's own emails (the team alert and the auto-reply). The
+  once-a-minute job only called the mailer when a workflow email was waiting, so form emails
+  stayed queued until some workflow happened to send one. Safe to run more than once.
+*/
+
+CREATE OR REPLACE FUNCTION wf_on_form_submission() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NEW.contact_id IS NOT NULL THEN
+    PERFORM wf_emit(NEW.workspace_id, 'form_submitted', NEW.contact_id, jsonb_build_object('form_id', NEW.form_id, 'submission_id', NEW.id));
+  END IF;
+  RETURN NULL;
+END $$;
+
+DROP TRIGGER IF EXISTS wf_form_events ON form_submissions;
+CREATE TRIGGER wf_form_events AFTER INSERT ON form_submissions
+  FOR EACH ROW EXECUTE FUNCTION wf_on_form_submission();
+
+DROP TRIGGER IF EXISTS wf_form_contact_events ON form_submissions;
+CREATE TRIGGER wf_form_contact_events AFTER UPDATE OF contact_id ON form_submissions
+  FOR EACH ROW WHEN (OLD.contact_id IS NULL AND NEW.contact_id IS NOT NULL)
+  EXECUTE FUNCTION wf_on_form_submission();
+
+-- The column form emails are linked by (also added by 20261021090000_forms_upgrade.sql).
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS form_submission_id uuid REFERENCES form_submissions(id) ON DELETE SET NULL;
+
+CREATE OR REPLACE FUNCTION wf_tick() RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE ev wf_events; r record; n_ev int := 0; n_runs int := 0; n_daily int := 0; queued int;
+BEGIN
+  IF NOT pg_try_advisory_xact_lock(hashtext('synapse_wf_tick')) THEN RETURN jsonb_build_object('skipped', true); END IF;
+  FOR ev IN SELECT * FROM wf_events WHERE processed_at IS NULL ORDER BY id LIMIT 500 LOOP
+    BEGIN
+      PERFORM wf_handle_event(ev);
+    EXCEPTION WHEN OTHERS THEN RAISE WARNING 'wf event % failed: %', ev.id, SQLERRM;
+    END;
+    UPDATE wf_events SET processed_at = now() WHERE id = ev.id;
+    n_ev := n_ev + 1;
+  END LOOP;
+  FOR r IN SELECT id FROM wf_runs WHERE status = 'waiting' AND resume_at <= now() ORDER BY resume_at LIMIT 500 LOOP
+    BEGIN PERFORM wf_run(r.id); EXCEPTION WHEN OTHERS THEN RAISE WARNING 'wf run % failed: %', r.id, SQLERRM; END;
+    n_runs := n_runs + 1;
+  END LOOP;
+  BEGIN n_daily := wf_daily_scan(); EXCEPTION WHEN OTHERS THEN RAISE WARNING 'wf daily scan failed: %', SQLERRM; END;
+  -- Housekeeping: keep 30 days of history, like the manual's logs.
+  DELETE FROM wf_events WHERE processed_at < now() - interval '30 days';
+  DELETE FROM wf_logs WHERE at < now() - interval '30 days';
+  -- Ask the mailer to send workflow emails and form emails (team alert, auto-reply).
+  SELECT count(*) INTO queued FROM messages WHERE status = 'queued' AND (wf_run_id IS NOT NULL OR form_submission_id IS NOT NULL);
+  IF queued > 0 AND to_regnamespace('net') IS NOT NULL THEN
+    BEGIN
+      EXECUTE 'SELECT net.http_post(url := $1, body := ''{"mode":"queue"}''::jsonb, headers := jsonb_strip_nulls(jsonb_build_object(''Content-Type'', ''application/json'', ''x-synapse-mailer'', $2, ''apikey'', $3, ''Authorization'', ''Bearer '' || $3)))'
+      USING (SELECT value FROM wf_private.settings WHERE key = 'mailer_url'), wf_mailer_secret(), (SELECT value FROM wf_private.settings WHERE key = 'client_key');
+    EXCEPTION WHEN OTHERS THEN RAISE WARNING 'wf mailer call failed: %', SQLERRM;
+    END;
+  END IF;
+  RETURN jsonb_build_object('events', n_ev, 'resumed', n_runs, 'daily', n_daily, 'queued_emails', queued);
+END $$;
+REVOKE ALL ON FUNCTION wf_tick() FROM PUBLIC, anon, authenticated;
+
+
+-- ============ 20261022090000_form_files.sql ============
+/*
+  # Forms: pictures and files uploaded from the device
+
+  One public bucket, `form-files`, with two folders:
+
+  - `assets/<workspace id>/...`: what the builder uploads (images, logos, backgrounds). Only
+    members of that workspace can add, replace or remove them.
+  - `responses/<form id>/...`: what people filling a form in upload (File Upload answers and
+    signatures). Anyone may add a file, but only to a form that is published, or as a member of
+    the form's workspace (the builder's Preview works on drafts). Nobody can change or remove
+    them except the workspace.
+
+  The files are public links (like a form's own images), with random names that can't be
+  guessed. 10 MB each. Safe to run more than once.
+*/
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit)
+VALUES ('form-files', 'form-files', true, 10485760)
+ON CONFLICT (id) DO UPDATE SET public = true, file_size_limit = 10485760;
+
+-- Builder pictures: members of the workspace in the second folder name.
+DROP POLICY IF EXISTS "form_files_assets_insert" ON storage.objects;
+CREATE POLICY "form_files_assets_insert" ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (
+    bucket_id = 'form-files' AND (storage.foldername(name))[1] = 'assets'
+    AND can_access_workspace(((storage.foldername(name))[2])::uuid)
+  );
+DROP POLICY IF EXISTS "form_files_assets_update" ON storage.objects;
+CREATE POLICY "form_files_assets_update" ON storage.objects FOR UPDATE TO authenticated
+  USING (bucket_id = 'form-files' AND (storage.foldername(name))[1] = 'assets' AND can_access_workspace(((storage.foldername(name))[2])::uuid))
+  WITH CHECK (bucket_id = 'form-files' AND (storage.foldername(name))[1] = 'assets' AND can_access_workspace(((storage.foldername(name))[2])::uuid));
+DROP POLICY IF EXISTS "form_files_assets_delete" ON storage.objects;
+CREATE POLICY "form_files_assets_delete" ON storage.objects FOR DELETE TO authenticated
+  USING (bucket_id = 'form-files' AND (storage.foldername(name))[1] = 'assets' AND can_access_workspace(((storage.foldername(name))[2])::uuid));
+
+-- Answers: into a published form, or any form of your own workspace (Preview).
+CREATE OR REPLACE FUNCTION form_accepts_files(p_form text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM forms f
+    WHERE f.id::text = p_form AND (f.status = 'published' OR (auth.uid() IS NOT NULL AND can_access_workspace(f.workspace_id)))
+  );
+$$;
+GRANT EXECUTE ON FUNCTION form_accepts_files(text) TO anon, authenticated;
+
+DROP POLICY IF EXISTS "form_files_responses_insert" ON storage.objects;
+CREATE POLICY "form_files_responses_insert" ON storage.objects FOR INSERT TO anon, authenticated
+  WITH CHECK (
+    bucket_id = 'form-files' AND (storage.foldername(name))[1] = 'responses'
+    AND form_accepts_files((storage.foldername(name))[2])
+  );
+DROP POLICY IF EXISTS "form_files_responses_delete" ON storage.objects;
+CREATE POLICY "form_files_responses_delete" ON storage.objects FOR DELETE TO authenticated
+  USING (
+    bucket_id = 'form-files' AND (storage.foldername(name))[1] = 'responses'
+    AND EXISTS (SELECT 1 FROM forms f WHERE f.id::text = (storage.foldername(name))[2] AND can_access_workspace(f.workspace_id))
+  );
+
+-- Public links need no read policy, but listing the bucket stays closed: reading rows of
+-- storage.objects is limited to the workspace's own folders.
+DROP POLICY IF EXISTS "form_files_read" ON storage.objects;
+CREATE POLICY "form_files_read" ON storage.objects FOR SELECT TO authenticated
+  USING (
+    bucket_id = 'form-files' AND (
+      ((storage.foldername(name))[1] = 'assets' AND can_access_workspace(((storage.foldername(name))[2])::uuid))
+      OR ((storage.foldername(name))[1] = 'responses' AND EXISTS (SELECT 1 FROM forms f WHERE f.id::text = (storage.foldername(name))[2] AND can_access_workspace(f.workspace_id)))
+    )
+  );
+

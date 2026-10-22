@@ -179,6 +179,11 @@ export function FormsPage() {
       status: 'draft',
       success_message: form.success_message,
       owner_id: form.owner_id ?? null,
+      // The built form itself, and what it does with contacts.
+      definition: (form as Form & { definition?: unknown }).definition ?? {},
+      create_contact: form.create_contact,
+      update_contact: form.update_contact,
+      auto_tags: form.auto_tags,
     }).select().single();
     if (err) { toast(err.message, 'error'); return; }
 
