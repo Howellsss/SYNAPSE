@@ -319,6 +319,9 @@ function RenderSection({ section, definition, builderMode, selectedElementId, on
     const col = viewport === 'mobile' ? 0 : Math.min((el.column ?? 1) - 1, effectiveColumnCount - 1);
     columns[col].push(el);
   }
+  // People filling it in never see an empty column: the fields take the full width.
+  const shown = builderMode ? columns : columns.filter((c) => c.length > 0);
+  const cols = Math.max(shown.length, 1);
 
   const sectionStyle: React.CSSProperties = {
     backgroundColor: style?.backgroundColor,
@@ -335,8 +338,8 @@ function RenderSection({ section, definition, builderMode, selectedElementId, on
     <div className="relative last:mb-0" style={sectionStyle}>
       {showOverlay && <div className="absolute inset-0" style={{ backgroundColor: style!.overlayColor, opacity: style!.overlayOpacity! / 100, borderRadius: style?.borderRadius, pointerEvents: 'none' }} />}
       <div className="relative">
-        <div className={cn(effectiveColumnCount === 2 && 'grid grid-cols-1 sm:grid-cols-2', effectiveColumnCount === 3 && 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3', effectiveColumnCount === 1 && 'space-y-0')} style={{ gap: effectiveColumnCount > 1 ? `${theme.layout.columnGap}px` : undefined }}>
-          {columns.map((colElements, colIdx) => (
+        <div className={cn(cols === 2 && 'grid grid-cols-1 sm:grid-cols-2', cols === 3 && 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3', cols === 1 && 'space-y-0')} style={{ gap: cols > 1 ? `${theme.layout.columnGap}px` : undefined }}>
+          {shown.map((colElements, colIdx) => (
             <div key={colIdx} style={{ display: 'flex', flexDirection: 'column', gap: `${theme.layout.fieldSpacing}px` }}>
               {colElements.map(el => <RenderElement key={el.id} element={el} definition={definition} builderMode={builderMode} selected={selectedElementId === el.id} onSelect={onSelectElement} answers={answers} onAnswerChange={onAnswerChange} viewport={viewport} />)}
               {colElements.length === 0 && builderMode && <div className="min-h-[60px] rounded-lg border-2 border-dashed flex items-center justify-center text-xs" style={{ borderColor: theme.colors.border, color: theme.colors.mutedText }}>Drop elements here</div>}
