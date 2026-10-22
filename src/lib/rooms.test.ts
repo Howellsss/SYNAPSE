@@ -8,16 +8,14 @@ const viewer = (o: Partial<RoomViewer>): RoomViewer => ({ userId: 'me', role: 'm
 const room = { created_by: 'sup', department_id: 'tech', assignees: ['ada'], open_to_department: false };
 
 describe('who may do what with rooms', () => {
-  it('lets admins and supervisors create rooms, not experts', () => {
+  it('lets only admins and the owner create rooms, not users', () => {
     expect(canCreateRooms(viewer({ role: 'admin' }))).toBe(true);
-    expect(canCreateRooms(viewer({ role: 'supervisor' }))).toBe(true);
+    expect(canCreateRooms(viewer({ role: 'owner' }))).toBe(true);
     expect(canCreateRooms(viewer({ role: 'member' }))).toBe(false);
   });
-  it('lets the creating supervisor or a lead of the department manage it', () => {
-    expect(canManageRoom(room, viewer({ userId: 'sup', role: 'supervisor' }))).toBe(true);
-    expect(canManageRoom(room, viewer({ role: 'supervisor', leadDepartmentIds: ['tech'] }))).toBe(true);
-    expect(canManageRoom(room, viewer({ role: 'supervisor', leadDepartmentIds: ['video'] }))).toBe(false);
+  it('lets only admins and the owner manage a room', () => {
     expect(canManageRoom(room, viewer({ role: 'owner' }))).toBe(true);
+    expect(canManageRoom(room, viewer({ role: 'admin' }))).toBe(true);
     expect(canManageRoom(room, viewer({ userId: 'sup', role: 'member' }))).toBe(false);
   });
   it('lets assigned experts use a room, and the department when it is open to it', () => {
@@ -25,9 +23,9 @@ describe('who may do what with rooms', () => {
     expect(canUseRoom(room, viewer({ userId: 'bo', departmentIds: ['tech'] }))).toBe(false);
     expect(canUseRoom({ ...room, open_to_department: true }, viewer({ userId: 'bo', departmentIds: ['tech'] }))).toBe(true);
   });
-  it('offers supervisors only the departments they lead', () => {
+  it('offers admins every department and users none', () => {
     const all = [{ id: 'tech' }, { id: 'video' }];
-    expect(departmentsForRooms(all, viewer({ role: 'supervisor', leadDepartmentIds: ['video'] }))).toEqual([{ id: 'video' }]);
+    expect(departmentsForRooms(all, viewer({ role: 'member' }))).toEqual([]);
     expect(departmentsForRooms(all, viewer({ role: 'admin' }))).toEqual(all);
   });
 });

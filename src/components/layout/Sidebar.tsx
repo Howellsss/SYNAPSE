@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { ArrowRightStartOnRectangleIcon, Cog6ToothIcon, HomeIcon } from '@heroicons/react/24/solid';
-import { isNavActive, navGroups } from './nav';
+import { featureOf, isNavActive, navGroups } from './nav';
+import { useAccess } from '@/lib/access';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { usePlatformAdmin } from '@/lib/platformAdmin';
@@ -18,6 +19,7 @@ export function Sidebar({ currentPath, onNavigate, open, onClose }: SidebarProps
   const { profile, signOut, role } = useAuth();
   // The character library is managed by SYNAPSE admins only.
   const isPlatformAdmin = usePlatformAdmin() === true;
+  const access = useAccess();
 
   const handleNavigate = (path: string) => {
     onNavigate(path);
@@ -79,7 +81,7 @@ export function Sidebar({ currentPath, onNavigate, open, onClose }: SidebarProps
         <nav className="flex-1 px-3 pt-3">
           {navGroups.map((group, i) => (
             <div key={i} className={cn('space-y-0.5', i > 0 && 'mt-3 border-t border-navy-100 pt-3')}>
-              {group.filter((n) => n.path !== '/characters' || isPlatformAdmin).map((n) => item(n.label, n.icon, n.path))}
+              {group.filter((n) => (n.path !== '/characters' || isPlatformAdmin) && (!featureOf(n.path) || access.can(featureOf(n.path)!))).map((n) => item(n.label, n.icon, n.path))}
             </div>
           ))}
         </nav>

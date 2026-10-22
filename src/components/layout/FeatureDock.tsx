@@ -3,7 +3,8 @@ import { ChevronRight } from 'lucide-react';
 import { Cog6ToothIcon } from '@heroicons/react/24/solid';
 import { cn } from '@/lib/utils';
 import { usePlatformAdmin } from '@/lib/platformAdmin';
-import { isNavActive, navGroups } from './nav';
+import { featureOf, isNavActive, navGroups } from './nav';
+import { useAccess } from '@/lib/access';
 
 /** Height of the strip the dock sits in (the page or workspace stops above it). */
 export const DOCK_STRIP = 'h-[60px]';
@@ -23,7 +24,8 @@ export function FeatureDock({ currentPath, onNavigate, onOpenMenu, dark = false,
   onBackToSpace?: () => void;
 }) {
   const isPlatformAdmin = usePlatformAdmin() === true;
-  const groups = [...navGroups.map((g) => g.filter((n) => n.path !== '/characters' || isPlatformAdmin)), [{ label: 'Settings', icon: Cog6ToothIcon, path: '/settings' }]];
+  const access = useAccess();
+  const groups = [...navGroups.map((g) => g.filter((n) => (n.path !== '/characters' || isPlatformAdmin) && (!featureOf(n.path) || access.can(featureOf(n.path)!)))).filter((g) => g.length), [{ label: 'Settings', icon: Cog6ToothIcon, path: '/settings' }]];
   const btn = (active: boolean) => cn(
     'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400',
     active

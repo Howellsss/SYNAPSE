@@ -122,14 +122,18 @@ function initialSection() {
 }
 
 export function SettingsPage() {
-  const [section, setSection] = useState(initialSection);
+  const [picked, setSection] = useState(initialSection);
+  // Users see their own profile; Admins and the owner see every tab.
+  const { canManageTeam } = useAuth();
+  const sections = canManageTeam ? SETTINGS_SECTIONS : SETTINGS_SECTIONS.filter((s) => s.id === 'profile');
+  const section = sections.some((s) => s.id === picked) ? picked : 'profile';
 
   return (
     <div className="flex flex-col md:flex-row gap-0 md:gap-6 max-w-5xl">
       <div className="w-56 shrink-0 hidden md:block">
         <h2 className="text-lg font-semibold text-navy-800 mb-3">Settings</h2>
         <nav className="space-y-0.5">
-          {SETTINGS_SECTIONS.map(s => (
+          {sections.map(s => (
             <button
               key={s.id}
               onClick={() => setSection(s.id)}
@@ -147,7 +151,7 @@ export function SettingsPage() {
 
       <div className="md:hidden w-full">
         <select className="input-field mb-4" value={section} onChange={(e) => setSection(e.target.value)}>
-          {SETTINGS_SECTIONS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+          {sections.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
         </select>
       </div>
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Crown, Network, Pencil, Plus, Search, Trash2, UserMinus, UserPlus } from 'lucide-react';
+import { ArrowLeft, Network, Pencil, Plus, Search, Trash2, UserMinus, UserPlus } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { Avatar } from '@/components/ui/Avatar';
@@ -13,7 +13,7 @@ import {
 } from '@/lib/team';
 
 /**
- * Departments of a company account. Admins create them and choose their leads (supervisors);
+ * Departments of a company account: Admins create them and choose who is in each;
  * leads add and remove the people in their own department; everyone else can look.
  */
 export function DepartmentsSettings() {
@@ -72,7 +72,7 @@ export function DepartmentsSettings() {
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-navy-800">Departments</h3>
-            <p className="mt-0.5 text-sm text-ivory-600">Group your people into teams. A department's leads (supervisors) manage its members.</p>
+            <p className="mt-0.5 text-sm text-ivory-600">Group your people into teams. Admins choose who is in each one.</p>
           </div>
           {canManageTeam && (
             <button className="btn-primary btn-sm" onClick={() => setEditing('new')}>
@@ -91,13 +91,12 @@ export function DepartmentsSettings() {
           <EmptyState
             icon={<Network className="h-7 w-7" />}
             title="No departments yet"
-            description={canManageTeam ? 'Create departments like Tech Support or Video, then add people and choose who leads each one.' : 'Your admins haven\'t created departments yet.'}
+            description={canManageTeam ? 'Create departments like Tech Support or Video, then add people to each one.' : 'Your admins haven\'t created departments yet.'}
           />
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {departments.map((d) => {
               const people = members.filter((m) => m.department_ids.includes(d.id));
-              const leads = people.filter((m) => m.lead_department_ids.includes(d.id));
               return (
                 <div key={d.id} className="flex flex-col rounded-2xl border border-navy-100 p-4 transition-colors hover:border-navy-200">
                   <button type="button" onClick={() => setOpenId(d.id)} className="flex items-start gap-3 text-left">
@@ -106,7 +105,6 @@ export function DepartmentsSettings() {
                       <span className="block truncate text-sm font-semibold text-navy-800">{d.name}</span>
                       <span className="block text-xs text-ivory-600">
                         {people.length} {people.length === 1 ? 'person' : 'people'}
-                        {leads.length ? ` · Led by ${leads.slice(0, 2).map(memberName).join(', ')}${leads.length > 2 ? ` +${leads.length - 2}` : ''}` : ' · No lead yet'}
                       </span>
                       {d.description && <span className="mt-1 block line-clamp-2 text-xs text-ivory-700">{d.description}</span>}
                     </span>
@@ -233,8 +231,7 @@ function DepartmentDetail({ department, members, canAdmin, isLead, onBack, onEdi
   const canManage = canAdmin || isLead;
 
   const people = members.filter((m) => m.department_ids.includes(department.id));
-  const leads = people.filter((m) => m.lead_department_ids.includes(department.id));
-  const others = people.filter((m) => !m.lead_department_ids.includes(department.id));
+  const others = people;
   const candidates = useMemo(() => {
     const q = query.trim().toLowerCase();
     return members
@@ -259,15 +256,7 @@ function DepartmentDetail({ department, members, canAdmin, isLead, onBack, onEdi
     onChanged();
   };
 
-  const setLead = async (m: DirectoryMember, lead: boolean) => {
-    if (!workspace) return;
-    const { error } = await addToDepartment(workspace.id, department.id, [m.user_id], lead, user?.id ?? null);
-    if (error) { toast(error, 'error'); return; }
-    toast(lead ? `${memberName(m)} now leads ${department.name}` : `${memberName(m)} no longer leads ${department.name}`);
-    onChanged();
-  };
-
-  const row = (m: DirectoryMember, lead: boolean) => (
+  const row = (m: DirectoryMember) => (
     <div key={m.user_id} className="flex items-center gap-3 rounded-xl border border-navy-100 p-3">
       <Avatar firstName={m.first_name} lastName={m.last_name} src={m.avatar_url} size="md" />
       <div className="min-w-0 flex-1">
@@ -276,11 +265,7 @@ function DepartmentDetail({ department, members, canAdmin, isLead, onBack, onEdi
         </p>
         <p className="truncate text-xs text-ivory-600">{ROLE_LABELS[m.role]}{m.title ? ` · ${m.title}` : ''}</p>
       </div>
-      {lead && <span className="status-pill bg-gold-50 text-navy-800"><Crown className="h-3 w-3 text-gold-600" /> Lead</span>}
-      {canAdmin && (
-        <button className="btn-ghost btn-sm" onClick={() => setLead(m, !lead)}>{lead ? 'Remove as lead' : 'Make lead'}</button>
-      )}
-      {canManage && (canAdmin || !lead) && (
+      {canManage && (
         <button className="btn-ghost btn-sm text-burgundy-600" aria-label={`Remove ${memberName(m)} from ${department.name}`} onClick={() => remove(m)}>
           <UserMinus className="h-4 w-4" />
         </button>
@@ -305,15 +290,11 @@ function DepartmentDetail({ department, members, canAdmin, isLead, onBack, onEdi
             {canManage && <button className="btn-primary btn-sm" onClick={() => setAdding(true)}><UserPlus className="h-4 w-4" /> Add people</button>}
           </div>
         </div>
-        {!canManage && <p className="mb-3 rounded-xl bg-ivory-50 px-3 py-2 text-xs text-ivory-700">Only admins and this department's leads can change who is in it.</p>}
+        {!canManage && <p className="mb-3 rounded-xl bg-ivory-50 px-3 py-2 text-xs text-ivory-700">Only admins can change who is in it.</p>}
 
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ivory-600">Leads · {leads.length}</p>
-        <div className="mb-4 space-y-2">
-          {leads.length ? leads.map((m) => row(m, true)) : <p className="text-sm text-ivory-600">No lead yet.{canAdmin ? ' Use "Make lead" on someone below.' : ''}</p>}
-        </div>
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ivory-600">Members · {others.length}</p>
         <div className="space-y-2">
-          {others.length ? others.map((m) => row(m, false)) : <p className="text-sm text-ivory-600">Nobody else yet.</p>}
+          {others.length ? others.map((m) => row(m)) : <p className="text-sm text-ivory-600">Nobody else yet.</p>}
         </div>
       </div>
 

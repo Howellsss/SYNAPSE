@@ -1,5 +1,5 @@
 /**
- * Company rooms: standing video rooms that admins and supervisors create and assign to experts
+ * Company rooms: standing video rooms that admins create and assign to people
  * (or open to a whole department). Experts can't create rooms; in the rooms assigned to them they
  * start calls and make links for clients or teammates. A room shows busy while a call is on in it.
  * Database: 20261015090000_company_rooms.sql.
@@ -39,14 +39,14 @@ export interface RoomViewer {
 
 const isAdmin = (v: RoomViewer) => v.role === 'owner' || v.role === 'admin';
 
+/** Only Admins (and the owner) create, change and assign rooms; Users use the rooms given to them. */
 export function canCreateRooms(v: RoomViewer): boolean {
-  return isAdmin(v) || v.role === 'supervisor';
+  return isAdmin(v);
 }
 
 export function canManageRoom(room: Pick<CompanyRoom, 'created_by' | 'department_id'>, v: RoomViewer): boolean {
-  if (isAdmin(v)) return true;
-  if (v.role !== 'supervisor') return false;
-  return room.created_by === v.userId || (!!room.department_id && v.leadDepartmentIds.includes(room.department_id));
+  void room;
+  return isAdmin(v);
 }
 
 export function canUseRoom(room: Pick<CompanyRoom, 'created_by' | 'department_id' | 'assignees' | 'open_to_department'>, v: RoomViewer): boolean {
@@ -55,9 +55,9 @@ export function canUseRoom(room: Pick<CompanyRoom, 'created_by' | 'department_id
   return room.open_to_department && !!room.department_id && v.departmentIds.includes(room.department_id);
 }
 
-/** Departments a room can be put in by this person: any for admins, the ones they lead for supervisors. */
+/** Departments a room can be put in by this person: any for admins, none for Users. */
 export function departmentsForRooms<T extends { id: string }>(all: T[], v: RoomViewer): T[] {
-  return isAdmin(v) ? all : all.filter((d) => v.leadDepartmentIds.includes(d.id));
+  return isAdmin(v) ? all : [];
 }
 
 export function isBusy(room: Pick<CompanyRoom, 'busy_until'>, now = Date.now()): boolean {

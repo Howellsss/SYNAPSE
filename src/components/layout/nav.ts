@@ -3,6 +3,7 @@ import {
   BoltIcon, CubeIcon, CalendarDaysIcon, ChatBubbleLeftRightIcon, DocumentTextIcon,
   FolderIcon, HomeIcon, BuildingOffice2Icon, SignalIcon, MicrophoneIcon, PresentationChartBarIcon, SparklesIcon, Squares2X2Icon, TicketIcon, UserIcon, VideoCameraIcon,
 } from '@heroicons/react/24/solid';
+import { featureForPath } from '@/lib/access';
 
 // Everyday places first, then tools: the arrangement from the redesign.
 export const navGroups = [
@@ -27,6 +28,9 @@ export const navGroups = [
     { label: 'AI Hub', icon: SparklesIcon, path: '/ai-hub' },
   ],
 ];
+
+/** The section a menu item opens (null: everyone; Characters is for SYNAPSE staff). */
+export const featureOf = (path: string) => featureForPath(path);
 
 /** Is this the section you're in? */
 export const isNavActive = (currentPath: string, path: string) =>

@@ -24,7 +24,7 @@ export type LocationType =
 export type WorkflowStatus = 'draft' | 'active' | 'paused' | 'archived';
 export type FormStatus = 'draft' | 'published' | 'inactive' | 'archived';
 
-export type UserRole = 'owner' | 'admin' | 'supervisor' | 'member';
+export type UserRole = 'owner' | 'admin' | 'member';
 
 export type Channel = 'email' | 'sms';
 export type MessageStatus =
