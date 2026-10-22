@@ -129,7 +129,7 @@ export function FormCanvas({
 
                 {/* What the bottom of the form shows (the real buttons are on the live form). */}
                 {hasFields && (
-                  <div className="pointer-events-none mt-8 flex gap-3 border-t pt-6" style={{ borderColor: theme.colors.border, justifyContent: currentPageIndex > 0 ? 'space-between' : btnAlign }}>
+                  <div className="pointer-events-none mt-6 flex gap-3" style={{ justifyContent: currentPageIndex > 0 ? 'space-between' : btnAlign }}>
                     {currentPageIndex > 0 && <span style={getButtonStyle(theme, theme.buttonStyle, 'outline')} className="inline-flex items-center">Back</span>}
                     <span style={getButtonStyle(theme, theme.buttonStyle, undefined, theme.buttonStyle.width === 'full' && currentPageIndex === 0 ? '100%' : 'auto')} className="inline-flex items-center justify-center">
                       {isLastPage ? (kind === 'survey' ? 'Finish' : 'Submit') : 'Next'}
