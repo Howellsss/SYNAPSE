@@ -1,15 +1,15 @@
-import { useState } from 'react';
-import {
-  Monitor, Tablet, Smartphone, Plus, Copy, Trash2, GripVertical,
-  Eye, EyeOff, Layers, Image as ImageIcon,
-} from 'lucide-react';
-import type { FormDefinition, FormSection, FormElement, Viewport, ElementType } from '@/lib/form-builder-types';
+import { useEffect, useState } from 'react';
+import { Copy, EyeOff, Eye, GripVertical, Layers, Link2, Plus, Trash2, UserRound } from 'lucide-react';
+import { ELEMENT_LIBRARY, CONTACT_FIELD_LABELS, type FormDefinition, type FormSection, type Viewport, type ElementType } from '@/lib/form-builder-types';
 import { cn } from '@/lib/utils';
+import { BuilderElement, FormHeader, formWidthOf, getBackgroundCSS, getButtonStyle, surfaceOf } from './FormRenderer';
 
 interface FormCanvasProps {
   definition: FormDefinition;
   formName: string;
   formDescription?: string | null;
+  viewport: Viewport;
+  kind: 'form' | 'survey';
   selectedElementId: string | null;
   selectedSectionId: string | null;
   onSelectElement: (id: string | null) => void;
@@ -19,103 +19,132 @@ interface FormCanvasProps {
   onAddSection: () => void;
   onRemoveSection: (id: string) => void;
   onToggleSectionVisibility: (id: string) => void;
-  onReorderElement: (elementId: string, toSectionId: string, toIndex: number) => void;
-  onDropNewElement?: (type: ElementType, sectionId: string) => void;
+  /** Move an element to a position in a section (index in the section's list) and column (1-based). */
+  onReorderElement: (elementId: string, toSectionId: string, toIndex: number, toColumn?: number) => void;
+  /** A new element dragged in from the library. sectionId '' means the page has no section yet. */
+  onDropNewElement?: (type: ElementType, sectionId: string, index: number, column: number) => void;
   currentPageIndex: number;
 }
 
-export function FormCanvas({
-  definition, formName, formDescription,
-  selectedElementId, selectedSectionId,
-  onSelectElement, onSelectSection,
-  onDuplicateElement, onRemoveElement,
-  onAddSection, onRemoveSection, onToggleSectionVisibility,
-  onReorderElement, onDropNewElement,
-  currentPageIndex,
-}: FormCanvasProps) {
-  const [viewport, setViewport] = useState<Viewport>('desktop');
-  const [dragElementId, setDragElementId] = useState<string | null>(null);
-  const [dragOverInfo, setDragOverInfo] = useState<{ sectionId: string; index: number } | null>(null);
+/** Where a drag would land: a section, a column (0-based) and a place in that column. */
+type DragOver = { sectionId: string; column: number; index: number };
 
+const LIBRARY_TYPES = new Set<string>(ELEMENT_LIBRARY.map((i) => i.type));
+/** The element type dragged in from the library, if that's what this drag is. */
+function libraryType(e: React.DragEvent): ElementType | null {
+  const t = e.dataTransfer.getData('text/plain');
+  return LIBRARY_TYPES.has(t) ? t as ElementType : null;
+}
+
+const WIDTHS: Record<Viewport, number> = { desktop: 9999, tablet: 768, mobile: 390 };
+
+/**
+ * The form as people will see it (same fonts, colours and fields), where elements are picked,
+ * dragged into place and dropped in from the library.
+ */
+export function FormCanvas({
+  definition, formName, formDescription, viewport, kind,
+  selectedElementId, selectedSectionId, onSelectElement, onSelectSection,
+  onDuplicateElement, onRemoveElement, onAddSection, onRemoveSection, onToggleSectionVisibility,
+  onReorderElement, onDropNewElement, currentPageIndex,
+}: FormCanvasProps) {
+  const [dragElementId, setDragElementId] = useState<string | null>(null);
+  const [over, setOver] = useState<DragOver | null>(null);
+  const theme = definition.theme;
   const page = definition.pages[currentPageIndex];
+  // Bring a newly added (or picked) element into view.
+  useEffect(() => {
+    if (!selectedElementId) return;
+    const t = window.setTimeout(() => document.getElementById(`cv-${selectedElementId}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 60);
+    return () => window.clearTimeout(t);
+  }, [selectedElementId]);
   if (!page) return null;
 
-  const handleDrop = (sectionId: string, index: number) => {
-    if (dragElementId) {
-      onReorderElement(dragElementId, sectionId, index);
+  /** A drop in a section: `column` is 0-based, `index` counts within that column. */
+  const drop = (e: React.DragEvent, section: FormSection, column: number, index: number, columnIds: string[]) => {
+    e.preventDefault();
+    e.stopPropagation();
+    let at = index < columnIds.length ? section.elementIds.indexOf(columnIds[index])
+      : columnIds.length ? section.elementIds.indexOf(columnIds[columnIds.length - 1]) + 1 : section.elementIds.length;
+    if (at < 0) at = section.elementIds.length;
+    const moving = dragElementId;
+    const type = libraryType(e);
+    if (moving) {
+      // Moving down within the same section: the element leaves its old place first.
+      const from = section.elementIds.indexOf(moving);
+      if (from >= 0 && from < at) at -= 1;
+      onReorderElement(moving, section.id, at, column + 1);
+    } else if (type && onDropNewElement) {
+      onDropNewElement(type, section.id, at, column + 1);
     }
     setDragElementId(null);
-    setDragOverInfo(null);
+    setOver(null);
   };
 
-  const handleDropNew = (e: React.DragEvent, sectionId: string) => {
-    e.preventDefault();
-    const type = e.dataTransfer.getData('text/plain') as ElementType;
-    if (type && onDropNewElement) {
-      onDropNewElement(type, sectionId);
-    }
-    setDragOverInfo(null);
-  };
+  const isLastPage = currentPageIndex >= definition.pages.length - 1;
+  const hasFields = Object.values(definition.elements).some((el) => el.field);
+  const btnAlign = theme.buttonStyle.align === 'center' ? 'center' : theme.buttonStyle.align === 'right' ? 'flex-end' : 'flex-start';
+  const width = Math.min(WIDTHS[viewport], 10000);
 
   return (
-    <div className="flex flex-col h-full bg-ivory-50/30">
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-navy-100 bg-white">
-        <div className="flex items-center gap-1 rounded-lg border border-navy-100 overflow-hidden">
-          {(['desktop', 'tablet', 'mobile'] as Viewport[]).map(vp => {
-            const Icon = vp === 'desktop' ? Monitor : vp === 'tablet' ? Tablet : Smartphone;
-            return <button key={vp} onClick={() => setViewport(vp)} className={cn('p-2 transition-colors', viewport === vp ? 'bg-navy-800 text-ivory-100' : 'text-ivory-600 hover:bg-ivory-50')} title={vp}><Icon className="w-4 h-4" /></button>;
-          })}
-        </div>
-        <p className="text-xs text-ivory-500">WYSIWYG Canvas</p>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-6 flex justify-center">
-        <div className="w-full" style={{ maxWidth: viewport === 'mobile' ? '375px' : viewport === 'tablet' ? '768px' : '800px' }}>
-          <div className="bg-white rounded-xl shadow-sm border border-navy-100 overflow-hidden" onClick={() => { onSelectElement(null); onSelectSection(null); }} style={{ fontFamily: definition.theme.fontFamily }}>
-            {definition.header.enabled && (
-              <div className="px-6 pt-8 pb-3 sm:px-8 border-b" style={{ borderColor: definition.theme.inputBorderColor }}>
-                {definition.header.showLogo && definition.header.logoUrl && <img src={definition.header.logoUrl} alt="Logo" className="h-10 w-auto mb-4" />}
-                {definition.header.showTitle && <h1 className="text-2xl font-bold tracking-tight" style={{ color: definition.theme.primaryColor }}>{formName}</h1>}
-                {definition.header.showDescription && formDescription && <p className="mt-1.5 text-sm" style={{ color: '#64748b' }}>{formDescription}</p>}
-              </div>
-            )}
-
-            <div className="px-6 py-6 sm:px-8 sm:py-8">
-              {page.sectionIds.length === 0 ? (
-                <div className="text-center py-16">
-                  <Layers className="w-10 h-10 mx-auto text-ivory-300 mb-3" />
-                  <p className="text-sm text-ivory-600 mb-4">This page is empty</p>
-                  <button onClick={onAddSection} className="btn-primary btn-sm"><Plus className="w-4 h-4" /> Add Section</button>
-                </div>
-              ) : (
-                <>
-                  {page.sectionIds.map(sectionId => {
-                    const section = definition.sections[sectionId];
-                    if (!section || !section.visible) return null;
-                    return (
-                      <CanvasSection
-                        key={sectionId} section={section} definition={definition} viewport={viewport}
-                        selectedElementId={selectedElementId} selectedSectionId={selectedSectionId}
-                        onSelectElement={onSelectElement} onSelectSection={onSelectSection}
-                        onDuplicateElement={onDuplicateElement} onRemoveElement={onRemoveElement}
-                        onRemoveSection={onRemoveSection} onToggleSectionVisibility={onToggleSectionVisibility}
-                        onDragStart={setDragElementId} onDrop={handleDrop} onDropNew={handleDropNew}
-                        dragOverInfo={dragOverInfo} setDragOverInfo={setDragOverInfo}
-                      />
-                    );
-                  })}
-                  <button onClick={onAddSection} className="w-full mt-4 flex items-center justify-center gap-2 py-3 rounded-lg border-2 border-dashed border-navy-100 text-ivory-500 hover:border-gold-400 hover:text-gold-700 hover:bg-gold-50/30 transition-all text-sm font-medium">
-                    <Plus className="w-4 h-4" /> Add Section
-                  </button>
-                </>
+    <div className="flex-1 overflow-y-auto bg-[#F2F2F5]" onClick={() => { onSelectElement(null); onSelectSection(null); }}>
+      <div className="mx-auto px-6 pb-32 pt-8 transition-[max-width] duration-300" style={{ maxWidth: viewport === 'desktop' ? undefined : `${width + 48}px` }}>
+        <div className={cn('mx-auto overflow-hidden transition-all duration-300', viewport !== 'desktop' && 'rounded-[28px] shadow-[0_0_0_10px_#1D1D1F,0_24px_60px_rgba(0,0,0,0.25)]')}
+          style={{ ...getBackgroundCSS(theme), maxWidth: viewport === 'desktop' ? undefined : `${width}px`, borderRadius: viewport === 'desktop' ? 18 : undefined }}>
+          <div className="py-8" style={{ paddingLeft: viewport === 'mobile' ? 12 : 24, paddingRight: viewport === 'mobile' ? 12 : 24 }}>
+            <div className="mx-auto overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_28px_rgba(0,0,0,0.06)]"
+              style={{ ...surfaceOf(theme), maxWidth: theme.layoutPreset === 'full_width' ? undefined : formWidthOf(theme), borderRadius: surfaceOf(theme).borderRadius ?? 16 }}>
+              {definition.header.enabled && (
+                <FormHeader definition={definition} formName={formName} formDescription={formDescription} currentPage={currentPageIndex} totalPages={definition.pages.length} />
               )}
-            </div>
 
-            {definition.footer.enabled && definition.footer.content && (
-              <div className="px-6 py-4 sm:px-8 text-center text-xs" style={{ color: '#94a3b8' }}>{definition.footer.content}</div>
-            )}
+              <div style={{ padding: `${theme.layout.pagePadding}px` }}>
+                {page.sectionIds.length === 0 ? (
+                  <div className={cn('rounded-2xl border-2 border-dashed px-6 py-16 text-center transition-colors', over ? 'border-[#0071E3] bg-[#0071E3]/[0.04]' : 'border-[#D2D2D7]')}
+                    onDragOver={(e) => { e.preventDefault(); setOver({ sectionId: '', column: 0, index: 0 }); }}
+                    onDragLeave={() => setOver(null)}
+                    onDrop={(e) => { e.preventDefault(); const t = libraryType(e); if (t && onDropNewElement) onDropNewElement(t, '', 0, 1); setOver(null); }}>
+                    <Layers className="mx-auto mb-3 h-9 w-9 text-[#C7C7CC]" />
+                    <p className="text-[15px] font-semibold text-[#1D1D1F]">This page is empty</p>
+                    <p className="mt-1 text-[13px] text-[#6E6E73]">Drag an element here from the left, or</p>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); onAddSection(); }} className="mt-4 inline-flex h-9 items-center gap-1.5 rounded-full bg-[#1D1D1F] px-4 text-[13px] font-semibold text-white hover:bg-black"><Plus className="h-4 w-4" /> Add a section</button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: `${theme.layout.sectionSpacing}px` }}>
+                    {page.sectionIds.map((sectionId) => {
+                      const section = definition.sections[sectionId];
+                      if (!section) return null;
+                      return (
+                        <CanvasSection key={sectionId} section={section} definition={definition} viewport={viewport}
+                          selectedElementId={selectedElementId} selected={selectedSectionId === section.id && !selectedElementId}
+                          onSelectElement={onSelectElement} onSelectSection={onSelectSection}
+                          onDuplicateElement={onDuplicateElement} onRemoveElement={onRemoveElement}
+                          onRemoveSection={onRemoveSection} onToggleSectionVisibility={onToggleSectionVisibility}
+                          onDragStart={setDragElementId} onDragEnd={() => { setDragElementId(null); setOver(null); }} onDrop={drop}
+                          over={over} setOver={setOver} />
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* What the bottom of the form shows (the real buttons are on the live form). */}
+                {hasFields && (
+                  <div className="pointer-events-none mt-8 flex gap-3 border-t pt-6" style={{ borderColor: theme.colors.border, justifyContent: currentPageIndex > 0 ? 'space-between' : btnAlign }}>
+                    {currentPageIndex > 0 && <span style={getButtonStyle(theme, theme.buttonStyle, 'outline')} className="inline-flex items-center">Back</span>}
+                    <span style={getButtonStyle(theme, theme.buttonStyle, undefined, theme.buttonStyle.width === 'full' && currentPageIndex === 0 ? '100%' : 'auto')} className="inline-flex items-center justify-center">
+                      {isLastPage ? (kind === 'survey' ? 'Finish' : 'Submit') : 'Next'}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
+
+        <button type="button" onClick={(e) => { e.stopPropagation(); onAddSection(); }}
+          className="mx-auto mt-5 flex h-10 items-center gap-1.5 rounded-full bg-white px-5 text-[13px] font-semibold text-[#1D1D1F] shadow-[0_1px_2px_rgba(0,0,0,0.06)] ring-1 ring-black/[0.06] transition hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
+          <Plus className="h-4 w-4" /> Add section
+        </button>
       </div>
     </div>
   );
@@ -123,149 +152,124 @@ export function FormCanvas({
 
 interface CanvasSectionProps {
   section: FormSection; definition: FormDefinition; viewport: Viewport;
-  selectedElementId: string | null; selectedSectionId: string | null;
+  selectedElementId: string | null; selected: boolean;
   onSelectElement: (id: string | null) => void; onSelectSection: (id: string | null) => void;
   onDuplicateElement: (id: string) => void; onRemoveElement: (id: string) => void;
   onRemoveSection: (id: string) => void; onToggleSectionVisibility: (id: string) => void;
-  onDragStart: (id: string) => void; onDrop: (sectionId: string, index: number) => void;
-  onDropNew: (e: React.DragEvent, sectionId: string) => void;
-  dragOverInfo: { sectionId: string; index: number } | null;
-  setDragOverInfo: (info: { sectionId: string; index: number } | null) => void;
+  onDragStart: (id: string) => void; onDragEnd: () => void;
+  onDrop: (e: React.DragEvent, section: FormSection, column: number, index: number, columnIds: string[]) => void;
+  over: DragOver | null;
+  setOver: (info: DragOver | null) => void;
 }
 
 function CanvasSection({
-  section, definition, viewport,
-  selectedElementId, selectedSectionId,
-  onSelectElement, onSelectSection,
-  onDuplicateElement, onRemoveElement,
-  onRemoveSection, onToggleSectionVisibility,
-  onDragStart, onDrop, onDropNew,
-  dragOverInfo, setDragOverInfo,
+  section, definition, viewport, selectedElementId, selected,
+  onSelectElement, onSelectSection, onDuplicateElement, onRemoveElement, onRemoveSection, onToggleSectionVisibility,
+  onDragStart, onDragEnd, onDrop, over, setOver,
 }: CanvasSectionProps) {
-  const isSectionSelected = selectedSectionId === section.id;
-  const effectiveColumnCount = viewport === 'mobile' ? 1 : section.columnCount;
-  const columns: string[][] = Array.from({ length: effectiveColumnCount }, () => []);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const theme = definition.theme;
+  const cols = viewport === 'mobile' ? 1 : section.columnCount;
+  const columns: string[][] = Array.from({ length: cols }, () => []);
   for (const elId of section.elementIds) {
     const el = definition.elements[elId];
     if (!el) continue;
-    const col = viewport === 'mobile' ? 0 : Math.min((el.column ?? 1) - 1, effectiveColumnCount - 1);
-    columns[col].push(elId);
+    columns[viewport === 'mobile' ? 0 : Math.min((el.column ?? 1) - 1, cols - 1)].push(elId);
   }
-  const style = section.style;
+  const st = section.style;
+  const line = <div className="h-[3px] rounded-full bg-[#0071E3] shadow-[0_0_0_2px_rgba(0,113,227,0.15)]" />;
 
   return (
     <div
-      className={cn('relative mb-6 last:mb-0 group/section', isSectionSelected && 'ring-2 ring-gold-400 rounded-lg')}
-      onClick={e => { e.stopPropagation(); onSelectSection(section.id); }}
-      onDragOver={e => { e.preventDefault(); }}
-      onDrop={e => { e.preventDefault(); e.stopPropagation(); onDropNew(e, section.id); onDrop(section.id, section.elementIds.length); }}
-      style={{ backgroundColor: style?.backgroundColor, backgroundImage: style?.backgroundImage ? `url(${style.backgroundImage})` : undefined, backgroundSize: style?.backgroundSize, borderRadius: style?.borderRadius, padding: style?.padding }}
-    >
-      {style?.overlayColor && style?.overlayOpacity !== undefined && style?.backgroundImage && (
-        <div className="absolute inset-0" style={{ backgroundColor: style.overlayColor, opacity: style.overlayOpacity / 100, borderRadius: style?.borderRadius, pointerEvents: 'none' }} />
-      )}
+      className={cn('group/section relative rounded-[12px] transition-shadow', selected ? 'ring-2 ring-[#0071E3] ring-offset-4' : 'hover:ring-1 hover:ring-[#0071E3]/30 hover:ring-offset-4', !section.visible && 'opacity-45')}
+      onClick={(e) => { e.stopPropagation(); onSelectSection(section.id); onSelectElement(null); }}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => onDrop(e, section, 0, columns[0].length, columns[0])}
+      style={{ backgroundColor: st?.backgroundColor, backgroundImage: st?.backgroundImage ? `url(${st.backgroundImage})` : undefined, backgroundSize: st?.backgroundSize ?? 'cover', backgroundPosition: 'center', borderRadius: st?.borderRadius, padding: st?.padding }}>
+      {st?.overlayColor && st.overlayOpacity !== undefined && st.backgroundImage && <div className="pointer-events-none absolute inset-0" style={{ backgroundColor: st.overlayColor, opacity: st.overlayOpacity / 100, borderRadius: st.borderRadius }} />}
 
-      <div className={cn('flex items-center justify-between px-2 py-1.5 -mt-1 mb-1 rounded-md relative', isSectionSelected ? 'bg-gold-50' : 'bg-transparent opacity-0 group-hover/section:opacity-100')}>
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-navy-700">{section.name}</span>
-          <span className="text-[10px] text-ivory-500">{section.columnCount} col · {section.elementIds.length} elements</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <button onClick={e => { e.stopPropagation(); onToggleSectionVisibility(section.id); }} className="p-1 rounded hover:bg-white text-ivory-500">{section.visible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}</button>
-          <button onClick={e => { e.stopPropagation(); onRemoveSection(section.id); }} className="p-1 rounded hover:bg-red-50 text-ivory-500 hover:text-red-500"><Trash2 className="w-3 h-3" /></button>
-        </div>
+      {/* The section's own bar: shows on hover or when picked. */}
+      <div className={cn('absolute -top-[30px] left-0 z-20 flex items-center gap-0.5 rounded-[9px] bg-[#1D1D1F] py-0.5 pl-2.5 pr-0.5 text-white shadow-lg transition-opacity', selected || confirmRemove ? 'opacity-100' : 'pointer-events-none opacity-0 group-hover/section:pointer-events-auto group-hover/section:opacity-100')}>
+        <span className="mr-1 text-[11.5px] font-semibold">{section.name}</span>
+        <span className="mr-1.5 text-[11px] text-white/55">{section.columnCount === 1 ? '1 column' : `${section.columnCount} columns`}{!section.visible && ' · hidden'}</span>
+        {confirmRemove ? (
+          <>
+            <span className="px-1 text-[11.5px] text-white/80">Delete it{section.elementIds.length ? ` and its ${section.elementIds.length} element${section.elementIds.length === 1 ? '' : 's'}` : ''}?</span>
+            <button type="button" onClick={(e) => { e.stopPropagation(); onRemoveSection(section.id); }} className="h-6 rounded-[7px] bg-[#FF3B30] px-2 text-[11.5px] font-semibold">Delete</button>
+            <button type="button" onClick={(e) => { e.stopPropagation(); setConfirmRemove(false); }} className="h-6 rounded-[7px] px-2 text-[11.5px] hover:bg-white/10">Keep</button>
+          </>
+        ) : (
+          <>
+            <button type="button" title={section.visible ? 'Hide this section' : 'Show this section'} onClick={(e) => { e.stopPropagation(); onToggleSectionVisibility(section.id); }} className="rounded-[7px] p-1.5 hover:bg-white/15">{section.visible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}</button>
+            <button type="button" title="Delete this section" onClick={(e) => { e.stopPropagation(); if (section.elementIds.length) setConfirmRemove(true); else onRemoveSection(section.id); }} className="rounded-[7px] p-1.5 hover:bg-white/15"><Trash2 className="h-3.5 w-3.5" /></button>
+          </>
+        )}
       </div>
 
-      <div className={cn('relative', effectiveColumnCount === 2 && 'grid grid-cols-1 sm:grid-cols-2 gap-4', effectiveColumnCount === 3 && 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4', effectiveColumnCount === 1 && 'space-y-4')}>
-        {columns.map((colElementIds, colIdx) => (
-          <div
-            key={colIdx} className="space-y-3 min-h-[40px]"
-            onDragOver={e => { e.preventDefault(); setDragOverInfo({ sectionId: section.id, index: colElementIds.length }); }}
-            onDrop={e => { e.preventDefault(); e.stopPropagation(); onDrop(section.id, colElementIds.length); onDropNew(e, section.id); }}
-          >
-            {colElementIds.map((elId, elIdx) => {
+      <div className="relative grid" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap: `${theme.layout.columnGap}px` }}>
+        {columns.map((ids, colIdx) => (
+          <div key={colIdx} className="flex min-h-[56px] flex-col" style={{ gap: `${theme.layout.fieldSpacing}px` }}
+            onDragOver={(e) => { e.preventDefault(); if (e.target === e.currentTarget) setOver({ sectionId: section.id, column: colIdx, index: ids.length }); }}
+            onDrop={(e) => onDrop(e, section, colIdx, over?.sectionId === section.id && over.column === colIdx ? over.index : ids.length, ids)}>
+            {ids.map((elId, i) => {
               const el = definition.elements[elId];
               if (!el) return null;
-              const isSelected = selectedElementId === elId;
-              const isDragOver = dragOverInfo?.sectionId === section.id && dragOverInfo?.index === elIdx;
+              const picked = selectedElementId === elId;
+              const marker = over?.sectionId === section.id && over.column === colIdx && over.index === i;
+              const unseen = el.type === 'hidden' || el.type === 'source';
+              const notShown = el.field?.visible === false && !unseen;
+              const mapped = el.field?.mappedContactField;
               return (
-                <div key={elId}>
-                  {isDragOver && <div className="h-0.5 bg-gold-400 rounded-full mb-1" />}
-                  <div
-                    draggable onDragStart={() => onDragStart(elId)}
-                    onDragOver={e => { e.preventDefault(); setDragOverInfo({ sectionId: section.id, index: elIdx }); }}
-                    onClick={e => { e.stopPropagation(); onSelectElement(elId); }}
-                    className={cn('relative group/el rounded-lg transition-all cursor-pointer', isSelected ? 'ring-2 ring-gold-400 ring-offset-1' : 'hover:ring-1 hover:ring-navy-200')}
-                  >
-                    {isSelected && (
-                      <div className="absolute -top-8 left-0 flex items-center gap-1 bg-white rounded-md shadow-popover px-1 py-0.5 z-10">
-                        <GripVertical className="w-3 h-3 text-ivory-400 cursor-grab" />
-                        <button onClick={e => { e.stopPropagation(); onDuplicateElement(elId); }} className="p-1 hover:bg-ivory-50 rounded text-ivory-600"><Copy className="w-3 h-3" /></button>
-                        <button onClick={e => { e.stopPropagation(); onRemoveElement(elId); }} className="p-1 hover:bg-red-50 rounded text-ivory-600 hover:text-red-500"><Trash2 className="w-3 h-3" /></button>
+                <div key={elId} id={`cv-${elId}`} className="relative scroll-my-24">
+                  {marker && <div className="absolute -top-[7px] left-0 right-0 z-10">{line}</div>}
+                  <div draggable
+                    onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData('application/x-synapse-element', elId); e.dataTransfer.effectAllowed = 'move'; onDragStart(elId); }}
+                    onDragEnd={onDragEnd}
+                    onDragOver={(e) => {
+                      e.preventDefault(); e.stopPropagation();
+                      // Top half: before this element; bottom half: after it.
+                      const r = e.currentTarget.getBoundingClientRect();
+                      setOver({ sectionId: section.id, column: colIdx, index: e.clientY > r.top + r.height / 2 ? i + 1 : i });
+                    }}
+                    onClick={(e) => { e.stopPropagation(); onSelectElement(elId); onSelectSection(section.id); }}
+                    className={cn('group/el relative -m-2 cursor-pointer rounded-[10px] p-2 transition-all',
+                      picked ? 'bg-[#0071E3]/[0.04] ring-2 ring-[#0071E3]' : 'hover:ring-1 hover:ring-[#0071E3]/45',
+                      notShown && 'opacity-50')}>
+                    {/* Picked: move, copy, delete. */}
+                    <div className={cn('absolute -top-3 right-2 z-20 flex items-center gap-0.5 rounded-[8px] bg-[#0071E3] p-0.5 text-white shadow-md', picked ? 'flex' : 'hidden')}>
+                      <span title="Drag to move" className="cursor-grab rounded-[6px] p-1 hover:bg-white/15"><GripVertical className="h-3.5 w-3.5" /></span>
+                      <button type="button" title="Duplicate" onClick={(e) => { e.stopPropagation(); onDuplicateElement(elId); }} className="rounded-[6px] p-1 hover:bg-white/15"><Copy className="h-3.5 w-3.5" /></button>
+                      <button type="button" title="Delete" onClick={(e) => { e.stopPropagation(); onRemoveElement(elId); }} className="rounded-[6px] p-1 hover:bg-white/15"><Trash2 className="h-3.5 w-3.5" /></button>
+                    </div>
+                    {unseen ? (
+                      <div className="flex items-center gap-2.5 rounded-[10px] border border-dashed border-[#C7C7CC] bg-[#FAFAFB] px-3 py-2.5 text-[13px] text-[#6E6E73]">
+                        {el.type === 'source' ? <Link2 className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                        <span className="font-medium text-[#3A3A3C]">{el.field?.label}</span>
+                        <span>· not shown on the form{el.field?.queryKey ? ` · filled from ?${el.field.queryKey}=` : ''}</span>
+                      </div>
+                    ) : (
+                      <div className="pointer-events-none"><BuilderElement element={el} definition={definition} /></div>
+                    )}
+                    {(mapped || notShown) && (
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {mapped && <span className="inline-flex items-center gap-1 rounded-full bg-[#E9F3FF] px-2 py-0.5 text-[10.5px] font-semibold text-[#0062C4]"><UserRound className="h-3 w-3" /> Saves to contact · {CONTACT_FIELD_LABELS[mapped]}</span>}
+                        {notShown && <span className="inline-flex items-center gap-1 rounded-full bg-[#F2F2F5] px-2 py-0.5 text-[10.5px] font-semibold text-[#6E6E73]"><EyeOff className="h-3 w-3" /> Not visible</span>}
                       </div>
                     )}
-                    <CanvasElement element={el} definition={definition} viewport={viewport} />
                   </div>
                 </div>
               );
             })}
-            {colElementIds.length === 0 && (
-              <div className={cn('min-h-[60px] rounded-lg border-2 border-dashed flex items-center justify-center text-xs', dragOverInfo?.sectionId === section.id ? 'border-gold-400 bg-gold-50/30 text-gold-700' : 'border-navy-100 text-ivory-400')}>Drop elements here</div>
+            {ids.length > 0 && over?.sectionId === section.id && over.column === colIdx && over.index === ids.length && line}
+            {ids.length === 0 && (
+              <div className={cn('flex min-h-[64px] items-center justify-center rounded-[12px] border-2 border-dashed text-[12px] font-medium transition-colors',
+                over?.sectionId === section.id && over.column === colIdx ? 'border-[#0071E3] bg-[#0071E3]/[0.05] text-[#0062C4]' : 'border-[#D2D2D7] text-[#8E8E93]')}>
+                Drop an element here
+              </div>
             )}
           </div>
         ))}
       </div>
     </div>
   );
-}
-
-function CanvasElement({ element, definition }: { element: FormElement; definition: FormDefinition; viewport: Viewport }) {
-  const theme = definition.theme;
-  const c = element.content;
-  const f = element.field;
-  const style = element.style;
-  const elementStyle: React.CSSProperties = { color: style?.textColor, fontSize: style?.fontSize, fontWeight: style?.fontWeight, textAlign: style?.textAlign, backgroundColor: style?.backgroundColor, borderRadius: style?.borderRadius, padding: style?.padding };
-  const inputBase = "w-full px-3.5 py-2.5 text-sm border rounded-lg bg-white pointer-events-none";
-  const inputStyle: React.CSSProperties = { borderColor: theme.inputBorderColor, borderRadius: theme.inputBorderRadius };
-
-  if (element.type === 'heading') {
-    const level = c?.headingLevel ?? 'h2';
-    const sizes: Record<string, string> = { h1: 'text-2xl', h2: 'text-xl', h3: 'text-lg', h4: 'text-base' };
-    const Tag = level as 'h1' | 'h2' | 'h3' | 'h4';
-    return <div style={elementStyle}><Tag className={cn(sizes[level], 'font-bold')} style={{ color: style?.textColor || theme.primaryColor }}>{c?.text || 'Heading'}</Tag></div>;
-  }
-  if (element.type === 'text') return <div style={elementStyle}><p className="text-sm font-medium" style={{ color: style?.textColor || theme.primaryColor }}>{c?.text || 'Text'}</p></div>;
-  if (element.type === 'paragraph') return <div style={elementStyle}><p className="text-sm leading-relaxed" style={{ color: style?.textColor || '#64748b' }}>{c?.text || 'Paragraph text.'}</p></div>;
-  if (element.type === 'image') return c?.imageUrl ? <img src={c.imageUrl} alt={c.altText || ''} className="w-full" style={{ borderRadius: style?.borderRadius, objectFit: style?.objectFit || 'cover' }} /> : <div className="rounded-lg border-2 border-dashed border-navy-200 bg-ivory-50 flex items-center justify-center py-12 text-sm text-ivory-400"><ImageIcon className="w-5 h-5 mr-2" /> Upload an image</div>;
-  if (element.type === 'logo') return c?.imageUrl ? <img src={c.imageUrl} alt="Logo" className="h-10 w-auto" /> : <div className="h-10 w-32 rounded bg-ivory-100 flex items-center justify-center text-xs text-ivory-400">Logo</div>;
-  if (element.type === 'divider') return <hr style={{ borderStyle: c?.dividerStyle || 'solid', borderColor: '#e2e8f0', borderWidth: '0 0 1px 0' }} />;
-  if (element.type === 'spacer') return <div style={{ height: `${c?.spacerHeight ?? 24}px` }} />;
-  if (element.type === 'button') return <div style={{ textAlign: style?.textAlign || 'left' }}><button type="button" className="px-5 py-2.5 font-semibold text-sm pointer-events-none" style={{ backgroundColor: theme.buttonColor, color: theme.buttonTextColor, borderRadius: theme.borderRadius, width: style?.width === 'full' ? '100%' : 'auto' }}>{c?.buttonText || 'Button'}</button></div>;
-  if (!f) return null;
-
-  return (
-    <div style={elementStyle}>
-      <label className="block text-sm font-medium mb-1.5" style={{ color: '#334155' }}>{f.label}{f.required && <span className="text-red-500 ml-0.5">*</span>}</label>
-      {f.description && <p className="text-xs text-slate-500 mb-2">{f.description}</p>}
-      <FieldPreview element={element} f={f} inputBase={inputBase} inputStyle={inputStyle} theme={theme} />
-    </div>
-  );
-}
-
-function FieldPreview({ element, f, inputBase, inputStyle, theme }: {
-  element: FormElement; f: NonNullable<FormElement['field']>; inputBase: string; inputStyle: React.CSSProperties; theme: { primaryColor: string };
-}) {
-  const type = element.type;
-  if (type === 'long_text' || type === 'address') return <textarea className={cn(inputBase, 'min-h-[80px] resize-y')} style={inputStyle} placeholder={f.placeholder} disabled />;
-  if (type === 'radio' || type === 'yes_no') return <div className="space-y-1.5">{(f.options || ['Yes', 'No']).map((opt, i) => <div key={i} className="flex items-center gap-2.5 text-sm"><input type="radio" disabled className="w-4 h-4 pointer-events-none" style={{ accentColor: theme.primaryColor }} /><span style={{ color: '#334155' }}>{opt}</span></div>)}</div>;
-  if (type === 'checkbox' || type === 'multi_select') return <div className="space-y-1.5">{(f.options || []).map((opt, i) => <div key={i} className="flex items-center gap-2.5 text-sm"><input type="checkbox" disabled className="w-4 h-4 pointer-events-none" style={{ accentColor: theme.primaryColor }} /><span style={{ color: '#334155' }}>{opt}</span></div>)}</div>;
-  if (type === 'dropdown') return <select className={inputBase} style={inputStyle} disabled><option value="">Select...</option>{(f.options || []).map((o, i) => <option key={i}>{o}</option>)}</select>;
-  if (type === 'consent') return <div className="flex items-start gap-2.5 text-sm"><input type="checkbox" disabled className="w-4 h-4 mt-0.5 pointer-events-none" style={{ accentColor: theme.primaryColor }} /><span style={{ color: '#334155' }}>{element.content?.text || 'I agree to be contacted regarding my submission.'}</span></div>;
-  if (type === 'rating') return <div className="flex items-center gap-1.5 pointer-events-none">{Array.from({ length: element.content?.maxRating ?? 5 }, (_, i) => <span key={i} className="text-2xl text-gray-300">★</span>)}</div>;
-  if (type === 'scale') { const min = element.content?.scaleMin ?? 1; const max = element.content?.scaleMax ?? 10; return <div className="flex flex-wrap gap-2 pointer-events-none">{Array.from({ length: max - min + 1 }, (_, i) => <span key={i} className="w-10 h-10 rounded-lg border text-sm flex items-center justify-center" style={{ borderColor: '#e2e8f0', color: '#334155' }}>{min + i}</span>)}</div>; }
-  if (type === 'file_upload') return <div className="rounded-lg border-2 border-dashed py-8 text-center pointer-events-none" style={{ borderColor: '#e2e8f0' }}><p className="text-sm text-ivory-400">Click to upload or drag and drop</p></div>;
-  if (type === 'signature') return <div className="rounded-lg border-2 border-dashed py-8 text-center pointer-events-none" style={{ borderColor: '#e2e8f0' }}><p className="text-sm text-ivory-400">Signature pad</p></div>;
-  if (type === 'hidden') return null;
-  const inputType = type === 'email' ? 'email' : type === 'phone' ? 'tel' : type === 'number' ? 'number' : type === 'date' ? 'date' : type === 'time' ? 'time' : type === 'website' ? 'url' : 'text';
-  return <input type={inputType} className={inputBase} style={inputStyle} placeholder={f.placeholder} disabled />;
 }

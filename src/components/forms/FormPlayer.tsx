@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormDefinition, Viewport } from '@/lib/form-builder-types';
 import {
-  finalAnswers, nextStep, paymentDue, runLogic, scoreLabel, scoreQuiz, stepErrors, stepsOf,
+  finalAnswers, nextStep, runLogic, scoreLabel, scoreQuiz, stepErrors, stepsOf,
   type Answers, type FormKind, type PaymentDue, type QuizScore,
 } from '@/lib/form-engine';
 import { FormRenderer, type FormRuntime } from './FormRenderer';
+import { dataUrlToBlob, uploadFormResponseFile } from '@/lib/form-files';
 
 /** What the player hands over when someone submits. */
 export interface FormPayload {
@@ -30,8 +31,10 @@ export function rememberedDetails(): Record<string, string> {
  * pages; a survey goes slide by slide), with the logic, checks, quiz result and payment. Used by
  * the public page and the builder's preview (`onSubmit` absent: nothing is sent).
  */
-export function FormPlayer({ definition, formName, formDescription, kind, viewport = 'desktop', initialAnswers, onSubmit, done: doneFromOutside }: {
+export function FormPlayer({ definition, formName, formDescription, kind, viewport = 'desktop', initialAnswers, onSubmit, done: doneFromOutside, formId, fill = false }: {
   definition: FormDefinition;
+  /** Where files and signatures are sent (File Upload, Signature). */
+  formId?: string;
   formName: string;
   formDescription?: string | null;
   kind: FormKind;
@@ -40,6 +43,8 @@ export function FormPlayer({ definition, formName, formDescription, kind, viewpo
   onSubmit?: (payload: FormPayload) => Promise<SubmitOutcome>;
   /** Show the end screen straight away (back from paying). */
   done?: { note?: string };
+  /** Fill the box it sits in (the builder's preview card). */
+  fill?: boolean;
 }) {
   const steps = useMemo(() => stepsOf(definition, kind), [definition, kind]);
   const [answers, setAnswers] = useState<Answers>(() => {
@@ -69,7 +74,8 @@ export function FormPlayer({ definition, formName, formDescription, kind, viewpo
   const next = nextStep(steps, step, answers, state);
   const isLast = next === -1;
   const quizOn = !!definition.settings.quiz?.enabled;
-  const due = paymentDue(steps.def, answers, state);
+  // Forms don't take payments.
+  const due = null;
 
   // Back to the top of the card when the step changes.
   useEffect(() => { top.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, [step, end]);
@@ -83,6 +89,20 @@ export function FormPlayer({ definition, formName, formDescription, kind, viewpo
   const finish = async (disqualified: boolean) => {
     const quiz = scoreQuiz(steps.def, finalAnswers(steps.def, answers, state));
     const payload: FormPayload = { answers: finalAnswers(steps.def, answers, state), quiz, payment: disqualified ? null : due, disqualified, trap: trap.current };
+    // Signatures are drawings until now: send each as a picture and keep its link.
+    const drawn = Object.entries(payload.answers).filter(([, v]) => typeof v === 'string' && v.startsWith('data:image/'));
+    if (drawn.length && onSubmit) {
+      if (!formId) { setFailure('Signatures can’t be sent from here.'); return; }
+      setBusy(true);
+      setFailure(null);
+      try {
+        for (const [id, v] of drawn) payload.answers[id] = await uploadFormResponseFile(formId, dataUrlToBlob(v), 'signature.png');
+      } catch (e) {
+        setBusy(false);
+        setFailure(`Your signature couldn’t be sent: ${(e as Error).message}`);
+        return;
+      }
+    }
     if (definition.settings.rememberRespondent) {
       const saved = rememberedDetails();
       for (const el of Object.values(definition.elements)) {
@@ -145,9 +165,10 @@ export function FormPlayer({ definition, formName, formDescription, kind, viewpo
     hidden: state.hidden, required: state.required, errors,
     canGoBack: history.length > 0 && definition.settings.allowBackNavigation !== false,
     isLast: isLast || !!state.disqualify, busy,
-    submitLabel: due ? `Continue to payment · ${new Intl.NumberFormat(undefined, { style: 'currency', currency: due.currency.toUpperCase() }).format(due.amount / 100)}` : kind === 'survey' ? 'Finish' : 'Submit',
+    submitLabel: kind === 'survey' ? 'Finish' : 'Submit',
     autoComplete: definition.settings.disableAutofill ? 'off' : 'on',
     onPicked,
+    formId,
   };
 
   if (end) {
@@ -164,6 +185,7 @@ export function FormPlayer({ definition, formName, formDescription, kind, viewpo
         )}
         <div key={step} className="animate-fade-in">
           <FormRenderer
+            fill={fill}
             definition={steps.def}
             formName={formName}
             formDescription={formDescription}

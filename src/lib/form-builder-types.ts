@@ -9,7 +9,10 @@ export type ElementType =
   | 'first_name' | 'last_name' | 'text_field' | 'long_text' | 'phone' | 'email'
   | 'number' | 'date' | 'time' | 'website' | 'address'
   | 'radio' | 'checkbox' | 'dropdown' | 'multi_select' | 'yes_no'
-  | 'rating' | 'scale' | 'file_upload' | 'signature' | 'consent' | 'hidden' | 'payment';
+  | 'rating' | 'scale' | 'file_upload' | 'signature' | 'consent' | 'hidden' | 'payment'
+  | 'full_name' | 'date_of_birth' | 'company' | 'job_title'
+  | 'city' | 'state' | 'postal_code' | 'country'
+  | 'monetary' | 'source' | 'captcha';
 
 export type ElementCategory = 'content' | 'layout' | 'fields' | 'choice' | 'advanced';
 export type ColumnCount = 1 | 2 | 3;
@@ -65,6 +68,12 @@ export interface ElementContent {
   scaleMaxLabel?: string;
 }
 
+export type ContactFieldKey = 'first_name' | 'last_name' | 'full_name' | 'email' | 'phone' | 'company' | 'job_title' | 'date_of_birth';
+export const CONTACT_FIELD_LABELS: Record<ContactFieldKey, string> = {
+  first_name: 'First name', last_name: 'Last name', full_name: 'Full name (first and last)', email: 'Email', phone: 'Phone',
+  company: 'Company', job_title: 'Job title', date_of_birth: 'Date of birth',
+};
+
 export interface FieldDefinition {
   fieldId: string;
   label: string;
@@ -75,11 +84,16 @@ export interface FieldDefinition {
   options?: string[];
   allowOther?: boolean;
   defaultOption?: string;
-  mappedContactField?: 'first_name' | 'last_name' | 'email' | 'phone' | 'company' | 'job_title' | null;
+  /** The contact field the answer is saved to. A full name fills first and last name. */
+  mappedContactField?: ContactFieldKey | null;
+  /** Monetary: the currency shown beside the amount (ISO code, e.g. usd). */
+  currency?: string;
   validation?: FieldValidation;
   visible?: boolean;
   allowedFileTypes?: string[];
   maxFileSizeMB?: number;
+  /** File Upload: more than one file (the answer is one link per line). */
+  allowMultipleFiles?: boolean;
   /** URL parameter that fills this field (?key=value). Defaults to the field id, its contact field or type. */
   queryKey?: string;
   /** Quiz: points for each option picked. */
@@ -463,59 +477,81 @@ export interface FormDefinition {
 // ELEMENT LIBRARY METADATA
 // ============================================================
 
+export type ElementGroup = 'personal' | 'contact' | 'address' | 'text' | 'choice' | 'rating' | 'other' | 'payments' | 'content' | 'layout';
+
 export interface ElementLibraryItem {
   type: ElementType;
   category: ElementCategory;
+  /** Where it sits in the builder's panel. */
+  group: ElementGroup;
   label: string;
   icon: string;
   isContainer?: boolean;
   isField?: boolean;
+  /** Layout items: how many columns the new section has. */
+  columns?: ColumnCount;
+  /** A word or two for the search box. */
+  keywords?: string;
 }
 
 export const ELEMENT_LIBRARY: ElementLibraryItem[] = [
-  { type: 'heading', category: 'content', label: 'Heading', icon: 'Heading' },
-  { type: 'text', category: 'content', label: 'Text', icon: 'Type' },
-  { type: 'paragraph', category: 'content', label: 'Paragraph', icon: 'AlignLeft' },
-  { type: 'image', category: 'content', label: 'Image', icon: 'Image' },
-  { type: 'logo', category: 'content', label: 'Logo', icon: 'ImagePlus' },
-  { type: 'divider', category: 'content', label: 'Divider', icon: 'Minus' },
-  { type: 'spacer', category: 'content', label: 'Spacer', icon: 'MoveVertical' },
-  { type: 'button', category: 'content', label: 'Button', icon: 'MousePointerClick' },
-  { type: 'section', category: 'layout', label: 'Section', icon: 'SquareStack', isContainer: true },
-  { type: 'container', category: 'layout', label: 'Container', icon: 'Box', isContainer: true },
-  { type: 'columns', category: 'layout', label: 'Columns', icon: 'Columns3', isContainer: true },
-  { type: 'card', category: 'layout', label: 'Card', icon: 'LayoutPanelTop', isContainer: true },
-  { type: 'first_name', category: 'fields', label: 'First Name', icon: 'User', isField: true },
-  { type: 'last_name', category: 'fields', label: 'Last Name', icon: 'User', isField: true },
-  { type: 'text_field', category: 'fields', label: 'Single Line Text', icon: 'Type', isField: true },
-  { type: 'long_text', category: 'fields', label: 'Multi-Line Text', icon: 'AlignLeft', isField: true },
-  { type: 'phone', category: 'fields', label: 'Phone', icon: 'Phone', isField: true },
-  { type: 'email', category: 'fields', label: 'Email', icon: 'Mail', isField: true },
-  { type: 'number', category: 'fields', label: 'Number', icon: 'Hash', isField: true },
-  { type: 'date', category: 'fields', label: 'Date', icon: 'Calendar', isField: true },
-  { type: 'time', category: 'fields', label: 'Time', icon: 'Clock', isField: true },
-  { type: 'website', category: 'fields', label: 'Website', icon: 'Globe', isField: true },
-  { type: 'address', category: 'fields', label: 'Address', icon: 'MapPin', isField: true },
-  { type: 'radio', category: 'choice', label: 'Radio', icon: 'CircleDot', isField: true },
-  { type: 'checkbox', category: 'choice', label: 'Checkbox', icon: 'CheckSquare', isField: true },
-  { type: 'dropdown', category: 'choice', label: 'Dropdown', icon: 'ChevronDown', isField: true },
-  { type: 'multi_select', category: 'choice', label: 'Multi-select', icon: 'ListChecks', isField: true },
-  { type: 'yes_no', category: 'choice', label: 'Yes / No', icon: 'ToggleLeft', isField: true },
-  { type: 'rating', category: 'advanced', label: 'Rating', icon: 'Star', isField: true },
-  { type: 'scale', category: 'advanced', label: 'Scale', icon: 'SlidersHorizontal', isField: true },
-  { type: 'file_upload', category: 'advanced', label: 'File Upload', icon: 'Upload', isField: true },
-  { type: 'signature', category: 'advanced', label: 'Signature', icon: 'PenTool', isField: true },
-  { type: 'consent', category: 'advanced', label: 'Consent', icon: 'ShieldCheck', isField: true },
-  { type: 'hidden', category: 'advanced', label: 'Hidden Field', icon: 'EyeOff', isField: true },
-  { type: 'payment', category: 'advanced', label: 'Payment', icon: 'CreditCard', isField: true },
+  { type: 'full_name', category: 'fields', group: 'personal', label: 'Full Name', icon: 'IdCard', isField: true, keywords: 'name' },
+  { type: 'first_name', category: 'fields', group: 'personal', label: 'First Name', icon: 'User', isField: true, keywords: 'name' },
+  { type: 'last_name', category: 'fields', group: 'personal', label: 'Last Name', icon: 'User', isField: true, keywords: 'name surname' },
+  { type: 'date_of_birth', category: 'fields', group: 'personal', label: 'Date of Birth', icon: 'Cake', isField: true, keywords: 'birthday dob' },
+  { type: 'email', category: 'fields', group: 'contact', label: 'Email', icon: 'Mail', isField: true },
+  { type: 'phone', category: 'fields', group: 'contact', label: 'Phone', icon: 'Phone', isField: true, keywords: 'mobile' },
+  { type: 'company', category: 'fields', group: 'contact', label: 'Organization', icon: 'Building2', isField: true, keywords: 'company business' },
+  { type: 'job_title', category: 'fields', group: 'contact', label: 'Job Title', icon: 'BriefcaseBusiness', isField: true, keywords: 'role position' },
+  { type: 'website', category: 'fields', group: 'contact', label: 'Website', icon: 'Globe', isField: true, keywords: 'url link' },
+  { type: 'address', category: 'fields', group: 'address', label: 'Address', icon: 'MapPin', isField: true, keywords: 'street' },
+  { type: 'city', category: 'fields', group: 'address', label: 'City', icon: 'Building', isField: true, keywords: 'town' },
+  { type: 'state', category: 'fields', group: 'address', label: 'State', icon: 'Map', isField: true, keywords: 'region province county' },
+  { type: 'postal_code', category: 'fields', group: 'address', label: 'Postal Code', icon: 'Mailbox', isField: true, keywords: 'zip postcode' },
+  { type: 'country', category: 'fields', group: 'address', label: 'Country', icon: 'Flag', isField: true },
+  { type: 'text_field', category: 'fields', group: 'text', label: 'Single Line', icon: 'TextCursorInput', isField: true, keywords: 'text short answer' },
+  { type: 'long_text', category: 'fields', group: 'text', label: 'Multi Line', icon: 'AlignLeft', isField: true, keywords: 'text paragraph long answer textarea' },
+  { type: 'number', category: 'fields', group: 'text', label: 'Number', icon: 'Hash', isField: true },
+  { type: 'monetary', category: 'fields', group: 'text', label: 'Monetary', icon: 'DollarSign', isField: true, keywords: 'money amount price budget' },
+  { type: 'date', category: 'fields', group: 'text', label: 'Date Picker', icon: 'Calendar', isField: true, keywords: 'day' },
+  { type: 'time', category: 'fields', group: 'text', label: 'Time', icon: 'Clock', isField: true, keywords: 'hour' },
+  { type: 'dropdown', category: 'choice', group: 'choice', label: 'Single Dropdown', icon: 'ChevronsUpDown', isField: true, keywords: 'select list' },
+  { type: 'multi_select', category: 'choice', group: 'choice', label: 'Multi Dropdown', icon: 'ListChecks', isField: true, keywords: 'select multiple' },
+  { type: 'checkbox', category: 'choice', group: 'choice', label: 'Checkbox', icon: 'SquareCheck', isField: true, keywords: 'tick multiple' },
+  { type: 'radio', category: 'choice', group: 'choice', label: 'Radio', icon: 'CircleDot', isField: true, keywords: 'single choice' },
+  { type: 'yes_no', category: 'choice', group: 'choice', label: 'Yes / No', icon: 'ToggleLeft', isField: true },
+  { type: 'rating', category: 'advanced', group: 'rating', label: 'Rating', icon: 'Star', isField: true, keywords: 'stars' },
+  { type: 'scale', category: 'advanced', group: 'rating', label: 'Scale / NPS', icon: 'Gauge', isField: true, keywords: 'nps score' },
+  { type: 'file_upload', category: 'advanced', group: 'other', label: 'File Upload', icon: 'CloudUpload', isField: true, keywords: 'attachment document' },
+  { type: 'signature', category: 'advanced', group: 'other', label: 'Signature', icon: 'PenTool', isField: true, keywords: 'sign' },
+  { type: 'consent', category: 'advanced', group: 'other', label: 'T & C', icon: 'ShieldCheck', isField: true, keywords: 'terms consent agree gdpr' },
+  { type: 'captcha', category: 'advanced', group: 'other', label: 'Bot Protection', icon: 'Bot', isField: true, keywords: 'captcha spam' },
+  { type: 'source', category: 'advanced', group: 'other', label: 'Source', icon: 'Link2', isField: true, keywords: 'utm tracking campaign' },
+  { type: 'hidden', category: 'advanced', group: 'other', label: 'Hidden Field', icon: 'EyeOff', isField: true, keywords: 'tracking' },
+  { type: 'heading', category: 'content', group: 'content', label: 'Heading', icon: 'Heading1', keywords: 'title' },
+  { type: 'text', category: 'content', group: 'content', label: 'Text', icon: 'Type' },
+  { type: 'paragraph', category: 'content', group: 'content', label: 'Paragraph', icon: 'Pilcrow' },
+  { type: 'image', category: 'content', group: 'content', label: 'Image', icon: 'Image', keywords: 'picture photo' },
+  { type: 'logo', category: 'content', group: 'content', label: 'Logo', icon: 'ImagePlus', keywords: 'brand' },
+  { type: 'divider', category: 'content', group: 'content', label: 'Divider', icon: 'SeparatorHorizontal', keywords: 'line' },
+  { type: 'spacer', category: 'content', group: 'content', label: 'Spacer', icon: 'MoveVertical', keywords: 'gap space' },
+  { type: 'button', category: 'content', group: 'content', label: 'Button', icon: 'MousePointerClick', keywords: 'submit next link' },
+  { type: 'section', category: 'layout', group: 'layout', label: 'One Column', icon: 'Square', isContainer: true, columns: 1, keywords: 'section' },
+  { type: 'columns', category: 'layout', group: 'layout', label: 'Two Columns', icon: 'Columns2', isContainer: true, columns: 2, keywords: 'section side by side' },
+  { type: 'container', category: 'layout', group: 'layout', label: 'Three Columns', icon: 'Columns3', isContainer: true, columns: 3, keywords: 'section' },
+  { type: 'card', category: 'layout', group: 'layout', label: 'Card', icon: 'PanelTop', isContainer: true, columns: 1, keywords: 'section box' },
 ];
 
-export const ELEMENT_GROUPS: { label: string; category: ElementCategory }[] = [
-  { label: 'Content', category: 'content' },
-  { label: 'Layout', category: 'layout' },
-  { label: 'Form Fields', category: 'fields' },
-  { label: 'Choice', category: 'choice' },
-  { label: 'Advanced', category: 'advanced' },
+export const ELEMENT_GROUPS: { label: string; group: ElementGroup; tab: 'fields' | 'layout' }[] = [
+  { label: 'Personal info', group: 'personal', tab: 'fields' },
+  { label: 'Contact', group: 'contact', tab: 'fields' },
+  { label: 'Address', group: 'address', tab: 'fields' },
+  { label: 'Text & numbers', group: 'text', tab: 'fields' },
+  { label: 'Choices', group: 'choice', tab: 'fields' },
+  { label: 'Rating', group: 'rating', tab: 'fields' },
+  { label: 'More', group: 'other', tab: 'fields' },
+  { label: 'Content', group: 'content', tab: 'layout' },
+  { label: 'Layout', group: 'layout', tab: 'layout' },
 ];
 
 export const DEFAULT_THEME: FormTheme = {

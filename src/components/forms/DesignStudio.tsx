@@ -16,6 +16,7 @@ import { FONT_LIBRARY, DEFAULT_THEME } from '@/lib/form-builder-types';
 import { THEME_PRESETS, LAYOUT_PRESETS } from '@/lib/theme-presets';
 import { FormRenderer } from '@/components/forms/FormRenderer';
 import { cn } from '@/lib/utils';
+import { ImagePicker } from './ImagePicker';
 
 interface DesignStudioProps {
   definition: FormDefinition;
@@ -224,9 +225,8 @@ function LayoutPresetsGrid({ currentPreset, onApply }: { currentPreset: FormLayo
 function ColorsPanel({ colors, onUpdate }: { colors: ThemeColors; onUpdate: (u: Partial<ThemeColors>) => void }) {
   const items: { label: string; key: keyof ThemeColors }[] = [
     { label: 'Page background', key: 'pageBackground' },
-    { label: 'Surface background', key: 'surfaceBackground' },
-    { label: 'Primary', key: 'primary' },
-    { label: 'Secondary', key: 'secondary' },
+    { label: 'Form card', key: 'surfaceBackground' },
+    { label: 'Accent (choices, progress, focus)', key: 'primary' },
     { label: 'Heading', key: 'heading' },
     { label: 'Body text', key: 'bodyText' },
     { label: 'Muted text', key: 'mutedText' },
@@ -465,7 +465,7 @@ function BackgroundPanel({ background, onUpdate }: { background: ThemeBackground
       )}
       {background.type === 'image' && (
         <>
-          <div><Label>Image URL</Label><input className="input-field text-xs py-1.5" value={background.imageUrl} onChange={e => onUpdate({ imageUrl: e.target.value })} placeholder="https://" /></div>
+          <ImagePicker label="Background picture" value={background.imageUrl} onChange={url => onUpdate({ imageUrl: url })} />
           <div><Label>Size</Label><div className="grid grid-cols-3 gap-1.5">{(['cover', 'contain', 'auto'] as const).map(s => <button key={s} onClick={() => onUpdate({ imageSize: s })} className={cn('py-1.5 rounded-md text-[11px] font-medium border capitalize transition-all', background.imageSize === s ? 'bg-navy-800 text-ivory-100 border-navy-800' : 'border-navy-100 text-ivory-600 hover:bg-ivory-50')}>{s}</button>)}</div></div>
           <div><Label>Position</Label><input className="input-field text-xs py-1.5" value={background.imagePosition} onChange={e => onUpdate({ imagePosition: e.target.value })} placeholder="center" /></div>
           <SliderRow label="Overlay opacity" value={background.overlayOpacity} min={0} max={100} onChange={v => onUpdate({ overlayOpacity: v })} />
@@ -485,7 +485,7 @@ function SplitPanel({ split, onUpdate }: { split: ThemeSplitLayout; onUpdate: (u
     <div className="space-y-3">
       <SliderRow label="Left width" value={split.leftWidth} min={20} max={60} onChange={v => onUpdate({ leftWidth: v, rightWidth: 100 - v })} />
       <SliderRow label="Column gap" value={split.columnGap} min={0} max={48} onChange={v => onUpdate({ columnGap: v })} />
-      <div><Label>Background image URL</Label><input className="input-field text-xs py-1.5" value={split.backgroundImage} onChange={e => onUpdate({ backgroundImage: e.target.value })} placeholder="https://" /></div>
+      <ImagePicker label="Side picture" value={split.backgroundImage} onChange={url => onUpdate({ backgroundImage: url })} />
       <SliderRow label="Overlay opacity" value={split.overlayOpacity} min={0} max={100} onChange={v => onUpdate({ overlayOpacity: v })} />
       <div><Label>Overlay color</Label><MiniColor value={split.backgroundOverlay} onChange={v => onUpdate({ backgroundOverlay: v })} /></div>
       <div>
@@ -508,7 +508,7 @@ function SplitPanel({ split, onUpdate }: { split: ThemeSplitLayout; onUpdate: (u
 function BrandingPanel({ branding, onUpdate }: { branding: ThemeBranding; onUpdate: (u: Partial<ThemeBranding>) => void }) {
   return (
     <div className="space-y-3">
-      <div><Label>Logo URL</Label><input className="input-field text-xs py-1.5" value={branding.logoUrl} onChange={e => onUpdate({ logoUrl: e.target.value })} placeholder="https://" /></div>
+      <ImagePicker label="Logo" compact value={branding.logoUrl} onChange={url => onUpdate({ logoUrl: url })} />
       <SliderRow label="Logo width" value={branding.logoWidth} min={60} max={300} onChange={v => onUpdate({ logoWidth: v })} />
       <div><Label>Company name</Label><input className="input-field text-xs py-1.5" value={branding.companyName} onChange={e => onUpdate({ companyName: e.target.value })} /></div>
       <div><Label>Footer text</Label><input className="input-field text-xs py-1.5" value={branding.footerText} onChange={e => onUpdate({ footerText: e.target.value })} placeholder="© 2026 Your Company" /></div>

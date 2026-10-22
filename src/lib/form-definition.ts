@@ -23,6 +23,9 @@ const ELEMENT_CATEGORY_MAP: Record<ElementType, ElementCategory> = {
   radio: 'choice', checkbox: 'choice', dropdown: 'choice', multi_select: 'choice', yes_no: 'choice',
   rating: 'advanced', scale: 'advanced', file_upload: 'advanced', signature: 'advanced',
   consent: 'advanced', hidden: 'advanced', payment: 'advanced',
+  full_name: 'fields', date_of_birth: 'fields', company: 'fields', job_title: 'fields',
+  city: 'fields', state: 'fields', postal_code: 'fields', country: 'fields',
+  monetary: 'fields', source: 'advanced', captcha: 'advanced',
 };
 
 const ELEMENT_LABELS: Record<ElementType, string> = {
@@ -36,6 +39,9 @@ const ELEMENT_LABELS: Record<ElementType, string> = {
   yes_no: 'Yes / No',
   rating: 'Rating', scale: 'Scale', file_upload: 'File Upload', signature: 'Signature',
   consent: 'Consent', hidden: 'Hidden Field', payment: 'Payment',
+  full_name: 'Full Name', date_of_birth: 'Date of Birth', company: 'Organization', job_title: 'Job Title',
+  city: 'City', state: 'State / Region', postal_code: 'Postal Code', country: 'Country',
+  monetary: 'Monetary', source: 'Source', captcha: 'Bot Protection',
 };
 
 const FIELD_TYPES = new Set<ElementType>([
@@ -43,6 +49,8 @@ const FIELD_TYPES = new Set<ElementType>([
   'number', 'date', 'time', 'website', 'address',
   'radio', 'checkbox', 'dropdown', 'multi_select', 'yes_no',
   'rating', 'scale', 'file_upload', 'signature', 'consent', 'hidden', 'payment',
+  'full_name', 'date_of_birth', 'company', 'job_title', 'city', 'state', 'postal_code', 'country',
+  'monetary', 'source', 'captcha',
 ]);
 
 const CHOICE_TYPES = new Set<ElementType>(['radio', 'checkbox', 'dropdown', 'multi_select']);
@@ -73,6 +81,9 @@ export function createDefaultDefinition(formName: string, description?: string |
   const email = makeField('email', 'Email Address', 3, { required: true, placeholder: 'john@example.com', mappedContactField: 'email' });
   const consent = makeField('consent', 'Consent', 4, { required: true });
   consent.content = { text: 'I agree to be contacted regarding my submission.' };
+  // Two columns: first and last name side by side, then phone and email.
+  lastName.column = 2;
+  email.column = 2;
 
   const elements: Record<string, FormElement> = {};
   [firstName, lastName, phone, email, consent].forEach(el => { elements[el.id] = el; });
@@ -164,10 +175,21 @@ function createDefaultField(type: ElementType): FieldDefinition {
   if (type === 'date') base.label = 'Date';
   if (type === 'time') base.label = 'Time';
   if (type === 'website') { base.label = 'Website'; base.placeholder = 'https://'; }
-  if (type === 'address') { base.label = 'Address'; base.placeholder = 'Enter your address'; }
+  if (type === 'address') { base.label = 'Street Address'; base.placeholder = 'Street and number'; }
   if (type === 'yes_no') { base.label = 'Yes or No?'; base.options = ['Yes', 'No']; }
   if (type === 'consent') { base.label = 'Consent'; base.required = true; }
   if (type === 'hidden') { base.label = 'Hidden Field'; base.visible = false; }
+  if (type === 'full_name') { base.label = 'Full Name'; base.required = true; base.placeholder = 'John Doe'; base.mappedContactField = 'full_name'; }
+  if (type === 'date_of_birth') { base.label = 'Date of Birth'; base.mappedContactField = 'date_of_birth'; }
+  if (type === 'company') { base.label = 'Organization'; base.placeholder = 'Company name'; base.mappedContactField = 'company'; }
+  if (type === 'job_title') { base.label = 'Job Title'; base.placeholder = 'e.g. Marketing Manager'; base.mappedContactField = 'job_title'; }
+  if (type === 'city') { base.label = 'City'; base.placeholder = 'City'; }
+  if (type === 'state') { base.label = 'State / Region'; base.placeholder = 'State or region'; }
+  if (type === 'postal_code') { base.label = 'Postal Code'; base.placeholder = 'Postal / ZIP code'; }
+  if (type === 'country') { base.label = 'Country'; base.placeholder = 'Choose a country'; }
+  if (type === 'monetary') { base.label = 'Amount'; base.placeholder = '0.00'; base.currency = 'usd'; }
+  if (type === 'source') { base.label = 'Source'; base.visible = false; base.queryKey = 'utm_source'; }
+  if (type === 'captcha') { base.label = 'Quick check'; base.required = true; }
   if (type === 'payment') { base.label = 'Payment'; base.required = true; base.payment = { mode: 'fixed', currency: 'usd', amount: 50, description: '' }; }
 
   if (CHOICE_TYPES.has(type)) {
@@ -207,7 +229,19 @@ export function removeElement(def: FormDefinition, elementId: string): FormDefin
       newSections[secId] = { ...sec, elementIds: sec.elementIds.filter(id => id !== elementId) };
     }
   }
-  return { ...def, elements: newElements, sections: newSections };
+  // Rules and notifications that pointed at it would otherwise do nothing, silently.
+  const fid = element.field?.fieldId;
+  const logic = (def.logic ?? [])
+    .filter((r) => r.targetElementId !== elementId && (!fid || r.triggerFieldId !== fid || (r.conditions?.length ?? 0) > 1))
+    .map((r) => (fid && r.conditions ? { ...r, conditions: r.conditions.filter((c) => c.fieldId !== fid) } : r))
+    .filter((r) => !r.conditions || r.conditions.length > 0);
+  const n = def.notifications;
+  const notifications = fid && n ? {
+    ...n,
+    internal: n.internal ? { ...n.internal, includeFields: (n.internal.includeFields ?? []).filter((x) => x !== fid) } : n.internal,
+    respondent: n.respondent ? { ...n.respondent, emailFieldId: n.respondent.emailFieldId === fid ? null : n.respondent.emailFieldId, includedFields: (n.respondent.includedFields ?? []).filter((x) => x !== fid) } : n.respondent,
+  } : n;
+  return { ...def, elements: newElements, sections: newSections, logic, notifications };
 }
 
 export function updateElement(def: FormDefinition, elementId: string, updates: Partial<FormElement>): FormDefinition {
@@ -249,6 +283,13 @@ export function moveElement(def: FormDefinition, elementId: string, toSectionId:
   newElementIds.splice(Math.min(toIndex, newElementIds.length), 0, elementId);
   newSections[toSectionId] = { ...targetSection, elementIds: newElementIds };
   return { ...def, sections: newSections, elements: { ...def.elements, [elementId]: { ...element, column: toColumn ?? element.column ?? 1 } } };
+}
+
+/** A copy right below the original; also returns the copy's id (to select it). */
+export function duplicateElementWithId(def: FormDefinition, elementId: string): [FormDefinition, string | null] {
+  const before = new Set(Object.keys(def.elements));
+  const next = duplicateElement(def, elementId);
+  return [next, Object.keys(next.elements).find((id) => !before.has(id)) ?? null];
 }
 
 export function duplicateElement(def: FormDefinition, elementId: string): FormDefinition {
@@ -334,7 +375,30 @@ export function renamePage(def: FormDefinition, pageId: string, name: string): F
 // ============================================================
 
 export function updateTheme(def: FormDefinition, updates: Partial<FormTheme>): FormDefinition {
-  return { ...def, theme: { ...def.theme, ...updates } };
+  return { ...def, theme: syncThemeColors(def.theme, { ...def.theme, ...updates }) };
+}
+
+/**
+ * The colour palette (presets, Design → Colours) also drives the buttons, the inputs and the page
+ * background, which the form reads from their own settings: carry changed colours across.
+ */
+export function syncThemeColors(prev: FormTheme, next: FormTheme): FormTheme {
+  const a = prev.colors, b = next.colors;
+  if (!a || !b || a === b) return next;
+  const changed = (k: keyof typeof b) => a[k] !== b[k] && !!b[k];
+  const out = { ...next, buttonStyle: { ...next.buttonStyle }, fieldStyle: { ...next.fieldStyle }, background: { ...next.background } };
+  if (changed('buttonBg')) { out.buttonStyle.background = b.buttonBg; out.buttonStyle.border = b.buttonBg; }
+  else if (changed('primary') && prev.buttonStyle.background === a.primary) { out.buttonStyle.background = b.primary; out.buttonStyle.border = b.primary; }
+  if (changed('buttonText')) out.buttonStyle.textColor = b.buttonText;
+  if (changed('inputBackground')) out.fieldStyle.background = b.inputBackground;
+  if (changed('inputText')) out.fieldStyle.textColor = b.inputText;
+  if (changed('border')) out.fieldStyle.border = b.border;
+  if (changed('focusRing')) out.fieldStyle.focusBorder = b.focusRing;
+  else if (changed('primary') && prev.fieldStyle.focusBorder === a.primary) out.fieldStyle.focusBorder = b.primary;
+  if (changed('heading') && prev.fieldStyle.labelColor === a.heading) out.fieldStyle.labelColor = b.heading;
+  if (changed('pageBackground') && next.background.type === 'solid') out.background.color = b.pageBackground;
+  if (changed('primary') && prev.progress?.color === a.primary) out.progress = { ...next.progress, color: b.primary };
+  return out;
 }
 export function updateSettings(def: FormDefinition, updates: Partial<FormSettings>): FormDefinition {
   return { ...def, settings: { ...def.settings, ...updates } };
@@ -413,7 +477,7 @@ export function migrateLegacyFields(
   }>,
 ): FormDefinition {
   if (legacyFields.length === 0) return def;
-  if (Object.keys(def.elements).length > 0) return def;
+  // The template's fields replace the starter fields of the first section.
   const sectionId = def.pages[0]?.sectionIds[0];
   if (!sectionId) return def;
 
@@ -422,22 +486,37 @@ export function migrateLegacyFields(
     long_text: 'long_text', phone: 'phone', email: 'email', number: 'number',
     radio: 'radio', checkbox: 'checkbox', multi_select: 'multi_select',
     dropdown: 'dropdown', date: 'date', time: 'time', file_upload: 'file_upload',
-    consent: 'consent', hidden: 'hidden',
+    consent: 'consent', hidden: 'hidden', address: 'address', website: 'website', full_name: 'full_name',
+    yes_no: 'yes_no', rating: 'rating', signature: 'signature', textarea: 'long_text',
+  };
+  // Templates name some fields without saying what they are: read it from the label.
+  const guess = (label: string, type: ElementType): { type: ElementType; map: FieldDefinition['mappedContactField'] } => {
+    const l = label.toLowerCase();
+    if (type === 'text_field' && /\bfull name\b|^name$|your name/.test(l)) return { type: 'full_name', map: 'full_name' };
+    if (type === 'text_field' && /\b(company|organi[sz]ation|business)\b/.test(l)) return { type: 'company', map: 'company' };
+    if (type === 'text_field' && /\b(job title|role|position)\b/.test(l)) return { type: 'job_title', map: 'job_title' };
+    if ((type === 'text_field' || type === 'phone') && /\bphone|mobile|whatsapp\b/.test(l)) return { type: 'phone', map: 'phone' };
+    if ((type === 'text_field' || type === 'email') && /\be-?mail\b/.test(l)) return { type: 'email', map: 'email' };
+    return { type, map: null };
   };
 
   const newElements: Record<string, FormElement> = {};
   const elementIds: string[] = [];
 
   for (const lf of legacyFields) {
-    const elType = typeMap[lf.field_type] || 'text_field';
+    const g = guess(lf.label, typeMap[lf.field_type] || 'text_field');
+    const elType = g.type;
+    const consent = elType === 'consent';
     const el = createElement(elType, lf.sort_order, {
       field: {
         fieldId: generateFieldId(), label: lf.label, required: lf.required,
-        placeholder: lf.placeholder ?? undefined, description: lf.help_text ?? undefined,
+        placeholder: lf.placeholder ?? undefined, description: consent ? undefined : lf.help_text ?? undefined,
         defaultValue: lf.default_value ?? undefined, options: lf.options ?? undefined,
-        mappedContactField: lf.mapped_field as FieldDefinition['mappedContactField'],
+        mappedContactField: (lf.mapped_field as FieldDefinition['mappedContactField']) || g.map,
         visible: true,
       },
+      // A consent's wording goes next to its tick box.
+      ...(consent ? { content: { text: lf.help_text || 'I agree to be contacted regarding my submission.' } } : {}),
     });
     newElements[el.id] = el;
     elementIds.push(el.id);
@@ -445,6 +524,6 @@ export function migrateLegacyFields(
 
   return {
     ...def, elements: newElements,
-    sections: { ...def.sections, [sectionId]: { ...def.sections[sectionId], elementIds } },
+    sections: { ...def.sections, [sectionId]: { ...def.sections[sectionId], columnCount: 1, elementIds } },
   };
 }
