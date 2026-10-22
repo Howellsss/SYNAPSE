@@ -1,6 +1,7 @@
 /**
  * Company accounts: the team directory, departments, and bulk invitations.
- * Roles: owner (the account holder), admin, supervisor (leads departments), member (experts, staff).
+ * Roles: owner (the account holder), admin (sees and manages everything), and users ('member'),
+ * who see what an admin gives them (src/lib/access.ts).
  */
 import { supabase } from '@/lib/supabase';
 import type { UserRole } from '@/types';
@@ -9,18 +10,16 @@ import { isValidEmail, normalizeEmail } from '@/lib/invitations';
 export const ROLE_LABELS: Record<UserRole, string> = {
   owner: 'Owner',
   admin: 'Admin',
-  supervisor: 'Supervisor',
-  member: 'Member',
+  member: 'User',
 };
 
 export const ROLE_HINTS: Record<Exclude<UserRole, 'owner'>, string> = {
-  admin: 'Manages the whole workspace: people, departments, settings',
-  supervisor: 'Leads departments: manages their people and assigns rooms',
-  member: 'Uses what they are given access to',
+  admin: 'Sees everything and manages people, rooms and settings',
+  member: 'Sees what an admin switches on for them',
 };
 
 /** Roles an admin can give (owner is only ever the account holder). */
-export const ASSIGNABLE_ROLES: Exclude<UserRole, 'owner'>[] = ['member', 'supervisor', 'admin'];
+export const ASSIGNABLE_ROLES: Exclude<UserRole, 'owner'>[] = ['member', 'admin'];
 
 export interface DirectoryMember {
   member_id: string;
@@ -83,7 +82,7 @@ export async function deleteDepartment(id: string): Promise<{ error: string | nu
   return { error: error?.message ?? null };
 }
 
-/** Put people in a department (leads are its supervisors). Existing memberships are updated. */
+/** Put people in a department. Existing memberships are updated. */
 export async function addToDepartment(
   workspaceId: string, departmentId: string, userIds: string[], isLead = false, addedBy: string | null = null,
 ): Promise<{ error: string | null }> {
@@ -148,7 +147,7 @@ export interface ParsedInvites {
 
 const ROLE_WORDS: Record<string, Exclude<UserRole, 'owner'>> = {
   member: 'member', expert: 'member', staff: 'member', agent: 'member', user: 'member',
-  supervisor: 'supervisor', manager: 'supervisor', lead: 'supervisor', 'team lead': 'supervisor',
+  supervisor: 'member', manager: 'member', lead: 'member', 'team lead': 'member',
   admin: 'admin', administrator: 'admin',
 };
 

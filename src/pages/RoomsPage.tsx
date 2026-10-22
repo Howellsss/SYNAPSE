@@ -17,7 +17,7 @@ import {
 } from '@/lib/rooms';
 
 /**
- * Rooms: standing video rooms of the company. Admins and supervisors create them and assign
+ * Rooms: standing video rooms of the company. Admins create them and assign
  * experts; experts start calls and make links (for clients or teammates) in the rooms assigned
  * to them. Each room shows whether a call is on in it right now.
  */
@@ -91,7 +91,7 @@ export function RoomsPage() {
         <div>
           <h1 className="font-display text-[28px] font-semibold tracking-[-0.02em] text-navy-800">Rooms</h1>
           <p className="mt-1 max-w-2xl text-sm text-ivory-700">
-            Standing video rooms for your teams. Supervisors create rooms and assign experts; experts start calls and send links to clients or teammates from the rooms assigned to them.
+            Standing video rooms for your teams. Admins create rooms and assign people; people start calls and send links to clients or teammates from the rooms assigned to them.
           </p>
         </div>
         {canCreateRooms(viewer) && (
@@ -134,7 +134,7 @@ export function RoomsPage() {
               title={tab === 'mine' ? 'No rooms assigned to you yet' : 'No rooms yet'}
               description={canCreateRooms(viewer)
                 ? 'Create a room, put it in a department and assign the experts who use it.'
-                : 'A supervisor or admin creates rooms and assigns them. Ask yours to assign you one.'}
+                : 'An admin creates rooms and assigns them. Ask yours to assign you one.'}
             />
           </div>
         ) : (
@@ -245,7 +245,7 @@ function RoomCard({ room, busy, department, people, busyBy, canUse, canManage, o
             <button type="button" onClick={onDelete} aria-label={`Delete ${room.name}`} title="Delete" className="rounded-lg p-2 text-burgundy-600 hover:bg-burgundy-50"><Trash2 className="h-4 w-4" /></button>
           </span>
         )}
-        {!canUse && !canManage && <span className="text-xs text-ivory-700">Assigned rooms only: ask a supervisor to assign you.</span>}
+        {!canUse && !canManage && <span className="text-xs text-ivory-700">Assigned rooms only: ask an admin to assign you.</span>}
       </div>
       {linksOpen && <RoomLinks roomId={room.id} />}
     </li>
@@ -290,7 +290,7 @@ function RoomEditor({ room, departments, allDepartments, members, onClose, onSav
   // People in the room's department first.
   const sorted = [...active].sort((a, b) => Number(!!departmentId && b.department_ids.includes(departmentId)) - Number(!!departmentId && a.department_ids.includes(departmentId)) || memberName(a).localeCompare(memberName(b)));
   const shown = sorted.filter((m) => !search.trim() || `${memberName(m)} ${m.title ?? ''}`.toLowerCase().includes(search.trim().toLowerCase()));
-  // A room already in a department this supervisor doesn't lead keeps it.
+  // A room already in a department that isn't on offer keeps it.
   const options = room?.department_id && !departments.some((d) => d.id === room.department_id)
     ? [...departments, ...allDepartments.filter((d) => d.id === room.department_id)]
     : departments;

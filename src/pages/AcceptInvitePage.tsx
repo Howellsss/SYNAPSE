@@ -47,8 +47,7 @@ async function acceptInvite(token: string, invitation: InvitationData, userId: s
 
 const ROLE_INTRO: Record<string, string> = {
   admin: "As an admin, you'll manage workspace settings, team members, departments and all operational resources.",
-  supervisor: "As a supervisor, you'll lead your department: manage its people and the rooms they use.",
-  member: "As a member, you'll have access to the calendars, rooms and resources assigned to you.",
+  member: "You'll have Conversations, Workspaces, Meetings and the calendars and rooms assigned to you, plus anything your admins give you.",
 };
 
 export function AcceptInvitePage({ token }: { token: string }) {

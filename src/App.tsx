@@ -38,6 +38,7 @@ import { watchFromLocation } from '@/lib/streams';
 import { CreateSpaceWizard } from '@/pages/CreateSpaceWizard';
 import { SpacePage } from '@/pages/SpacePage';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
+import { featureForPath, useAccess } from '@/lib/access';
 import { clearCache } from '@/lib/cache/withCache';
 import { GuestJoinPage } from '@/pages/GuestJoinPage';
 import { EventsHomePage } from '@/pages/events/EventsHomePage';
@@ -57,6 +58,7 @@ const isMenuSection = (section: string) => section === 'dashboard' || section ==
 function AppContent() {
   const { user, loading, workspace } = useAuth();
   const [path, navigate] = useRouter();
+  const access = useAccess();
   // Cached data belongs to one person in one workspace: drop it all when either changes
   // (signing out, someone else signing in, switching workspace).
   const cacheOwner = `${user?.id ?? ''}|${workspace?.id ?? ''}`;
@@ -123,6 +125,12 @@ function AppContent() {
       navigate('/');
     }
   }, [user, loading, path, authPath, isPublicEvents, meetingInvite, publicFormId, navigate]);
+  // A section this person can't use (a User without it switched on) sends them to their own home.
+  const studioPath = /^\/streams\/[A-Za-z]{4}-?\d{3}(?:[/?]|$)/.test(path);
+  const blocked = !!user && !publicFormId && !meetingCode && !studioPath && (() => { const f = featureForPath(path); return !!f && access.ready && !access.can(f); })();
+  useEffect(() => {
+    if (!loading && blocked) navigate(access.home);
+  }, [loading, blocked, access.home, navigate]);
 
   if (loading) {
     return (
@@ -193,6 +201,7 @@ function AppContent() {
 
   // Authenticated app
   const renderPage = () => {
+    if (blocked) return null;
     if (path === '/dashboard' || path === '/') return <Dashboard />;
     const contactMatch = path.match(/^\/contacts\/([^/?]+)/);
     if (contactMatch) return <ContactDetailPage key={contactMatch[1]} contactId={contactMatch[1]} />;

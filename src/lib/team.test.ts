@@ -34,7 +34,7 @@ describe('parseInvites', () => {
     const r = parseInvites(csv, { role: 'member', department: 'General' });
     expect(r.rows).toEqual([
       { email: 'jane@x.com', role: 'member', department: 'Video', title: 'Video Editor' },
-      { email: 'sam@x.com', role: 'supervisor', department: 'Tech', title: 'Lead, Tech' },
+      { email: 'sam@x.com', role: 'member', department: 'Tech', title: 'Lead, Tech' },
       { email: 'ada@x.com', role: 'admin', department: 'General', title: '' },
       { email: 'bo@x.com', role: 'member', department: 'General', title: 'Writer' },
     ]);

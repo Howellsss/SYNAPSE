@@ -9,9 +9,9 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState, LoadingSpinner } from '@/components/ui/States';
-import { cn } from '@/lib/utils';
 import type { UserRole } from '@/types';
 import { invitationLink } from '@/lib/invitations';
+import { DEFAULT_USER_ACCESS, FEATURES, forgetAccess } from '@/lib/access';
 import {
   ASSIGNABLE_ROLES, ROLE_HINTS, ROLE_LABELS, invitationLinksCsv, loadDepartments, loadDirectory, matchDepartment,
   memberName, parseInvites, saveDepartment, sendInviteRows, setMemberDepartments, updateMember,
@@ -138,7 +138,7 @@ export function TeamMembersSettings() {
   const counts = {
     total: members.length,
     active: members.filter((m) => m.status === 'active').length,
-    supervisors: members.filter((m) => m.role === 'supervisor').length,
+    admins: members.filter((m) => m.role === 'admin' || m.role === 'owner').length,
   };
 
   return (
@@ -148,7 +148,7 @@ export function TeamMembersSettings() {
           <div>
             <h3 className="text-lg font-semibold text-navy-800">Team Members</h3>
             <p className="mt-0.5 text-sm text-ivory-600">
-              {counts.total} {counts.total === 1 ? 'person' : 'people'} · {counts.active} active · {counts.supervisors} {counts.supervisors === 1 ? 'supervisor' : 'supervisors'} · {departments.length} {departments.length === 1 ? 'department' : 'departments'}
+              {counts.total} {counts.total === 1 ? 'person' : 'people'} · {counts.active} active · {counts.admins} {counts.admins === 1 ? 'admin' : 'admins'} · {departments.length} {departments.length === 1 ? 'department' : 'departments'}
             </p>
           </div>
           {canManageTeam && (
@@ -174,7 +174,7 @@ export function TeamMembersSettings() {
           </label>
           <select aria-label="Filter by role" className="input-field" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as UserRole | '')}>
             <option value="">All roles</option>
-            {(['owner', 'admin', 'supervisor', 'member'] as UserRole[]).map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+            {(['owner', 'admin', 'member'] as UserRole[]).map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
           </select>
           <select aria-label="Filter by department" className="input-field" value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)}>
             <option value="">All departments</option>
@@ -231,7 +231,7 @@ export function TeamMembersSettings() {
                       <div className="fixed inset-0 z-10" onClick={() => setActionMenu(null)} />
                       <div className="absolute right-0 top-full z-20 mt-1 w-48 animate-scale-in overflow-hidden rounded-xl border border-navy-100 bg-white shadow-popover">
                         <button onClick={() => { setEditMember(m); setActionMenu(null); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-navy-600 transition-colors hover:bg-ivory-50">
-                          <Pencil className="h-3.5 w-3.5" /> Edit role and departments
+                          <Pencil className="h-3.5 w-3.5" /> Edit role and access
                         </button>
                         <button onClick={() => handleSuspend(m)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-navy-600 transition-colors hover:bg-ivory-50">
                           <Ban className="h-3.5 w-3.5" /> {m.status === 'suspended' ? 'Reactivate' : 'Suspend'}
@@ -543,9 +543,18 @@ function EditMemberModal({ member, departments, calendars, onClose, onSaved }: {
   const [role, setRole] = useState<UserRole>(member.role);
   const [title, setTitle] = useState(member.title ?? '');
   const [deptIds, setDeptIds] = useState<string[]>(member.department_ids);
-  const [leadIds, setLeadIds] = useState<string[]>(member.lead_department_ids);
+  const leadIds: string[] = [];
   const [assignedCalendars, setAssignedCalendars] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  // What they can see (Users only; Admins see everything). null = the standard set.
+  const [access, setAccess] = useState<string[] | null>(null);
+  const [accessLoaded, setAccessLoaded] = useState<string[] | null>(null);
+  const shown = access ?? DEFAULT_USER_ACCESS;
+
+  useEffect(() => {
+    supabase.from('workspace_members').select('access').eq('id', member.member_id).maybeSingle()
+      .then(({ data, error }) => { const a = !error && Array.isArray(data?.access) ? (data!.access as string[]) : null; setAccess(a); setAccessLoaded(a); });
+  }, [member.member_id]);
 
   useEffect(() => {
     supabase.from('calendar_hosts').select('calendar_id').eq('user_id', member.user_id)
@@ -554,7 +563,6 @@ function EditMemberModal({ member, departments, calendars, onClose, onSaved }: {
 
   const toggleDept = (id: string, on: boolean) => {
     setDeptIds((ids) => (on ? [...ids, id] : ids.filter((x) => x !== id)));
-    if (!on) setLeadIds((ids) => ids.filter((x) => x !== id));
   };
 
   const handleSave = async () => {
@@ -566,6 +574,14 @@ function EditMemberModal({ member, departments, calendars, onClose, onSaved }: {
     if (Object.keys(changes).length) {
       const { error } = await updateMember(member.member_id, changes);
       if (error) { toast(error, 'error'); setLoading(false); return; }
+    }
+    if (JSON.stringify(access) !== JSON.stringify(accessLoaded)) {
+      const { error } = await supabase.from('workspace_members').update({ access }).eq('id', member.member_id);
+      if (error) {
+        toast(/access/.test(error.message) ? 'Run the database update 06_roles_and_access.sql first.' : error.message, 'error');
+        setLoading(false); return;
+      }
+      forgetAccess();
     }
     const { error: deptErr } = await setMemberDepartments(workspace.id, member.user_id, deptIds, leadIds, user?.id ?? null);
     if (deptErr) { toast(deptErr, 'error'); setLoading(false); return; }
@@ -586,7 +602,7 @@ function EditMemberModal({ member, departments, calendars, onClose, onSaved }: {
       open
       onClose={onClose}
       title={`Edit ${memberName(member)}`}
-      description="Role, job title, departments and calendars."
+      description="Role, job title, departments, calendars and what they can see."
       footer={
         <>
           <button onClick={onClose} className="btn-secondary">Cancel</button>
@@ -622,26 +638,30 @@ function EditMemberModal({ member, departments, calendars, onClose, onSaved }: {
                       <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: d.color }} />
                       <span className="truncate">{d.name}</span>
                     </label>
-                    {inIt && (
-                      <label className={cn('flex cursor-pointer items-center gap-1.5 rounded-full px-2 py-0.5 text-xs', leadIds.includes(d.id) ? 'bg-gold-100 text-navy-800' : 'text-ivory-600')}>
-                        <input
-                          type="checkbox"
-                          className="h-3.5 w-3.5 rounded border-navy-200"
-                          checked={leadIds.includes(d.id)}
-                          onChange={(e) => setLeadIds((ids) => (e.target.checked ? [...ids, d.id] : ids.filter((x) => x !== d.id)))}
-                        />
-                        Leads it
-                      </label>
-                    )}
                   </div>
                 );
               })}
             </div>
           )}
-          {leadIds.length > 0 && role === 'member' && (
-            <p className="mt-1 text-xs text-amber-700">Department leads are usually Supervisors. Change the role above to let them manage the department.</p>
-          )}
         </div>
+        {role === 'member' ? (
+          <div>
+            <p className="mb-1 text-sm font-medium text-navy-700">What they can see</p>
+            <p className="mb-2 text-xs text-ivory-600">Users see only what's switched on here. Admins see everything.</p>
+            <div className="grid gap-1 sm:grid-cols-2">
+              {FEATURES.map((f) => (
+                <label key={f.key} className="flex cursor-pointer items-start gap-2.5 rounded-lg p-2 hover:bg-ivory-50">
+                  <input type="checkbox" className="mt-0.5 h-4 w-4 rounded border-navy-200" checked={shown.includes(f.key)}
+                    onChange={(e) => setAccess(e.target.checked ? [...shown, f.key] : shown.filter((k) => k !== f.key))} />
+                  <span className="min-w-0"><span className="block text-sm text-navy-800">{f.label}</span>{f.hint && <span className="block text-[11px] text-ivory-600">{f.hint}</span>}</span>
+                </label>
+              ))}
+            </div>
+            {access && <button type="button" onClick={() => setAccess(null)} className="btn-ghost btn-sm mt-1">Back to the standard set</button>}
+          </div>
+        ) : (
+          <p className="rounded-xl bg-ivory-50 px-3 py-2 text-xs text-ivory-700">{role === 'owner' ? 'The owner sees and manages everything.' : 'Admins see and manage everything.'}</p>
+        )}
         {calendars.length > 0 && (
           <details className="rounded-xl border border-navy-100 p-3">
             <summary className="cursor-pointer text-sm font-medium text-navy-700">Assigned calendars</summary>
