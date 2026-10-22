@@ -565,7 +565,7 @@ export const DEFAULT_THEME: FormTheme = {
   inputBorderRadius: '8px',
   maxFormWidth: '640px',
 
-  layoutPreset: 'plain',
+  layoutPreset: 'card',
   colors: {
     pageBackground: '#ffffff',
     surfaceBackground: '#ffffff',
@@ -604,7 +604,7 @@ export const DEFAULT_THEME: FormTheme = {
     contentAlign: 'left',
     sectionSpacing: 24,
     fieldSpacing: 16,
-    pagePadding: 32,
+    pagePadding: 24,
     columnGap: 16,
     containerRadius: 'medium',
     containerShadow: 'subtle',
@@ -635,7 +635,7 @@ export const DEFAULT_THEME: FormTheme = {
     border: '#0a1628',
     borderRadius: 'medium',
     height: 44,
-    width: 'auto',
+    width: 'full',
     padding: 16,
     font: 'Inter, system-ui, sans-serif',
     weight: '600',
