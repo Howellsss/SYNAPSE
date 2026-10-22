@@ -141,7 +141,7 @@ export function FormRenderer({
         })}
 
         {!builderMode && runtime && (
-          <div className="flex items-center gap-3 mt-6" style={{ justifyContent: runtime.canGoBack ? 'space-between' : navAlign }}>
+          <div className="flex items-center gap-3 mt-8 pt-6 border-t" style={{ borderColor: theme.colors.border, justifyContent: runtime.canGoBack ? 'space-between' : navAlign }}>
             {runtime.canGoBack && <div><button type="button" onClick={onPrevious} disabled={runtime.busy} style={getButtonStyle(theme, theme.buttonStyle, 'outline')}>Back</button></div>}
             <div style={{ flex: theme.buttonStyle.width === 'full' && !runtime.canGoBack ? 1 : undefined }}>
               {runtime.isLast
@@ -152,14 +152,14 @@ export function FormRenderer({
         )}
 
         {!builderMode && !runtime && totalPages > 1 && (
-          <div className="flex items-center justify-between mt-6">
+          <div className="flex items-center justify-between mt-8 pt-6 border-t" style={{ borderColor: theme.colors.border }}>
             <div>{currentPage > 0 && <button onClick={onPrevious} style={getButtonStyle(theme, theme.buttonStyle, 'outline')}>Back</button>}</div>
             <div>{currentPage < totalPages - 1 ? <button onClick={onNext} style={getButtonStyle(theme, theme.buttonStyle)}>Next</button> : <button onClick={onSubmit} style={getButtonStyle(theme, theme.buttonStyle)}>Submit</button>}</div>
           </div>
         )}
 
         {!builderMode && !runtime && totalPages === 1 && page.sectionIds.some(sid => { const sec = definition.sections[sid]; return sec?.elementIds.some(eid => definition.elements[eid]?.field); }) && (
-          <div className="mt-6" style={{ textAlign: theme.buttonStyle.align }}>
+          <div className="mt-8 pt-6 border-t" style={{ borderColor: theme.colors.border, textAlign: theme.buttonStyle.align }}>
             <button onClick={onSubmit} style={getButtonStyle(theme, theme.buttonStyle, undefined, theme.buttonStyle.width === 'full' ? '100%' : 'auto')}>Submit</button>
           </div>
         )}
