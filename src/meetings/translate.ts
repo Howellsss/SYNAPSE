@@ -7,34 +7,86 @@
  * click, so the first time it shows a "Translate from …" button instead (see `needsClick`).
  */
 
-export interface Language { code: string; name: string; voice: string }
-
-/** Languages people can choose (the ones the browser translator offers widely). */
-export const LANGUAGES: Language[] = [
-  { code: 'en', name: 'English', voice: 'en-US' },
-  { code: 'es', name: 'Español', voice: 'es-ES' },
-  { code: 'fr', name: 'Français', voice: 'fr-FR' },
-  { code: 'pt', name: 'Português', voice: 'pt-BR' },
-  { code: 'de', name: 'Deutsch', voice: 'de-DE' },
-  { code: 'it', name: 'Italiano', voice: 'it-IT' },
-  { code: 'nl', name: 'Nederlands', voice: 'nl-NL' },
-  { code: 'zh', name: '中文', voice: 'zh-CN' },
-  { code: 'ja', name: '日本語', voice: 'ja-JP' },
-  { code: 'ko', name: '한국어', voice: 'ko-KR' },
-  { code: 'ar', name: 'العربية', voice: 'ar-SA' },
-  { code: 'hi', name: 'हिन्दी', voice: 'hi-IN' },
-  { code: 'ru', name: 'Русский', voice: 'ru-RU' },
-  { code: 'tr', name: 'Türkçe', voice: 'tr-TR' },
-];
-
-/** The short code ("es") of a language tag ("es-MX"), if it's one we offer. */
-export function langCode(tag: string | null | undefined): string | null {
-  const c = (tag ?? '').toLowerCase().split(/[-_]/)[0];
-  return LANGUAGES.some((l) => l.code === c) ? c : null;
+export interface Language {
+  code: string;
+  /** In English (how the list is sorted), and in the language itself. */
+  name: string;
+  native: string;
+  /** Speech recognition and the interpreter's voice (BCP 47). */
+  voice: string;
+  /** Codes the browser's translator may know it by, if not `code` (Hebrew is "iw" in some). */
+  alt?: string[];
 }
 
-export const languageName = (code: string) => LANGUAGES.find((l) => l.code === code)?.name ?? code;
-export const voiceTag = (code: string) => LANGUAGES.find((l) => l.code === code)?.voice ?? code;
+/**
+ * Every language the interpreter handles: the ones the browser's own translator (Chrome's
+ * Translator API) translates, each with a voice for speech recognition and for reading aloud.
+ */
+export const LANGUAGES: Language[] = [
+  { code: 'ar', name: 'Arabic', native: 'العربية', voice: 'ar-SA' },
+  { code: 'bn', name: 'Bengali', native: 'বাংলা', voice: 'bn-IN' },
+  { code: 'bg', name: 'Bulgarian', native: 'Български', voice: 'bg-BG' },
+  { code: 'zh', name: 'Chinese (Simplified)', native: '简体中文', voice: 'zh-CN' },
+  { code: 'zh-Hant', name: 'Chinese (Traditional)', native: '繁體中文', voice: 'zh-TW' },
+  { code: 'hr', name: 'Croatian', native: 'Hrvatski', voice: 'hr-HR' },
+  { code: 'cs', name: 'Czech', native: 'Čeština', voice: 'cs-CZ' },
+  { code: 'da', name: 'Danish', native: 'Dansk', voice: 'da-DK' },
+  { code: 'nl', name: 'Dutch', native: 'Nederlands', voice: 'nl-NL' },
+  { code: 'en', name: 'English', native: 'English', voice: 'en-US' },
+  { code: 'fi', name: 'Finnish', native: 'Suomi', voice: 'fi-FI' },
+  { code: 'fr', name: 'French', native: 'Français', voice: 'fr-FR' },
+  { code: 'de', name: 'German', native: 'Deutsch', voice: 'de-DE' },
+  { code: 'el', name: 'Greek', native: 'Ελληνικά', voice: 'el-GR' },
+  { code: 'he', name: 'Hebrew', native: 'עברית', voice: 'he-IL', alt: ['iw'] },
+  { code: 'hi', name: 'Hindi', native: 'हिन्दी', voice: 'hi-IN' },
+  { code: 'hu', name: 'Hungarian', native: 'Magyar', voice: 'hu-HU' },
+  { code: 'id', name: 'Indonesian', native: 'Bahasa Indonesia', voice: 'id-ID' },
+  { code: 'it', name: 'Italian', native: 'Italiano', voice: 'it-IT' },
+  { code: 'ja', name: 'Japanese', native: '日本語', voice: 'ja-JP' },
+  { code: 'kn', name: 'Kannada', native: 'ಕನ್ನಡ', voice: 'kn-IN' },
+  { code: 'ko', name: 'Korean', native: '한국어', voice: 'ko-KR' },
+  { code: 'lt', name: 'Lithuanian', native: 'Lietuvių', voice: 'lt-LT' },
+  { code: 'mr', name: 'Marathi', native: 'मराठी', voice: 'mr-IN' },
+  { code: 'no', name: 'Norwegian', native: 'Norsk', voice: 'nb-NO', alt: ['nb'] },
+  { code: 'pl', name: 'Polish', native: 'Polski', voice: 'pl-PL' },
+  { code: 'pt', name: 'Portuguese', native: 'Português', voice: 'pt-BR' },
+  { code: 'ro', name: 'Romanian', native: 'Română', voice: 'ro-RO' },
+  { code: 'ru', name: 'Russian', native: 'Русский', voice: 'ru-RU' },
+  { code: 'sk', name: 'Slovak', native: 'Slovenčina', voice: 'sk-SK' },
+  { code: 'sl', name: 'Slovenian', native: 'Slovenščina', voice: 'sl-SI' },
+  { code: 'es', name: 'Spanish', native: 'Español', voice: 'es-ES' },
+  { code: 'sv', name: 'Swedish', native: 'Svenska', voice: 'sv-SE' },
+  { code: 'ta', name: 'Tamil', native: 'தமிழ்', voice: 'ta-IN' },
+  { code: 'te', name: 'Telugu', native: 'తెలుగు', voice: 'te-IN' },
+  { code: 'th', name: 'Thai', native: 'ไทย', voice: 'th-TH' },
+  { code: 'tr', name: 'Turkish', native: 'Türkçe', voice: 'tr-TR' },
+  { code: 'uk', name: 'Ukrainian', native: 'Українська', voice: 'uk-UA' },
+  { code: 'vi', name: 'Vietnamese', native: 'Tiếng Việt', voice: 'vi-VN' },
+];
+
+const byCode = new Map(LANGUAGES.map((l) => [l.code, l]));
+
+/** One of our language codes ("es", "zh-Hant") for a tag ("es-MX", "zh-TW", "iw", "nb-NO"), if we offer it. */
+export function langCode(tag: string | null | undefined): string | null {
+  const t = (tag ?? '').trim().replace(/_/g, '-').toLowerCase();
+  if (!t) return null;
+  if (/^zh-(hant|tw|hk|mo)\b/.test(t)) return 'zh-Hant';
+  const c = t.split('-')[0];
+  if (c === 'iw') return 'he';
+  if (c === 'nb' || c === 'nn') return 'no';
+  return byCode.has(c) ? c : null;
+}
+
+/** "Spanish (Español)"; English shows just once. */
+export const languageLabel = (code: string) => {
+  const l = byCode.get(code);
+  if (!l) return code;
+  return l.native === l.name ? l.name : `${l.name} (${l.native})`;
+};
+export const languageName = (code: string) => byCode.get(code)?.name ?? code;
+export const voiceTag = (code: string) => byCode.get(code)?.voice ?? code;
+/** The codes to ask the browser's translator for. */
+const translatorCodes = (code: string) => [code, ...(byCode.get(code)?.alt ?? [])];
 
 const KEY = 'synapse.myLanguage';
 /** The language I speak and want to hear (remembered on this device; first time, the browser's). */
@@ -72,10 +124,16 @@ function translatorFor(from: string, to: string, withClick = false): Promise<Tra
   const T = api();
   if (!T) return Promise.resolve(null);
   const p = (async () => {
-    const state = await T.availability({ sourceLanguage: from, targetLanguage: to }).catch(() => 'unavailable' as const);
-    if (state === 'unavailable') return null;
-    if (state !== 'available' && !withClick) { blocked.add(key); return null; }
-    try { const t = await T.create({ sourceLanguage: from, targetLanguage: to }); blocked.delete(key); return t; } catch { blocked.add(key); return null; }
+    // The first spelling of the pair the browser knows (Hebrew may be "he" or "iw").
+    for (const sourceLanguage of translatorCodes(from)) {
+      for (const targetLanguage of translatorCodes(to)) {
+        const state = await T.availability({ sourceLanguage, targetLanguage }).catch(() => 'unavailable' as const);
+        if (state === 'unavailable') continue;
+        if (state !== 'available' && !withClick) { blocked.add(key); return null; }
+        try { const t = await T.create({ sourceLanguage, targetLanguage }); blocked.delete(key); return t; } catch { blocked.add(key); return null; }
+      }
+    }
+    return null;
   })();
   ready.set(key, p);
   // Not ready yet (needs a click, or failed): ask again next time.
@@ -109,7 +167,9 @@ export async function translate(text: string, from: string, to: string): Promise
 export class Interpreter {
   private queue: string[] = [];
   private speaking = false;
-  constructor(private lang: string) {}
+  /** When it spoke (start, end), so its own voice from the speakers isn't taken for yours. */
+  private spans: [number, number][] = [];
+  constructor(private lang: string, private now: () => number = Date.now) {}
 
   static supported = () => typeof window !== 'undefined' && 'speechSynthesis' in window;
 
@@ -122,27 +182,43 @@ export class Interpreter {
     if (!this.speaking) this.next();
   }
 
+  /** Was it talking at any time between `from` and `to` (with a little tail for the room's echo)? */
+  spokeDuring(from: number, to: number, tailMs = 700): boolean {
+    const t = this.now();
+    this.spans = this.spans.filter(([, end]) => end === Infinity || t - end < 60_000);
+    return this.spans.some(([start, end]) => start <= to && (end === Infinity ? t : end) + tailMs >= from);
+  }
+
+  /** Mark a stretch of speech (used by `next`, and by tests). */
+  markStart() { this.spans.push([this.now(), Infinity]); }
+  markEnd() { const last = this.spans[this.spans.length - 1]; if (last && last[1] === Infinity) last[1] = this.now(); }
+
   private next() {
     const text = this.queue.shift();
     if (!text) { this.speaking = false; return; }
     this.speaking = true;
     const u = new SpeechSynthesisUtterance(text);
     const tag = voiceTag(this.lang);
+    const base = tag.split('-')[0];
     u.lang = tag;
     const voices = window.speechSynthesis.getVoices();
-    u.voice = voices.find((v) => v.lang === tag && /natural|google|premium|enhanced/i.test(v.name))
-      ?? voices.find((v) => v.lang === tag)
-      ?? voices.find((v) => v.lang.startsWith(this.lang))
+    const norm = (v: SpeechSynthesisVoice) => v.lang.replace('_', '-');
+    u.voice = voices.find((v) => norm(v) === tag && /natural|google|premium|enhanced/i.test(v.name))
+      ?? voices.find((v) => norm(v) === tag)
+      ?? voices.find((v) => norm(v).split('-')[0] === base)
       ?? null;
     u.rate = 1.05;
-    u.onend = () => this.next();
-    u.onerror = () => this.next();
+    u.onstart = () => this.markStart();
+    const done = () => { this.markEnd(); this.next(); };
+    u.onend = done;
+    u.onerror = done;
     window.speechSynthesis.speak(u);
   }
 
   stop() {
     this.queue = [];
     this.speaking = false;
+    this.markEnd();
     if (Interpreter.supported()) window.speechSynthesis.cancel();
   }
 }

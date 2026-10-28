@@ -4,10 +4,13 @@
  * nothing extra is installed or paid for. Finished sentences make the meeting transcript.
  */
 
+import { langCode } from './translate';
+
 export const MAX_LINE = 500;
 
 export type CaptionMsg =
-  | { t: 'state'; on: boolean }
+  /** Captions on or off for the meeting; `translation` when someone has turned the interpreter on. */
+  | { t: 'state'; on: boolean; translation?: boolean }
   | { t: 'line'; id: string; text: string; final: boolean; lang?: string };
 
 export interface TranscriptLine {
@@ -25,10 +28,11 @@ const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 
 
 export function parseCaptionMsg(raw: unknown): CaptionMsg | null {
   if (!isObj(raw)) return null;
-  if (raw.t === 'state' && typeof raw.on === 'boolean') return { t: 'state', on: raw.on };
+  if (raw.t === 'state' && typeof raw.on === 'boolean') return raw.translation === true ? { t: 'state', on: raw.on, translation: true } : { t: 'state', on: raw.on };
   if (raw.t === 'line' && typeof raw.id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(raw.id) && typeof raw.text === 'string') {
     const text = raw.text.replace(/\s+/g, ' ').trim().slice(0, MAX_LINE);
-    const lang = typeof raw.lang === 'string' && /^[a-z]{2,3}$/.test(raw.lang) ? raw.lang : undefined;
+    // Only languages we offer ("es", "zh-Hant"), never anything else from the wire.
+    const lang = typeof raw.lang === 'string' && raw.lang.length <= 12 ? langCode(raw.lang) ?? undefined : undefined;
     return text ? { t: 'line', id: raw.id, text, final: raw.final === true, ...(lang ? { lang } : {}) } : null;
   }
   return null;

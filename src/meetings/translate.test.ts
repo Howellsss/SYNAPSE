@@ -15,7 +15,7 @@ describe('caption languages', () => {
   it('knows the languages people can pick', () => {
     expect(langCode('es-MX')).toBe('es');
     expect(langCode('xx')).toBeNull();
-    expect(languageName('es')).toBe('Español');
+    expect(languageName('es')).toBe('Spanish');
     expect(voiceTag('en')).toBe('en-US');
   });
   it('passes the same language straight through, and says when it cannot translate', async () => {
