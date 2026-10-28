@@ -3,6 +3,8 @@ import { ArrowLeft, SearchX, Clock } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useSpaceDock } from '@/context/SpaceDockContext';
 import { getSpaceBySlug, hasEntered, markEntered } from '@/lib/spaces';
+import { officeFor } from '@/spatial/scene/offices';
+import { fetchAsset } from '@/spatial/assetFetch';
 import { opensLabel, describeSchedule } from '@/spatial/schedule';
 import { GetReadyScreen } from '@/components/spaces/DeviceCheck';
 import { SpaceRoom } from '@/components/spaces/room/SpaceRoom';
@@ -32,6 +34,9 @@ export function SpacePage({ slug }: { slug: string }) {
       if (!active) return;
       if (err) { setError(err); return; }
       setSpace(data);
+      // Start the office's 3D file now, while the 3D code is still on its way.
+      const officeUrl = data ? officeFor(data.config?.scene)?.url : null;
+      if (officeUrl) void fetchAsset(officeUrl, -1).catch(() => undefined);
       // Only check (and later count) a visit when the person is actually let in.
       const closed = data ? opensLabel(data.schedule, data.persistence) : null;
       if (!data || !userId || (closed && !canManageTeam)) { setEntered(true); return; }

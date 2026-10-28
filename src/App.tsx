@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ToastProvider } from '@/context/ToastContext';
 import { useRouter } from '@/lib/router';
@@ -8,49 +8,54 @@ import { TopBar } from '@/components/layout/TopBar';
 import { DOCK_STRIP, FeatureDock } from '@/components/layout/FeatureDock';
 import { AuthPage } from '@/pages/AuthPage';
 import { HomePage } from '@/pages/HomePage';
-import { AcceptInvitePage } from '@/pages/AcceptInvitePage';
-import { Dashboard } from '@/pages/Dashboard';
-import { ContactsPage } from '@/pages/ContactsPage';
-import { ContactDetailPage } from '@/pages/ContactDetailPage';
-import { CalendarsPage } from '@/pages/CalendarsPage';
-import { FormsPage } from '@/pages/FormsPage';
-import { FormBuilder } from '@/pages/FormBuilder';
-import { PublicFormPage } from '@/pages/PublicFormPage';
-import { WorkflowsHome } from '@/components/workflows/WorkflowsHome';
-import { Builder } from '@/components/workflows/Builder';
-import { RecordingsPage } from '@/pages/RecordingsPage';
-import { CharactersPage } from '@/pages/CharactersPage';
-import { AIAgentPage } from '@/pages/AIAgentPage';
-import { SettingsPage } from '@/pages/SettingsPage';
-import { MeetingsPage } from '@/pages/MeetingsPage';
-import { MeetingRoomPage } from '@/pages/MeetingRoomPage';
 import { inviteFromLocation } from '@/meetings/codes';
-import { BookingPage } from '@/pages/BookingPage';
-import { GroupCalendarSettingsPage } from '@/pages/GroupCalendarSettingsPage';
-import { ComingSoonPage } from '@/pages/ComingSoonPage';
-import { WorkspacesPage } from '@/pages/WorkspacesPage';
-import { RoomsPage } from '@/pages/RoomsPage';
-import { ConversationsPage } from '@/pages/ConversationsPage';
-import { StreamsPage } from '@/pages/StreamsPage';
-import { StreamStudioPage } from '@/pages/StreamStudioPage';
-import { WatchPage } from '@/pages/WatchPage';
 import { watchFromLocation } from '@/lib/streams';
-import { CreateSpaceWizard } from '@/pages/CreateSpaceWizard';
-import { SpacePage } from '@/pages/SpacePage';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { featureForPath, useAccess } from '@/lib/access';
 import { clearCache } from '@/lib/cache/withCache';
-import { GuestJoinPage } from '@/pages/GuestJoinPage';
-import { EventsHomePage } from '@/pages/events/EventsHomePage';
-import { EventDetailPage } from '@/pages/events/EventDetailPage';
-import { TicketPage } from '@/pages/events/TicketPage';
-import { EventsPage } from '@/pages/events/EventsPage';
-import { EventBuilder } from '@/pages/events/EventBuilder';
-import { EventManagePage } from '@/pages/events/EventManagePage';
 import { MonitorPlay, FolderOpen } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/States';
 import { SpaceDockContext, type SpaceDock } from '@/context/SpaceDockContext';
 import { cn } from '@/lib/utils';
+
+// Each page is its own download, fetched when it's first opened (the sign-in and home pages come
+// with the app), so opening SYNAPSE doesn't wait for every feature's code.
+const AcceptInvitePage = lazy(() => import('@/pages/AcceptInvitePage').then((m) => ({ default: m.AcceptInvitePage })));
+const Dashboard = lazy(() => import('@/pages/Dashboard').then((m) => ({ default: m.Dashboard })));
+const ContactsPage = lazy(() => import('@/pages/ContactsPage').then((m) => ({ default: m.ContactsPage })));
+const ContactDetailPage = lazy(() => import('@/pages/ContactDetailPage').then((m) => ({ default: m.ContactDetailPage })));
+const CalendarsPage = lazy(() => import('@/pages/CalendarsPage').then((m) => ({ default: m.CalendarsPage })));
+const FormsPage = lazy(() => import('@/pages/FormsPage').then((m) => ({ default: m.FormsPage })));
+const FormBuilder = lazy(() => import('@/pages/FormBuilder').then((m) => ({ default: m.FormBuilder })));
+const PublicFormPage = lazy(() => import('@/pages/PublicFormPage').then((m) => ({ default: m.PublicFormPage })));
+const WorkflowsHome = lazy(() => import('@/components/workflows/WorkflowsHome').then((m) => ({ default: m.WorkflowsHome })));
+const Builder = lazy(() => import('@/components/workflows/Builder').then((m) => ({ default: m.Builder })));
+const RecordingsPage = lazy(() => import('@/pages/RecordingsPage').then((m) => ({ default: m.RecordingsPage })));
+const CharactersPage = lazy(() => import('@/pages/CharactersPage').then((m) => ({ default: m.CharactersPage })));
+const AIAgentPage = lazy(() => import('@/pages/AIAgentPage').then((m) => ({ default: m.AIAgentPage })));
+const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const MeetingsPage = lazy(() => import('@/pages/MeetingsPage').then((m) => ({ default: m.MeetingsPage })));
+const MeetingRoomPage = lazy(() => import('@/pages/MeetingRoomPage').then((m) => ({ default: m.MeetingRoomPage })));
+const BookingPage = lazy(() => import('@/pages/BookingPage').then((m) => ({ default: m.BookingPage })));
+const GroupCalendarSettingsPage = lazy(() => import('@/pages/GroupCalendarSettingsPage').then((m) => ({ default: m.GroupCalendarSettingsPage })));
+const ComingSoonPage = lazy(() => import('@/pages/ComingSoonPage').then((m) => ({ default: m.ComingSoonPage })));
+const WorkspacesPage = lazy(() => import('@/pages/WorkspacesPage').then((m) => ({ default: m.WorkspacesPage })));
+const RoomsPage = lazy(() => import('@/pages/RoomsPage').then((m) => ({ default: m.RoomsPage })));
+const ConversationsPage = lazy(() => import('@/pages/ConversationsPage').then((m) => ({ default: m.ConversationsPage })));
+const StreamsPage = lazy(() => import('@/pages/StreamsPage').then((m) => ({ default: m.StreamsPage })));
+const StreamStudioPage = lazy(() => import('@/pages/StreamStudioPage').then((m) => ({ default: m.StreamStudioPage })));
+const WatchPage = lazy(() => import('@/pages/WatchPage').then((m) => ({ default: m.WatchPage })));
+const CreateSpaceWizard = lazy(() => import('@/pages/CreateSpaceWizard').then((m) => ({ default: m.CreateSpaceWizard })));
+const SpacePage = lazy(() => import('@/pages/SpacePage').then((m) => ({ default: m.SpacePage })));
+const GuestJoinPage = lazy(() => import('@/pages/GuestJoinPage').then((m) => ({ default: m.GuestJoinPage })));
+const EventsHomePage = lazy(() => import('@/pages/events/EventsHomePage').then((m) => ({ default: m.EventsHomePage })));
+const EventDetailPage = lazy(() => import('@/pages/events/EventDetailPage').then((m) => ({ default: m.EventDetailPage })));
+const TicketPage = lazy(() => import('@/pages/events/TicketPage').then((m) => ({ default: m.TicketPage })));
+const EventsPage = lazy(() => import('@/pages/events/EventsPage').then((m) => ({ default: m.EventsPage })));
+const EventBuilder = lazy(() => import('@/pages/events/EventBuilder').then((m) => ({ default: m.EventBuilder })));
+const EventManagePage = lazy(() => import('@/pages/events/EventManagePage').then((m) => ({ default: m.EventManagePage })));
+
+const pageSpinner = <div className="flex flex-1 items-center justify-center py-24"><LoadingSpinner className="w-8 h-8" /></div>;
 
 /** Where SYNAPSE shows its menu on the left rather than a feature full screen. */
 const isMenuSection = (section: string) => section === 'dashboard' || section === 'signin' || section === 'signup';
@@ -262,7 +267,7 @@ function AppContent() {
             <main key={path.split(/[/?]/)[1] || 'dashboard'} className={cn('flex flex-1 flex-col px-4 lg:px-6 pt-5 lg:pt-6 animate-page-in', navOpen ? 'pb-6' : 'pb-[84px]')}>
               {/* Every page fills the screen: its root grows to the bottom (see .page in index.css). */}
               <div className="flex min-h-0 flex-1 flex-col">
-                <ErrorBoundary what="this page" resetKey={section} onBack={() => navigate('/dashboard')} backLabel="Back to Dashboard">{renderPage()}</ErrorBoundary>
+                <ErrorBoundary what="this page" resetKey={section} onBack={() => navigate('/dashboard')} backLabel="Back to Dashboard"><Suspense fallback={pageSpinner}>{renderPage()}</Suspense></ErrorBoundary>
               </div>
             </main>
           </div>
@@ -278,7 +283,7 @@ function AppContent() {
           aria-hidden={hiddenSpace || undefined}
         >
           <ErrorBoundary what="this workspace" dark onBack={dockApi.leave} backLabel="Back to Workspaces">
-            <SpacePage key={liveSpace} slug={liveSpace} />
+            <Suspense fallback={pageSpinner}><SpacePage key={liveSpace} slug={liveSpace} /></Suspense>
           </ErrorBoundary>
         </div>
       )}
@@ -299,7 +304,9 @@ export default function App() {
     <AuthProvider>
       <ToastProvider>
         <ErrorBoundary what="SYNAPSE" onBack={() => { window.location.hash = '#/dashboard'; window.location.reload(); }} backLabel="Reload SYNAPSE">
-          <AppContent />
+          <Suspense fallback={<div className="min-h-screen bg-white flex items-center justify-center"><LoadingSpinner className="w-10 h-10" /></div>}>
+            <AppContent />
+          </Suspense>
         </ErrorBoundary>
       </ToastProvider>
     </AuthProvider>
