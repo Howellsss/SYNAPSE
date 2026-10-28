@@ -12,6 +12,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { PROP_DIMS, propUrl, type PropId } from '@/spatial/scene/campus/props';
+import { fetchAsset, holdQueuedFor } from '@/spatial/assetFetch';
 import type { ModelPart, ProcItem } from '@/spatial/scene/campus/kit';
 
 /** Anything drawn from models: a kit piece, drawn in code or from the office file until then. */
@@ -38,12 +39,20 @@ let loader: GLTFLoader | null = null;
 const loading = new Map<PropId, Promise<Part[]>>();
 const ready = new Map<PropId, Part[]>();
 
-/** A model's parts, loading it the first time. Kept for the page's life (shared, never disposed). */
-export function loadProp(id: PropId): Promise<Part[]> {
+/** Let something that matters more download before the prop models (at most 6 s). */
+export const holdPropsFor = holdQueuedFor;
+
+/**
+ * A model's parts, loading it the first time. Kept for the page's life (shared, never disposed).
+ * `priority`: lower downloads sooner (the world passes the piece's distance from where you are).
+ */
+export function loadProp(id: PropId, priority = 0): Promise<Part[]> {
   let p = loading.get(id);
-  if (!p) {
+  if (p) { void fetchAsset(propUrl(id), priority); return p; } // moves it up the queue if nearer
+  {
     loader ??= new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
-    p = loader.loadAsync(propUrl(id)).then((gltf) => {
+    const l = loader;
+    p = fetchAsset(propUrl(id), priority).then((bytes) => l.parseAsync(bytes, '')).then((gltf) => {
       gltf.scene.updateMatrixWorld(true);
       const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>();
       gltf.scene.traverse((o) => {
@@ -100,10 +109,10 @@ export function variantOf(item: Modelled, pieceId: string): number {
 const partScale = (m: ModelPart) => { const s = m.s ?? 1; return new THREE.Vector3(s, s * (m.sy ?? 1), s * (m.sz ?? 1)); };
 
 /** Load everything a piece is drawn from, and place it (null if a model couldn't load). */
-export async function loadItemParts(item: Modelled, variant = 0): Promise<Part[] | null> {
+export async function loadItemParts(item: Modelled, variant = 0, priority = 0): Promise<Part[] | null> {
   const models = itemModels(item, variant);
   try {
-    const loaded = await Promise.all(models.map((m) => loadProp(m.id)));
+    const loaded = await Promise.all(models.map((m) => loadProp(m.id, priority)));
     return models.flatMap((m, i) => {
       const at = new THREE.Matrix4().compose(
         new THREE.Vector3(m.x ?? 0, m.y ?? 0, m.z ?? 0),

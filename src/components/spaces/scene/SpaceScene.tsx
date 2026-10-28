@@ -1,6 +1,7 @@
 import { useEffect, useRef, type MutableRefObject } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
+import { fetchAsset } from '@/spatial/assetFetch';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
@@ -35,7 +36,7 @@ import { bikeParts, carParts, GLOW_LAYER, markGlow, type Part } from './kitParts
 import type { Rect } from '@/spatial/scene/offices';
 import { createWorld, type World } from './campusWorld';
 import { refurnish } from './refurnish';
-import { flickerFlames, headlightPool, itemPartsNow, loadItemParts, vehicleLightParts, vehicleSize, wheelFlames } from './propModels';
+import { flickerFlames, headlightPool, holdPropsFor, itemPartsNow, loadItemParts, vehicleLightParts, vehicleSize, wheelFlames } from './propModels';
 import { aimBone, beginPose, endPose, feminineGait, findRig, relaxPosture, turnBone, type Rig } from './posture';
 import { characterBytes } from '@/spatial/scene/characterCache';
 
@@ -387,6 +388,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
     let appliedEdits = latest.current.campusEdits ?? NO_EDITS;
     let campusLayout = campus ? applyEdits(campus, appliedEdits) : null;
     let campusWorld: World | null = null;
+    // The office (the HQ and the kit's furniture) downloads before the campus's prop models.
+    if (office) holdPropsFor(fetchAsset(office.url, -1));
     if (campus && campusLayout) {
       campusWorld = createWorld(campusLayout, { shadows, grass: !low });
       scene.add(campusWorld.root);
@@ -448,8 +451,10 @@ export default function SpaceScene(props: SpaceSceneProps) {
       officeRoot.add(sign);
     }
     if (office) {
-      new GLTFLoader().load(
-        office.url,
+      // Usually already on its way: the workspace page starts the office's download (assetFetch).
+      const officeLoad = (onLoad: (gltf: GLTF) => void, onError: () => void) =>
+        fetchAsset(office.url, -1).then((bytes) => new GLTFLoader().parse(bytes, '', onLoad, onError), onError);
+      void officeLoad(
         (gltf) => {
           if (disposed) return;
           gltf.scene.updateMatrixWorld(true);
@@ -530,7 +535,6 @@ export default function SpaceScene(props: SpaceSceneProps) {
           edge.visible = false;
           (floorMesh.material as THREE.Material).visible = false; // still catches clicks
         },
-        undefined,
         () => { latest.current.onCharacterError?.("Couldn't load the office; showing the open floor instead."); },
       );
     }

@@ -572,15 +572,20 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
   };
   const asked = new Set<string>();
   let placeSoon: ReturnType<typeof setTimeout> | null = null;
-  const loadModels = (list: Placed[]) => {
-    for (const p of list) {
+  // Models load around where you're looking (each kind asked for by its closest piece), nearest
+  // first; the rest of the map follows a little after arriving, behind anything nearby.
+  const NEAR = 55;
+  const focus = { x: layout.spawn.x, z: layout.spawn.z };
+  const fromFocus = (p: Placed) => Math.hypot(p.x - focus.x, p.z - focus.z);
+  const loadModels = (list: Placed[], far = 0) => {
+    for (const p of [...list].sort((a, b) => fromFocus(a) - fromFocus(b))) {
       const item = KIT_BY_ID.get(p.kind);
       if (!item?.model) continue;
       const v = variantOf(item, p.id);
       const key = `${p.kind}#${v}`;
       if (asked.has(key)) continue;
       asked.add(key);
-      void loadItemParts(item, v).then((parts) => {
+      void loadItemParts(item, v, fromFocus(p) + far).then((parts) => {
         if (disposed || !parts) return;
         // Parked cars and bikes show their (unlit) head and tail lights.
         partsByKind.set(key, !isGlb(item) && item.vehicle ? [...parts, ...vehicleLightParts(item, false)] : parts);
@@ -624,7 +629,9 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
     }
     markGlow(pieces);
   };
-  loadModels(current);
+  const loadNear = () => loadModels(current.filter((p) => fromFocus(p) < NEAR));
+  loadNear();
+  const loadRest = setTimeout(() => { if (!disposed) loadModels(current, 1000); }, 15000);
   place();
 
   // Build mode: the preview and the selection outline.
@@ -677,7 +684,7 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
     },
     setObjects(objects) {
       current = objects;
-      loadModels(current);
+      loadNear();
       place();
     },
     setHidden(ids) {
@@ -723,6 +730,7 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
     },
     follow(target, sun, camera) {
       for (const m of signs) m.quaternion.copy(camera.quaternion);
+      if (Math.hypot(target.x - focus.x, target.z - focus.z) > 8) { focus.x = target.x; focus.z = target.z; loadNear(); }
       // A shadow box about 50 m across, centred on the view, moved in whole texels so edges don't shimmer.
       const step = 50 / 2048;
       const tx = Math.round(target.x / step) * step;
@@ -738,6 +746,7 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
     },
     dispose() {
       disposed = true;
+      clearTimeout(loadRest);
       if (placeSoon) clearTimeout(placeSoon);
       for (const child of [...pieces.children]) (child as THREE.InstancedMesh).dispose?.();
       disposables.forEach((d) => d.dispose());
