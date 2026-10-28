@@ -9,12 +9,12 @@ interface ComingSoonPageProps {
 
 export function ComingSoonPage({ title, description, icon: Icon }: ComingSoonPageProps) {
   return (
-    <div className="space-y-5 max-w-6xl">
+    <div className="page space-y-5">
       <div>
         <h1 className="text-2xl font-bold text-navy-800">{title}</h1>
         <p className="text-sm text-ivory-600 mt-0.5">{description}</p>
       </div>
-      <div className="card">
+      <div className="card page-fill justify-center">
         <EmptyState
           icon={<Icon className="w-7 h-7" />}
           title="Coming soon"

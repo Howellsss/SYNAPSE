@@ -100,7 +100,7 @@ export function CharactersPage() {
   );
 
   return (
-    <div className="max-w-6xl space-y-5">
+    <div className="page space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-navy-800">Characters</h1>
@@ -124,7 +124,7 @@ export function CharactersPage() {
       ) : loadError ? (
         <div className="card"><ErrorState message={loadError} onRetry={load} /></div>
       ) : characters.length === 0 ? (
-        <div className="card">
+        <div className="card page-fill justify-center">
           <EmptyState
             icon={<Box className="h-7 w-7" />}
             title="No characters yet"
@@ -133,7 +133,7 @@ export function CharactersPage() {
           />
         </div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
+        <div className="grid flex-1 gap-4 lg:grid-cols-[280px_1fr]">
           <ul className="space-y-2" aria-label="Characters">
             {characters.map((c) => (
               <li key={c.id}>

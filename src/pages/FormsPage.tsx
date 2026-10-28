@@ -253,7 +253,7 @@ export function FormsPage() {
   const hasNoFormsAtAll = !loading && !error && forms.length === 0;
 
   return (
-    <div className="space-y-6 max-w-7xl" onClick={() => openMenuId && setOpenMenuId(null)}>
+    <div className="page space-y-6" onClick={() => openMenuId && setOpenMenuId(null)}>
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
@@ -392,7 +392,7 @@ export function FormsPage() {
         <ErrorState message="We couldn't load your forms. Please try again." onRetry={loadForms} />
       ) : isEmpty ? (
         hasNoFormsAtAll ? (
-          <div className="card">
+          <div className="card page-fill justify-center">
             <EmptyState
               icon={<FileText className="w-7 h-7" />}
               title={tab === 'forms' ? 'Create your first form' : 'Create your first survey'}
@@ -408,7 +408,7 @@ export function FormsPage() {
             />
           </div>
         ) : (
-          <div className="card">
+          <div className="card page-fill justify-center">
             <EmptyState
               icon={<FileText className="w-7 h-7" />}
               title="No results found"

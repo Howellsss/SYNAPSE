@@ -259,8 +259,11 @@ function AppContent() {
               />
             )}
             {/* Each section fades in with a slight rise when you move to it. */}
-            <main key={path.split(/[/?]/)[1] || 'dashboard'} className={cn('flex-1 px-4 lg:px-6 pt-5 lg:pt-6 animate-page-in', navOpen ? 'pb-6' : 'pb-[84px]')}>
-              <ErrorBoundary what="this page" resetKey={section} onBack={() => navigate('/dashboard')} backLabel="Back to Dashboard">{renderPage()}</ErrorBoundary>
+            <main key={path.split(/[/?]/)[1] || 'dashboard'} className={cn('flex flex-1 flex-col px-4 lg:px-6 pt-5 lg:pt-6 animate-page-in', navOpen ? 'pb-6' : 'pb-[84px]')}>
+              {/* Every page fills the screen: its root grows to the bottom (see .page in index.css). */}
+              <div className="flex min-h-0 flex-1 flex-col">
+                <ErrorBoundary what="this page" resetKey={section} onBack={() => navigate('/dashboard')} backLabel="Back to Dashboard">{renderPage()}</ErrorBoundary>
+              </div>
             </main>
           </div>
         </div>

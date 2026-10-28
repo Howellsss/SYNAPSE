@@ -69,6 +69,10 @@
 }
 
 @layer components {
+  /* A page that fills the screen below the top bar (and above the dock), edge to edge. */
+  .page { @apply flex w-full min-w-0 flex-1 flex-col; }
+  /* The part of a page that takes the rest of the height: its main card or list. */
+  .page-fill { @apply flex min-h-[320px] flex-1 flex-col; }
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2 h-[38px] px-4 bg-gold-400 text-navy-900 text-sm font-semibold rounded-lg border border-gold-500 transition-colors duration-150 hover:bg-gold-300 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
   }

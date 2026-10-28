@@ -174,7 +174,7 @@ export function Dashboard() {
   const weekTotal = week.reduce((n, d) => n + d.count, 0);
 
   return (
-    <div className="space-y-7 pb-10">
+    <div className="page space-y-7">
       {/* Greeting */}
       <section className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
         <div>

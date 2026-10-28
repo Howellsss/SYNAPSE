@@ -44,7 +44,7 @@ export function StreamsPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="page">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-[28px] font-semibold tracking-[-0.02em] text-navy-800">Streams</h1>
@@ -53,12 +53,12 @@ export function StreamsPage() {
         <button type="button" onClick={() => setCreating(true)} className="btn-primary"><Plus className="h-4 w-4" /> New stream</button>
       </div>
 
-      <div className="mt-6 space-y-6">
-        {loading ? <div className="card p-6"><LoadingSpinner className="h-8 w-8 text-ivory-600" /></div>
+      <div className="mt-6 page-fill">
+        {loading ? <div className="card flex flex-1 items-center justify-center p-6"><LoadingSpinner className="h-8 w-8 text-ivory-600" /></div>
           : error ? <ErrorState message={error} onRetry={load} />
             : streams.length === 0 ? (
-              <div className="card"><EmptyState icon={<Radio className="h-6 w-6" />} title="No streams yet" description="Create a stream, get it ready in the studio, then go live and share the watch link." /></div>
-            ) : groups.filter(([, list]) => list.length).map(([label, list]) => (
+              <div className="card flex flex-1 flex-col justify-center"><EmptyState icon={<Radio className="h-6 w-6" />} title="No streams yet" description="Create a stream, get it ready in the studio, then go live and share the watch link." /></div>
+            ) : <div className="card flex-1 space-y-6 p-5">{groups.filter(([, list]) => list.length).map(([label, list]) => (
               <section key={label}>
                 <h2 className="text-[11px] font-bold uppercase tracking-wider text-ivory-700">{label}</h2>
                 <ul className="mt-2 divide-y divide-ivory-200 rounded-xl border border-ivory-200 bg-white">
@@ -80,7 +80,7 @@ export function StreamsPage() {
                   ))}
                 </ul>
               </section>
-            ))}
+            ))}</div>}
       </div>
 
       {creating && workspace && user && (

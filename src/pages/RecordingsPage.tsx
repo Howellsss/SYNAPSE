@@ -74,7 +74,7 @@ export function RecordingsPage() {
   );
 
   return (
-    <div className="space-y-5 max-w-6xl">
+    <div className="page space-y-5">
       <div>
         <h1 className="text-2xl font-bold text-navy-800">Recordings</h1>
         <p className="text-sm text-ivory-600 mt-0.5">Meeting recordings with transcripts and AI summaries</p>
@@ -90,7 +90,7 @@ export function RecordingsPage() {
           {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-32" />)}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="card">
+        <div className="card page-fill justify-center">
           <EmptyState
             icon={<Mic className="w-7 h-7" />}
             title="No recordings yet"
