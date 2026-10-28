@@ -29,7 +29,8 @@ import type { OfficeLayout } from '@/spatial/scene/offices';
 import { SIT_BACK, seatApproach, seatAt, seatOnRay, sittingSpot, type Seat } from '@/spatial/scene/seats';
 import { applyEdits, NO_EDITS, type CampusEdits } from '@/spatial/scene/campus/office';
 import { campusObstacles, campusSeats, portalAt, wingAt } from '@/spatial/scene/campus/layout';
-import { fitsAt, isGlb, KIT_BY_ID, pieceAt, placedBounds, type Placed, type ProcItem } from '@/spatial/scene/campus/kit';
+import { fitsAt, isGlb, KIT_BY_ID, pieceAt, placedBounds, rideAt, type Placed, type ProcItem } from '@/spatial/scene/campus/kit';
+import { groundOf } from '@/spatial/scene/campus/ground';
 import { bikeParts, carParts, GLOW_LAYER, markGlow, type Part } from './kitParts';
 import type { Rect } from '@/spatial/scene/offices';
 import { createWorld, type World } from './campusWorld';
@@ -145,8 +146,10 @@ const FLY_SPEED = 11;
 const PLANE_HEIGHT = 15;
 const PLANE_SPEED = 19;
 const TAXI_SPEED = 8;
+/** The helicopter: how high it flies (well over the trees). */
+const HELI_HEIGHT = 12;
 /** How high something in the air flies. */
-const cruiseHeight = (ride: Ride | null) => (ride?.item.vehicle?.plane ? PLANE_HEIGHT : FLY_HEIGHT);
+const cruiseHeight = (ride: Ride | null) => (ride?.item.vehicle?.plane ? PLANE_HEIGHT : ride?.item.vehicle?.rotor ? HELI_HEIGHT : FLY_HEIGHT);
 const LABEL_HEIGHT = 2.0;
 /** Where the camera sits relative to what it looks at. */
 const CAMERA_OFFSETS: Record<SceneView, THREE.Vector3> = {
@@ -200,6 +203,8 @@ interface Avatar {
   vehicle: { item: ProcItem; kind: VehicleKind; group: THREE.Group; real: boolean; flames: THREE.Group | null; pool: THREE.Mesh | null } | null;
   /** Height off the ground (the flying car in the air). */
   lift: number;
+  /** The height of what they're standing on (a floor, a rug, a stage), eased so steps are smooth. */
+  ground: number;
   /** Bouncing to music without a dance clip (so the body can be put back). */
   bouncing: boolean;
 }
@@ -648,6 +653,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
     target.set(me.x, 0, me.z);
     const held = new Set<MoveKey>();
     let seats = campusLayout ? campusSeats(campusLayout) : office?.seats ?? [];
+    /** How high the floor is underfoot: building floors, rugs, stages and their steps. */
+    let underfootMap = campusLayout ? groundOf(campusLayout.buildings, campusLayout.objects, campusLayout.paths) : null;
     /** Seats other people are sitting in (updated every frame). */
     let occupied = new Set<string>();
     /** Parked cars and bikes someone is out in (updated every frame): not drawn in their bays. */
@@ -779,8 +786,18 @@ export default function SpaceScene(props: SpaceSceneProps) {
         ]);
         return;
       }
+      // The helicopter flies back to its bay, comes straight down, and you step out there.
+      if (ride.item.vehicle?.rotor && stand && Math.hypot(me.x - stand.x, me.z - stand.z) > 0.5) {
+        if (me.landing) return;
+        me.landing = true;
+        runLegs([{
+          points: [[me.x, me.z], [stand.x, stand.z]], speed: FLY_SPEED * 1.4, air: true,
+          done: () => { setVehicleMine(null); behind(); me.rot = stand.rot; me.landing = false; },
+        }]);
+        return;
+      }
       setVehicleMine(null);
-      if (ride.item.vehicle?.plane) behind();
+      if (ride.item.vehicle?.plane || ride.item.vehicle?.rotor) behind();
     };
     const walkTo = (x: number, z: number, seat: Seat | null = null, gait: Gait = gaitNow()) => {
       if (!seat) me.pendingVehicle = null;
@@ -893,7 +910,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       label.position.set(0, LABEL_HEIGHT, 0);
       root.add(label);
       scene.add(root);
-      return { root, body: null, bodyFor: undefined, clipsSig: '', mixer: null, actions: {}, current: null, emote: null, label, labelEl, labelSig: '', bubble: null, rig: null, style: 'standard', seated: false, vehicle: null, lift: 0, bouncing: false };
+      return { root, body: null, bodyFor: undefined, clipsSig: '', mixer: null, actions: {}, current: null, emote: null, label, labelEl, labelSig: '', bubble: null, rig: null, style: 'standard', seated: false, vehicle: null, lift: 0, ground: 0, bouncing: false };
     };
     const setBody = (a: Avatar, userId: string, tpl: Template | null, waiting = false) => {
       if (a.body) {
@@ -957,6 +974,31 @@ export default function SpaceScene(props: SpaceSceneProps) {
     const side = new THREE.Vector3();
     const dirA = new THREE.Vector3();
     const dirB = new THREE.Vector3();
+    const knee = new THREE.Vector3();
+    const ankle = new THREE.Vector3();
+    /** How far a foot's ankle joint sits above its sole. */
+    const ANKLE = 0.08;
+    /** Hip joints, averaged: how high they are in the world now. */
+    const hipHeight = (rig: Rig) => {
+      let y = 0;
+      for (const leg of rig.legs) y += leg.root.getWorldPosition(_vb).y;
+      return y / rig.legs.length;
+    };
+    /**
+     * Sitting, the feet rest on the floor (a rug, a stage) rather than through it: a seat lower than
+     * the shins are long puts the feet a little forward, as people do.
+     */
+    const feetOnFloor = (rig: Rig, floorY: number) => {
+      for (const leg of rig.legs) {
+        leg.mid.getWorldPosition(knee);
+        leg.end.getWorldPosition(ankle);
+        const len = knee.distanceTo(ankle);
+        if (len < 1e-3 || ankle.y >= floorY + ANKLE - 0.005) continue;
+        const down = Math.min(len, Math.max(0, knee.y - floorY - ANKLE));
+        dirB.copy(fwd).multiplyScalar(Math.sqrt(len * len - down * down)).add(_va.set(0, -down, 0)).normalize();
+        aimBone(leg.mid, leg.end, dirB);
+      }
+    };
     const toRest = (rig: Rig) => { for (const r of rig.rest) { r.bone.quaternion.copy(r.q); r.bone.position.copy(r.p); } };
     /**
      * On a motorbike or scooter: astride the saddle, leaning forward over the tank, hands on the
@@ -1002,9 +1044,20 @@ export default function SpaceScene(props: SpaceSceneProps) {
         return;
       }
       a.seated = true;
-      if (!a.bodyFor) { a.body.position.y = -(0.95 - seat.y); return; } // simple figure
-      if (a.current === 'sit' || !a.rig) { a.body.position.y = 0; return; }
+      if (!a.bodyFor) { a.body.position.y = -(0.95 - (seat.y - a.root.position.y)); return; } // simple figure
+      if (!a.rig) { a.body.position.y = 0; return; }
       const rig = a.rig;
+      if (a.current === 'sit') {
+        // The character's own sitting clip, made for some chair: lowered or raised so its hips are
+        // on this cushion (not sunk into it), then its feet kept on the floor.
+        a.body.position.y = 0;
+        a.root.updateMatrixWorld(true);
+        a.body.position.y = Math.min(0.3, Math.max(-0.9, seat.y + 0.07 - hipHeight(rig)));
+        a.root.updateMatrixWorld(true);
+        fwd.set(Math.sin(a.root.rotation.y), 0, Math.cos(a.root.rotation.y));
+        feetOnFloor(rig, a.ground);
+        return;
+      }
       toRest(rig);
       a.body.position.y = 0;
       a.root.updateMatrixWorld(true);
@@ -1034,8 +1087,10 @@ export default function SpaceScene(props: SpaceSceneProps) {
         dirB.copy(fwd).multiplyScalar(0.9).addScaledVector(side, -0.08).add(_va.set(0, -0.42, 0)).normalize();
         aimBone(arm.mid, arm.end, dirB);
       }
-      // Hip joints just above the cushion.
+      // Hip joints just above the cushion, feet on the floor.
       a.body.position.y = Math.min(0.3, Math.max(-0.9, seat.y + 0.07 - hipY));
+      a.root.updateMatrixWorld(true);
+      feetOnFloor(rig, a.ground);
     };
     /** Where someone riding sits: on the bike's saddle, or in the car's driving seat (a kick scooter is stood on). */
     const rideSeat = (pose: { x: number; z: number; rot: number }, ride: Ride): Seat | null => {
@@ -1074,7 +1129,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
       }
       const pool = real && !item.vehicle?.plane ? headlightPool(item) : null;
       if (pool) group.add(pool);
-      const flames = item.vehicle?.flies && !item.vehicle.plane ? wheelFlames(item) : null;
+      const flames = item.vehicle?.flies && !item.vehicle.plane && !item.vehicle.rotor ? wheelFlames(item) : null;
       if (flames) group.add(flames);
       markGlow(group);
       // A rider sits just behind the middle of the bike; a car is centred on its driver.
@@ -1164,8 +1219,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
       }
       // A parked car or scooter (when you're on foot): walk over to it and get in.
       if (campusLayout && !me.vehicle) {
-        const ground = raycaster.intersectObject(floorMesh)[0];
-        const piece = ground ? pieceAt(campusLayout.objects, ground.point.x, ground.point.z, { vehicles: true }) : null;
+        const floorHit = raycaster.intersectObject(floorMesh)[0];
+        const piece = floorHit ? rideAt(campusLayout.objects, floorHit.point.x, floorHit.point.z) : null;
         const ride = rideOf(piece ?? undefined);
         // (Not one someone else has taken: it's out on the road.)
         if (piece && ride && !taken.has(piece.id)) {
@@ -1333,6 +1388,7 @@ export default function SpaceScene(props: SpaceSceneProps) {
         campusWorld.setObjects(campusLayout.objects);
         map = walkMap(floor, campusObstacles(campusLayout), CAMPUS_CELL, OFFICE_CLEARANCE);
         seats = campusSeats(campusLayout);
+        underfootMap = groundOf(campusLayout.buildings, campusLayout.objects, campusLayout.paths);
         obstaclesCache = [];
         shownSelection = '';
       }
@@ -1482,13 +1538,17 @@ export default function SpaceScene(props: SpaceSceneProps) {
         // The flying car rises and settles smoothly, and hovers gently in the air.
         // A plane climbs and comes down gently, along the way; the car lifts straight up.
         const before = a.lift;
-        const rate = riding?.item.vehicle?.plane ? 0.9 : 3;
+        const rate = riding?.item.vehicle?.plane ? 0.9 : riding?.item.vehicle?.rotor ? 1.4 : 3;
         a.lift += ((pose.anim === 'fly' ? cruiseHeight(riding) : 0) - a.lift) * (1 - Math.exp(-Math.min(dt, 0.1) * rate));
         if (a.lift < 0.003) a.lift = 0;
         const climb = dt > 0 ? (a.lift - before) / dt : 0;
         const hover = a.lift > 0.3 ? Math.sin(now / 420) * 0.05 : 0;
         const deck = riding?.item.id === 'kick_scooter' ? 0.13 : 0; // standing on the scooter's deck
-        a.root.position.set(spot.x, a.lift + hover + deck, spot.z);
+        // On foot (or sitting): up on what's underfoot, a rug or a stage, easing up and down steps.
+        const underfoot = riding || !underfootMap ? 0 : underfootMap.at(spot.x, spot.z);
+        a.ground += (underfoot - a.ground) * (1 - Math.exp(-Math.min(dt, 0.1) * 16));
+        if (Math.abs(underfoot - a.ground) < 0.002) a.ground = underfoot;
+        a.root.position.set(spot.x, a.lift + hover + deck + a.ground, spot.z);
         const scale = chair ? 1 : grow;
         a.root.scale.setScalar(scale);
         if (a.vehicle) {

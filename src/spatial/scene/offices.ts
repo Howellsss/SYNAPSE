@@ -95,21 +95,22 @@ export const OFFICE_02: OfficeLayout = {
   door: { x: 0.75, z: 7.6 },
   blurb: 'Realistic lighting. A furnished 20 × 16 m office: six-desk work area, glass meeting room, lounge, coffee bar and café. Tap a chair or the sofa to sit.',
   sun: { x: 0.3491, y: 0.8479, z: 0.399 },
+  // Seat heights are the cushions of the chairs drawn there (measured from the models).
   seats: [
     // Work area: row facing the back wall, then the row facing the front.
     st('desk-1', 13.295, 2.28, 0.03, 0.48), st('desk-2', 15.142, 2.28, -0.017, 0.48), st('desk-3', 16.901, 2.28, 0.044, 0.48),
     st('desk-4', 13.268, 4.57, -3.135, 0.48), st('desk-5', 15.113, 4.57, -2.995, 0.48), st('desk-6', 16.859, 4.57, 3.043, 0.48),
     // Meeting room.
-    st('meet-1', 2.592, 2.42, 0.135, 0.48), st('meet-2', 3.609, 2.42, -0.023, 0.48), st('meet-3', 4.619, 2.42, -0.017, 0.48),
-    st('meet-4', 2.589, 4.38, 3.017, 0.48), st('meet-5', 3.603, 4.38, 3.031, 0.48), st('meet-6', 4.622, 4.38, 3.128, 0.48),
-    st('meet-7', 1.6, 3.4, 1.571, 0.48),
+    st('meet-1', 2.592, 2.42, 0.135, 0.41), st('meet-2', 3.609, 2.42, -0.023, 0.41), st('meet-3', 4.619, 2.42, -0.017, 0.41),
+    st('meet-4', 2.589, 4.38, 3.017, 0.41), st('meet-5', 3.603, 4.38, 3.031, 0.41), st('meet-6', 4.622, 4.38, 3.128, 0.41),
+    st('meet-7', 1.6, 3.4, 1.571, 0.41),
     // Lounge: three places on the sofa, two armchairs.
-    st('sofa-1', 0.85, 10.75, 1.571, 0.45, 'sofa'), st('sofa-2', 0.85, 11.4, 1.571, 0.45, 'sofa'), st('sofa-3', 0.85, 12.05, 1.571, 0.45, 'sofa'),
-    st('armchair-1', 5.55, 10.3, -1.116, 0.42, 'armchair'), st('armchair-2', 5.55, 12.5, -2.026, 0.42, 'armchair'),
+    st('sofa-1', 0.85, 10.75, 1.571, 0.39, 'sofa'), st('sofa-2', 0.85, 11.4, 1.571, 0.39, 'sofa'), st('sofa-3', 0.85, 12.05, 1.571, 0.39, 'sofa'),
+    st('armchair-1', 5.55, 10.3, -1.116, 0.55, 'armchair'), st('armchair-2', 5.55, 12.5, -2.026, 0.55, 'armchair'),
     // Café: three chairs round each table.
-    st('cafe-1', 13.745, 11.932, -2.641, 0.49), st('cafe-2', 13.777, 10.687, -0.551, 0.49), st('cafe-3', 12.68, 11.277, 1.539, 0.49),
-    st('cafe-4', 17.364, 11.448, -2.241, 0.49), st('cafe-5', 16.909, 10.288, -0.151, 0.49), st('cafe-6', 16.128, 11.259, 1.939, 0.49),
-    st('cafe-7', 15.794, 13.593, -1.841, 0.49), st('cafe-8', 14.923, 12.702, 0.249, 0.49), st('cafe-9', 14.582, 13.9, 2.339, 0.49),
+    st('cafe-1', 13.745, 11.932, -2.641, 0.52), st('cafe-2', 13.777, 10.687, -0.551, 0.52), st('cafe-3', 12.68, 11.277, 1.539, 0.52),
+    st('cafe-4', 17.364, 11.448, -2.241, 0.52), st('cafe-5', 16.909, 10.288, -0.151, 0.52), st('cafe-6', 16.128, 11.259, 1.939, 0.52),
+    st('cafe-7', 15.794, 13.593, -1.841, 0.52), st('cafe-8', 14.923, 12.702, 0.249, 0.52), st('cafe-9', 14.582, 13.9, 2.339, 0.52),
   ],
   obstacles: [
     // Walls with their window sills, and the meeting room's glass walls (door gap x 5.64–6.95).

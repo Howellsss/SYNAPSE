@@ -154,7 +154,10 @@ export function buildHub(): CampusLayout {
     ([[14, 20.5], [50, 20.5], [14, 31.5], [50, 31.5]] as const).forEach(([x, z], i) => C.add(`bed-${i}`, 'flowers_round', x, z));
     ([[8, 3.2], [16, 3.2], [48, 3.2], [56, 3.2], [3.2, 13], [60.8, 13], [3.2, 39], [60.8, 39]] as const)
       .forEach(([x, z], i) => C.add(`bush-${i}`, i % 2 ? 'bush_flower' : 'bush', x, z));
-    ([[25.4, 19.4], [38.6, 19.4], [25.4, 32.6], [38.6, 32.6], [27, 8], [37, 8], [27, 44], [37, 44], [8, 22.7], [56, 22.7]] as const)
+    // Lamps: one behind each bench round the fountain, a pair along each avenue, and one at the
+    // edge of each side avenue (not in the middle of it).
+    const behind = [PI / 4, (3 * PI) / 4, (5 * PI) / 4, (7 * PI) / 4].map((a): [number, number] => [32 + Math.sin(a) * 7.6, 26 + Math.cos(a) * 7.6]);
+    ([...behind, [27, 8], [37, 8], [27, 44], [37, 44], [8, 22.6], [56, 22.6]] as const)
       .forEach(([x, z], i) => C.add(`lamp-${i}`, 'lamp_post', x, z));
     // A picnic lawn under string lights (south-west) and a gazebo (south-east).
     C.add('picnic-a', 'picnic', 13, 41);
@@ -324,7 +327,7 @@ export function buildHub(): CampusLayout {
     L.add('study-c', 'dining_mustard', 6.5, 27.6);
     L.add('study-d', 'dining_mustard', 12.5, 27.6);
     // Lounge: a fireplace with sofas round a rug.
-    L.add('fire', 'fireplace', 29, 0.6, 0);
+    L.add('fire', 'fireplace', 29, 0.7, 0);
     L.add('rug-lounge', 'rug_xl_rust', 29, 6.4, 0);
     L.add('sofa-a', 'sofa_rust', 29, 9.2, PI);
     L.add('chair-a', 'chair_mustard', 25.4, 5.8, HALF);

@@ -1,7 +1,7 @@
 /** Sizes of the prop models in public/assets/spatial/props (metres as made: width x, depth z, height; each faces +z, centred, standing on y = 0). */
 export const PROP_DIMS = {
   airliner: { w: 25.057, d: 26, h: 8.91 },
-  airport_terminal: { w: 46, d: 37.948, h: 2.679 },
+  helicopter_bronze: { w: 9.143, d: 13, h: 3.75 },
   armchair_boucle: { w: 0.965, d: 0.894, h: 0.82 },
   armchair_yellow: { w: 0.82, d: 0.791, h: 0.92 },
   bar_stool_cane: { w: 0.456, d: 0.484, h: 1 },
