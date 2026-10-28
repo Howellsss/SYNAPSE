@@ -702,40 +702,16 @@ function StandardBookingPage({ slug, isGroup }: { slug: string; isGroup: boolean
       const hostId = slotCheck.hostId ?? selectedHostId;
       const contactInfo = extractContactInfo(allFields, formData);
 
-      let contactId: string | null = null;
-      if (contactInfo.email) {
-        let contactLookup = supabase
-          .from('contacts')
-          .select('id')
-          .eq('email', contactInfo.email);
-        if (calendar.workspace_id) contactLookup = contactLookup.eq('workspace_id', calendar.workspace_id);
-        else if (calendar.owner_id) contactLookup = contactLookup.eq('owner_id', calendar.owner_id);
-        const { data: existing } = await contactLookup.maybeSingle();
-
-        if (existing) {
-          contactId = existing.id;
-          await supabase.from('contacts').update({
-            first_name: contactInfo.first_name || null,
-            last_name: contactInfo.last_name || null,
-            phone: contactInfo.phone || null,
-            last_activity_at: new Date().toISOString(),
-          }).eq('id', existing.id);
-        }
-      }
-
-      if (!contactId) {
-        const contactInsert: Record<string, unknown> = {
-          first_name: contactInfo.first_name || null,
-          last_name: contactInfo.last_name || null,
-          email: contactInfo.email || null,
-          phone: contactInfo.phone || null,
-          source: 'booking_page',
-        };
-        if (calendar.workspace_id) contactInsert.workspace_id = calendar.workspace_id;
-        else if (calendar.owner_id) contactInsert.owner_id = calendar.owner_id;
-        const { data: newContact } = await supabase.from('contacts').insert(contactInsert).select().single();
-        contactId = newContact?.id ?? null;
-      }
+      // Finds the visitor's contact (by email) in this account or adds them; see public_booking_contact.
+      const { data: contactRow } = await supabase.rpc('public_booking_contact', {
+        p_workspace: calendar.workspace_id ?? null,
+        p_owner: calendar.workspace_id ? null : calendar.owner_id ?? null,
+        p_first: contactInfo.first_name || null,
+        p_last: contactInfo.last_name || null,
+        p_email: contactInfo.email || null,
+        p_phone: contactInfo.phone || null,
+      });
+      const contactId = (contactRow as string | null) ?? null;
 
       if (!contactId) {
         setError('Could not create contact record.');
