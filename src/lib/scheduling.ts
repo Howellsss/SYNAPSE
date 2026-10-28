@@ -412,42 +412,18 @@ export class SchedulingEngine {
       // 3. Create or find contact
       let contactId: string | null = null;
       if (req.contactInfo.email) {
-        let contactLookup = supabase
-          .from('contacts')
-          .select('id')
-          .eq('email', req.contactInfo.email);
-        if (workspaceId) contactLookup = contactLookup.eq('workspace_id', workspaceId);
-        else if (ownerId) contactLookup = contactLookup.eq('owner_id', ownerId);
-        const { data: existingContact } = await contactLookup.maybeSingle();
-
-        if (existingContact) {
-          contactId = existingContact.id;
-          if (req.contactInfo.first_name || req.contactInfo.last_name || req.contactInfo.phone) {
-            await supabase.from('contacts').update({
-              first_name: req.contactInfo.first_name ?? null,
-              last_name: req.contactInfo.last_name ?? null,
-              phone: req.contactInfo.phone ?? null,
-            }).eq('id', contactId);
-          }
-        } else {
-          const contactInsert: Record<string, unknown> = {
-            first_name: req.contactInfo.first_name ?? null,
-            last_name: req.contactInfo.last_name ?? null,
-            email: req.contactInfo.email,
-            phone: req.contactInfo.phone ?? null,
-          };
-          if (workspaceId) contactInsert.workspace_id = workspaceId;
-          else if (ownerId) contactInsert.owner_id = ownerId;
-          const { data: newContact, error: contactErr } = await supabase
-            .from('contacts')
-            .insert(contactInsert)
-            .select('id')
-            .maybeSingle();
-          if (contactErr || !newContact) {
-            return { success: false, error: 'Could not create contact.' };
-          }
-          contactId = newContact.id;
+        const { data: contactRow, error: contactErr } = await supabase.rpc('public_booking_contact', {
+          p_workspace: workspaceId ?? null,
+          p_owner: workspaceId ? null : ownerId ?? null,
+          p_first: req.contactInfo.first_name ?? null,
+          p_last: req.contactInfo.last_name ?? null,
+          p_email: req.contactInfo.email,
+          p_phone: req.contactInfo.phone ?? null,
+        });
+        if (contactErr || !contactRow) {
+          return { success: false, error: 'Could not create contact.' };
         }
+        contactId = contactRow as string;
       }
 
       // 4. Create appointment
@@ -507,16 +483,14 @@ export class SchedulingEngine {
     appointmentId: string,
     reason?: string,
   ): Promise<{ success: boolean; error?: string }> {
-    const { error } = await supabase
-      .from('appointments')
-      .update({
-        status: 'cancelled',
-        cancellation_reason: reason ?? null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', appointmentId);
+    // Visitors can only cancel a booking still to come, by its id; see public_cancel_booking.
+    const { data, error } = await supabase.rpc('public_cancel_booking', {
+      p_appointment: appointmentId,
+      p_reason: reason ?? null,
+    });
 
     if (error) return { success: false, error: error.message };
+    if (!data) return { success: false, error: 'This booking can no longer be cancelled.' };
     return { success: true };
   }
 

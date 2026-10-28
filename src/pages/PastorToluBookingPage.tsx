@@ -264,33 +264,15 @@ export function PastorToluBookingPage() {
   const upsertContact = async (email: string, firstName: string, lastName?: string, phone?: string): Promise<string | null> => {
     if (!email) return null;
 
-    let contactId: string | null = null;
-    const { data: existing } = await supabase
-      .from('contacts')
-      .select('id')
-      .eq('email', email)
-      .eq('workspace_id', WORKSPACE_ID)
-      .maybeSingle();
-
-    if (existing) {
-      contactId = existing.id;
-      await supabase.from('contacts').update({
-        first_name: firstName || null,
-        last_name: lastName || null,
-        phone: phone || null,
-        last_activity_at: new Date().toISOString(),
-      }).eq('id', existing.id);
-    } else {
-      const { data: newContact } = await supabase.from('contacts').insert({
-        first_name: firstName || null,
-        last_name: lastName || null,
-        email,
-        phone: phone || null,
-        source: 'booking_page',
-        workspace_id: WORKSPACE_ID,
-      }).select().single();
-      contactId = newContact?.id ?? null;
-    }
+    const { data } = await supabase.rpc('public_booking_contact', {
+      p_workspace: WORKSPACE_ID,
+      p_owner: null,
+      p_first: firstName || null,
+      p_last: lastName || null,
+      p_email: email,
+      p_phone: phone || null,
+    });
+    const contactId = (data as string | null) ?? null;
 
     return contactId;
   };
