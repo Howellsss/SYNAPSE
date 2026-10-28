@@ -29,7 +29,7 @@ import {
 import type { OfficeLayout } from '@/spatial/scene/offices';
 import { SIT_BACK, seatApproach, seatAt, seatOnRay, sittingSpot, type Seat } from '@/spatial/scene/seats';
 import { applyEdits, NO_EDITS, type CampusEdits } from '@/spatial/scene/campus/office';
-import { campusObstacles, campusSeats, portalAt, wingAt } from '@/spatial/scene/campus/layout';
+import { campusObstacles, campusSeats, portalAt, wingAt, type CampusLayout } from '@/spatial/scene/campus/layout';
 import { fitsAt, isGlb, KIT_BY_ID, pieceAt, placedBounds, rideAt, type Placed, type ProcItem } from '@/spatial/scene/campus/kit';
 import { groundOf } from '@/spatial/scene/campus/ground';
 import { bikeParts, carParts, GLOW_LAYER, markGlow, type Part } from './kitParts';
@@ -623,8 +623,13 @@ export default function SpaceScene(props: SpaceSceneProps) {
     observer.observe(mount);
 
     // Me.
+    // A car, bike or plane someone has taken out leaves its bay open: its parked footprint isn't a
+    // wall while it's being driven (or you couldn't drive back through the bay it came from).
+    const campusMap = (layout: CampusLayout, out: ReadonlySet<string>) => walkMap(floor,
+      campusObstacles(out.size ? { ...layout, objects: layout.objects.filter((o) => !out.has(o.id)) } : layout), CAMPUS_CELL, OFFICE_CLEARANCE);
+    let mapOut = '';
     let map = campusLayout
-      ? walkMap(floor, campusObstacles(campusLayout), CAMPUS_CELL, OFFICE_CLEARANCE)
+      ? campusMap(campusLayout, new Set())
       : office ? walkMap(floor, office.obstacles, OFFICE_CELL, OFFICE_CLEARANCE) : walkMap(floor);
     // Appear at the world's arrival point (the campus, the Hub's courtyard) or near the middle of
     // the floor, or where you were before a rebuild; never inside furniture.
@@ -1390,7 +1395,8 @@ export default function SpaceScene(props: SpaceSceneProps) {
         appliedEdits = p.campusEdits ?? NO_EDITS;
         campusLayout = applyEdits(campus, appliedEdits);
         campusWorld.setObjects(campusLayout.objects);
-        map = walkMap(floor, campusObstacles(campusLayout), CAMPUS_CELL, OFFICE_CLEARANCE);
+        map = campusMap(campusLayout, taken);
+        mapOut = [...taken].sort().join('|');
         seats = campusSeats(campusLayout);
         underfootMap = groundOf(campusLayout.buildings, campusLayout.objects, campusLayout.paths);
         obstaclesCache = [];
@@ -1632,6 +1638,13 @@ export default function SpaceScene(props: SpaceSceneProps) {
       occupied = nowOccupied;
       taken = nowTaken;
       campusWorld?.setHidden(taken);
+      const out = [...taken].sort().join('|');
+      if (campusLayout && out !== mapOut) {
+        mapOut = out;
+        map = campusMap(campusLayout, taken);
+        // Out of a car in its own bay: the car is back, so step out beside it.
+        if (!me.vehicle && !me.seat && !isFree(map, me.x, me.z)) { const at = freeSpot(map, me.x, me.z); me.x = at.x; me.z = at.z; }
+      }
       for (const id of [...avatars.keys()]) if (!present.has(id)) removeAvatar(id);
 
       // Conversation rings.
