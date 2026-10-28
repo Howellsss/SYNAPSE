@@ -14,12 +14,14 @@ export const darkItem = 'flex w-full items-center gap-2 rounded-lg px-3 py-2 tex
 const heading = 'px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-ivory-700';
 
 /**
- * A toolbar button laid out like Zoom's: icon with its name underneath (names hide on phones).
- * The visible name and the accessible name are the same text.
+ * A toolbar button laid out like Zoom's: a thin white icon with its name underneath, on the dark
+ * bar (names hide on phones). `caret` shows the small ^ of a button that opens a menu, `count` a
+ * plain number beside the icon (how many are here), `badge` a red dot with a number. The visible
+ * name and the accessible name are the same text.
  */
-export function ToolButton({ label, icon, onClick, pressed, off, badge, busy, title, className, ...rest }: {
+export function ToolButton({ label, icon, onClick, pressed, off, badge, count, busy, title, className, caret, ...rest }: {
   label: string; icon: ReactNode; onClick: () => void; pressed?: boolean; off?: boolean; badge?: number | string; busy?: boolean; title?: string; className?: string;
-  'aria-expanded'?: boolean; 'aria-haspopup'?: 'menu' | 'dialog'; disabled?: boolean;
+  caret?: boolean; count?: number; 'aria-expanded'?: boolean; 'aria-haspopup'?: 'menu' | 'dialog'; disabled?: boolean;
 }) {
   return (
     <button
@@ -31,20 +33,22 @@ export function ToolButton({ label, icon, onClick, pressed, off, badge, busy, ti
       aria-busy={busy || undefined}
       {...rest}
       className={cn(
-        'relative flex h-11 min-w-[44px] shrink-0 flex-col items-center justify-center gap-1 rounded-lg px-1.5 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400 sm:h-[58px] sm:min-w-[64px] sm:px-2',
-        pressed ? 'bg-navy-50 text-gold-700' : 'text-navy-800 hover:bg-navy-50',
+        'relative flex h-12 min-w-[48px] shrink-0 flex-col items-center justify-center gap-1.5 rounded-lg px-2 text-white transition focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400 sm:h-[62px] sm:min-w-[72px] sm:px-2.5 [&_svg]:[stroke-width:1.6]',
+        pressed ? 'bg-white/[0.12]' : 'hover:bg-white/[0.08]',
         busy && 'opacity-70',
         'disabled:cursor-default disabled:opacity-40',
         className,
       )}
     >
-      <span className={cn('relative flex items-center', off && 'text-burgundy-500')}>
+      <span className={cn('relative flex items-center', off && 'text-[#FF5A5F]', pressed && 'text-gold-300')}>
         {icon}
+        {count !== undefined && <span className="absolute -right-3.5 -top-1 text-[11px] font-semibold leading-none text-white/90">{count}</span>}
         {badge !== undefined && badge !== 0 && (
-          <span className="absolute -right-3 -top-1.5 min-w-[16px] rounded-full bg-gold-400 px-1 text-center text-[10px] font-bold leading-4 text-navy-900">{badge}</span>
+          <span className="absolute -right-3 -top-1.5 min-w-[16px] rounded-full bg-[#E5484D] px-1 text-center text-[10px] font-bold leading-4 text-white">{badge}</span>
         )}
+        {caret && <ChevronUp aria-hidden="true" className="absolute -right-4 -top-0.5 !h-3 !w-3 text-white/70" />}
       </span>
-      <span aria-hidden="true" className="hidden whitespace-nowrap text-[11.5px] font-medium leading-none text-navy-700 sm:block">{label}</span>
+      <span aria-hidden="true" className="hidden whitespace-nowrap text-[12.5px] font-normal leading-none text-white/90 sm:block">{label}</span>
     </button>
   );
 }
@@ -80,7 +84,7 @@ function SplitButton({ main, menuLabel, children }: { main: ReactNode; menuLabel
             title={menuLabel}
             aria-haspopup="menu"
             aria-expanded={open}
-            className={cn('mt-0.5 flex h-6 w-5 items-center justify-center rounded text-navy-500 hover:bg-navy-50 hover:text-navy-900 sm:mt-1.5', open && 'bg-navy-50 text-navy-900')}
+            className={cn('-ml-1.5 mt-1 flex h-6 w-5 items-center justify-center rounded text-white/70 hover:bg-white/10 hover:text-white sm:mt-2', open && 'bg-white/10 text-white')}
           >
             <ChevronUp className="h-3.5 w-3.5" />
           </button>
@@ -132,7 +136,7 @@ export function AudioButton({ micOn, busy, onToggle, devices, active, onChoose, 
           off={!micOn}
           busy={busy}
           onClick={onToggle}
-          icon={micOn ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
+          icon={micOn ? <Mic className="h-[26px] w-[26px]" /> : <MicOff className="h-[26px] w-[26px]" />}
         />
       )}
     >
@@ -171,7 +175,7 @@ export function VideoButton({ camOn, busy, onToggle, devices, active, onChoose, 
           off={!camOn}
           busy={busy}
           onClick={onToggle}
-          icon={camOn ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
+          icon={camOn ? <Video className="h-[26px] w-[26px]" /> : <VideoOff className="h-[26px] w-[26px]" />}
         />
       )}
     >

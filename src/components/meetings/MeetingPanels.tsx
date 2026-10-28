@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { AudioLines, Ban, BarChart3, Captions as CaptionsIcon, Languages, CaptionsOff, Copy, Download, Droplet, Droplets, Hand, ImagePlus, Mic, MicOff, Plus, Send, UserMinus, Video, VideoOff, X } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { AudioLines, Ban, BarChart3, Captions as CaptionsIcon, ChevronDown, Languages, CaptionsOff, Copy, Download, Droplet, Droplets, Hand, ImagePlus, Mic, MicOff, Plus, Send, UserMinus, Video, VideoOff, X } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { MAX_CHAT } from '@/meetings/messages';
 import { MAX_OPTION, MAX_OPTIONS, MAX_QUESTION, percent } from '@/meetings/polls';
@@ -8,7 +8,7 @@ import { PRESETS, paintPreset, type BackgroundChoice } from '@/meetings/backgrou
 import type { Background } from '@/meetings/useBackground';
 import type { Captions } from '@/meetings/useCaptions';
 import { transcriptText } from '@/meetings/captions';
-import { Interpreter, LANGUAGES, languageName } from '@/meetings/translate';
+import { Interpreter, LANGUAGES, languageLabel, languageName } from '@/meetings/translate';
 import { cn } from '@/lib/utils';
 
 export interface ChatLine {
@@ -354,7 +354,7 @@ export function LanguageSettings({ captions, className, dark }: { captions: Capt
           className={cn('rounded-lg px-2 py-1 text-sm ring-1 ring-inset', dark ? 'bg-navy-800 text-white ring-white/20' : 'bg-white text-navy-900 ring-navy-100')}
           aria-label="The language I speak"
         >
-          {LANGUAGES.map((l) => <option key={l.code} value={l.code}>{l.name}</option>)}
+          {LANGUAGES.map((l) => <option key={l.code} value={l.code}>{languageLabel(l.code)}</option>)}
         </select>
       </label>
       {Interpreter.supported() && (
@@ -369,6 +369,86 @@ export function LanguageSettings({ captions, className, dark }: { captions: Capt
           ? 'Everyone else is shown (and, with the switch on, read aloud) in your language. Translation happens on your computer.'
           : "This browser can't translate. Chrome or Edge can; until then you see what people say as they say it."}
       </p>
+    </div>
+  );
+}
+
+/**
+ * "Set your speaking language for this meeting": asked when someone turns translation (or
+ * captions) on, or speaks another language. Saving also sets whether I hear others read aloud in
+ * my language (on by default: that's what makes a Spanish and an English speaker hear each other
+ * in their own language).
+ */
+export function SpeakingLanguageDialog({ captions }: { captions: Captions }) {
+  const open = captions.ask !== null;
+  const [language, setLanguage] = useState(captions.language);
+  const [hear, setHear] = useState(true);
+  const [never, setNever] = useState(false);
+  const titleId = useId();
+  const selectId = useId();
+  // Fresh each time it opens, starting from my current language.
+  useEffect(() => {
+    if (!open) return;
+    setLanguage(captions.language);
+    setHear(Interpreter.supported());
+    setNever(false);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!open) return;
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') captions.answerAsk(null); };
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [open, captions]);
+  if (!open) return null;
+  const save = () => captions.answerAsk({ language, hear, dontAskAgain: never });
+  return (
+    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-navy-950/50 p-4 animate-backdrop-in">
+      <form
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onSubmit={(e) => { e.preventDefault(); save(); }}
+        className="w-full max-w-[34rem] rounded-2xl bg-white p-6 text-navy-900 shadow-popover animate-scale-in sm:p-8"
+      >
+        <h2 id={titleId} className="text-[19px] font-semibold leading-snug sm:text-xl">
+          {captions.ask === 'translation' ? 'A participant has enabled translation.' : 'Captions are on.'} Set your speaking language for this meeting.
+        </h2>
+        <label htmlFor={selectId} className="mt-6 block text-[15px] font-semibold">My speaking language</label>
+        <p className="mt-1 text-[13px] text-ivory-700">Select the language you will be speaking in for this meeting. Everyone else is translated into it for you.</p>
+        <div className="relative mt-2">
+          <select
+            id={selectId}
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            className="h-11 w-full appearance-none rounded-lg bg-white pl-3 pr-10 text-[15px] text-navy-900 ring-1 ring-inset ring-navy-100 focus:outline-none focus:ring-2 focus:ring-gold-400"
+          >
+            {LANGUAGES.map((l) => <option key={l.code} value={l.code}>{languageLabel(l.code)}</option>)}
+          </select>
+          <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-navy-500" />
+        </div>
+        {Interpreter.supported() && (
+          <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg bg-navy-50/60 p-3 text-sm">
+            <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 accent-gold-500" checked={hear} onChange={(e) => setHear(e.target.checked)} />
+            <span>
+              <span className="font-semibold">Hear others in {languageName(language)}</span>
+              <span className="mt-0.5 block text-[13px] text-ivory-700">
+                People speaking another language are read aloud in yours, with their own voice turned down. Use headphones, so the voice isn't picked up by your microphone.
+              </span>
+            </span>
+          </label>
+        )}
+        {!captions.translates && (
+          <p className="mt-3 text-[13px] text-burgundy-600">This browser can't translate. Chrome or Edge on a computer can; here you'll see what people say as they say it.</p>
+        )}
+        <div className="mt-7 flex flex-wrap items-center gap-3">
+          <label className="mr-auto flex cursor-pointer items-center gap-2 text-sm text-navy-800">
+            <input type="checkbox" className="h-4 w-4 accent-gold-500" checked={never} onChange={(e) => setNever(e.target.checked)} />
+            Don't ask me again
+          </label>
+          <button type="button" onClick={() => captions.answerAsk(null)} className="h-10 rounded-lg px-4 text-sm font-semibold text-navy-900 ring-1 ring-inset ring-navy-100 hover:bg-navy-50">Cancel</button>
+          <button type="submit" className="h-10 rounded-lg bg-navy-900 px-5 text-sm font-semibold text-white hover:bg-navy-800">Save</button>
+        </div>
+      </form>
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft, Check, ChevronDown, Copy, RefreshCw, Smartphone, Hand, Info, LayoutGrid, MessageSquare, Mic, MicOff, MonitorUp, MoreHorizontal, PenLine, PhoneOff,
-  SearchX, Settings2, SmilePlus, Users, Video, VideoOff, Camera, X, Clock, LogOut, Maximize2, Minimize2, PictureInPicture2, Pin, PinOff, Shield, ShieldCheck, XCircle,
+  Languages, SearchX, Settings2, SmilePlus, Users, Video, VideoOff, Camera, X, Clock, LogOut, Maximize2, Minimize2, PictureInPicture2, Pin, PinOff, Shield, ShieldCheck, XCircle,
   Lock, DoorOpen, BarChart3, Presentation, Sparkles, Captions as CaptionsIcon, FileText, EyeOff, Eye, Split, Circle, Square, Download,
 } from 'lucide-react';
 import type { LocalTrack, RemoteTrack, Room, Track } from 'livekit-client';
@@ -26,7 +26,7 @@ import { CallNotices } from '@/components/spaces/room/CallNotices';
 import { Popover } from '@/components/spaces/room/Popover';
 import { AnnotationLayer } from '@/components/meetings/AnnotationLayer';
 import { AudioButton, ToolButton, VideoButton, darkItem, darkPanel } from '@/components/meetings/MeetingControls';
-import { BackgroundsPanel, CaptionsOverlay, ChatPanel, LanguageSettings, ParticipantsPanel, PollsPanel, TranscriptPanel, type ChatLine } from '@/components/meetings/MeetingPanels';
+import { BackgroundsPanel, CaptionsOverlay, ChatPanel, LanguageSettings, ParticipantsPanel, PollsPanel, SpeakingLanguageDialog, TranscriptPanel, type ChatLine } from '@/components/meetings/MeetingPanels';
 import { useCaptions } from '@/meetings/useCaptions';
 import { useRecorder } from '@/meetings/useRecorder';
 import { documentPip, openPopout } from '@/meetings/popout';
@@ -1023,27 +1023,27 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
       </div>
 
       {/* Bottom bar, as in Zoom: your audio & video left, meeting tools centre, End right */}
-      <footer role="toolbar" aria-label="Meeting controls" className="relative z-20 grid shrink-0 grid-cols-[auto_1fr_auto] items-center gap-1 border-t border-sand bg-white px-1.5 py-1 sm:px-3 sm:py-1.5">
+      <footer role="toolbar" aria-label="Meeting controls" className="relative z-20 grid shrink-0 grid-cols-[auto_1fr_auto] items-center gap-1 bg-navy-950 px-1.5 py-1 sm:px-4 sm:py-1.5">
         <div className="flex items-center gap-0.5 sm:gap-1">
           <AudioButton micOn={call.micOn} busy={call.pending.microphone} onToggle={() => { void call.toggleMic(); }} devices={devices} active={active} onChoose={onChoose} onSettings={() => setSettingsOpen(true)} shortcut={SHORTCUTS.mic} />
           <VideoButton onRefresh={devices.rescan} camOn={call.camOn} busy={call.pending.camera} onToggle={() => { void call.toggleCam(); }} devices={devices} active={active} onChoose={onChoose} onSettings={() => setSettingsOpen(true)} shortcut={SHORTCUTS.cam} onBackgrounds={() => openPanel('backgrounds')} />
         </div>
 
         <div className="flex min-w-0 items-center justify-center gap-0.5 sm:gap-1">
-          <ToolButton label="Participants" icon={<Users className="h-[22px] w-[22px]" />} badge={count} pressed={panel === 'people'} onClick={() => openPanel('people')} />
-          <ToolButton label="Chat" icon={<MessageSquare className="h-[22px] w-[22px]" />} badge={unread || undefined} pressed={panel === 'chat'} onClick={() => openPanel('chat')} />
+          <ToolButton label="Participants" icon={<Users className="h-[26px] w-[26px]" />} count={count} pressed={panel === 'people'} onClick={() => openPanel('people')} />
+          <ToolButton label="Chat" icon={<MessageSquare className="h-[26px] w-[26px]" />} badge={unread || undefined} pressed={panel === 'chat'} onClick={() => openPanel('chat')} />
           <Popover
             className="hidden sm:block"
             label="Reactions"
             panelClassName={cn('bottom-full left-1/2 mb-3 -translate-x-1/2 p-2', darkPanel)}
-            trigger={({ open, toggle }) => <ToolButton label="React" icon={<SmilePlus className="h-[22px] w-[22px]" />} pressed={open} aria-expanded={open} aria-haspopup="menu" onClick={toggle} />}
+            trigger={({ open, toggle }) => <ToolButton label="React" caret icon={<SmilePlus className="h-[26px] w-[26px]" />} pressed={open} aria-expanded={open} aria-haspopup="menu" onClick={toggle} />}
           >
             {(close) => <ReactionPicker handUp={!!hands[you.id]} onReact={(e) => { react(e); close(); }} onHand={() => { toggleHand(); close(); }} />}
           </Popover>
           <ToolButton
             className="hidden sm:flex"
             label={call.screenOn ? 'Stop share' : 'Share'}
-            icon={<MonitorUp className={cn('h-[22px] w-[22px]', !call.screenOn && 'text-green-600')} />}
+            icon={<MonitorUp className={cn('h-[26px] w-[26px]', !call.screenOn && 'text-[#3DDC84]')} />}
             pressed={call.screenOn}
             busy={call.pending.screen}
             onClick={() => { void (call.screenOn ? call.stopScreenShare() : call.startScreenShare()); }}
@@ -1052,7 +1052,7 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
             <ToolButton
               className="hidden sm:flex"
               label="Annotate"
-              icon={<PenLine className="h-[22px] w-[22px]" />}
+              icon={<PenLine className="h-[26px] w-[26px]" />}
               pressed={annotating}
               onClick={() => { setShareZoom('fit'); setAnnotating((v) => !v); }}
             />
@@ -1060,7 +1060,7 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
           <ToolButton
             className="hidden md:flex"
             label="Polls"
-            icon={<BarChart3 className="h-[22px] w-[22px]" />}
+            icon={<BarChart3 className="h-[26px] w-[26px]" />}
             badge={polls.active && !polls.active.mine && !isHost && panel !== 'polls' ? 1 : undefined}
             pressed={panel === 'polls'}
             onClick={() => openPanel('polls')}
@@ -1069,7 +1069,7 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
             <ToolButton
               className="hidden lg:flex"
               label={recorder.state === 'recording' ? 'Stop recording' : 'Record'}
-              icon={recorder.state === 'recording' ? <Square className="h-[20px] w-[20px] fill-[#C42B1C] text-[#C42B1C]" /> : <Circle className="h-[22px] w-[22px] text-[#C42B1C]" />}
+              icon={recorder.state === 'recording' ? <Square className="h-[24px] w-[24px] fill-[#C42B1C] text-[#C42B1C]" /> : <Circle className="h-[26px] w-[26px] text-[#C42B1C]" />}
               pressed={recorder.state === 'recording'}
               busy={recorder.state === 'starting' || recorder.state === 'saving'}
               onClick={() => { if (recorder.state === 'recording') recorder.stop(); else if (recorder.state === 'idle') void recorder.start(); }}
@@ -1079,7 +1079,7 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
             className="hidden lg:block"
             label="Captions"
             panelClassName={cn('bottom-full left-1/2 mb-3 w-72 -translate-x-1/2', darkPanel)}
-            trigger={({ open, toggle }) => <ToolButton label="Captions" icon={<CaptionsIcon className="h-[22px] w-[22px]" />} pressed={captions.on} aria-expanded={open} aria-haspopup="menu" onClick={toggle} />}
+            trigger={({ open, toggle }) => <ToolButton label="Captions" caret icon={<CaptionsIcon className="h-[26px] w-[26px]" />} pressed={captions.on} aria-expanded={open} aria-haspopup="menu" onClick={toggle} />}
           >
             {(close) => (
               <>
@@ -1088,6 +1088,7 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
                   : <button role="menuitem" className={darkItem} onClick={() => { close(); captions.turnOn(); }}><CaptionsIcon className="h-4 w-4" /> Turn on captions</button>}
                 {captions.on && <button role="menuitem" className={darkItem} onClick={() => { close(); captions.setShown(!captions.shown); }}>{captions.shown ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />} {captions.shown ? 'Hide captions on my screen' : 'Show captions'}</button>}
                 <button role="menuitem" className={darkItem} onClick={() => { close(); openPanel('transcript'); }}><FileText className="h-4 w-4" /> View full transcript</button>
+                <button role="menuitem" className={darkItem} onClick={() => { close(); captions.openAsk(); }}><Languages className="h-4 w-4" /> Choose my speaking language…</button>
                 <div className="my-1 h-px bg-sand" />
                 <LanguageSettings captions={captions} className="px-3 py-2" />
               </>
@@ -1096,7 +1097,7 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
           <ToolButton
             className="hidden lg:flex"
             label="Whiteboard"
-            icon={<Presentation className="h-[22px] w-[22px]" />}
+            icon={<Presentation className="h-[26px] w-[26px]" />}
             pressed={!!board.owner}
             disabled={!!board.owner && !board.canClose}
             onClick={() => (board.owner ? board.close() : board.open())}
@@ -1106,7 +1107,7 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
               className="hidden sm:block"
               label="Host tools"
               panelClassName={cn('bottom-full left-1/2 mb-3 w-60 -translate-x-1/2', darkPanel)}
-              trigger={({ open, toggle }) => <ToolButton label="Host tools" icon={<Shield className="h-[22px] w-[22px]" />} pressed={open} aria-expanded={open} aria-haspopup="menu" onClick={toggle} />}
+              trigger={({ open, toggle }) => <ToolButton label="Host tools" icon={<Shield className="h-[26px] w-[26px]" />} pressed={open} aria-expanded={open} aria-haspopup="menu" onClick={toggle} />}
             >
               {(close) => (
                 <>
@@ -1130,7 +1131,7 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
           <Popover
             label="More"
             panelClassName={cn('bottom-full right-0 mb-3 w-60 sm:left-1/2 sm:right-auto sm:-translate-x-1/2', darkPanel)}
-            trigger={({ open, toggle }) => <ToolButton label="More" icon={<MoreHorizontal className="h-[22px] w-[22px]" />} pressed={open} aria-expanded={open} aria-haspopup="menu" onClick={toggle} />}
+            trigger={({ open, toggle }) => <ToolButton label="More" icon={<MoreHorizontal className="h-[26px] w-[26px]" />} pressed={open} aria-expanded={open} aria-haspopup="menu" onClick={toggle} />}
           >
             {(close) => (
               <>
@@ -1156,6 +1157,7 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
                   </button>
                 )}
                 <button role="menuitem" className={cn(darkItem, 'lg:hidden')} onClick={() => { close(); if (!captions.on) captions.turnOn(); openPanel('transcript'); }}><CaptionsIcon className="h-4 w-4" /> Captions &amp; transcript</button>
+                <button role="menuitem" className={cn(darkItem, 'lg:hidden')} onClick={() => { close(); captions.openAsk(); }}><Languages className="h-4 w-4" /> Language &amp; interpretation…</button>
                 <button role="menuitem" className={darkItem} onClick={() => { close(); openPanel('backgrounds'); }}><Sparkles className="h-4 w-4" /> Backgrounds &amp; blur</button>
                 {!board.owner
                   ? <button role="menuitem" className={darkItem} onClick={() => { close(); board.open(); }}><Presentation className="h-4 w-4" /> Open whiteboard</button>
@@ -1175,11 +1177,11 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
           label="Leave options"
           panelClassName={cn('bottom-full right-0 mb-3 w-60 p-2', darkPanel)}
           trigger={({ open, toggle }) => (
-            <button type="button" onClick={toggle} aria-haspopup="menu" aria-expanded={open} aria-label={isHost ? 'End' : 'Leave'} className="flex h-11 min-w-[44px] flex-col items-center justify-center gap-1 rounded-lg px-1.5 text-navy-800 hover:bg-navy-50 sm:h-[58px] sm:min-w-[64px] sm:px-2">
+            <button type="button" onClick={toggle} aria-haspopup="menu" aria-expanded={open} aria-label={isHost ? 'End' : 'Leave'} className="flex h-12 min-w-[48px] flex-col items-center justify-center gap-1.5 rounded-lg px-2 text-white hover:bg-white/[0.08] sm:h-[62px] sm:min-w-[72px] sm:px-2.5 [&_svg]:[stroke-width:1.6]">
               {isHost
-                ? <span className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-[#C42B1C] text-white"><X className="h-3.5 w-3.5" strokeWidth={3} /></span>
-                : <LogOut className="h-[22px] w-[22px] text-burgundy-500" />}
-              <span aria-hidden="true" className="hidden text-[11.5px] font-medium leading-none text-navy-700 sm:block">{isHost ? 'End' : 'Leave'}</span>
+                ? <span className="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-[#E5484D] text-white"><X className="h-4 w-4 [stroke-width:2.6]" /></span>
+                : <LogOut className="h-[26px] w-[26px] text-[#FF5A5F]" />}
+              <span aria-hidden="true" className="hidden text-[12.5px] leading-none text-white/90 sm:block">{isHost ? 'End' : 'Leave'}</span>
             </button>
           )}
         >
@@ -1192,6 +1194,7 @@ function InCall({ meeting: initial, join, onLeave, onEnded, onHome, refresh }: {
         </Popover>
       </footer>
       <DeviceCheckModal open={settingsOpen} onClose={() => { setSettingsOpen(false); void call.applySavedDevices(); }} />
+      <SpeakingLanguageDialog captions={captions} />
     </div>
   );
 }

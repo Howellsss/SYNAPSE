@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from 'react';
 import {
   LocateFixed, ZoomIn, ZoomOut, Map as MapIcon, Gauge, PencilRuler, Mic, MicOff, Video, VideoOff, MonitorUp,
-  Captions as CaptionsIcon, SmilePlus, Hand, MessageSquare, Megaphone, MoreHorizontal, PhoneOff, Settings2, Check, Wifi, WifiOff, Loader2, Shirt, Box, Square, Hammer,
-  Footprints, Zap, Music,
+  Captions as CaptionsIcon, SmilePlus, Hand, MessageSquare, Megaphone, MoreHorizontal, Settings2, Check, Wifi, WifiOff, Loader2, Shirt, Box, Square, Hammer,
+  Footprints, Zap, Music, Languages, LogOut,
 } from 'lucide-react';
+import { ToolButton as CallButton } from '@/components/meetings/MeetingControls';
 import type { ConnectionState } from '@/spatial/net/status';
 import { REACTIONS, type ReactionKind } from '@/spatial/net/emotes';
 import type { CallState, LiveKitRoom, Quality } from '@/spatial/media/useLiveKitRoom';
@@ -148,39 +149,8 @@ export function ConnectionPill({ state, call, quality }: { state: ConnectionStat
 // ---------------------------------------------------------------- control bar
 
 
-function BarButton({ label, onClick, on = true, danger, children, className, pressed, busy, shortcut }: {
-  label: string;
-  busy?: boolean;
-  shortcut?: string;
-  onClick?: () => void;
-  on?: boolean;
-  danger?: boolean;
-  pressed?: boolean;
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={shortcut ? `${label} (${shortcut})` : label}
-      aria-keyshortcuts={shortcut?.replace('⌘', 'Meta').replace(/\+/g, '+')}
-      aria-pressed={pressed}
-      aria-busy={busy}
-      className={cn(
-        'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400',
-        danger ? 'bg-burgundy-500 text-white hover:bg-burgundy-600'
-          : pressed ? 'bg-gold-400 text-navy-900 hover:bg-gold-300'
-          : on ? 'text-white hover:bg-white/10' : 'bg-burgundy-500 text-white hover:bg-burgundy-600',
-        busy && 'opacity-70',
-        className,
-      )}
-    >
-      {children}
-    </button>
-  );
-}
+/** Icons on the call bar: large and thin, as in Zoom. */
+const ICON = 'h-[26px] w-[26px]';
 
 /** Bottom-center controls. Mic, camera and screen share are real; chat and "bring team" come later. */
 export type MoveMode = 'walk' | 'run';
@@ -197,9 +167,16 @@ function ActionMenu({ mode, onMode, onDance }: {
       label="Action"
       panelClassName="bottom-full left-1/2 mb-2 w-60 -translate-x-1/2"
       trigger={({ open, toggle }) => (
-        <BarButton label={`Action: ${mode === 'run' ? 'running' : 'walking'}`} pressed={open} onClick={toggle}>
-          {mode === 'run' ? <Zap className="h-5 w-5" /> : <Footprints className="h-5 w-5" />}
-        </BarButton>
+        <CallButton
+          label={mode === 'run' ? 'Run' : 'Walk'}
+          title={`Action: ${mode === 'run' ? 'running' : 'walking'}`}
+          caret
+          pressed={open}
+          aria-expanded={open}
+          aria-haspopup="menu"
+          onClick={toggle}
+          icon={mode === 'run' ? <Zap className={ICON} /> : <Footprints className={ICON} />}
+        />
       )}
     >
       {(close) => (
@@ -237,48 +214,67 @@ export function ControlBar({ call, onLeave, onSettings, onReact, handRaised, onH
   const { micOn: mic, camOn: cam, screenOn: sharing, pending } = call;
   const share = () => (sharing ? call.stopScreenShare() : call.startScreenShare());
   const [chat, setChat] = useState(false);
-  const divider = <span className="mx-1 h-6 w-px shrink-0 bg-white/15" aria-hidden="true" />;
+  const divider = <span className="mx-1 h-9 w-px shrink-0 bg-white/10" aria-hidden="true" />;
 
+  // Laid out like Zoom's bar: your audio and video, then the call's tools, then Leave.
   return (
-    <div role="toolbar" aria-label="Call controls" className="flex max-w-full items-center gap-1 rounded-full bg-navy-900/90 p-1.5 shadow-popover backdrop-blur">
-      <BarButton label={mic ? 'Mute microphone' : 'Unmute microphone'} on={mic} busy={pending.microphone} shortcut={SHORTCUTS.mic} onClick={() => { void call.toggleMic(); }}>
-        {mic ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
-      </BarButton>
-      <BarButton label={cam ? 'Turn camera off' : 'Turn camera on'} on={cam} busy={pending.camera} shortcut={SHORTCUTS.cam} onClick={() => { void call.toggleCam(); }}>
-        {cam ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
-      </BarButton>
-      <BarButton label={sharing ? 'Stop sharing' : 'Share screen'} pressed={sharing} busy={pending.screen} onClick={() => { void share(); }} className="hidden sm:flex">
-        <MonitorUp className="h-5 w-5" />
-      </BarButton>
+    <div role="toolbar" aria-label="Call controls" className="flex max-w-full items-center gap-0.5 rounded-2xl bg-navy-950/95 px-1.5 py-1 shadow-popover ring-1 ring-white/[0.06] backdrop-blur sm:gap-1 sm:px-2">
+      <CallButton
+        label={mic ? 'Mute' : 'Unmute'}
+        title={`${mic ? 'Mute microphone' : 'Unmute microphone'} (${SHORTCUTS.mic})`}
+        off={!mic}
+        busy={pending.microphone}
+        onClick={() => { void call.toggleMic(); }}
+        icon={mic ? <Mic className={ICON} /> : <MicOff className={ICON} />}
+      />
+      <CallButton
+        label={cam ? 'Stop video' : 'Start video'}
+        title={`${cam ? 'Turn camera off' : 'Turn camera on'} (${SHORTCUTS.cam})`}
+        off={!cam}
+        busy={pending.camera}
+        onClick={() => { void call.toggleCam(); }}
+        icon={cam ? <Video className={ICON} /> : <VideoOff className={ICON} />}
+      />
       {divider}
+      <CallButton
+        className="hidden sm:flex"
+        label={sharing ? 'Stop share' : 'Share'}
+        pressed={sharing}
+        busy={pending.screen}
+        onClick={() => { void share(); }}
+        icon={<MonitorUp className={cn(ICON, !sharing && 'text-[#3DDC84]')} />}
+      />
       <Popover
         label="Reactions"
         panelClassName="bottom-full left-1/2 mb-2 flex -translate-x-1/2 gap-1 !rounded-full !p-1.5"
-        trigger={({ open, toggle }) => <BarButton label="Reactions" pressed={open} onClick={toggle}><SmilePlus className="h-5 w-5" /></BarButton>}
+        trigger={({ open, toggle }) => <CallButton label="React" caret pressed={open} aria-expanded={open} aria-haspopup="menu" onClick={toggle} icon={<SmilePlus className={ICON} />} />}
       >
         {(close) => REACTIONS.map((r) => (
           <button key={r.kind} role="menuitem" aria-label={r.label} title={r.label} onClick={() => { onReact(r.kind); close(); }} className="flex h-9 w-9 items-center justify-center rounded-full text-xl transition hover:scale-110 hover:bg-ivory-50">{r.emoji}</button>
         ))}
       </Popover>
-      <BarButton label={handRaised ? 'Lower hand' : 'Raise hand'} pressed={handRaised} onClick={() => onHand(!handRaised)}><Hand className="h-5 w-5" /></BarButton>
+      <CallButton label={handRaised ? 'Lower hand' : 'Raise hand'} pressed={handRaised} onClick={() => onHand(!handRaised)} icon={<Hand className={ICON} />} />
       {onMoveMode && onDance && <ActionMenu mode={moveMode} onMode={onMoveMode} onDance={onDance} />}
-      <BarButton label="Chat" pressed={chat} onClick={() => setChat(!chat)} className="hidden sm:flex"><MessageSquare className="h-5 w-5" /></BarButton>
-      <BarButton label="Bring your team over" className="hidden sm:flex"><Megaphone className="h-5 w-5" /></BarButton>
+      <CallButton className="hidden sm:flex" label="Chat" pressed={chat} onClick={() => setChat(!chat)} icon={<MessageSquare className={ICON} />} />
+      <CallButton className="hidden md:flex" label="Bring team" title="Bring your team over" onClick={() => {}} icon={<Megaphone className={ICON} />} />
       <Popover
         label="More"
         panelClassName="bottom-full right-0 mb-2 w-72"
-        trigger={({ open, toggle }) => <BarButton label="More" pressed={open} onClick={toggle}><MoreHorizontal className="h-5 w-5" /></BarButton>}
+        trigger={({ open, toggle }) => <CallButton label="More" pressed={open} aria-expanded={open} aria-haspopup="menu" onClick={toggle} icon={<MoreHorizontal className={ICON} />} />}
       >
         {(close) => (
           <>
             <button role="menuitem" className={cn(menuItem, 'sm:hidden')} onClick={() => { void share(); close(); }}><MonitorUp className="h-4 w-4 text-gold-600" /> {sharing ? 'Stop sharing' : 'Share screen'}</button>
             <button role="menuitem" className={cn(menuItem, 'sm:hidden')} onClick={() => { setChat(!chat); close(); }}><MessageSquare className="h-4 w-4 text-gold-600" /> Chat</button>
-            <button role="menuitem" className={cn(menuItem, 'sm:hidden')} onClick={close}><Megaphone className="h-4 w-4 text-gold-600" /> Bring your team over</button>
+            <button role="menuitem" className={cn(menuItem, 'md:hidden')} onClick={close}><Megaphone className="h-4 w-4 text-gold-600" /> Bring your team over</button>
             <button role="menuitem" className={menuItem} onClick={() => { close(); onSettings(); }}><Settings2 className="h-4 w-4 text-gold-600" /> Camera & mic settings</button>
             {captions && (
               <>
                 <button role="menuitem" className={menuItem} onClick={() => { close(); if (captions.on) captions.turnOff(); else captions.turnOn(); }}>
                   <CaptionsIcon className="h-4 w-4 text-gold-600" /> {captions.on ? 'Turn off captions' : 'Turn on captions'}
+                </button>
+                <button role="menuitem" className={menuItem} onClick={() => { close(); captions.openAsk(); }}>
+                  <Languages className="h-4 w-4 text-gold-600" /> Choose my speaking language…
                 </button>
                 <div className="my-1 h-px bg-ivory-100" />
                 <LanguageSettings captions={captions} className="px-3 py-2" />
@@ -288,9 +284,7 @@ export function ControlBar({ call, onLeave, onSettings, onReact, handRaised, onH
         )}
       </Popover>
       {divider}
-      <BarButton label="Leave" danger onClick={onLeave} className="!w-auto gap-1.5 px-4">
-        <PhoneOff className="h-5 w-5" /> <span className="hidden text-sm font-semibold sm:inline">Leave</span>
-      </BarButton>
+      <CallButton label="Leave" onClick={onLeave} icon={<LogOut className={cn(ICON, 'text-[#FF5A5F]')} />} />
     </div>
   );
 }
