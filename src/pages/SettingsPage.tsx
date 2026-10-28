@@ -129,7 +129,7 @@ export function SettingsPage() {
   const section = sections.some((s) => s.id === picked) ? picked : 'profile';
 
   return (
-    <div className="flex flex-col md:flex-row gap-0 md:gap-6 max-w-5xl">
+    <div className="page md:flex-row gap-0 md:gap-6">
       <div className="w-56 shrink-0 hidden md:block">
         <h2 className="text-lg font-semibold text-navy-800 mb-3">Settings</h2>
         <nav className="space-y-0.5">
@@ -155,7 +155,7 @@ export function SettingsPage() {
         </select>
       </div>
 
-      <div className="flex-1 min-w-0">
+      <div className="flex min-w-0 flex-1 flex-col [&>*]:flex-1">
         {section === 'profile' && <ProfileSettings />}
         {section === 'workspace' && <WorkspaceSettings />}
         {section === 'team' && <TeamMembersSettings />}

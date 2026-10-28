@@ -44,7 +44,7 @@ export function EventsPage() {
   };
 
   return (
-    <div className="w-full pb-6">
+    <div className="page">
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
           <h1 className="font-display text-[24px] font-bold tracking-[-0.02em] text-navy-800 sm:text-[24px]">Events</h1>
@@ -91,7 +91,7 @@ export function EventsPage() {
           {events === null ? (
             <div className="space-y-3">{[0, 1, 2].map((i) => <div key={i} className="h-28 animate-pulse rounded-xl bg-navy-50" />)}</div>
           ) : shown.length === 0 ? (
-            <div className="card">
+            <div className="card page-fill justify-center">
               <EmptyState
                 icon={<CalendarDays className="h-6 w-6" />}
                 title={tab === 'drafts' ? 'No drafts' : tab === 'past' ? 'No past events yet' : 'No events yet'}

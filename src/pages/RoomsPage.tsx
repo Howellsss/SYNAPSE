@@ -86,7 +86,7 @@ export function RoomsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="page">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-[28px] font-semibold tracking-[-0.02em] text-navy-800">Rooms</h1>
@@ -122,18 +122,18 @@ export function RoomsPage() {
         )}
       </div>
 
-      <div className="mt-5">
+      <div className="mt-5 page-fill">
         {loading ? (
-          <div className="card p-6"><LoadingSpinner className="h-8 w-8 text-ivory-600" /></div>
+          <div className="card flex flex-1 items-center justify-center p-6"><LoadingSpinner className="h-8 w-8 text-ivory-600" /></div>
         ) : error ? (
           <ErrorState message={error} onRetry={load} />
         ) : list.length === 0 ? (
-          <div className="card">
+          <div className="card flex flex-1 flex-col justify-center">
             <EmptyState
               icon={<DoorOpen className="h-6 w-6" />}
               title={tab === 'mine' ? 'No rooms assigned to you yet' : 'No rooms yet'}
               description={canCreateRooms(viewer)
-                ? 'Create a room, put it in a department and assign the experts who use it.'
+                ? 'Create a room, put it in a department and assign the people who use it.'
                 : 'An admin creates rooms and assigns them. Ask yours to assign you one.'}
             />
           </div>

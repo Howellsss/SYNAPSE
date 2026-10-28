@@ -108,7 +108,7 @@ export function WorkflowsHome() {
   };
 
   return (
-    <div className="w-full pb-10">
+    <div className="page">
       <div className="flex flex-wrap items-end gap-4">
         <div className="mr-auto">
           <h1 className="font-display text-[26px] font-bold tracking-[-0.02em] text-navy-800">Workflows</h1>
@@ -163,13 +163,13 @@ export function WorkflowsHome() {
         </div>
       </div>
 
-      <div className="mt-4">
+      <div className="mt-4 flex flex-1 flex-col">
         {rows === null ? (
           <div className="space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-[72px] rounded-2xl" />)}</div>
         ) : rows.length === 0 ? (
           <FirstRun onScratch={() => startWith({ name: 'Untitled workflow', triggers: [], steps: [] })} onRecipe={(i) => { const b = RECIPES[i].build(); startWith({ name: RECIPES[i].name, notes: RECIPES[i].description, triggers: b.triggers, steps: b.steps, settings: settingsFrom(b.settings) }); }} />
         ) : shown.length === 0 ? (
-          <p className="rounded-2xl px-5 py-10 text-center text-sm text-ivory-700 ring-1 ring-navy-100">No workflows match.</p>
+          <p className="flex flex-1 items-center justify-center rounded-2xl px-5 py-10 text-center text-sm text-ivory-700 ring-1 ring-navy-100">No workflows match.</p>
         ) : (
           <ul className={cn(view === 'grid' ? 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3' : 'divide-y divide-navy-50 overflow-hidden rounded-2xl ring-1 ring-navy-100')}>
             {shown.map((r) => <WorkflowItem key={r.id} r={r} grid={view === 'grid'} onOpen={() => navigate(`/workflows/${r.id}`)} onPublish={() => { void togglePublish(r); }} onDuplicate={() => { void duplicate(r); }} onExport={() => { void exportOne(r); }} onDelete={() => setConfirmDelete(r)} />)}
@@ -307,7 +307,7 @@ function WorkflowItem({ r, grid, onOpen, onPublish, onDuplicate, onExport, onDel
 
 function FirstRun({ onScratch, onRecipe }: { onScratch: () => void; onRecipe: (i: number) => void }) {
   return (
-    <div className="rounded-2xl bg-white p-6 ring-1 ring-navy-100 sm:p-8">
+    <div className="flex-1 rounded-2xl bg-white p-6 ring-1 ring-navy-100 sm:p-8">
       <h2 className="text-[20px] font-bold tracking-tight text-navy-900">Your first workflow</h2>
       <p className="mt-1 max-w-xl text-sm text-ivory-700">Pick a recipe to start from, or build your own. Nothing runs until you publish.</p>
       <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

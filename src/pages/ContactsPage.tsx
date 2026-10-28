@@ -218,7 +218,7 @@ export function ContactsPage() {
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
-    <div className="space-y-6 pb-8">
+    <div className="page space-y-6">
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="font-display text-[24px] leading-tight font-bold tracking-[-0.02em] text-navy-800 sm:text-[24px]">Contacts</h1>
@@ -238,8 +238,8 @@ export function ContactsPage() {
         <ContactMetric label="With Appointments" value={withAppointments} icon={Calendar} tone="gold" />
       </section>
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[196px_minmax(0,1fr)]">
-        <aside className="flex h-fit flex-col rounded-xl bg-white ring-1 ring-inset ring-navy-100 p-3">
+      <section className="grid flex-1 grid-cols-1 gap-4 xl:grid-cols-[196px_minmax(0,1fr)]">
+        <aside className="flex flex-col rounded-xl bg-white ring-1 ring-inset ring-navy-100 p-3">
           <div className="flex items-center justify-between px-2 pb-2 pt-1">
             <p className="text-[13px] font-semibold text-ivory-700">Smart Lists</p>
             <button onClick={() => toast('Smart list creation is coming soon')} aria-label="New smart list" className="flex h-7 w-7 items-center justify-center rounded-full text-navy-700 hover:bg-navy-50"><Plus className="h-4 w-4" /></button>
@@ -259,7 +259,7 @@ export function ContactsPage() {
           </div>
         </aside>
 
-        <div className="card min-w-0 overflow-hidden">
+        <div className="card flex min-w-0 flex-col overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand px-4 py-3">
             <div role="tablist" aria-label="Show" className="flex rounded-[10px] bg-white ring-1 ring-inset ring-navy-100 p-[3px]">
               {(['all', 'smart', 'tags'] as const).map((view) => (

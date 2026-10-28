@@ -96,9 +96,9 @@ export function MeetingsPage() {
   const rowProps = { now, onEnter: enter, onEnd: end, me: user.id };
 
   return (
-    <div className="w-full pb-8">
-      <div className="grid items-start gap-7 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <section aria-label="Meetings" className="min-w-0">
+    <div className="page">
+      <div className="grid flex-1 gap-7 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <section aria-label="Meetings" className="flex min-w-0 flex-col">
           <h1 className="font-display text-[26px] font-bold tracking-[-0.02em] text-navy-800">Meetings</h1>
           <p className="mt-1 text-[14px] text-ivory-700">Start, join or schedule a call. Guests join from a link, no account needed.</p>
 
@@ -153,7 +153,7 @@ export function MeetingsPage() {
           {joinError && <p role="alert" className="mt-2 text-sm text-burgundy-600">{joinError}</p>}
 
           {/* The day */}
-          <div className="mt-6 overflow-hidden rounded-[14px] border border-navy-100 bg-white">
+          <div className="mt-6 flex flex-1 flex-col overflow-hidden rounded-[14px] border border-navy-100 bg-white">
             <div className="flex flex-wrap items-center gap-2 border-b border-navy-100 px-4 py-3 sm:px-5">
               <label className="relative inline-flex cursor-pointer items-center gap-1 rounded-lg px-1.5 py-1 text-[16px] font-bold text-navy-900 hover:bg-navy-50">
                 {dayTitle} <ChevronDown className="h-4 w-4 text-ivory-600" />
@@ -173,7 +173,7 @@ export function MeetingsPage() {
               </div>
             </div>
 
-            <div className="min-h-[320px]" aria-label={tab === 'meetings' ? 'Meetings on this day' : 'Past calls'}>
+            <div className="flex min-h-[320px] flex-1 flex-col" aria-label={tab === 'meetings' ? 'Meetings on this day' : 'Past calls'}>
               {error ? (
                 <div className="p-5"><ErrorState message={`Couldn't load meetings. ${error}`} onRetry={() => { setMeetings(null); load(); }} /></div>
               ) : meetings === null ? (
@@ -199,7 +199,7 @@ export function MeetingsPage() {
           </div>
         </section>
 
-        <aside aria-label="At a glance" className="space-y-4">
+        <aside aria-label="At a glance" className="flex flex-col gap-4">
           <div className="flex items-center gap-4 rounded-[14px] border border-navy-100 bg-white p-5">
             <div className="min-w-0">
               <p className="text-[32px] font-bold leading-none tracking-tight tabular-nums text-navy-900">{fmtTime(now)}</p>
@@ -209,7 +209,7 @@ export function MeetingsPage() {
           </div>
           <PersonalRoom onEnter={enter} />
           <RecentRecordings workspaceId={workspace.id} onOpen={() => navigate('/recordings')} />
-          <MyNotes onOpen={() => navigate('/ai-hub')} />
+          <div className="flex flex-1 flex-col [&>*]:flex-1"><MyNotes onOpen={() => navigate('/ai-hub')} /></div>
         </aside>
       </div>
 
@@ -268,7 +268,7 @@ function roomWhen(m: Meeting, now: Date): string {
 
 function Empty({ title, text, action }: { title: string; text?: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <div className="flex min-h-[260px] flex-col items-center justify-center px-5 text-center">
+    <div className="flex min-h-[260px] flex-1 flex-col items-center justify-center px-5 text-center">
       <span className="flex h-16 w-16 items-center justify-center rounded-full bg-navy-50 text-navy-500"><CalendarDays className="h-7 w-7" /></span>
       <p className="mt-4 text-[15px] font-semibold text-navy-900">{title}</p>
       {text && <p className="mt-1 max-w-xs text-sm text-ivory-700">{text}</p>}

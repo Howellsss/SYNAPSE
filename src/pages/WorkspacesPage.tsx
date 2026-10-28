@@ -102,7 +102,7 @@ export function WorkspacesPage() {
   const comingNext = (what: string) => toast(`${what} is coming next.`, 'info');
 
   return (
-    <div className="w-full pb-6">
+    <div className="page">
       <div className="mb-6 min-w-0">
         <h1 className="font-display text-[24px] font-bold tracking-[-0.02em] text-navy-800">Workspaces</h1>
         <p className="mt-1 text-[14px] text-ivory-700">Walk up to someone to talk. Step into a room for privacy.</p>
@@ -207,7 +207,7 @@ function FirstVisit({ canCreate, onCreate, onJoin }: { canCreate: boolean; onCre
   ];
   return (
     <>
-      <section className="overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-navy-100 text-navy-800">
+      <section className="flex flex-1 flex-col justify-center overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-navy-100 text-navy-800">
         <div className="grid items-center gap-8 p-6 sm:p-10 lg:grid-cols-[1fr_1.15fr]">
           <div className="min-w-0">
             <span className="inline-flex items-center gap-1.5 rounded-md bg-gold-50 px-3 py-1 text-xs font-semibold text-gold-700">New</span>
