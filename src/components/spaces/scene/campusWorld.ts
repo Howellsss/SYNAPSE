@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { KIT_BY_ID, isGlb, placedBounds, type Placed } from '@/spatial/scene/campus/kit';
+import { groundOf } from '@/spatial/scene/campus/ground';
 import { applyRealSurface, type RealSurface } from './realSurfaces';
 import { canvasTex, glowing, grassTuft, kitShared, markGlow, procParts, rng, speckle, type Part } from './kitParts';
 import { loadItemParts, variantOf, vehicleLightParts } from './propModels';
@@ -504,7 +505,7 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
     const tuft = keep(grassTuft());
     const mat = kitShared().M.leaves;
     const rand = rng(101);
-    // Not indoors (the HQ), nor under paving, car parks, the runway or big pieces like the terminal.
+    // Not indoors (the HQ), nor under paving, car parks, the plane park or the runway.
     const hq = layout.hq;
     const covered = layout.objects.flatMap((p) => {
       const item = KIT_BY_ID.get(p.kind);
@@ -603,13 +604,15 @@ export function createCampusWorld(layout: CampusLayout, { shadows, grass = true,
     }
     const world = new THREE.Matrix4();
     const tmp = new THREE.Matrix4();
+    // Each piece stands on what's under it: the floor's top, a rug, a stage.
+    const ground = groundOf(layout.buildings, current, layout.paths);
     for (const [kind, list] of byKind) {
       const parts = partsByKind.get(kind);
       if (!parts) continue; // a GLB piece before the kit has loaded
       for (const part of parts) {
         const inst = new THREE.InstancedMesh(part.geo, part.mat, list.length);
         list.forEach((p, i) => {
-          world.compose(new THREE.Vector3(p.x, 0, p.z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.rot), new THREE.Vector3(1, 1, 1));
+          world.compose(new THREE.Vector3(p.x, ground.base(p), p.z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.rot), new THREE.Vector3(1, 1, 1));
           inst.setMatrixAt(i, tmp.multiplyMatrices(world, part.local));
         });
         inst.instanceMatrix.needsUpdate = true;

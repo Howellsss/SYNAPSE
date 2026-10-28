@@ -226,10 +226,13 @@ function planeLightParts(item: ProcItem): Part[] {
   const { G } = kitShared();
   const r = Math.max(0.2, item.w * 0.012);
   const ball = (p: THREE.Vector3) => new THREE.Matrix4().compose(p, new THREE.Quaternion(), new THREE.Vector3(r, r, r));
+  const tail = { geo: G.sphere, mat: navMats.white, local: ball(at.tail), shadow: false };
+  // A helicopter's widest points are its rotor tips: no wingtip lights there, just the tail light.
+  if (item.vehicle?.rotor) return [tail];
   return [
     { geo: G.sphere, mat: navMats.red, local: ball(at.left), shadow: false },
     { geo: G.sphere, mat: navMats.green, local: ball(at.right), shadow: false },
-    { geo: G.sphere, mat: navMats.white, local: ball(at.tail), shadow: false },
+    tail,
   ];
 }
 
