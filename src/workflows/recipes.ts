@@ -14,6 +14,43 @@ const t = (type: Trigger['type'], name: string, filters: Trigger['filters']): Tr
 const s = (type: Step['type'], name: string, config: Step['config'], extra: Partial<Step> = {}): Step => ({ id: newId(), type, name, config, ...extra });
 
 export const RECIPES: Recipe[] = [
+  // The three Slack-style alerts: the team hears about it in SYNAPSE, no Zapier needed.
+  {
+    key: 'call_request', name: 'Call request alert', tone: 'burgundy',
+    description: 'When a contact is tagged “Call request”: alert the department (bell and its channel) and give the owner a call task for today.',
+    build: () => ({
+      triggers: [t('contact_tag', 'Tagged Call request', { event: 'added', tags: ['Call request'] })],
+      steps: [
+        s('notify_department', 'Alert the team', { department_id: '', post: true, title: '📞 {{contact.name}} asked for a call', body: '{{contact.phone}} · {{contact.email}}\n{{contact.link}}' }),
+        s('add_task', 'Call them today', { title: 'Call {{contact.name}}', body: '{{contact.phone}}', due_in_days: '0', assign: 'owner' }),
+      ],
+      settings: { allow_reentry: true },
+    }),
+  },
+  {
+    key: 'video_call', name: 'Video call alert', tone: 'indigo',
+    description: 'When a contact is tagged “Video call”: make a meeting link, alert the department with it, and email the contact the same link.',
+    build: () => ({
+      triggers: [t('contact_tag', 'Tagged Video call', { event: 'added', tags: ['Video call'] })],
+      steps: [
+        s('create_meeting', 'Make a meeting link', { title: 'Video call with {{contact.name}}', duration_min: 30, host: 'owner' }),
+        s('notify_department', 'Alert the team', { department_id: '', post: true, title: '🎥 {{contact.name}} wants a video call', body: 'Join: {{meeting.link}}\n{{contact.link}}' }),
+        s('send_email', 'Send them the link', { subject: 'Your video call link', body: 'Hi {{contact.first_name}},\n\nJoin us here when you’re ready: {{meeting.link}}\nNo download or account needed.\n' }),
+      ],
+      settings: { allow_reentry: true },
+    }),
+  },
+  {
+    key: 'form_filled', name: 'Form filled alert', tone: 'green',
+    description: 'When a form or survey is filled in, post the answers in a channel so the team sees them straight away.',
+    build: () => ({
+      triggers: [t('form_submitted', 'Form filled in', { forms: [] })],
+      steps: [
+        s('post_to_channel', 'Post the answers', { channel_id: '', text: '📝 {{contact.name}} filled in {{form.name}}\n{{form.answers}}\n{{contact.link}}' }),
+      ],
+      settings: { allow_reentry: true },
+    }),
+  },
   {
     key: 'welcome', name: 'Welcome new contacts', tone: 'navy',
     description: 'Tag every new contact, email a welcome, and remind the owner to call two days later.',
