@@ -668,8 +668,8 @@ function PreviewModal({ definition, formName, formDescription, kind, viewport, o
         </div>
       </div>
       <div className="flex-1 overflow-y-auto px-4 py-8">
-        <div className="mx-auto overflow-hidden rounded-[20px] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04),0_12px_40px_rgba(0,0,0,0.08)] transition-[max-width] duration-300" style={{ maxWidth: `${width}px` }}>
-          <FormPlayer key={restart} definition={definition} formName={formName} formDescription={formDescription} kind={kind} fill
+        <div className="mx-auto transition-[max-width] duration-300" style={{ maxWidth: `${width}px` }}>
+          <FormPlayer key={restart} definition={definition} formName={formName} formDescription={formDescription} kind={kind} fill stage
             viewport={viewport} onSubmit={submit} formId={formId} initialAnswers={prefillAnswers(definition, new URLSearchParams())} />
         </div>
         <p className="mx-auto mt-4 max-w-lg text-center text-[12px] leading-relaxed text-[#8E8E93]">Sending it here saves a real response (marked “preview”), makes or updates the contact and starts this form’s workflows. Cards are never charged.</p>

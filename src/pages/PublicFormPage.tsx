@@ -5,6 +5,7 @@ import type { FormDefinition } from '@/lib/form-builder-types';
 import { deserializeDefinition } from '@/lib/form-definition';
 import { attribution, closedReason, prefillAnswers, type FormKind } from '@/lib/form-engine';
 import { FormPlayer, type FormPayload, type SubmitOutcome } from '@/components/forms/FormPlayer';
+import { themeVars } from '@/components/forms/formLook';
 import { LoadingSpinner } from '@/components/ui/States';
 
 interface PublicForm { id: string; name: string; description: string | null; type: FormKind; status: string; definition: FormDefinition | null }
@@ -48,7 +49,8 @@ export function PublicFormPage({ formId }: { formId: string }) {
   };
 
   return (
-    <Shell background={def.theme.background.type === 'solid' ? def.theme.background.color : def.theme.colors.pageBackground}>
+    <Shell background={def.theme.background.type === 'solid' ? def.theme.background.color : def.theme.colors.pageBackground}
+      glow={def.theme.background.type === 'solid' && def.theme.layoutPreset !== 'full_width' && def.theme.layoutPreset !== 'split' ? themeVars(def.theme) : undefined}>
       <FormPlayer
         definition={def}
         formName={form.name}
@@ -58,6 +60,7 @@ export function PublicFormPage({ formId }: { formId: string }) {
         initialAnswers={prefillAnswers(def, params)}
         onSubmit={submit}
         formId={form.id}
+        stage
       />
     </Shell>
   );
@@ -71,8 +74,14 @@ async function readError(error: unknown): Promise<string | null> {
   return null;
 }
 
-function Shell({ children, background = '#FFFFFF' }: { children: React.ReactNode; background?: string }) {
-  return <div className="min-h-[100dvh] w-full py-6 sm:py-10" style={{ background }}><div className="mx-auto w-full max-w-5xl px-3 sm:px-6">{children}</div></div>;
+/** The page behind the form; with `glow`, a soft light of the form's colours drifts behind the card. */
+function Shell({ children, background = '#FFFFFF', glow }: { children: React.ReactNode; background?: string; glow?: React.CSSProperties }) {
+  return (
+    <div className={glow ? 'sf relative min-h-[100dvh] w-full py-6 sm:py-10' : 'min-h-[100dvh] w-full py-6 sm:py-10'} style={{ background, ...glow }}>
+      {glow && <div className="sf-backdrop" aria-hidden />}
+      <div className="relative z-[1] mx-auto w-full max-w-5xl px-3 sm:px-6">{children}</div>
+    </div>
+  );
 }
 function Notice({ title, text }: { title: string; text: string }) {
   return (

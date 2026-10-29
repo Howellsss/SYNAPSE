@@ -1,0 +1,426 @@
+/*
+ * The look of a form while people see it (public page, preview and the builder canvas).
+ * Every colour, font, size and corner comes from the form's own Design settings through the
+ * --sf-* variables set on the form (see themeVars in FormRenderer); this file only adds the craft:
+ * depth, motion, focus, tiles and states.
+ */
+
+.sf {
+  --sf-tint: color-mix(in srgb, var(--sf-primary) 6%, transparent);
+  --sf-tint-strong: color-mix(in srgb, var(--sf-primary) 11%, transparent);
+  --sf-ring: color-mix(in srgb, var(--sf-focus) 22%, transparent);
+  --sf-border-hover: color-mix(in srgb, var(--sf-field-border) 55%, var(--sf-primary));
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------------------------------------------------------------- backdrop and card */
+
+.sf-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.sf-backdrop {
+  /* A faint dot grid that fades out towards the edges. */
+  background-image: radial-gradient(color-mix(in srgb, var(--sf-primary) 13%, transparent) 1px, transparent 1.2px);
+  background-size: 22px 22px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 20%, transparent 75%);
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 20%, transparent 75%);
+}
+.sf-backdrop::before,
+.sf-backdrop::after {
+  content: '';
+  position: absolute;
+  width: 62vmax;
+  height: 62vmax;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.9;
+}
+.sf-backdrop::before {
+  top: -30vmax;
+  left: -18vmax;
+  background: radial-gradient(circle, color-mix(in srgb, var(--sf-primary) 14%, transparent), transparent 65%);
+  animation: sf-drift 22s ease-in-out infinite alternate;
+}
+.sf-backdrop::after {
+  bottom: -34vmax;
+  right: -20vmax;
+  background: radial-gradient(circle, color-mix(in srgb, var(--sf-accent) 34%, transparent), transparent 65%);
+  animation: sf-drift 26s ease-in-out infinite alternate-reverse;
+}
+@keyframes sf-drift {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(4vmax, 3vmax, 0) scale(1.08); }
+}
+
+.sf-card {
+  position: relative;
+  overflow: hidden;
+  animation: sf-rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+/* A fine line of the form's colours across the top of the card. */
+.sf-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--sf-primary), var(--sf-accent) 55%, var(--sf-primary));
+  background-size: 200% 100%;
+  animation: sf-sheen 8s linear infinite;
+  z-index: 1;
+}
+@keyframes sf-sheen { to { background-position: -200% 0; } }
+@keyframes sf-rise {
+  from { opacity: 0; transform: translateY(14px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Fields arrive one after another. */
+.sf-item {
+  animation: sf-in 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(min(var(--sf-i, 0), 12) * 45ms + 120ms);
+}
+@keyframes sf-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ---------------------------------------------------------------- header */
+
+.sf-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--sf-accent-text);
+}
+.sf-eyebrow::before {
+  content: '';
+  width: 18px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--sf-accent);
+}
+
+.sf-progress {
+  position: relative;
+  height: var(--sf-progress-h, 6px);
+  border-radius: 999px;
+  background: var(--sf-tint);
+  overflow: hidden;
+}
+.sf-progress > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--sf-progress), color-mix(in srgb, var(--sf-progress) 55%, var(--sf-accent)));
+  transition: width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.sf-progress > span::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  animation: sf-shimmer 2.4s ease-in-out infinite;
+}
+@keyframes sf-shimmer {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+/* ---------------------------------------------------------------- fields */
+
+.sf-field { position: relative; container: sffield / inline-size; }
+.sf-label {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  transition: color 0.2s;
+}
+.sf-field:focus-within .sf-label { color: var(--sf-label-active) !important; }
+.sf-req {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--sf-accent);
+  transform: translateY(-2px);
+}
+
+.sf-input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.25s, background-color 0.2s, transform 0.2s;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+.sf-input::placeholder { color: var(--sf-placeholder); opacity: 1; }
+.sf-input:hover:not(:disabled):not(:focus) { border-color: var(--sf-border-hover) !important; }
+.sf-input:focus {
+  border-color: var(--sf-focus) !important;
+  box-shadow: 0 0 0 4px var(--sf-ring), 0 6px 16px -8px color-mix(in srgb, var(--sf-focus) 45%, transparent);
+  background-color: var(--sf-field-bg-focus) !important;
+}
+.sf-input:disabled { cursor: default; }
+textarea.sf-input { line-height: 1.55; }
+select.sf-input {
+  padding-right: 42px !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  cursor: pointer;
+}
+.sf-invalid .sf-input,
+.sf-invalid .sf-tile {
+  border-color: var(--sf-error) !important;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--sf-error) 14%, transparent);
+}
+.sf-invalid { animation: sf-shake 0.42s cubic-bezier(0.36, 0.07, 0.19, 0.97) both; }
+@keyframes sf-shake {
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}
+.sf-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  animation: sf-in 0.25s ease-out both;
+}
+
+/* ---------------------------------------------------------------- choice tiles */
+
+.sf-tiles {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr;
+}
+@container sffield (min-width: 460px) {
+  .sf-tiles.sf-tiles-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.sf-tile {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  border: 1.5px solid var(--sf-field-border);
+  background: var(--sf-field-bg);
+  color: var(--sf-body);
+  transition: border-color 0.2s, background-color 0.2s, box-shadow 0.25s, transform 0.15s;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+.sf-tile:hover { border-color: var(--sf-border-hover); transform: translateY(-1px); box-shadow: 0 6px 18px -10px rgba(16, 24, 40, 0.25); }
+.sf-tile:active { transform: scale(0.99); }
+.sf-tile[data-on='true'] {
+  border-color: var(--sf-primary);
+  color: var(--sf-heading);
+  font-weight: 600;
+  box-shadow: 0 0 0 1px var(--sf-primary) inset, 0 10px 24px -14px color-mix(in srgb, var(--sf-primary) 60%, transparent);
+}
+.sf-tile:has(input:focus-visible) { box-shadow: 0 0 0 4px var(--sf-ring); border-color: var(--sf-focus); }
+.sf-tile[aria-disabled='true'] { cursor: default; transform: none; }
+
+/* The letter key on each tile, A, B, C… */
+.sf-key {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid color-mix(in srgb, var(--sf-field-border) 80%, var(--sf-primary));
+  color: var(--sf-muted);
+  background: var(--sf-surface);
+  transition: all 0.2s;
+}
+.sf-tile[data-on='true'] .sf-key { background: var(--sf-primary); border-color: var(--sf-primary); color: var(--sf-on-primary); }
+
+/* The tick or dot on the right. */
+.sf-mark {
+  margin-left: auto;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid color-mix(in srgb, var(--sf-field-border) 70%, var(--sf-muted));
+  color: var(--sf-on-primary);
+  transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.sf-mark svg { opacity: 0; transform: scale(0.4); transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.sf-tile[data-on='true'] .sf-mark { background: var(--sf-primary); border-color: var(--sf-primary); }
+.sf-tile[data-on='true'] .sf-mark svg { opacity: 1; transform: scale(1); }
+
+/* Big Yes / No */
+.sf-yesno { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.sf-yesno .sf-tile { justify-content: center; min-height: 60px; font-weight: 600; }
+.sf-yesno .sf-mark { display: none; }
+.sf-yesno .sf-tile[data-on='true'] { background: var(--sf-primary); color: var(--sf-on-primary); }
+
+/* ---------------------------------------------------------------- rating and scale */
+
+.sf-star {
+  background: none;
+  border: none;
+  padding: 2px;
+  line-height: 1;
+  transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), color 0.15s, filter 0.2s;
+}
+.sf-star:not(:disabled):hover { transform: scale(1.18) rotate(-6deg); }
+.sf-star[data-lit='true'] { filter: drop-shadow(0 4px 8px rgba(245, 166, 35, 0.35)); }
+
+.sf-scale {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+.sf-scale button {
+  height: 46px;
+  border: 1.5px solid var(--sf-field-border);
+  background: var(--sf-field-bg);
+  color: var(--sf-body);
+  font-weight: 600;
+  font-size: 14px;
+  transition: all 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.sf-scale button:not(:disabled):hover { border-color: var(--sf-border-hover); transform: translateY(-2px); }
+.sf-scale button[aria-checked='true'] {
+  background: var(--sf-primary);
+  border-color: var(--sf-primary);
+  color: var(--sf-on-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px -10px color-mix(in srgb, var(--sf-primary) 70%, transparent);
+}
+@container sffield (max-width: 460px) {
+  .sf-scale { grid-auto-flow: row; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+
+/* ---------------------------------------------------------------- buttons */
+
+.sf-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  overflow: hidden;
+  transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s, opacity 0.2s, filter 0.2s;
+}
+.sf-btn-primary { box-shadow: 0 10px 24px -12px color-mix(in srgb, var(--sf-btn) 75%, transparent), 0 1px 0 rgba(255, 255, 255, 0.15) inset; }
+.sf-btn-primary::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.22) 50%, transparent 70%);
+  transform: translateX(-120%);
+  transition: transform 0.7s ease;
+}
+.sf-btn:not(:disabled):hover { transform: translateY(-2px); filter: brightness(1.06); }
+.sf-btn-primary:not(:disabled):hover { box-shadow: 0 16px 30px -12px color-mix(in srgb, var(--sf-btn) 80%, transparent); }
+.sf-btn-primary:not(:disabled):hover::after { transform: translateX(120%); }
+.sf-btn:not(:disabled):active { transform: translateY(0) scale(0.98); }
+.sf-btn .sf-arrow { transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.sf-btn:not(:disabled):hover .sf-arrow { transform: translateX(3px); }
+.sf-btn:not(:disabled):hover .sf-arrow-back { transform: translateX(-3px); }
+.sf-spin { animation: sf-spin 0.8s linear infinite; }
+@keyframes sf-spin { to { transform: rotate(360deg); } }
+
+.sf-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--sf-muted);
+}
+.sf-hint kbd {
+  font: inherit;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--sf-field-border);
+  border-bottom-width: 2px;
+  background: var(--sf-surface);
+  color: var(--sf-body);
+}
+
+/* ---------------------------------------------------------------- consent */
+
+.sf-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  border: 1.5px solid var(--sf-field-border);
+  background: var(--sf-field-bg);
+  transition: border-color 0.2s, background-color 0.2s;
+}
+.sf-consent:hover { border-color: var(--sf-border-hover); }
+.sf-consent[data-on='true'] { border-color: var(--sf-primary); box-shadow: 0 0 0 1px var(--sf-primary) inset; }
+.sf-consent .sf-mark { margin-left: 0; margin-top: 1px; }
+.sf-consent[data-on='true'] .sf-mark { background: var(--sf-primary); border-color: var(--sf-primary); }
+.sf-consent[data-on='true'] .sf-mark svg { opacity: 1; transform: scale(1); }
+.sf-consent:has(input:focus-visible) { box-shadow: 0 0 0 4px var(--sf-ring); }
+
+.sf-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------------------------------------------------------------- the end screen */
+
+.sf-success { display: flex; justify-content: center; margin-bottom: 22px; }
+.sf-success svg { filter: drop-shadow(0 10px 18px color-mix(in srgb, var(--sf-primary) 30%, transparent)); }
+.sf-success circle {
+  stroke: var(--sf-primary);
+  stroke-width: 2.5;
+  fill: var(--sf-primary);
+  fill-opacity: 0;
+  stroke-dasharray: 151;
+  stroke-dashoffset: 151;
+  animation: sf-ring 0.6s cubic-bezier(0.65, 0, 0.45, 1) 0.15s forwards, sf-fill 0.4s ease-out 0.65s forwards;
+}
+.sf-success path {
+  stroke: var(--sf-on-primary);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 40;
+  stroke-dashoffset: 40;
+  animation: sf-ring 0.35s cubic-bezier(0.65, 0, 0.45, 1) 0.85s forwards;
+}
+@keyframes sf-ring { to { stroke-dashoffset: 0; } }
+@keyframes sf-fill { to { fill-opacity: 1; } }
+
+@media (max-width: 640px) {
+  .sf-input { font-size: 16px !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sf-backdrop::before, .sf-backdrop::after, .sf-card, .sf-card::before, .sf-item, .sf-invalid,
+  .sf-progress > span::after { animation: none !important; }
+  .sf-success circle, .sf-success path { animation: none !important; stroke-dashoffset: 0; fill-opacity: 1; }
+}
