@@ -5,6 +5,7 @@ import { useRouter } from '@/lib/router';
 import { useGmailReturnNotice } from '@/lib/email-accounts';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
+import { AccessEnded } from '@/components/layout/AccessEnded';
 import { DOCK_STRIP, FeatureDock } from '@/components/layout/FeatureDock';
 import { AuthPage } from '@/pages/AuthPage';
 import { HomePage } from '@/pages/HomePage';
@@ -61,7 +62,7 @@ const pageSpinner = <div className="flex flex-1 items-center justify-center py-2
 const isMenuSection = (section: string) => section === 'dashboard' || section === 'signin' || section === 'signup';
 
 function AppContent() {
-  const { user, loading, workspace } = useAuth();
+  const { user, loading, workspace, accessEnded, signOut } = useAuth();
   const [path, navigate] = useRouter();
   const access = useAccess();
   // Cached data belongs to one person in one workspace: drop it all when either changes
@@ -187,6 +188,11 @@ function AppContent() {
     if (path.startsWith('/reset-password') || window.location.hash.includes('reset-password')) return <AuthPage />;
     if (authPath) return <AuthPage key={path} initialMode={path === '/signup' ? 'signup' : 'signin'} onBack={() => navigate('/')} />;
     return <HomePage />;
+  }
+
+  // Suspended or removed by an admin: nothing else of the account opens.
+  if (accessEnded) {
+    return <AccessEnded reason={accessEnded} workspaceName={workspace?.name ?? null} onSignOut={() => { void signOut().then(() => navigate('/')); }} />;
   }
 
   // A meeting room is full screen, without the sidebar and top bar
