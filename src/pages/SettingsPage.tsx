@@ -15,6 +15,7 @@ import { useEmailAccounts, connectGmail, disconnectEmailAccount, type EmailAccou
 import { TeamMembersSettings } from '@/components/team/TeamMembersSettings';
 import { DepartmentsSettings } from '@/components/team/DepartmentsSettings';
 import { AuditLogSettings } from '@/components/team/AuditLogSettings';
+import { WebhooksSettings } from '@/components/integrations/WebhooksSettings';
 
 const SETTINGS_SECTIONS = [
   { id: 'profile', label: 'Profile', icon: User },
@@ -912,95 +913,6 @@ function APISettings() {
       </div>
       <div className="flex justify-end mt-6">
         <button onClick={handleSave} className="btn-primary">Save Changes</button>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// Webhooks
-// ============================================================
-function WebhooksSettings() {
-  const { workspace } = useAuth();
-  const { toast } = useToast();
-  const [webhooks, setWebhooks] = useState<{ id: string; url: string; events: string[]; is_active: boolean }[]>([]);
-  const [url, setUrl] = useState('');
-  const [events, setEvents] = useState<string[]>([]);
-
-  const WEBHOOK_EVENTS = [
-    'contact.created', 'contact.updated', 'form.submitted',
-    'appointment.created', 'appointment.cancelled', 'appointment.rescheduled',
-    'appointment.completed', 'workflow.completed',
-  ];
-
-  useEffect(() => {
-    if (!workspace) return;
-    supabase.from('webhooks').select('*').eq('workspace_id', workspace.id).then(({ data }) => {
-      setWebhooks((data ?? []) as typeof webhooks);
-    });
-  }, [workspace]);
-
-  const handleCreate = async () => {
-    if (!workspace || !url.trim()) return;
-    const { data, error } = await supabase.from('webhooks').insert({
-      workspace_id: workspace.id,
-      url: url.trim(),
-      events,
-      is_active: true,
-    }).select().single();
-    if (error) { toast(error.message, 'error'); return; }
-    setWebhooks([...webhooks, data as typeof webhooks[0]]);
-    setUrl('');
-    setEvents([]);
-    toast('Webhook created');
-  };
-
-  const handleDelete = async (id: string) => {
-    await supabase.from('webhooks').delete().eq('id', id);
-    setWebhooks(webhooks.filter(w => w.id !== id));
-    toast('Webhook deleted');
-  };
-
-  return (
-    <div className="card p-6">
-      <h3 className="text-lg font-semibold text-navy-800 mb-4">Webhooks</h3>
-      <div className="space-y-3 mb-6">
-        {webhooks.map(w => (
-          <div key={w.id} className="flex items-center gap-3 p-3 rounded-xl border border-navy-100">
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-navy-700 truncate">{w.url}</p>
-              <p className="text-xs text-ivory-600">{w.events.join(', ') || 'No events'}</p>
-            </div>
-            <span className={cn('status-pill', w.is_active ? 'bg-green-50 text-green-700' : 'bg-ivory-100 text-ivory-700')}>
-              {w.is_active ? 'Active' : 'Inactive'}
-            </span>
-            <button onClick={() => handleDelete(w.id)} className="text-ivory-500 hover:text-burgundy-600 text-sm">Delete</button>
-          </div>
-        ))}
-      </div>
-      <div className="border-t border-navy-100 pt-4 space-y-3">
-        <div>
-          <label className="block text-sm font-medium text-navy-700 mb-1.5">Webhook URL</label>
-          <input className="input-field" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://your-app.com/webhook" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-navy-700 mb-1.5">Events</label>
-          <div className="flex flex-wrap gap-2">
-            {WEBHOOK_EVENTS.map(ev => (
-              <button
-                key={ev}
-                onClick={() => setEvents(events.includes(ev) ? events.filter(e => e !== ev) : [...events, ev])}
-                className={cn(
-                  'px-2.5 py-1 rounded-lg text-xs font-medium transition-all',
-                  events.includes(ev) ? 'bg-navy-800 text-ivory-100' : 'bg-ivory-50 text-navy-600 border border-navy-100'
-                )}
-              >
-                {ev}
-              </button>
-            ))}
-          </div>
-        </div>
-        <button onClick={handleCreate} className="btn-primary" disabled={!url.trim()}>Add Webhook</button>
       </div>
     </div>
   );
