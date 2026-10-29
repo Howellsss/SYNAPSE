@@ -16,6 +16,7 @@ import { TeamMembersSettings } from '@/components/team/TeamMembersSettings';
 import { DepartmentsSettings } from '@/components/team/DepartmentsSettings';
 import { AuditLogSettings } from '@/components/team/AuditLogSettings';
 import { WebhooksSettings } from '@/components/integrations/WebhooksSettings';
+import { ApiSettings } from '@/components/integrations/ApiSettings';
 
 const SETTINGS_SECTIONS = [
   { id: 'profile', label: 'Profile', icon: User },
@@ -169,7 +170,7 @@ export function SettingsPage() {
         {section === 'branding' && <BrandingSettings />}
         {section === 'security' && <SecuritySettings />}
         {section === 'audit' && <AuditLogSettings />}
-        {section === 'api' && <APISettings />}
+        {section === 'api' && <ApiSettings />}
         {section === 'webhooks' && <WebhooksSettings />}
         {section === 'billing' && <BillingSettings />}
       </div>
@@ -855,64 +856,6 @@ function SecuritySettings() {
       </div>
       <div className="flex justify-end mt-6">
         <button onClick={() => save(form)} className="btn-primary">Save Changes</button>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// API Settings
-// ============================================================
-function APISettings() {
-  const { settings, loading, save } = useWorkspaceSettings('api');
-  const { toast } = useToast();
-  const [apiKey, setApiKey] = useState('');
-  const [webhookSecret, setWebhookSecret] = useState('');
-
-  useEffect(() => {
-    if (!loading && settings) {
-      setApiKey((settings.api_key as string) || '');
-      setWebhookSecret((settings.webhook_secret as string) || '');
-    }
-  }, [loading, settings]);
-
-  const generateApiKey = () => {
-    const key = 'hk_live_' + Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2, '0')).join('');
-    setApiKey(key);
-    toast('API key generated');
-  };
-
-  const generateSecret = () => {
-    const secret = Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2, '0')).join('');
-    setWebhookSecret(secret);
-    toast('Webhook secret generated');
-  };
-
-  const handleSave = () => save({ api_key: apiKey, webhook_secret: webhookSecret });
-
-  return (
-    <div className="card p-6">
-      <h3 className="text-lg font-semibold text-navy-800 mb-4">API</h3>
-      <p className="text-sm text-ivory-600 mb-4">Use API keys to access SYNAPSE resources programmatically. Keep your keys secure.</p>
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-navy-700 mb-1.5">API Key</label>
-          <div className="flex gap-2">
-            <input className="input-field font-mono text-sm" value={apiKey} readOnly placeholder="No API key generated" />
-            <button onClick={generateApiKey} className="btn-secondary shrink-0">Regenerate</button>
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-navy-700 mb-1.5">Webhook Signing Secret</label>
-          <div className="flex gap-2">
-            <input className="input-field font-mono text-sm" value={webhookSecret} readOnly placeholder="No secret generated" />
-            <button onClick={generateSecret} className="btn-secondary shrink-0">Regenerate</button>
-          </div>
-          <p className="text-xs text-ivory-500 mt-1">Used to verify that incoming webhooks are from SYNAPSE.</p>
-        </div>
-      </div>
-      <div className="flex justify-end mt-6">
-        <button onClick={handleSave} className="btn-primary">Save Changes</button>
       </div>
     </div>
   );

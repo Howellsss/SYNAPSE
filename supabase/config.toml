@@ -22,3 +22,7 @@ verify_jwt = false
 [functions.chat-webhook]
 # Zapier, Airtable and Modal have no SYNAPSE login: the secret token in the link is checked instead.
 verify_jwt = false
+
+[functions.api]
+# Other apps have no SYNAPSE login: the secret token in the incoming link is checked instead.
+verify_jwt = false
