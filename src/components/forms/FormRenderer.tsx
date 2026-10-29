@@ -2,13 +2,15 @@ import type {
   FormDefinition, FormElement, FormSection, Viewport,
   FormTheme, ThemeButtonStyle, PaymentConfig,
 } from '@/lib/form-builder-types';
-import { RADIUS_MAP as RADIUS, SHADOW_MAP as SHADOW, WIDTH_MAP as WIDTH } from '@/lib/form-builder-types';
+import { RADIUS_MAP as RADIUS, WIDTH_MAP as WIDTH } from '@/lib/form-builder-types';
 import { cn } from '@/lib/utils';
 import { createContext, useContext, useState } from 'react';
-import { ImagePlus } from 'lucide-react';
+import { AlertCircle, ArrowLeft, ArrowRight, Check, ImagePlus, Loader2 } from 'lucide-react';
 import { countryNames } from '@/lib/countries';
 import { CAPTCHA_OK, CAPTCHA_WRONG, money, paymentFor, splitMulti } from '@/lib/form-engine';
 import { FileUploadInput, SignatureInput } from './ResponseInputs';
+import './form-look.css';
+import { themeVars } from './formLook';
 
 /**
  * While someone fills the form in (the public page and the preview): what logic hides or
@@ -37,6 +39,17 @@ const ActionsCtx = createContext<{ submit?: () => void; next?: () => void; previ
 const WEIGHT: Record<string, number> = { normal: 400, medium: 500, semibold: 600, bold: 700 };
 /** Element width inside its column. */
 const WIDTH_PCT: Record<string, string> = { full: '100%', half: '50%', third: '33.333%' };
+/** The card's corners and depth: the Design settings, drawn with more care than the raw values. */
+const CARD_RADIUS: Record<string, string> = { none: '0px', small: '12px', medium: '20px', large: '28px', pill: '32px' };
+const CARD_SHADOW: Record<string, string> = {
+  none: '0 0 0 1px rgba(16,24,40,0.06)',
+  subtle: '0 0 0 1px rgba(16,24,40,0.04), 0 2px 4px rgba(16,24,40,0.03), 0 24px 48px -16px rgba(16,24,40,0.14)',
+  medium: '0 0 0 1px rgba(16,24,40,0.04), 0 4px 8px rgba(16,24,40,0.04), 0 32px 64px -20px rgba(16,24,40,0.22)',
+  strong: '0 0 0 1px rgba(16,24,40,0.05), 0 8px 16px rgba(16,24,40,0.06), 0 48px 96px -24px rgba(16,24,40,0.32)',
+};
+
+/** Corners for tiles and inputs: the field setting, but a pill is too round for a tile. */
+const tileRadius = (theme: FormTheme) => (theme.fieldStyle.borderRadius === 'pill' ? '16px' : RADIUS[theme.fieldStyle.borderRadius]);
 
 // ============================================================
 // FORM RENDERER — shared by builder canvas, preview, published
@@ -59,8 +72,10 @@ interface FormRendererProps {
   onNext?: () => void;
   onPrevious?: () => void;
   runtime?: FormRuntime;
-  /** Fill the box it sits in (the builder's preview card) instead of keeping to the form's width. */
+  /** Fill the box it sits in (the builder's preview) instead of keeping to the form's width. */
   fill?: boolean;
+  /** The form is the page (its public link and the builder preview): drawn on a raised card. */
+  stage?: boolean;
 }
 
 // Helper: resolve effective background CSS
@@ -90,7 +105,7 @@ export function FormRenderer({
   builderMode = false, selectedElementId, onSelectElement,
   answers = {}, onAnswerChange,
   currentPage = 0, totalPages = 1,
-  onSubmit, onNext, onPrevious, runtime, fill = false,
+  onSubmit, onNext, onPrevious, runtime, fill = false, stage = false,
 }: FormRendererProps) {
   const theme = definition.theme;
   const page = definition.pages[currentPageIndex];
@@ -102,17 +117,15 @@ export function FormRenderer({
   const layoutPreset = theme.layoutPreset;
   const maxFormWidth = WIDTH[theme.layout.formWidth] || theme.maxFormWidth || '640px';
 
-  // Form container styles based on layout preset
-  const containerClass = cn(
-    layoutPreset === 'centered' && 'flex items-center justify-center min-h-full',
-    layoutPreset === 'card' && 'shadow-lg',
-    layoutPreset === 'full_width' && 'w-full',
-  );
+  // As a page of its own, every layout but full width sits on a raised card; inside another page
+  // (a booking page) only the Card layout does.
+  const carded = stage ? layoutPreset !== 'full_width' : layoutPreset === 'card';
+  const containerClass = cn(carded && stage && 'sf-card', layoutPreset === 'full_width' && 'w-full');
 
   const surfaceStyle: React.CSSProperties = {
     backgroundColor: theme.colors.surfaceBackground,
-    borderRadius: layoutPreset === 'card' ? RADIUS[theme.layout.containerRadius] : undefined,
-    boxShadow: layoutPreset === 'card' ? SHADOW[theme.layout.containerShadow] : undefined,
+    borderRadius: carded ? CARD_RADIUS[theme.layout.containerRadius] : undefined,
+    boxShadow: carded ? CARD_SHADOW[theme.layout.containerShadow] : undefined,
     fontFamily: theme.typography.primaryFont,
   };
 
@@ -141,26 +154,37 @@ export function FormRenderer({
         })}
 
         {!builderMode && runtime && (
-          <div className="flex items-center gap-3 mt-8 pt-6 border-t" style={{ borderColor: theme.colors.border, justifyContent: runtime.canGoBack ? 'space-between' : navAlign }}>
-            {runtime.canGoBack && <div><button type="button" onClick={onPrevious} disabled={runtime.busy} style={getButtonStyle(theme, theme.buttonStyle, 'outline')}>Back</button></div>}
-            <div style={{ flex: theme.buttonStyle.width === 'full' && !runtime.canGoBack ? 1 : undefined }}>
-              {runtime.isLast
-                ? <button type="button" onClick={onSubmit} disabled={runtime.busy} style={{ ...getButtonStyle(theme, theme.buttonStyle, undefined, theme.buttonStyle.width === 'full' ? '100%' : 'auto'), opacity: runtime.busy ? 0.6 : 1 }}>{runtime.busy ? 'Sending…' : runtime.submitLabel || 'Submit'}</button>
-                : <button type="button" onClick={onNext} disabled={runtime.busy} style={getButtonStyle(theme, theme.buttonStyle)}>Next</button>}
+          <div className="mt-9 flex flex-wrap items-center gap-3" style={{ justifyContent: runtime.canGoBack ? 'space-between' : navAlign }}>
+            {runtime.canGoBack && (
+              <button type="button" onClick={onPrevious} disabled={runtime.busy} className="sf-btn" style={getButtonStyle(theme, theme.buttonStyle, 'outline')}>
+                <ArrowLeft className="sf-arrow sf-arrow-back h-4 w-4" aria-hidden /> Back
+              </button>
+            )}
+            <div className="flex items-center gap-4" style={{ flex: theme.buttonStyle.width === 'full' && !runtime.canGoBack ? 1 : undefined, flexDirection: navAlign === 'flex-end' ? 'row-reverse' : undefined }}>
+              <button type="button" onClick={runtime.isLast ? onSubmit : onNext} disabled={runtime.busy} aria-busy={runtime.busy || undefined}
+                className="sf-btn sf-btn-primary"
+                style={{ ...getButtonStyle(theme, theme.buttonStyle, undefined, theme.buttonStyle.width === 'full' ? '100%' : 'auto'), opacity: runtime.busy ? 0.75 : 1 }}>
+                {runtime.busy
+                  ? <><Loader2 className="sf-spin h-4 w-4" aria-hidden /> Sending…</>
+                  : <>{runtime.isLast ? runtime.submitLabel || 'Submit' : 'Next'} <ArrowRight className="sf-arrow h-4 w-4" aria-hidden /></>}
+              </button>
+              {viewport !== 'mobile' && theme.buttonStyle.width !== 'full' && !runtime.busy && (
+                <span className="sf-hint" aria-hidden>or press <kbd>Enter ↵</kbd></span>
+              )}
             </div>
           </div>
         )}
 
         {!builderMode && !runtime && totalPages > 1 && (
           <div className="flex items-center justify-between mt-8 pt-6 border-t" style={{ borderColor: theme.colors.border }}>
-            <div>{currentPage > 0 && <button onClick={onPrevious} style={getButtonStyle(theme, theme.buttonStyle, 'outline')}>Back</button>}</div>
-            <div>{currentPage < totalPages - 1 ? <button onClick={onNext} style={getButtonStyle(theme, theme.buttonStyle)}>Next</button> : <button onClick={onSubmit} style={getButtonStyle(theme, theme.buttonStyle)}>Submit</button>}</div>
+            <div>{currentPage > 0 && <button onClick={onPrevious} className="sf-btn" style={getButtonStyle(theme, theme.buttonStyle, 'outline')}>Back</button>}</div>
+            <div>{currentPage < totalPages - 1 ? <button onClick={onNext} className="sf-btn sf-btn-primary" style={getButtonStyle(theme, theme.buttonStyle)}>Next</button> : <button onClick={onSubmit} className="sf-btn sf-btn-primary" style={getButtonStyle(theme, theme.buttonStyle)}>Submit</button>}</div>
           </div>
         )}
 
         {!builderMode && !runtime && totalPages === 1 && page.sectionIds.some(sid => { const sec = definition.sections[sid]; return sec?.elementIds.some(eid => definition.elements[eid]?.field); }) && (
           <div className="mt-8 pt-6 border-t" style={{ borderColor: theme.colors.border, textAlign: theme.buttonStyle.align }}>
-            <button onClick={onSubmit} style={getButtonStyle(theme, theme.buttonStyle, undefined, theme.buttonStyle.width === 'full' ? '100%' : 'auto')}>Submit</button>
+            <button onClick={onSubmit} className="sf-btn sf-btn-primary" style={getButtonStyle(theme, theme.buttonStyle, undefined, theme.buttonStyle.width === 'full' ? '100%' : 'auto')}>Submit</button>
           </div>
         )}
       </div>
@@ -190,7 +214,7 @@ export function FormRenderer({
     const leftWidth = `${theme.split.leftWidth}%`;
     const rightWidth = `${theme.split.rightWidth}%`;
     return (
-      <div className="relative w-full" style={{ ...bgStyle, fontFamily: theme.typography.primaryFont }}>
+      <div className="sf relative w-full" style={{ ...bgStyle, ...themeVars(theme), fontFamily: theme.typography.primaryFont }}>
         {showOverlay && <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: theme.background.overlayColor, opacity: theme.background.overlayOpacity / 100 }} />}
         <div className="flex min-h-full relative" style={{ gap: `${theme.split.columnGap}px` }}>
           {/* Left panel */}
@@ -207,7 +231,7 @@ export function FormRenderer({
             </div>
           </div>
           {/* Right panel — form */}
-          <div className="flex flex-col justify-center" style={{ width: rightWidth, minHeight: '100vh', ...surfaceStyle }}>
+          <div className="flex flex-col justify-center" style={{ width: rightWidth, minHeight: '100vh', ...surfaceStyle, borderRadius: undefined, boxShadow: undefined }}>
             {formBody}
           </div>
         </div>
@@ -218,11 +242,15 @@ export function FormRenderer({
   // Standard layouts
   const wrapperStyle: React.CSSProperties = layoutPreset === 'full_width' || fill ? {} : { maxWidth: maxFormWidth, margin: '0 auto' };
   const centeredWrapper = layoutPreset === 'centered' ? { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' } : {};
+  // Room around the card so it floats, and a soft glow of the form's colours behind it.
+  // On its own page the page paints the colour (and the glow), so the card floats over it.
+  const floating = stage && carded && !fill && !builderMode;
+  const floatPad = floating && layoutPreset !== 'centered' ? { padding: viewport === 'mobile' ? '8px 0 24px' : '32px 0 56px' } : {};
 
   return (
-    <div className="relative w-full transition-all duration-300" style={{ ...bgStyle, fontFamily: theme.typography.primaryFont, ...centeredWrapper }}>
+    <div className="sf relative w-full transition-all duration-300" style={{ ...(stage && carded && theme.background.type === 'solid' ? {} : bgStyle), ...themeVars(theme), fontFamily: theme.typography.primaryFont, ...centeredWrapper, ...floatPad }}>
       {showOverlay && <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: theme.background.overlayColor, opacity: theme.background.overlayOpacity / 100 }} />}
-      <div className="relative" style={{ ...wrapperStyle }}>
+      <div className="relative" style={{ ...wrapperStyle, width: layoutPreset === 'centered' ? '100%' : undefined }}>
         <div className={cn('overflow-hidden', containerClass)} style={surfaceStyle}>
           {formBody}
         </div>
@@ -239,8 +267,8 @@ export function getButtonStyle(theme: FormTheme, btn: ThemeButtonStyle, variantO
   const style = variantOverride || btn.style;
   const radius = RADIUS[btn.borderRadius];
   const base: React.CSSProperties = {
-    height: `${btn.height}px`,
-    padding: `0 ${btn.padding}px`,
+    height: `${Math.max(btn.height, 48)}px`,
+    padding: `0 ${Math.max(btn.padding, 22)}px`,
     fontSize: theme.typography.buttonSize,
     fontWeight: theme.typography.buttonWeight,
     fontFamily: theme.typography.primaryFont,
@@ -248,7 +276,7 @@ export function getButtonStyle(theme: FormTheme, btn: ThemeButtonStyle, variantO
     width: widthOverride || (btn.width === 'full' ? '100%' : 'auto'),
     border: 'none',
     cursor: 'pointer',
-    transition: 'opacity 0.2s',
+    letterSpacing: '0.005em',
   };
 
   if (style === 'filled') {
@@ -278,18 +306,20 @@ export function FormHeader({ definition, formName, formDescription, currentPage,
 }) {
   const { header, theme } = definition;
   const pad = theme.layout.pagePadding;
+  const centered = theme.layout.contentAlign === 'center';
   return (
-    <div style={{ padding: `${pad}px ${pad}px 0`, borderBottom: `1px solid ${theme.colors.border}` }}>
+    <div style={{ padding: `${pad + 8}px ${pad}px ${Math.round(pad * 0.25)}px`, textAlign: centered ? 'center' : undefined }}>
+      {theme.branding.companyName && <div className="sf-eyebrow" style={{ marginBottom: '14px', fontFamily: theme.typography.bodyFont }}>{theme.branding.companyName}</div>}
       {((header.showLogo && header.logoUrl) || theme.branding.logoUrl) && (
         <div style={{ marginBottom: '16px', textAlign: theme.layout.contentAlign === 'center' ? 'center' : undefined }}>
           <img src={(header.showLogo && header.logoUrl) || theme.branding.logoUrl} alt={theme.branding.companyName || 'Logo'} style={{ height: 'auto', maxWidth: `${theme.branding.logoWidth}px`, maxHeight: '48px' }} />
         </div>
       )}
       {header.showTitle && (
-        <h1 style={{ fontSize: theme.typography.headingSize, fontWeight: theme.typography.headingWeight, lineHeight: theme.typography.headingLineHeight, letterSpacing: theme.typography.headingLetterSpacing, color: theme.colors.heading, fontFamily: theme.typography.headingFont, margin: 0 }}>{formName}</h1>
+        <h1 style={{ fontSize: `max(${theme.typography.headingSize}, 28px)`, fontWeight: theme.typography.headingWeight, lineHeight: theme.typography.headingLineHeight, letterSpacing: theme.typography.headingLetterSpacing, color: theme.colors.heading, fontFamily: theme.typography.headingFont, margin: 0 }}>{formName}</h1>
       )}
       {header.showDescription && formDescription && (
-        <p style={{ marginTop: '6px', fontSize: theme.typography.bodySize, color: theme.colors.bodyText, lineHeight: theme.typography.bodyLineHeight, fontFamily: theme.typography.bodyFont }}>{formDescription}</p>
+        <p style={{ marginTop: '10px', fontSize: `max(${theme.typography.bodySize}, 15px)`, color: theme.colors.bodyText, opacity: 0.82, lineHeight: 1.6, fontFamily: theme.typography.bodyFont, maxWidth: centered ? undefined : '58ch', marginLeft: centered ? 'auto' : undefined, marginRight: centered ? 'auto' : undefined }}>{formDescription}</p>
       )}
       {header.showProgress && theme.progress.show && totalPages > 1 && (
         <ProgressIndicator theme={theme} currentPage={currentPage} totalPages={totalPages} />
@@ -321,13 +351,13 @@ function ProgressIndicator({ theme, currentPage, totalPages }: { theme: FormThem
   }
   // Bar
   return (
-    <div style={{ marginTop: `${theme.progress.spacing}px`, marginBottom: '8px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: theme.colors.mutedText, marginBottom: '6px' }}>
+    <div style={{ marginTop: `${Math.max(theme.progress.spacing, 20)}px`, marginBottom: '8px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 600, letterSpacing: '0.02em', color: theme.colors.mutedText, marginBottom: '8px' }}>
         <span>Step {currentPage + 1} of {totalPages}</span>
         {theme.progress.showLabels && <span>{pct}%</span>}
       </div>
-      <div style={{ height: `${theme.progress.height}px`, borderRadius: '999px', overflow: 'hidden', backgroundColor: theme.colors.border }}>
-        <div style={{ height: '100%', borderRadius: '999px', transition: 'width 0.3s', width: `${pct}%`, backgroundColor: theme.progress.color }} />
+      <div className="sf-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label="Progress">
+        <span style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
@@ -348,7 +378,7 @@ function RenderSection({ section, definition, builderMode, selectedElementId, on
   for (const elId of section.elementIds) {
     const el = definition.elements[elId];
     if (!el || runtime?.hidden.has(el.id)) continue;
-    const col = viewport === 'mobile' ? 0 : Math.min((el.column ?? 1) - 1, effectiveColumnCount - 1);
+    const col = viewport === 'mobile' ? 0 : Math.max(0, Math.min((el.column ?? 1) - 1, effectiveColumnCount - 1));
     columns[col].push(el);
   }
   // People filling it in never see an empty column: the fields take the full width.
@@ -373,7 +403,7 @@ function RenderSection({ section, definition, builderMode, selectedElementId, on
         <div className={cn(cols === 2 && 'grid grid-cols-1 sm:grid-cols-2', cols === 3 && 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3', cols === 1 && 'space-y-0')} style={{ gap: cols > 1 ? `${theme.layout.columnGap}px` : undefined }}>
           {shown.map((colElements, colIdx) => (
             <div key={colIdx} style={{ display: 'flex', flexDirection: 'column', gap: `${theme.layout.fieldSpacing}px` }}>
-              {colElements.map(el => <RenderElement key={el.id} element={el} definition={definition} builderMode={builderMode} selected={selectedElementId === el.id} onSelect={onSelectElement} answers={answers} onAnswerChange={onAnswerChange} viewport={viewport} />)}
+              {colElements.map((el, i) => <RenderElement key={el.id} index={i * cols + colIdx} element={el} definition={definition} builderMode={builderMode} selected={selectedElementId === el.id} onSelect={onSelectElement} answers={answers} onAnswerChange={onAnswerChange} viewport={viewport} />)}
               {colElements.length === 0 && builderMode && <div className="min-h-[60px] rounded-lg border-2 border-dashed flex items-center justify-center text-xs" style={{ borderColor: theme.colors.border, color: theme.colors.mutedText }}>Drop elements here</div>}
             </div>
           ))}
@@ -403,18 +433,19 @@ export function BuilderElement({ element, definition }: { element: FormElement; 
 
 /** The card the form sits on, per the Design settings. */
 export function surfaceOf(theme: FormTheme): React.CSSProperties {
-  const card = theme.layoutPreset === 'card';
+  const card = theme.layoutPreset !== 'full_width';
   return {
+    ...themeVars(theme),
     backgroundColor: theme.colors.surfaceBackground,
-    borderRadius: card ? RADIUS[theme.layout.containerRadius] : undefined,
-    boxShadow: card ? SHADOW[theme.layout.containerShadow] : undefined,
+    borderRadius: card ? CARD_RADIUS[theme.layout.containerRadius] : undefined,
+    boxShadow: card ? CARD_SHADOW[theme.layout.containerShadow] : undefined,
     fontFamily: theme.typography.primaryFont,
   };
 }
 export const formWidthOf = (theme: FormTheme) => WIDTH[theme.layout.formWidth] || theme.maxFormWidth || '640px';
 
-function RenderElement({ element, definition, builderMode, selected, onSelect, answers, onAnswerChange }: {
-  element: FormElement; definition: FormDefinition; builderMode: boolean; selected: boolean; onSelect?: (id: string) => void; answers: Record<string, string>; onAnswerChange?: (fieldId: string, value: string) => void; viewport: Viewport;
+function RenderElement({ element, index = 0, definition, builderMode, selected, onSelect, answers, onAnswerChange }: {
+  element: FormElement; index?: number; definition: FormDefinition; builderMode: boolean; selected: boolean; onSelect?: (id: string) => void; answers: Record<string, string>; onAnswerChange?: (fieldId: string, value: string) => void; viewport: Viewport;
 }) {
   const style = element.style;
   const elementStyle: React.CSSProperties = {
@@ -422,11 +453,12 @@ function RenderElement({ element, definition, builderMode, selected, onSelect, a
     textAlign: style?.textAlign, marginTop: style?.marginTop, marginBottom: style?.marginBottom,
     width: style?.width && WIDTH_PCT[style.width] && element.type !== 'button' ? WIDTH_PCT[style.width] : undefined,
     backgroundColor: style?.backgroundColor, borderRadius: style?.borderRadius, padding: style?.padding,
+    ['--sf-i' as string]: index,
   };
   const handleClick = (e: React.MouseEvent) => { if (builderMode && onSelect) { e.stopPropagation(); onSelect(element.id); } };
 
   return (
-    <div className={cn('relative transition-all', builderMode && 'cursor-pointer', builderMode && selected && 'ring-2 ring-gold-400 ring-offset-2 rounded-lg', builderMode && !selected && 'hover:ring-1 hover:ring-gray-300 rounded-lg')} style={elementStyle} onClick={handleClick}>
+    <div className={cn('relative transition-all', !builderMode && 'sf-item', builderMode && 'cursor-pointer', builderMode && selected && 'ring-2 ring-gold-400 ring-offset-2 rounded-lg', builderMode && !selected && 'hover:ring-1 hover:ring-gray-300 rounded-lg')} style={elementStyle} onClick={handleClick}>
       {renderElementContent(element, definition, builderMode, answers, onAnswerChange)}
     </div>
   );
@@ -483,7 +515,7 @@ function ButtonElement({ element, theme }: { element: FormElement; theme: FormTh
   const full = element.style?.width === 'full';
   return (
     <div style={{ textAlign: element.style?.textAlign || theme.buttonStyle.align }}>
-      <button type="button" style={getButtonStyle(theme, theme.buttonStyle, undefined, full ? '100%' : 'auto')} onClick={onClick}>{c?.buttonText || 'Button'}</button>
+      <button type="button" className="sf-btn sf-btn-primary" style={getButtonStyle(theme, theme.buttonStyle, undefined, full ? '100%' : 'auto')} onClick={onClick}>{c?.buttonText || 'Button'}</button>
     </div>
   );
 }
@@ -500,26 +532,22 @@ function FieldRenderer({ element, definition, builderMode, value, onChange }: {
   const f = element.field!;
   const radius = RADIUS[fs.borderRadius];
   const inputStyle: React.CSSProperties = {
-    border: `${fs.borderWidth}px solid ${fs.border}`,
+    border: `${fs.borderWidth === 1 ? 1.5 : fs.borderWidth}px solid ${fs.border}`,
     borderRadius: radius,
     backgroundColor: fs.background,
     color: fs.textColor,
-    height: `${fs.height}px`,
-    padding: `0 ${fs.padding}px`,
-    fontSize: theme.typography.bodySize,
+    height: `${Math.max(fs.height, 48)}px`,
+    padding: `0 ${Math.max(fs.padding, 14)}px`,
+    fontSize: `max(${theme.typography.bodySize}, 15px)`,
     fontFamily: theme.typography.bodyFont,
-    width: '100%',
-    transition: 'border-color 0.2s, box-shadow 0.2s',
-    outline: 'none',
-    ['--ph' as string]: fs.placeholderColor,
   };
   const labelStyle: React.CSSProperties = {
     color: fs.labelColor,
     fontSize: fs.labelSize,
-    fontWeight: fs.labelWeight,
+    fontWeight: Math.max(Number(fs.labelWeight) || 500, 600),
     fontFamily: theme.typography.bodyFont,
-    marginBottom: `${fs.labelSpacing}px`,
-    display: 'block',
+    marginBottom: `${Math.max(fs.labelSpacing, 8)}px`,
+    letterSpacing: '-0.005em',
   };
   const helpStyle: React.CSSProperties = {
     color: fs.helpTextColor,
@@ -540,14 +568,20 @@ function FieldRenderer({ element, definition, builderMode, value, onChange }: {
   if (element.type === 'hidden' || element.type === 'source' || element.type === 'payment') return null;
 
   return (
-    <div id={`field-${f.fieldId}`} data-invalid={error ? 'true' : undefined}>
-      <label style={labelStyle}>{f.label}{required && <span style={{ color: theme.colors.error, marginLeft: '2px' }}>*</span>}</label>
+    <div id={`field-${f.fieldId}`} data-invalid={error ? 'true' : undefined} className={cn('sf-field', error && 'sf-invalid')}>
+      <label className="sf-label" style={labelStyle}>
+        <span>{f.label}</span>
+        {required && <span className="sf-req" title="Required" aria-label="required" />}
+      </label>
       {f.description && <p style={helpStyle}>{f.description}</p>}
-      <div style={error ? ({ ['--err' as string]: theme.colors.error } as React.CSSProperties) : undefined}
-        className={cn('[&_input::placeholder]:text-[color:var(--ph)] [&_textarea::placeholder]:text-[color:var(--ph)]', error && '[&_input]:!border-[color:var(--err)] [&_select]:!border-[color:var(--err)] [&_textarea]:!border-[color:var(--err)]')}>
+      <div>
         {renderFieldInput(element, f, value, handleChange, inputStyle, theme, disabled, runtime?.formId)}
       </div>
-      {error && <p role="alert" style={{ color: theme.colors.error, fontSize: theme.fieldStyle.errorSize, marginTop: `${theme.fieldStyle.errorSpacing}px`, fontFamily: theme.typography.bodyFont }}>{error}</p>}
+      {error && (
+        <p role="alert" className="sf-error" style={{ color: theme.colors.error, fontSize: theme.fieldStyle.errorSize, fontWeight: 500, marginTop: `${Math.max(theme.fieldStyle.errorSpacing, 8)}px`, fontFamily: theme.typography.bodyFont }}>
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden /> {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -560,13 +594,9 @@ function renderFieldInput(element: FormElement, f: NonNullable<FormElement['fiel
   const type = element.type;
   if (type === 'payment') return <PaymentInput config={f.payment} value={value} onChange={onChange} theme={theme} inputStyle={inputStyle} disabled={disabled} />;
   const fs = theme.fieldStyle;
-  const baseClass = "w-full transition-colors focus:outline-none";
-  const focusBorder = {
-    onFocus: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => { e.target.style.borderColor = fs.focusBorder; e.target.style.boxShadow = `0 0 0 3px ${fs.focusBorder}22`; },
-    onBlur: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => { e.target.style.borderColor = fs.border; e.target.style.boxShadow = 'none'; },
-  };
+  const baseClass = 'sf-input';
   const text = (inputType: string, extra?: React.InputHTMLAttributes<HTMLInputElement>) =>
-    <input type={inputType} className={baseClass} style={inputStyle} value={value} onChange={e => onChange(e.target.value)} placeholder={f.placeholder} disabled={disabled} {...focusBorder} {...extra} />;
+    <input type={inputType} className={baseClass} style={inputStyle} value={value} onChange={e => onChange(e.target.value)} placeholder={f.placeholder} disabled={disabled} {...extra} />;
 
   switch (type) {
     case 'text_field': case 'first_name': case 'last_name': case 'city': case 'state':
@@ -586,37 +616,54 @@ function renderFieldInput(element: FormElement, f: NonNullable<FormElement['fiel
       const sign = CURRENCY_SIGN(f.currency || 'usd');
       return (
         <div className="relative">
-          <span className="pointer-events-none absolute left-0 top-0 flex h-full items-center" style={{ paddingLeft: `${fs.padding}px`, color: theme.colors.mutedText, fontSize: theme.typography.bodySize }}>{sign}</span>
-          <input type="text" inputMode="decimal" className={baseClass} style={{ ...inputStyle, paddingLeft: `${fs.padding + sign.length * 9 + 6}px` }} value={value}
-            onChange={e => onChange(e.target.value.replace(/[^0-9.]/g, ''))} placeholder={f.placeholder || '0.00'} disabled={disabled} {...focusBorder} />
+          <span className="pointer-events-none absolute left-0 top-0 z-[1] flex h-full items-center font-semibold" style={{ paddingLeft: `${Math.max(fs.padding, 14)}px`, color: theme.colors.mutedText, fontSize: `max(${theme.typography.bodySize}, 15px)` }}>{sign}</span>
+          <input type="text" inputMode="decimal" className={baseClass} style={{ ...inputStyle, paddingLeft: `${Math.max(fs.padding, 14) + sign.length * 10 + 8}px` }} value={value}
+            onChange={e => onChange(e.target.value.replace(/[^0-9.]/g, ''))} placeholder={f.placeholder || '0.00'} disabled={disabled} />
         </div>
       );
     }
     case 'long_text': case 'address':
-      return <textarea className={cn(baseClass, 'resize-y', type === 'address' ? 'min-h-[76px]' : 'min-h-[110px]')} style={{ ...inputStyle, height: 'auto', padding: `${Math.max(10, fs.padding - 2)}px ${fs.padding}px` }} value={value} onChange={e => onChange(e.target.value)} placeholder={f.placeholder} disabled={disabled} autoComplete={type === 'address' ? 'street-address' : undefined} {...focusBorder} />;
+      return <textarea className={cn(baseClass, 'resize-y', type === 'address' ? 'min-h-[88px]' : 'min-h-[128px]')} style={{ ...inputStyle, height: 'auto', padding: `12px ${Math.max(fs.padding, 14)}px` }} value={value} onChange={e => onChange(e.target.value)} placeholder={f.placeholder} disabled={disabled} autoComplete={type === 'address' ? 'street-address' : undefined} />;
     case 'country':
       return (
-        <select className={baseClass} style={{ ...inputStyle, color: value ? fs.textColor : fs.placeholderColor }} value={value} onChange={e => onChange(e.target.value)} disabled={disabled} autoComplete="country-name" {...focusBorder}>
+        <select className={baseClass} style={{ ...inputStyle, color: value ? fs.textColor : fs.placeholderColor }} value={value} onChange={e => onChange(e.target.value)} disabled={disabled} autoComplete="country-name">
           <option value="">{f.placeholder || 'Choose a country'}</option>
           {countryNames().map(n => <option key={n} value={n}>{n}</option>)}
         </select>
       );
     case 'radio': case 'yes_no': case 'checkbox': case 'multi_select': case 'dropdown':
-      return <ChoiceInput type={type} field={f} value={value} onChange={onChange} theme={theme} inputStyle={inputStyle} disabled={disabled} focusBorder={focusBorder} />;
-    case 'consent':
-      return <label className="flex items-start gap-2.5 text-sm cursor-pointer"><input type="checkbox" checked={value === 'true'} onChange={e => onChange(e.target.checked ? 'true' : '')} disabled={disabled} className="w-4 h-4 mt-0.5 shrink-0" style={{ accentColor: theme.colors.primary }} /><span style={{ color: theme.colors.bodyText, fontFamily: theme.typography.bodyFont, lineHeight: 1.5 }}>{element.content?.text || 'I agree to be contacted regarding my submission.'}</span></label>;
-    case 'rating': {
-      const max = element.content?.maxRating ?? 5;
-      const Icon = element.content?.ratingSymbol === 'heart' ? '♥' : element.content?.ratingSymbol === 'circle' ? '●' : '★';
-      return <div className="flex items-center gap-1.5" role="radiogroup" aria-label={f.label}>{Array.from({ length: max }, (_, i) => <button key={i} type="button" role="radio" aria-checked={Number(value) === i + 1} aria-label={`${i + 1} of ${max}`} disabled={disabled} onClick={() => !disabled && onChange(String(i + 1))} className={cn('text-[28px] leading-none transition-transform', !disabled && 'hover:scale-110')} style={{ color: i < Number(value) ? '#F5A623' : '#D7DBE2', background: 'none', border: 'none', cursor: disabled ? 'default' : 'pointer' }}>{Icon}</button>)}</div>;
+      return <ChoiceInput type={type} field={f} value={value} onChange={onChange} theme={theme} inputStyle={inputStyle} disabled={disabled} />;
+    case 'consent': {
+      const on = value === 'true';
+      return (
+        <label className="sf-consent" data-on={on} style={{ borderRadius: tileRadius(theme) }}>
+          <input type="checkbox" className="sf-sr" checked={on} onChange={e => onChange(e.target.checked ? 'true' : '')} disabled={disabled} />
+          <span className="sf-mark" style={{ borderRadius: '6px' }} aria-hidden><Check className="h-3.5 w-3.5" strokeWidth={3} /></span>
+          <span style={{ color: theme.colors.bodyText, fontFamily: theme.typography.bodyFont, fontSize: `max(${theme.typography.bodySize}, 14px)`, lineHeight: 1.55 }}>{element.content?.text || 'I agree to be contacted regarding my submission.'}</span>
+        </label>
+      );
     }
+    case 'rating':
+      return <RatingInput label={f.label} max={element.content?.maxRating ?? 5} symbol={element.content?.ratingSymbol} value={value} onChange={onChange} disabled={disabled} />;
     case 'scale': {
       const min = element.content?.scaleMin ?? 1;
       const max = element.content?.scaleMax ?? 10;
       const step = Math.max(element.content?.scaleStep ?? 1, 0.5);
       const numbers: number[] = [];
       for (let i = min; i <= max && numbers.length < 21; i += step) numbers.push(Math.round(i * 10) / 10);
-      return <div><div className="flex flex-wrap gap-2" role="radiogroup" aria-label={f.label}>{numbers.map(n => { const on = value !== '' && Number(value) === n; return <button key={n} type="button" role="radio" aria-checked={on} disabled={disabled} onClick={() => !disabled && onChange(String(n))} className="text-sm font-semibold transition-all" style={{ minWidth: '42px', height: '42px', padding: '0 8px', borderRadius: RADIUS[fs.borderRadius], border: `1px solid ${on ? theme.colors.primary : fs.border}`, backgroundColor: on ? theme.colors.primary : fs.background, color: on ? '#fff' : theme.colors.bodyText, cursor: disabled ? 'default' : 'pointer' }}>{n}</button>; })}</div><div className="flex items-center justify-between mt-2 text-xs" style={{ color: theme.colors.mutedText }}><span>{element.content?.scaleMinLabel}</span><span>{element.content?.scaleMaxLabel}</span></div></div>;
+      return (
+        <div>
+          <div className="sf-scale" role="radiogroup" aria-label={f.label}>
+            {numbers.map(n => {
+              const on = value !== '' && Number(value) === n;
+              return <button key={n} type="button" role="radio" aria-checked={on} disabled={disabled} onClick={() => !disabled && onChange(String(n))} style={{ borderRadius: tileRadius(theme), cursor: disabled ? 'default' : 'pointer', fontFamily: theme.typography.bodyFont }}>{n}</button>;
+            })}
+          </div>
+          {(element.content?.scaleMinLabel || element.content?.scaleMaxLabel) && (
+            <div className="mt-2.5 flex items-center justify-between text-xs font-medium" style={{ color: theme.colors.mutedText }}><span>{element.content?.scaleMinLabel}</span><span>{element.content?.scaleMaxLabel}</span></div>
+          )}
+        </div>
+      );
     }
     case 'file_upload': return <FileUploadInput field={f} value={value} onChange={onChange} theme={theme} formId={formId} disabled={disabled} />;
     case 'signature': return <SignatureInput value={value} onChange={onChange} theme={theme} disabled={disabled} />;
@@ -626,9 +673,8 @@ function renderFieldInput(element: FormElement, f: NonNullable<FormElement['fiel
 }
 
 /** Radio, Yes/No, Checkbox, Multi-select and Dropdown, each with an optional "Other" answer. */
-function ChoiceInput({ type, field: f, value, onChange, theme, inputStyle, disabled, focusBorder }: {
+function ChoiceInput({ type, field: f, value, onChange, theme, inputStyle, disabled }: {
   type: string; field: NonNullable<FormElement['field']>; value: string; onChange: (v: string) => void; theme: FormTheme; inputStyle: React.CSSProperties; disabled: boolean;
-  focusBorder: { onFocus: (e: React.FocusEvent<HTMLSelectElement | HTMLInputElement>) => void; onBlur: (e: React.FocusEvent<HTMLSelectElement | HTMLInputElement>) => void };
 }) {
   const options = type === 'yes_no' ? (f.options?.length ? f.options : ['Yes', 'No']) : (f.options || []);
   const multi = type === 'checkbox' || type === 'multi_select';
@@ -637,21 +683,19 @@ function ChoiceInput({ type, field: f, value, onChange, theme, inputStyle, disab
   const otherText = picked.find((p) => !options.includes(p)) ?? '';
   const [otherOn, setOtherOn] = useState(!!otherText);
   const known = picked.filter((p) => options.includes(p));
-  const labelText = { color: theme.colors.bodyText, fontFamily: theme.typography.bodyFont, fontSize: theme.typography.bodySize };
-  const accent = { accentColor: theme.colors.primary };
   const clean = (t: string) => t.replace(/,/g, ' ');
 
   const setMulti = (next: string[], txt = otherOn ? otherText : '') => onChange([...next, ...(txt ? [clean(txt)] : [])].join(','));
   const otherBox = (on: boolean) => on && (
-    <input type="text" autoFocus={!otherText} placeholder="Type your answer" className="mt-2 w-full focus:outline-none" style={{ ...inputStyle, height: '40px' }} disabled={disabled}
-      value={otherText} onChange={(e) => (multi ? setMulti(known, e.target.value) : onChange(clean(e.target.value)))} {...focusBorder} />
+    <input type="text" autoFocus={!otherText} placeholder="Type your answer" className="sf-input mt-2.5" style={inputStyle} disabled={disabled}
+      value={otherText} onChange={(e) => (multi ? setMulti(known, e.target.value) : onChange(clean(e.target.value)))} />
   );
 
   if (type === 'dropdown') {
     return (
       <>
-        <select className="w-full transition-colors focus:outline-none" style={{ ...inputStyle, color: value || otherOn ? theme.fieldStyle.textColor : theme.fieldStyle.placeholderColor }} disabled={disabled}
-          value={otherOn ? '__other__' : value} onChange={(e) => { if (e.target.value === '__other__') { setOtherOn(true); onChange(''); } else { setOtherOn(false); onChange(e.target.value); } }} {...focusBorder}>
+        <select className="sf-input" style={{ ...inputStyle, color: value || otherOn ? theme.fieldStyle.textColor : theme.fieldStyle.placeholderColor }} disabled={disabled}
+          value={otherOn ? '__other__' : value} onChange={(e) => { if (e.target.value === '__other__') { setOtherOn(true); onChange(''); } else { setOtherOn(false); onChange(e.target.value); } }}>
           <option value="">{f.placeholder || 'Choose one'}</option>
           {options.map((opt, i) => <option key={i} value={opt}>{opt}</option>)}
           {other && <option value="__other__">Other…</option>}
@@ -661,28 +705,65 @@ function ChoiceInput({ type, field: f, value, onChange, theme, inputStyle, disab
     );
   }
 
+  const radius = tileRadius(theme);
+  const text: React.CSSProperties = { fontFamily: theme.typography.bodyFont, fontSize: `max(${theme.typography.bodySize}, 15px)`, lineHeight: 1.4 };
+  const toggle = (opt: string) => {
+    if (disabled) return;
+    if (multi) { setMulti(known.includes(opt) ? known.filter((k) => k !== opt) : [...known, opt]); return; }
+    setOtherOn(false); onChange(opt);
+  };
+  const toggleOther = () => {
+    if (disabled) return;
+    const on = multi ? !otherOn : true;
+    setOtherOn(on);
+    if (multi) setMulti(known, on ? otherText : ''); else onChange(otherText);
+  };
+  // Press A, B, C… to pick, like the letter keys on each tile.
+  const all = [...options, ...(other ? ['__other__'] : [])];
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (disabled || e.metaKey || e.ctrlKey || e.altKey || (e.target as HTMLElement).tagName === 'TEXTAREA' || (e.target as HTMLInputElement).type === 'text') return;
+    const i = e.key.length === 1 ? e.key.toUpperCase().charCodeAt(0) - 65 : -1;
+    if (i < 0 || i >= all.length || all.length > 26) return;
+    e.preventDefault();
+    if (all[i] === '__other__') toggleOther(); else toggle(all[i]);
+  };
+  const mark = <span className="sf-mark" style={{ borderRadius: multi ? '7px' : '50%' }} aria-hidden><Check className="h-3.5 w-3.5" strokeWidth={3} /></span>;
+  const tile = (key: string, label: string, on: boolean, onPick: () => void, i: number) => (
+    <label key={key} className="sf-tile" data-on={on} aria-disabled={disabled || undefined} style={{ borderRadius: radius }}>
+      <input type={multi ? 'checkbox' : 'radio'} name={f.fieldId} className="sf-sr" checked={on} disabled={disabled} onChange={onPick} />
+      {type !== 'yes_no' && all.length <= 26 && <span className="sf-key" aria-hidden>{String.fromCharCode(65 + i)}</span>}
+      <span style={text}>{label}</span>
+      {mark}
+    </label>
+  );
+  const twoUp = type !== 'yes_no' && options.length >= 4 && options.every((o) => o.length <= 28);
+
   return (
-    <div className="space-y-2.5">
-      {options.map((opt, i) => {
-        const on = multi ? known.includes(opt) : value === opt && !otherOn;
-        return (
-          <label key={i} className="flex items-center gap-2.5 cursor-pointer">
-            <input type={multi ? 'checkbox' : 'radio'} name={f.fieldId} value={opt} checked={on} disabled={disabled} className="w-[18px] h-[18px] shrink-0" style={accent}
-              onChange={(e) => { if (multi) setMulti(e.target.checked ? [...known, opt] : known.filter((k) => k !== opt)); else { setOtherOn(false); onChange(opt); } }} />
-            <span style={labelText}>{opt}</span>
-          </label>
-        );
-      })}
-      {other && (
-        <div>
-          <label className="flex items-center gap-2.5 cursor-pointer">
-            <input type={multi ? 'checkbox' : 'radio'} name={f.fieldId} checked={otherOn} disabled={disabled} className="w-[18px] h-[18px] shrink-0" style={accent}
-              onChange={(e) => { const on = multi ? e.target.checked : true; setOtherOn(on); if (multi) setMulti(known, on ? otherText : ''); else onChange(otherText); }} />
-            <span style={labelText}>Other</span>
-          </label>
-          {otherBox(otherOn)}
-        </div>
-      )}
+    <div role={multi ? 'group' : 'radiogroup'} aria-label={f.label} onKeyDown={onKeyDown}>
+      <div className={type === 'yes_no' ? 'sf-yesno' : cn('sf-tiles', twoUp && 'sf-tiles-2')}>
+        {options.map((opt, i) => tile(String(i), opt, multi ? known.includes(opt) : value === opt && !otherOn, () => toggle(opt), i))}
+        {other && tile('__other__', 'Other', otherOn, toggleOther, options.length)}
+      </div>
+      {otherBox(otherOn)}
+    </div>
+  );
+}
+
+/** Stars (or hearts, or dots) that light up as you move across them. */
+function RatingInput({ label, max, symbol, value, onChange, disabled }: {
+  label: string; max: number; symbol?: string; value: string; onChange: (v: string) => void; disabled: boolean;
+}) {
+  const [hover, setHover] = useState(0);
+  const Icon = symbol === 'heart' ? '♥' : symbol === 'circle' ? '●' : '★';
+  const shown = hover || Number(value) || 0;
+  return (
+    <div className="flex items-center gap-1" role="radiogroup" aria-label={label} onMouseLeave={() => setHover(0)}>
+      {Array.from({ length: max }, (_, i) => (
+        <button key={i} type="button" role="radio" aria-checked={Number(value) === i + 1} aria-label={`${i + 1} of ${max}`} disabled={disabled}
+          data-lit={i < shown} className="sf-star text-[34px]"
+          onMouseEnter={() => !disabled && setHover(i + 1)} onClick={() => !disabled && onChange(String(i + 1))}
+          style={{ color: i < shown ? '#F5A623' : '#D7DBE2', cursor: disabled ? 'default' : 'pointer' }}>{Icon}</button>
+      ))}
     </div>
   );
 }
@@ -696,7 +777,7 @@ function CaptchaInput({ fieldId, value, onChange, theme, inputStyle, disabled }:
   return (
     <div className="flex items-center gap-3">
       <span className="shrink-0 rounded-lg px-3 py-2 text-sm font-semibold tabular-nums" style={{ background: `${theme.colors.primary}10`, color: theme.colors.heading, fontFamily: theme.typography.bodyFont }} aria-hidden>{sum.a} + {sum.b} =</span>
-      <input id={`captcha-${fieldId}`} type="text" inputMode="numeric" aria-label={`What is ${sum.a} plus ${sum.b}?`} className="w-24 focus:outline-none" style={inputStyle} value={typed} disabled={disabled} autoComplete="off"
+      <input id={`captcha-${fieldId}`} type="text" inputMode="numeric" aria-label={`What is ${sum.a} plus ${sum.b}?`} className="sf-input" style={{ ...inputStyle, width: '96px' }} value={typed} disabled={disabled} autoComplete="off"
         onChange={(e) => { const t = e.target.value.replace(/\D/g, '').slice(0, 3); setTyped(t); onChange(!t ? '' : Number(t) === sum.a + sum.b ? CAPTCHA_OK : CAPTCHA_WRONG); }} />
       {value === CAPTCHA_OK && <span className="text-sm font-semibold" style={{ color: theme.colors.success }}>✓</span>}
     </div>
@@ -747,7 +828,7 @@ function PaymentInput({ config, value, onChange, theme, inputStyle, disabled }: 
             })}
           </div>
         )}
-        <input type="text" inputMode="decimal" aria-label="Amount" placeholder={config.minAmount ? `${money(config.minAmount * 100, cur)} or more` : 'Amount'} value={typed} disabled={disabled} onChange={(e) => onChange(e.target.value)} style={inputStyle} />
+        <input type="text" inputMode="decimal" aria-label="Amount" className="sf-input" placeholder={config.minAmount ? `${money(config.minAmount * 100, cur)} or more` : 'Amount'} value={typed} disabled={disabled} onChange={(e) => onChange(e.target.value)} style={inputStyle} />
         <p style={{ ...muted, marginTop: '6px' }}>You’ll pay securely by card after you submit.</p>
       </div>
     );
@@ -767,8 +848,9 @@ function PaymentInput({ config, value, onChange, theme, inputStyle, disabled }: 
             set(next);
           };
           return (
-            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', borderRadius: '10px', border: `1px solid ${on ? theme.colors.primary : theme.colors.border}` }}>
-              <input type={config.multiple ? 'checkbox' : 'radio'} checked={on} disabled={disabled} onChange={toggle} aria-label={p.name} style={{ accentColor: theme.colors.primary, width: '16px', height: '16px' }} />
+            <label key={p.id} className="sf-tile" data-on={on} style={{ borderRadius: tileRadius(theme) }}>
+              <input type={config.multiple ? 'checkbox' : 'radio'} className="sf-sr" checked={on} disabled={disabled} onChange={toggle} aria-label={p.name} />
+              <span className="sf-mark" style={{ borderRadius: config.multiple ? '7px' : '50%', marginLeft: 0 }} aria-hidden><Check className="h-3.5 w-3.5" strokeWidth={3} /></span>
               <span style={{ flex: 1, ...text }}>
                 <span style={{ fontWeight: 600 }}>{p.name}</span>
                 {p.description && <span style={{ display: 'block', ...muted }}>{p.description}</span>}
@@ -776,10 +858,10 @@ function PaymentInput({ config, value, onChange, theme, inputStyle, disabled }: 
               {config.quantity && on && (
                 <input type="number" min={1} max={99} aria-label={`How many ${p.name}`} value={chosen.get(p.id)} disabled={disabled}
                   onChange={(e) => { const next = new Map(chosen); next.set(p.id, Math.max(1, Math.min(99, Number(e.target.value) || 1))); set(next); }}
-                  style={{ ...inputStyle, width: '64px', height: '34px', padding: '0 8px' }} />
+                  className="sf-input" style={{ ...inputStyle, width: '64px', height: '36px', padding: '0 8px' }} />
               )}
               <span style={{ fontWeight: 700, ...text }}>{money(Math.round(p.price * 100), cur)}</span>
-            </div>
+            </label>
           );
         })}
       </div>

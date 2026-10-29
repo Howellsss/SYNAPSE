@@ -5,6 +5,7 @@ import {
   type Answers, type FormKind, type PaymentDue, type QuizScore,
 } from '@/lib/form-engine';
 import { FormRenderer, type FormRuntime } from './FormRenderer';
+import { themeVars } from './formLook';
 import { dataUrlToBlob, uploadFormResponseFile } from '@/lib/form-files';
 
 /** What the player hands over when someone submits. */
@@ -31,7 +32,7 @@ export function rememberedDetails(): Record<string, string> {
  * pages; a survey goes slide by slide), with the logic, checks, quiz result and payment. Used by
  * the public page and the builder's preview (`onSubmit` absent: nothing is sent).
  */
-export function FormPlayer({ definition, formName, formDescription, kind, viewport = 'desktop', initialAnswers, onSubmit, done: doneFromOutside, formId, fill = false }: {
+export function FormPlayer({ definition, formName, formDescription, kind, viewport = 'desktop', initialAnswers, onSubmit, done: doneFromOutside, formId, fill = false, stage = false }: {
   definition: FormDefinition;
   /** Where files and signatures are sent (File Upload, Signature). */
   formId?: string;
@@ -43,8 +44,10 @@ export function FormPlayer({ definition, formName, formDescription, kind, viewpo
   onSubmit?: (payload: FormPayload) => Promise<SubmitOutcome>;
   /** Show the end screen straight away (back from paying). */
   done?: { note?: string };
-  /** Fill the box it sits in (the builder's preview card). */
+  /** Fill the box it sits in (the builder's preview). */
   fill?: boolean;
+  /** The form is the page (its public link, the builder preview): drawn on a raised card. */
+  stage?: boolean;
 }) {
   const steps = useMemo(() => stepsOf(definition, kind), [definition, kind]);
   const [answers, setAnswers] = useState<Answers>(() => {
@@ -172,7 +175,7 @@ export function FormPlayer({ definition, formName, formDescription, kind, viewpo
   };
 
   if (end) {
-    return <div ref={top}><EndScreen definition={definition} formName={formName} end={end} preview={!onSubmit} /></div>;
+    return <div ref={top}><EndScreen definition={definition} formName={formName} end={end} preview={!onSubmit} stage={stage} /></div>;
   }
 
   return (
@@ -186,6 +189,7 @@ export function FormPlayer({ definition, formName, formDescription, kind, viewpo
         <div key={step} className="animate-fade-in">
           <FormRenderer
             fill={fill}
+            stage={stage}
             definition={steps.def}
             formName={formName}
             formDescription={formDescription}
@@ -213,18 +217,19 @@ export function FormPlayer({ definition, formName, formDescription, kind, viewpo
 }
 
 /** After they submit: the quiz result, the thank-you page, a message, or the disqualified note. */
-function EndScreen({ definition, formName, end, preview }: {
-  definition: FormDefinition; formName: string; preview: boolean;
+function EndScreen({ definition, formName, end, preview, stage }: {
+  definition: FormDefinition; formName: string; preview: boolean; stage?: boolean;
   end: { kind: 'done' | 'disqualified' | 'closed'; quiz?: QuizScore | null; message?: string; redirect?: string | null; note?: string };
 }) {
   const theme = definition.theme;
   const post = definition.notifications.postSubmission;
   const quiz = definition.settings.quiz;
   const card: React.CSSProperties = {
-    maxWidth: '640px', margin: '0 auto', background: theme.colors.surfaceBackground, borderRadius: '20px', padding: '40px 32px',
-    textAlign: 'center', fontFamily: theme.typography.primaryFont, boxShadow: '0 20px 50px rgba(9,21,48,0.12)',
+    maxWidth: '640px', margin: '0 auto', background: theme.colors.surfaceBackground, borderRadius: '24px', padding: '48px 32px 44px',
+    textAlign: 'center', fontFamily: theme.typography.primaryFont,
+    boxShadow: '0 0 0 1px rgba(16,24,40,0.04), 0 4px 8px rgba(16,24,40,0.04), 0 32px 64px -20px rgba(16,24,40,0.22)',
   };
-  const h = { color: theme.colors.heading, fontFamily: theme.typography.headingFont, fontSize: '26px', fontWeight: 800, margin: 0 } as React.CSSProperties;
+  const h = { color: theme.colors.heading, fontFamily: theme.typography.headingFont, fontSize: '28px', fontWeight: 800, letterSpacing: '-0.02em', margin: 0 } as React.CSSProperties;
   const p = { color: theme.colors.bodyText, fontSize: theme.typography.bodySize, lineHeight: 1.6, marginTop: '12px', whiteSpace: 'pre-wrap' } as React.CSSProperties;
   const bg = theme.background.type === 'solid' ? theme.background.color : theme.colors.pageBackground;
 
@@ -273,7 +278,9 @@ function EndScreen({ definition, formName, end, preview }: {
     const ty = post.thankYouPage;
     body = (
       <>
-        {ty.imageUrl && <img src={ty.imageUrl} alt="" style={{ maxHeight: '160px', margin: '0 auto 18px', borderRadius: '12px' }} />}
+        {ty.imageUrl
+          ? <img src={ty.imageUrl} alt="" style={{ maxHeight: '160px', margin: '0 auto 18px', borderRadius: '12px' }} />
+          : <SuccessMark />}
         <h2 style={h}>{ty.heading || 'Thank you!'}</h2>
         <p style={p}>{ty.message || definition.settings.successMessage}</p>
         {ty.buttonText && ty.buttonLink && (
@@ -284,12 +291,24 @@ function EndScreen({ definition, formName, end, preview }: {
   }
 
   return (
-    <div style={{ background: bg, padding: '48px 16px', minHeight: '100%' }}>
-      <div style={card} role="status">
+    <div className="sf" style={{ ...themeVars(theme), background: stage ? undefined : bg, padding: '48px 16px', minHeight: '100%' }}>
+      <div style={card} className="sf-card" role="status">
         {end.note && <p style={{ ...p, marginTop: 0, marginBottom: '14px', color: theme.colors.success, fontWeight: 700 }}>{end.note}</p>}
         {body}
         {end.redirect && <p style={{ ...p, fontSize: '13px', color: theme.colors.mutedText }}>{preview ? `(Would now go to ${end.redirect})` : 'Taking you there…'}</p>}
       </div>
+    </div>
+  );
+}
+
+/** A tick that draws itself in a ring of the form's colour. */
+function SuccessMark() {
+  return (
+    <div className="sf-success" aria-hidden>
+      <svg viewBox="0 0 52 52" width="72" height="72">
+        <circle cx="26" cy="26" r="24" fill="none" />
+        <path fill="none" d="M15 27l7 7 15-16" />
+      </svg>
     </div>
   );
 }

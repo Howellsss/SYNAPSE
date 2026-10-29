@@ -92,7 +92,7 @@ export function FormCanvas({
         <div className={cn('mx-auto overflow-hidden transition-all duration-300', viewport !== 'desktop' && 'rounded-[28px] shadow-[0_0_0_10px_#1D1D1F,0_24px_60px_rgba(0,0,0,0.25)]')}
           style={{ ...getBackgroundCSS(theme), maxWidth: viewport === 'desktop' ? undefined : `${width}px`, borderRadius: viewport === 'desktop' ? 18 : undefined }}>
           <div className="py-8" style={{ paddingLeft: viewport === 'mobile' ? 12 : 24, paddingRight: viewport === 'mobile' ? 12 : 24 }}>
-            <div className="mx-auto overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_28px_rgba(0,0,0,0.06)]"
+            <div className={cn('sf mx-auto overflow-hidden', theme.layoutPreset !== 'full_width' && 'sf-card')}
               style={{ ...surfaceOf(theme), maxWidth: theme.layoutPreset === 'full_width' ? undefined : formWidthOf(theme), borderRadius: surfaceOf(theme).borderRadius ?? 16 }}>
               {definition.header.enabled && (
                 <FormHeader definition={definition} formName={formName} formDescription={formDescription} currentPage={currentPageIndex} totalPages={definition.pages.length} />
