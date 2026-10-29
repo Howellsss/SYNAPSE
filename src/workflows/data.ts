@@ -207,6 +207,78 @@ export async function listLogs(workflowId: string, runId?: string): Promise<{ ro
   return { rows: await withContacts((data ?? []) as LogRow[]), error: null };
 }
 
+// ---------------------------------------------------------------- run history (every workflow)
+
+export type RunFilter = 'all' | 'problems' | 'running' | 'finished';
+
+/** One run in the account-wide history, with its workflow, contact and how many steps failed. */
+export interface HistoryRun extends RunRow {
+  workflow_id: string;
+  workflow_name: string;
+  failed_steps: number;
+}
+
+const RUN_COLS = 'id, workflow_id, contact_id, trigger_name, reason, status, current_step, resume_at, exit_reason, is_test, started_at, finished_at';
+export const HISTORY_PAGE = 50;
+
+/**
+ * Runs across every workflow, newest first. "Problems" are runs where a step failed or the run
+ * itself failed; "running" are contacts still in a workflow (active or waiting).
+ */
+export async function listHistory(workspaceId: string, opts: { filter: RunFilter; workflowId?: string; since: string; before?: string }): Promise<{ rows: HistoryRun[]; more: boolean; error: string | null }> {
+  let q = supabase.from('wf_runs').select(RUN_COLS).eq('workspace_id', workspaceId).gte('started_at', opts.since)
+    .order('started_at', { ascending: false }).limit(HISTORY_PAGE);
+  if (opts.before) q = q.lt('started_at', opts.before);
+  if (opts.workflowId) q = q.eq('workflow_id', opts.workflowId);
+  if (opts.filter === 'running') q = q.in('status', ['active', 'waiting']);
+  if (opts.filter === 'finished') q = q.in('status', ['completed', 'stopped', 'removed']);
+  if (opts.filter === 'problems') {
+    // The most recent failures (kept short: their ids go in the request address).
+    let f = supabase.from('wf_logs').select('run_id').eq('status', 'failed').gte('at', opts.since).order('id', { ascending: false }).limit(150);
+    if (opts.workflowId) f = f.eq('workflow_id', opts.workflowId);
+    const { data: failed, error: fErr } = await f;
+    if (fErr) return { rows: [], more: false, error: missing(fErr.message) ? NEEDS_UPDATE : fErr.message };
+    const ids = [...new Set(((failed ?? []) as { run_id: string }[]).map((r) => r.run_id))];
+    q = ids.length ? q.or(`status.eq.failed,id.in.(${ids.join(',')})`) : q.eq('status', 'failed');
+  }
+  const { data, error } = await q;
+  if (error) return { rows: [], more: false, error: missing(error.message) ? NEEDS_UPDATE : error.message };
+  const runs = (data ?? []) as (RunRow & { workflow_id: string })[];
+  const runIds = runs.map((r) => r.id);
+  const wfIds = [...new Set(runs.map((r) => r.workflow_id))];
+  const [names, fails] = await Promise.all([
+    wfIds.length ? supabase.from('workflows').select('id, name').in('id', wfIds) : Promise.resolve({ data: [] }),
+    runIds.length ? supabase.from('wf_logs').select('run_id').eq('status', 'failed').in('run_id', runIds) : Promise.resolve({ data: [] }),
+  ]);
+  const nameOf = new Map(((names.data ?? []) as { id: string; name: string }[]).map((w) => [w.id, w.name]));
+  const failCount = new Map<string, number>();
+  for (const f of (fails.data ?? []) as { run_id: string }[]) failCount.set(f.run_id, (failCount.get(f.run_id) ?? 0) + 1);
+  const rows = (await withContacts(runs)).map((r) => ({ ...r, workflow_name: nameOf.get(r.workflow_id) ?? 'Deleted workflow', failed_steps: failCount.get(r.id) ?? 0 }));
+  return { rows, more: runs.length === HISTORY_PAGE, error: null };
+}
+
+/** The headline numbers for the period: runs, still running, finished, and runs with a problem. */
+export async function historyCounts(workspaceId: string, since: string, workflowId?: string): Promise<{ total: number; running: number; finished: number; problems: number }> {
+  const count = (statuses?: string[]) => {
+    let q = supabase.from('wf_runs').select('id', { count: 'exact', head: true }).eq('workspace_id', workspaceId).gte('started_at', since);
+    if (workflowId) q = q.eq('workflow_id', workflowId);
+    if (statuses) q = q.in('status', statuses);
+    return q.then(({ count: n }) => n ?? 0);
+  };
+  let f = supabase.from('wf_logs').select('run_id').eq('status', 'failed').gte('at', since).limit(5000);
+  if (workflowId) f = f.eq('workflow_id', workflowId);
+  const [total, running, finished, failedRuns, failedLogs] = await Promise.all([
+    count(), count(['active', 'waiting']), count(['completed', 'stopped', 'removed']), count(['failed']), f.then(({ data }) => data ?? []),
+  ]);
+  return { total, running, finished, problems: Math.max(failedRuns, new Set((failedLogs as { run_id: string }[]).map((x) => x.run_id)).size) };
+}
+
+/** Every step one run took, in order. */
+export async function runSteps(runId: string): Promise<LogRow[]> {
+  const { data } = await supabase.from('wf_logs').select('id, run_id, contact_id, step_id, step_type, step_name, status, detail, at').eq('run_id', runId).order('id');
+  return (data ?? []) as LogRow[];
+}
+
 /** Per step, the last 30 days: how many contacts it ran for, and how many failed or were skipped. */
 export async function stepStats(workflowId: string): Promise<Record<string, { done: number; failed: number; skipped: number; waiting: number }>> {
   const since = new Date(Date.now() - 30 * 86400000).toISOString();

@@ -7,6 +7,7 @@ import { useToast } from '@/context/ToastContext';
 import { useRouter } from '@/lib/router';
 import { supabase } from '@/lib/supabase';
 import { withCache, tableTag, ttlMs } from '@/lib/cache';
+import { RunHistory } from './RunHistory';
 import { Popover } from '@/components/spaces/room/Popover';
 import { menuItem } from '@/components/spaces/room/styles';
 import { Modal } from '@/components/ui/Modal';
@@ -34,6 +35,8 @@ export function WorkflowsHome() {
   const [q, setQ] = useState('');
   const [view, setView] = useState<'list' | 'grid'>(() => { try { return localStorage.getItem('synapse.workflows.view') === 'grid' ? 'grid' : 'list'; } catch { return 'list'; } });
   const [modal, setModal] = useState<null | 'recipes' | 'describe' | 'import'>(null);
+  // Workflows, or every run of every workflow (#/workflows?view=history).
+  const [section, setSection] = useState<'workflows' | 'history'>(() => (new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('view') === 'history' ? 'history' : 'workflows'));
   const [confirmDelete, setConfirmDelete] = useState<WorkflowRow | null>(null);
 
   const userId = user?.id ?? null;
@@ -140,6 +143,16 @@ export function WorkflowsHome() {
         </div>
       )}
 
+      <div role="tablist" aria-label="Workflows or run history" className="mt-6 flex gap-6 border-b border-navy-100">
+        {([['workflows', 'Workflows'], ['history', 'Run history']] as const).map(([k, l]) => (
+          <button key={k} role="tab" aria-selected={section === k} onClick={() => setSection(k)}
+            className={cn('-mb-px border-b-2 pb-2.5 text-[15px] font-semibold transition', section === k ? 'border-gold-400 text-navy-900' : 'border-transparent text-ivory-700 hover:text-navy-900')}>{l}</button>
+        ))}
+      </div>
+
+      {section === 'history' ? (
+        <div className="mt-6 flex flex-1 flex-col"><RunHistory workflows={(rows ?? []).map((r) => ({ id: r.id, name: r.name }))} /></div>
+      ) : (<>
       <div className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-navy-100 bg-navy-100 lg:grid-cols-4">
         <Metric label="Published" value={rows ? counts.active : null} tone="green" />
         <Metric label="Drafts" value={rows ? counts.draft : null} tone="slate" />
@@ -176,6 +189,7 @@ export function WorkflowsHome() {
           </ul>
         )}
       </div>
+      </>)}
 
       {modal === 'recipes' && (
         <Modal open onClose={() => setModal(null)} title="Recipes" description="Ready-made workflows for SYNAPSE. Everything stays editable before you publish." size="lg">
