@@ -17,6 +17,8 @@ export interface Channel {
   description: string | null;
   is_private: boolean;
   department_id: string | null;
+  /** The department's own channel: its people join and leave with the department. */
+  is_department?: boolean;
   dm_key: string | null;
   created_by: string | null;
   created_at: string;
