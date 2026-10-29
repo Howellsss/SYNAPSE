@@ -17,6 +17,7 @@ import { DepartmentsSettings } from '@/components/team/DepartmentsSettings';
 import { AuditLogSettings } from '@/components/team/AuditLogSettings';
 import { WebhooksSettings } from '@/components/integrations/WebhooksSettings';
 import { ApiSettings } from '@/components/integrations/ApiSettings';
+import { ApiKeysCard } from '@/components/integrations/ApiKeysCard';
 
 const SETTINGS_SECTIONS = [
   { id: 'profile', label: 'Profile', icon: User },
@@ -170,7 +171,7 @@ export function SettingsPage() {
         {section === 'branding' && <BrandingSettings />}
         {section === 'security' && <SecuritySettings />}
         {section === 'audit' && <AuditLogSettings />}
-        {section === 'api' && <ApiSettings />}
+        {section === 'api' && <div className="space-y-6"><ApiKeysCard /><ApiSettings /></div>}
         {section === 'webhooks' && <WebhooksSettings />}
         {section === 'billing' && <BillingSettings />}
       </div>
