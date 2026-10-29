@@ -237,9 +237,14 @@ export function ConversationsPage() {
       {add && <button type="button" onClick={add.onClick} aria-label={add.label} title={add.label} className="flex h-6 w-6 items-center justify-center rounded-md hover:bg-white/10 hover:text-white"><Plus className="h-3.5 w-3.5" /></button>}
     </div>
   );
+  const deptColor = new Map(departments.map((d) => [d.id, d.color]));
   const channelRow = (c: Channel) => (
     <button key={c.id} type="button" onClick={() => open(c.id)} aria-current={isActive(c) ? 'page' : undefined} className={rowCls(isActive(c), unread[c.id] > 0)}>
-      <span className="flex w-[18px] justify-center opacity-85">{c.is_private ? <Lock className="h-3.5 w-3.5" aria-label="Private" /> : <Hash className="h-4 w-4" />}</span>
+      <span className="flex w-[18px] justify-center opacity-85">
+        {c.is_department
+          ? <span className="h-2.5 w-2.5 rounded-full ring-2 ring-white/20" style={{ background: (c.department_id && deptColor.get(c.department_id)) || '#E4A93C' }} aria-label="Department channel" />
+          : c.is_private ? <Lock className="h-3.5 w-3.5" aria-label="Private" /> : <Hash className="h-4 w-4" />}
+      </span>
       <span className="min-w-0 flex-1 truncate">{c.name}</span>
       {unread[c.id] > 0 && !isActive(c) && <Count n={unread[c.id]} loud={mentioned.has(c.id)} />}
     </button>
@@ -324,10 +329,16 @@ export function ConversationsPage() {
                   {!folded.has('starred') && named.filter((c) => starred.includes(c.id) && match(c)).map(channelRow)}
                 </>
               )}
+              {named.some((c) => c.is_department && !starred.includes(c.id)) && (
+                <>
+                  {section('departments', 'Departments')}
+                  {!folded.has('departments') && named.filter((c) => c.is_department && !starred.includes(c.id) && match(c)).map(channelRow)}
+                </>
+              )}
               {section('channels', 'Channels', { label: 'New channel', onClick: () => setModal('channel') })}
               {!folded.has('channels') && (
                 <>
-                  {named.filter((c) => !starred.includes(c.id) && match(c)).map(channelRow)}
+                  {named.filter((c) => !c.is_department && !starred.includes(c.id) && match(c)).map(channelRow)}
                   {named.length === 0 && <p className="px-2.5 py-1.5 text-xs text-white/55">No channels yet. Create one for a team or a topic.</p>}
                   <button type="button" onClick={() => setSel({ kind: 'channels' })} aria-current={sel?.kind === 'channels' ? 'page' : undefined} className={rowCls(sel?.kind === 'channels')}>
                     <span className="flex w-[18px] justify-center"><List className="h-4 w-4" /></span><span className="flex-1 text-sm">Browse all channels · {named.length + joinable.length}</span>

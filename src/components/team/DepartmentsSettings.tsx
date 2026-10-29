@@ -72,7 +72,7 @@ export function DepartmentsSettings() {
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-navy-800">Departments</h3>
-            <p className="mt-0.5 text-sm text-ivory-600">Group your people into teams. Admins choose who is in each one.</p>
+            <p className="mt-0.5 text-sm text-ivory-600">Group your people into teams. Admins choose who is in each one. Each department has its own channel in Conversations; people join and leave it as they join and leave the department.</p>
           </div>
           {canManageTeam && (
             <button className="btn-primary btn-sm" onClick={() => setEditing('new')}>
