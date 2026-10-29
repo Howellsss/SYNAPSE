@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  User, Building2, Users, Mail, MessageSquare, Bell, Palette, Shield, Code, Webhook, CreditCard, Upload, Network,
+  User, Building2, Users, Mail, MessageSquare, Bell, Palette, Shield, Code, Webhook, CreditCard, Upload, Network, History,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { useEmailAccounts, connectGmail, disconnectEmailAccount, type EmailAccount } from '@/lib/email-accounts';
 import { TeamMembersSettings } from '@/components/team/TeamMembersSettings';
 import { DepartmentsSettings } from '@/components/team/DepartmentsSettings';
+import { AuditLogSettings } from '@/components/team/AuditLogSettings';
 
 const SETTINGS_SECTIONS = [
   { id: 'profile', label: 'Profile', icon: User },
@@ -25,6 +26,7 @@ const SETTINGS_SECTIONS = [
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'branding', label: 'Branding', icon: Palette },
   { id: 'security', label: 'Security', icon: Shield },
+  { id: 'audit', label: 'Audit log', icon: History },
   { id: 'api', label: 'API', icon: Code },
   { id: 'webhooks', label: 'Webhooks', icon: Webhook },
   { id: 'billing', label: 'Billing', icon: CreditCard },
@@ -165,6 +167,7 @@ export function SettingsPage() {
         {section === 'notifications' && <NotificationSettings />}
         {section === 'branding' && <BrandingSettings />}
         {section === 'security' && <SecuritySettings />}
+        {section === 'audit' && <AuditLogSettings />}
         {section === 'api' && <APISettings />}
         {section === 'webhooks' && <WebhooksSettings />}
         {section === 'billing' && <BillingSettings />}
