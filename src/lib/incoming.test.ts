@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 import { curlExample, incomingUrl, parseTags } from './incoming';
 
 describe('incoming links', () => {
