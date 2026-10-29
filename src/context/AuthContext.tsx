@@ -18,6 +18,8 @@ interface AuthContextValue {
   updatePassword: (newPassword: string) => Promise<{ error: string | null }>;
   role: UserRole | null;
   canManageTeam: boolean;
+  /** Set when an admin has suspended or removed the signed-in person from their account. */
+  accessEnded: 'suspended' | 'removed' | null;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -33,6 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [membership, setMembership] = useState<WorkspaceMember | null>(null);
   const [loading, setLoading] = useState(true);
+  const [accessEnded, setAccessEnded] = useState<'suspended' | 'removed' | null>(null);
 
   async function acceptPendingInvitations(userId: string, email: string) {
     const { data: invites } = await supabase
@@ -220,6 +223,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // Still in the account? Checked on load, every minute and on coming back to the tab, so someone
+  // an admin suspends or removes is shut out straight away (the database already refuses them).
+  const workspaceId = workspace?.id ?? null;
+  const memberStatus = membership?.status ?? null;
+  const userId = user?.id ?? null;
+  useEffect(() => {
+    setAccessEnded(memberStatus === 'suspended' ? 'suspended' : null);
+    if (!userId || !workspaceId) return;
+    let stopped = false;
+    const check = async () => {
+      if (document.visibilityState === 'hidden') return;
+      const { data, error } = await supabase.rpc('my_membership_status', { p_workspace: workspaceId });
+      if (stopped || error) return;
+      setAccessEnded(data === 'suspended' || data === 'removed' ? data : null);
+    };
+    void check();
+    const timer = window.setInterval(check, 60_000);
+    document.addEventListener('visibilitychange', check);
+    return () => { stopped = true; window.clearInterval(timer); document.removeEventListener('visibilitychange', check); };
+  }, [userId, workspaceId, memberStatus]);
+
   const signIn = async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
@@ -259,6 +283,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
     setWorkspace(null);
     setMembership(null);
+    setAccessEnded(null);
   };
 
   const resetPassword = async (email: string) => {
@@ -294,6 +319,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         updatePassword,
         role: membership?.role ?? null,
         canManageTeam: membership?.role === 'owner' || membership?.role === 'admin',
+        accessEnded,
       }}
     >
       {children}

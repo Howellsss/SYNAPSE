@@ -129,6 +129,38 @@ export async function updateMember(memberId: string, changes: { role?: UserRole;
   return { error: error?.message ?? null };
 }
 
+// ---------------------------------------------------------------- suspend and remove
+
+/** What someone has in the account, by kind (see member_work in the database). */
+export type MemberWork = Partial<Record<'contacts' | 'tasks' | 'calendars' | 'bookings' | 'forms' | 'events' | 'meetings' | 'rooms', number>>;
+
+const WORK_LABELS: [keyof MemberWork, string, string][] = [
+  ['contacts', 'contact', 'contacts'], ['tasks', 'open task', 'open tasks'], ['calendars', 'calendar', 'calendars'],
+  ['bookings', 'upcoming booking', 'upcoming bookings'], ['forms', 'form', 'forms'], ['events', 'event', 'events'],
+  ['meetings', 'meeting', 'meetings'], ['rooms', 'room', 'rooms'],
+];
+
+/** "12 contacts, 3 open tasks and 1 calendar"; empty when there is nothing. */
+export function describeWork(work: MemberWork | null | undefined): string {
+  const parts = WORK_LABELS.flatMap(([k, one, many]) => {
+    const n = work?.[k] ?? 0;
+    return n > 0 ? [`${n} ${n === 1 ? one : many}`] : [];
+  });
+  if (parts.length <= 1) return parts.join('');
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+}
+
+export async function loadMemberWork(memberId: string): Promise<{ data: MemberWork | null; error: string | null }> {
+  const { data, error } = await supabase.rpc('member_work', { p_member: memberId });
+  return { data: (data as MemberWork | null) ?? null, error: error?.message ?? null };
+}
+
+/** Suspend or remove someone; their work goes to `handTo` (required to remove). Returns what moved. */
+export async function offboardMember(memberId: string, action: 'suspend' | 'remove', handTo: string | null) {
+  const { data, error } = await supabase.rpc('offboard_member', { p_member: memberId, p_action: action, p_hand_to: handTo });
+  return { moved: (data as MemberWork | null) ?? null, error: error?.message ?? null };
+}
+
 // ---------------------------------------------------------------- bulk invite
 
 export interface InviteRow {

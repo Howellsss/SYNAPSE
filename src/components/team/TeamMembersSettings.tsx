@@ -7,15 +7,15 @@ import { useToast } from '@/context/ToastContext';
 import { supabase } from '@/lib/supabase';
 import { Avatar } from '@/components/ui/Avatar';
 import { Modal } from '@/components/ui/Modal';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState, LoadingSpinner } from '@/components/ui/States';
 import type { UserRole } from '@/types';
 import { invitationLink } from '@/lib/invitations';
 import { DEFAULT_USER_ACCESS, FEATURES, forgetAccess } from '@/lib/access';
 import {
   ASSIGNABLE_ROLES, ROLE_HINTS, ROLE_LABELS, invitationLinksCsv, loadDepartments, loadDirectory, matchDepartment,
-  memberName, parseInvites, saveDepartment, sendInviteRows, setMemberDepartments, updateMember,
-  type Department, type DirectoryMember, type InviteRow,
+  describeWork, loadMemberWork, memberName, offboardMember, parseInvites, saveDepartment, sendInviteRows,
+  setMemberDepartments, updateMember,
+  type Department, type DirectoryMember, type InviteRow, type MemberWork,
 } from '@/lib/team';
 
 interface InvitationRow {
@@ -48,7 +48,7 @@ export function TeamMembersSettings() {
   const [shown, setShown] = useState(PAGE);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [editMember, setEditMember] = useState<DirectoryMember | null>(null);
-  const [removeTarget, setRemoveTarget] = useState<DirectoryMember | null>(null);
+  const [offboard, setOffboard] = useState<{ member: DirectoryMember; action: 'suspend' | 'remove' } | null>(null);
   const [actionMenu, setActionMenu] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
@@ -91,19 +91,11 @@ export function TeamMembersSettings() {
   useEffect(() => { setShown(PAGE); }, [query, roleFilter, deptFilter, statusFilter]);
 
   const handleSuspend = async (m: DirectoryMember) => {
-    const { error } = await updateMember(m.member_id, { status: m.status === 'suspended' ? 'active' : 'suspended' });
-    if (error) { toast(error, 'error'); return; }
-    toast(m.status === 'suspended' ? `${memberName(m)} can sign in again` : `${memberName(m)} is suspended`);
     setActionMenu(null);
-    loadData();
-  };
-
-  const handleRemove = async () => {
-    if (!removeTarget) return;
-    const { error } = await supabase.from('workspace_members').delete().eq('id', removeTarget.member_id);
-    if (error) { toast(error.message, 'error'); return; }
-    toast(`${memberName(removeTarget)} removed`);
-    setRemoveTarget(null);
+    if (m.status !== 'suspended') { setOffboard({ member: m, action: 'suspend' }); return; }
+    const { error } = await updateMember(m.member_id, { status: 'active' });
+    if (error) { toast(error, 'error'); return; }
+    toast(`${memberName(m)} can sign in again`);
     loadData();
   };
 
@@ -236,7 +228,7 @@ export function TeamMembersSettings() {
                         <button onClick={() => handleSuspend(m)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-navy-600 transition-colors hover:bg-ivory-50">
                           <Ban className="h-3.5 w-3.5" /> {m.status === 'suspended' ? 'Reactivate' : 'Suspend'}
                         </button>
-                        <button onClick={() => { setRemoveTarget(m); setActionMenu(null); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-burgundy-600 transition-colors hover:bg-burgundy-400/10">
+                        <button onClick={() => { setOffboard({ member: m, action: 'remove' }); setActionMenu(null); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-burgundy-600 transition-colors hover:bg-burgundy-400/10">
                           <Trash2 className="h-3.5 w-3.5" /> Remove
                         </button>
                       </div>
@@ -333,16 +325,105 @@ export function TeamMembersSettings() {
         />
       )}
 
-      <ConfirmDialog
-        open={!!removeTarget}
-        onClose={() => setRemoveTarget(null)}
-        onConfirm={handleRemove}
-        title="Remove team member"
-        message={`Remove ${removeTarget ? memberName(removeTarget) : 'this member'} from the workspace? They lose access immediately. Suspending keeps their history and lets you bring them back.`}
-        confirmLabel="Remove"
-        danger
-      />
+      {offboard && (
+        <OffboardModal
+          member={offboard.member}
+          action={offboard.action}
+          people={members.filter((p) => p.status === 'active' && p.user_id !== offboard.member.user_id)}
+          meId={user?.id ?? null}
+          onClose={() => setOffboard(null)}
+          onDone={() => { setOffboard(null); loadData(); }}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * Suspend or remove someone, handing their contacts, tasks, calendars, bookings, forms, events,
+ * meetings and rooms to another active person. Removing needs someone to take over; suspending
+ * can leave everything with them (for a short absence).
+ */
+function OffboardModal({ member, action, people, meId, onClose, onDone }: {
+  member: DirectoryMember;
+  action: 'suspend' | 'remove';
+  people: DirectoryMember[];
+  meId: string | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { toast } = useToast();
+  const [work, setWork] = useState<MemberWork | null>(null);
+  const [workError, setWorkError] = useState<string | null>(null);
+  const [handTo, setHandTo] = useState(action === 'remove' ? (meId ?? '') : '');
+  const [saving, setSaving] = useState(false);
+  const name = memberName(member);
+  const removing = action === 'remove';
+
+  useEffect(() => {
+    loadMemberWork(member.member_id).then(({ data, error }) => { setWork(data); setWorkError(error); });
+  }, [member.member_id]);
+
+  const has = describeWork(work);
+  const confirm = async () => {
+    if (removing && !handTo) { toast('Choose who takes over their work', 'error'); return; }
+    setSaving(true);
+    const { moved, error } = await offboardMember(member.member_id, action, handTo || null);
+    setSaving(false);
+    if (error) { toast(error, 'error'); return; }
+    const to = people.find((p) => p.user_id === handTo);
+    const movedText = describeWork(moved);
+    toast(`${name} ${removing ? 'removed' : 'suspended'}${to && movedText ? `. ${movedText} moved to ${memberName(to)}` : ''}`);
+    onDone();
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`${removing ? 'Remove' : 'Suspend'} ${name}`}
+      description={removing
+        ? 'They leave the account and are signed out straight away. You can invite them again later.'
+        : 'They are signed out and can’t get back in until you reactivate them. Their place in the team is kept.'}
+      footer={
+        <>
+          <button onClick={onClose} className="btn-secondary">Cancel</button>
+          <button onClick={confirm} disabled={saving || (removing && !handTo)} className={removing ? 'btn-danger' : 'btn-primary'}>
+            {saving ? (removing ? 'Removing…' : 'Suspending…') : (removing ? 'Remove' : 'Suspend')}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="rounded-xl bg-navy-50 px-4 py-3 text-sm text-navy-700">
+          {workError
+            ? <>Couldn’t check what {name} has. {workError}</>
+            : work === null
+              ? <>Checking what {name} has…</>
+              : has
+                ? <>{name} has {has}.</>
+                : <>{name} has no contacts, tasks, calendars, bookings, forms, events, meetings or rooms to hand over.</>}
+        </div>
+        <div>
+          <label htmlFor="offboard-hand-to" className="mb-1.5 block text-sm font-medium text-navy-700">
+            Who takes over their work?
+          </label>
+          <select id="offboard-hand-to" className="input-field" value={handTo} onChange={(e) => setHandTo(e.target.value)}>
+            {!removing && <option value="">Nobody, keep it with {name}</option>}
+            {removing && !handTo && <option value="">Choose a person</option>}
+            {people.map((p) => (
+              <option key={p.user_id} value={p.user_id}>
+                {memberName(p)}{p.user_id === meId ? ' (You)' : ''} · {ROLE_LABELS[p.role]}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-ivory-600">
+            Upcoming bookings and meetings move to them; past ones stay as they were.
+            {removing ? ' They also leave every channel, department, room and space.' : ''}
+          </p>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 
-import { invitationLinksCsv, matchDepartment, memberName, parseInvites, splitCsvLine } from './team';
+import { describeWork, invitationLinksCsv, matchDepartment, memberName, parseInvites, splitCsvLine } from './team';
 
 const defaults = { role: 'member' as const, department: '' };
 
@@ -75,5 +75,16 @@ describe('memberName and invitationLinksCsv', () => {
   it('quotes values that need it', () => {
     expect(invitationLinksCsv([{ email: 'a@x.com', role: 'member', link: 'https://s/a?x=1,2' }]))
       .toBe('email,role,invite link\na@x.com,member,"https://s/a?x=1,2"');
+  });
+});
+
+describe('describeWork', () => {
+  it('lists what someone has, in plain words', () => {
+    expect(describeWork({ contacts: 12, tasks: 1, calendars: 0, bookings: 3 })).toBe('12 contacts, 1 open task and 3 upcoming bookings');
+    expect(describeWork({ rooms: 1 })).toBe('1 room');
+  });
+  it('is empty when there is nothing', () => {
+    expect(describeWork({ contacts: 0 })).toBe('');
+    expect(describeWork(null)).toBe('');
   });
 });
