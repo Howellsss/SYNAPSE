@@ -138,14 +138,15 @@ export function MultiPick({ label, value, onChange, options, empty, hint }: { la
   );
 }
 
-const MERGE_FIELDS = ['{{contact.first_name}}', '{{contact.last_name}}', '{{contact.name}}', '{{contact.email}}', '{{contact.phone}}', '{{contact.company}}'];
+const MERGE_FIELDS = ['{{contact.first_name}}', '{{contact.last_name}}', '{{contact.name}}', '{{contact.email}}', '{{contact.phone}}', '{{contact.company}}', '{{contact.link}}',
+  '{{meeting.link}}', '{{form.name}}', '{{form.answers}}'];
 
 /** Click to insert a merge field at the end of a text. */
 export function MergeFields({ onPick }: { onPick: (f: string) => void }) {
   return (
     <div className="flex flex-wrap gap-1.5">
       {MERGE_FIELDS.map((f) => (
-        <button key={f} type="button" onClick={() => onPick(f)} className="rounded-md bg-navy-50 px-2 py-1 font-mono text-[11px] text-navy-700 hover:bg-navy-100">{f.replace('{{contact.', '').replace('}}', '')}</button>
+        <button key={f} type="button" onClick={() => onPick(f)} title={f} className="rounded-md bg-navy-50 px-2 py-1 font-mono text-[11px] text-navy-700 hover:bg-navy-100">{f.replace('{{contact.', '').replace('{{', '').replace('}}', '')}</button>
       ))}
     </div>
   );

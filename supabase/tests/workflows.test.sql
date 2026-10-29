@@ -352,6 +352,74 @@ DO $$ DECLARE a uuid; b uuid; c uuid; BEGIN
   PERFORM t.check((SELECT status FROM wf_runs WHERE workflow_id = b AND contact_id = c) = 'removed', 'remove from workflow takes them out of the other one');
 EXCEPTION WHEN OTHERS THEN PERFORM t.crashed('Actions: add to / remove from a workflow, end', SQLERRM); END $$;
 
+DO $$ DECLARE w uuid; c uuid; ch uuid; m record; BEGIN
+  PERFORM t.case('Action: post to a channel'); PERFORM t.reset();
+  INSERT INTO chat_channels(workspace_id, kind, name, created_by) VALUES (t.ws(), 'channel', 'leads', t.owner()) RETURNING id INTO ch;
+  w := t.flow('Post', '[{"id": "tr1", "type": "contact_tag", "filters": {"tags": ["post"]}}]', jsonb_build_object(
+    's1', jsonb_build_object('type', 'post_to_channel', 'next', 's2', 'config', jsonb_build_object('channel_id', ch, 'text', 'New lead: {{contact.name}} {{contact.link}}')),
+    's2', '{"type": "post_to_channel", "config": {"channel_id": ""}}'::jsonb));
+  c := t.contact('Xia'); PERFORM t.tick();
+  PERFORM t.tag(c, 'post'); PERFORM t.tick();
+  SELECT * INTO m FROM chat_messages WHERE channel_id = ch ORDER BY created_at DESC LIMIT 1;
+  PERFORM t.check(m.body = 'New lead: Xia https://synapse-dj3a.vercel.app/contacts/' || c, 'posts the message, with the name and a link to the contact');
+  PERFORM t.check(m.source = 'system' AND m.sender_name = 'Workflow: Post' AND m.user_id IS NULL, 'it comes from the workflow, not a person');
+  PERFORM t.check((t.log(w, 's2')).status = 'failed' AND (t.log(w, 's2')).detail LIKE '%Choose a channel%', 'no channel chosen: fails with a reason');
+  UPDATE chat_channels SET archived_at = now() WHERE id = ch;
+  DELETE FROM contact_tags ct USING tags tg WHERE ct.contact_id = c AND tg.id = ct.tag_id AND tg.name = 'post';
+  UPDATE workflows SET settings = '{"allow_reentry": true}' WHERE id = w;
+  PERFORM t.tag(c, 'post'); PERFORM t.tick();
+  PERFORM t.check((t.log(w, 's1')).detail LIKE '%archived%', 'an archived channel: fails with a reason');
+EXCEPTION WHEN OTHERS THEN PERFORM t.crashed('Action: post to a channel', SQLERRM); END $$;
+
+DO $$ DECLARE w uuid; c uuid; ch uuid; mt record; ctx jsonb; BEGIN
+  PERFORM t.case('Action: create a meeting link'); PERFORM t.reset();
+  INSERT INTO chat_channels(workspace_id, kind, name, created_by) VALUES (t.ws(), 'channel', 'video-calls', t.owner()) RETURNING id INTO ch;
+  w := t.flow('Video call', '[{"id": "tr1", "type": "contact_tag", "filters": {"tags": ["video"]}}]', jsonb_build_object(
+    's1', '{"type": "create_meeting", "next": "s2", "config": {"title": "Video call with {{contact.first_name}}", "duration_min": 45}}'::jsonb,
+    's2', jsonb_build_object('type', 'post_to_channel', 'next', 's3', 'config', jsonb_build_object('channel_id', ch, 'text', '{{contact.name}} wants a video call: {{meeting.link}}')),
+    's3', jsonb_build_object('type', 'send_email', 'config', jsonb_build_object('account_id', t.mailbox(), 'subject', 'Your call', 'body', 'Join here: {{meeting.link}}'))));
+  c := t.contact('Yara'); PERFORM t.tick();
+  PERFORM t.tag(c, 'video'); PERFORM t.tick();
+  SELECT context INTO ctx FROM wf_runs WHERE workflow_id = w AND contact_id = c;
+  SELECT * INTO mt FROM meetings WHERE id = (ctx->>'meeting_id')::uuid;
+  PERFORM t.check(mt.title = 'Video call with Yara' AND mt.duration_min = 45 AND mt.host_id = t.owner() AND mt.code ~ '^[A-Z]{4}-[0-9]{3}$',
+    'a real meeting is made, hosted by the contact''s owner');
+  PERFORM t.check(ctx->>'meeting_link' = 'https://synapse-dj3a.vercel.app/meetings/' || mt.code || '?invite=' || mt.invite_token, 'its link lets anyone join (invite link)');
+  PERFORM t.check(EXISTS (SELECT 1 FROM chat_messages WHERE channel_id = ch AND body = 'Yara wants a video call: ' || (ctx->>'meeting_link')), 'a later channel post uses {{meeting.link}}');
+  PERFORM t.check(EXISTS (SELECT 1 FROM messages WHERE contact_id = c AND body = 'Join here: ' || (ctx->>'meeting_link')), 'a later email uses {{meeting.link}}');
+EXCEPTION WHEN OTHERS THEN PERFORM t.crashed('Action: create a meeting link', SQLERRM); END $$;
+
+DO $$ DECLARE w uuid; c uuid; d uuid; e uuid; n int; BEGIN
+  PERFORM t.case('Action: notify a department'); PERFORM t.reset();
+  INSERT INTO departments(workspace_id, name) VALUES (t.ws(), 'Sales Team') RETURNING id INTO d;
+  INSERT INTO department_members(department_id, workspace_id, user_id) VALUES (d, t.ws(), t.member());
+  INSERT INTO departments(workspace_id, name) VALUES (t.ws(), 'Empty Team') RETURNING id INTO e;
+  w := t.flow('Tell sales', '[{"id": "tr1", "type": "contact_tag", "filters": {"tags": ["call-request"]}}]', jsonb_build_object(
+    's1', jsonb_build_object('type', 'notify_department', 'next', 's2', 'config', jsonb_build_object('department_id', d, 'title', '{{contact.name}} asked for a call', 'body', '{{contact.phone}}')),
+    's2', jsonb_build_object('type', 'notify_department', 'config', jsonb_build_object('department_id', e, 'post', false, 'title', 'x'))));
+  c := t.contact('Zed'); PERFORM t.tick();
+  PERFORM t.tag(c, 'call-request'); PERFORM t.tick();
+  SELECT count(*) INTO n FROM team_notifications WHERE title = 'Zed asked for a call';
+  PERFORM t.check(n = 1 AND EXISTS (SELECT 1 FROM team_notifications WHERE title = 'Zed asked for a call' AND user_id = t.member()), 'everyone in the department gets a notification (and nobody else)');
+  PERFORM t.check(EXISTS (SELECT 1 FROM chat_messages cm JOIN chat_channels cc ON cc.id = cm.channel_id WHERE cc.department_id = d AND cc.is_department AND cm.body LIKE 'Zed asked for a call%'),
+    'it is posted in the department''s channel');
+  PERFORM t.check((t.log(w, 's1')).detail = 'Notified 1 person in Sales Team and posted in #sales-team', 'the log says who was told and where');
+  PERFORM t.check((t.log(w, 's2')).status = 'skipped', 'a department with nobody in it is skipped, with a reason');
+EXCEPTION WHEN OTHERS THEN PERFORM t.crashed('Action: notify a department', SQLERRM); END $$;
+
+DO $$ DECLARE w uuid; c uuid; f uuid; sub uuid; m text; BEGIN
+  PERFORM t.case('Merge fields: the form''s answers'); PERFORM t.reset();
+  INSERT INTO forms(workspace_id, name, type, status, definition) VALUES (t.ws(), 'Call me back', 'form', 'published',
+    to_jsonb('{"elements": {"e1": {"sortOrder": 0, "field": {"fieldId": "f1", "label": "Best time"}}, "e2": {"sortOrder": 1, "field": {"fieldId": "f2", "label": "Topic"}}}}'::text))
+    RETURNING id INTO f;
+  w := t.flow('Form filled', jsonb_build_array(jsonb_build_object('id', 'tr1', 'type', 'form_submitted', 'filters', jsonb_build_object('forms', jsonb_build_array(f)))),
+    '{"s1": {"type": "add_note", "config": {"text": "{{form.name}}\n{{form.answers}}"}}}');
+  c := t.contact('Ada'); PERFORM t.tick();
+  INSERT INTO form_submissions(workspace_id, form_id, contact_id, answers) VALUES (t.ws(), f, c, '{"f2": "Pricing", "f1": "Mornings"}'); PERFORM t.tick();
+  SELECT content INTO m FROM notes WHERE contact_id = c ORDER BY created_at DESC LIMIT 1;
+  PERFORM t.check(m = E'Call me back\nBest time: Mornings\nTopic: Pricing', '{{form.answers}} lists each answer with its question, in the form''s order');
+EXCEPTION WHEN OTHERS THEN PERFORM t.crashed('Merge fields: the form''s answers', SQLERRM); END $$;
+
 -- ============================================================================ the engine's rules
 
 DO $$ DECLARE w uuid; c uuid; r uuid; BEGIN

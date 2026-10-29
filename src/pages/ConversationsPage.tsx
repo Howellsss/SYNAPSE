@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import {
   ArrowLeft, AtSign, Bell, Bold, Check, ChevronDown, ChevronRight, LogOut, UserRound, Settings, Moon, MoreVertical, PanelRight, Send, Code, Copy, ExternalLink, FileText, Hash, House, Italic, Link2, List, ListOrdered, Lock, Mail,
   MessageCircle, MessageSquare, CornerUpLeft, Pencil, Plus, Plug, Quote, Search, Smile, SquareCode, SquarePen, Star, Strikethrough,
-  Trash2, UserPlus, X,
+  Trash2, UserPlus, X, Zap,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { HowellsLogo } from '@/components/layout/Sidebar';
@@ -208,7 +208,7 @@ export function ConversationsPage() {
   const where = (c: Channel | undefined) => (c ? (c.kind === 'dm' ? title(c) : `# ${c.name}`) : 'a conversation');
   const sender = (m: ChatMessage) => {
     const p = m.user_id ? byId.get(m.user_id) : undefined;
-    return m.source === 'webhook' ? m.sender_name ?? 'App' : p ? memberName(p) : 'Someone';
+    return m.source !== 'user' ? m.sender_name ?? 'App' : p ? memberName(p) : 'Someone';
   };
   const dmOther = (c: Channel) => dmPeople(c, me).map((id) => byId.get(id)).find((p): p is DirectoryMember => !!p);
   const face = (p: DirectoryMember | undefined, size: string) => p
@@ -539,7 +539,7 @@ function ChannelsDirectory({ mine, joinable, unread, latest, starred, byId, onOp
     const m = latest.get(c.id);
     if (!m) return 'No messages yet';
     const p = m.user_id ? byId.get(m.user_id) : undefined;
-    const who = m.source === 'webhook' ? m.sender_name ?? 'App' : p ? p.first_name ?? memberName(p) : 'Someone';
+    const who = m.source !== 'user' ? m.sender_name ?? 'App' : p ? p.first_name ?? memberName(p) : 'Someone';
     return `${who}: ${m.body.split('\n')[0]}`;
   };
   return (
@@ -746,7 +746,7 @@ function ThreadsView({ items, byId, byChannel, where, onOpen, onBack }: {
           <ul className="mx-auto flex max-w-3xl flex-col gap-2.5">
             {items.map((m) => {
               const p = m.user_id ? byId.get(m.user_id) : undefined;
-              const name = m.source === 'webhook' ? m.sender_name ?? 'App' : p ? memberName(p) : 'Someone';
+              const name = m.source !== 'user' ? m.sender_name ?? 'App' : p ? memberName(p) : 'Someone';
               return (
                 <li key={m.id}>
                   <button type="button" onClick={() => onOpen(m)} className="flex w-full gap-3 rounded-2xl bg-white p-4 text-left shadow-[0_1px_3px_rgba(9,21,48,0.06),0_0_0_1px_#E8EBF0] transition hover:shadow-[0_6px_20px_rgba(9,21,48,0.1),0_0_0_1px_#E4A93C]">
@@ -996,7 +996,7 @@ function ChannelView({ channel, title, me, people, byId, starred, onStar, initia
               <ul className="space-y-3">
                 {threads.map((m) => {
                   const p = m.user_id ? byId.get(m.user_id) : undefined;
-                  const name = m.source === 'webhook' ? m.sender_name ?? 'App' : p ? memberName(p) : 'Someone';
+                  const name = m.source !== 'user' ? m.sender_name ?? 'App' : p ? memberName(p) : 'Someone';
                   return (
                     <li key={m.id}>
                       <button type="button" onClick={() => setThread(m)} className={cn('flex w-full flex-col gap-1.5 rounded-2xl border bg-white p-4 text-left transition hover:border-gold-400', thread?.id === m.id ? 'border-2 border-gold-400' : 'border-ivory-300')}>
@@ -1149,8 +1149,10 @@ function DayDivider({ iso }: { iso: string }) {
 
 function SenderAvatar({ m, byId }: { m: ChatMessage; byId: Map<string, DirectoryMember> }) {
   const p = m.user_id ? byId.get(m.user_id) : undefined;
-  if (m.source === 'webhook') {
-    return <span className="flex h-[38px] w-[38px] items-center justify-center rounded-[11px] bg-gradient-to-br from-[#24375E] to-[#13254A] text-gold-400"><Plug className="h-[18px] w-[18px]" /></span>;
+  if (m.source !== 'user') {
+    // Apps (webhooks) and workflows post without a person behind them.
+    const Icon = m.source === 'system' ? Zap : Plug;
+    return <span className="flex h-[38px] w-[38px] items-center justify-center rounded-[11px] bg-gradient-to-br from-[#24375E] to-[#13254A] text-gold-400"><Icon className="h-[18px] w-[18px]" /></span>;
   }
   return <Avatar firstName={p?.first_name ?? null} lastName={p?.last_name ?? null} src={p?.avatar_url ?? null} size="sm" className="!h-[38px] !w-[38px] !rounded-[11px]" />;
 }
@@ -1167,7 +1169,7 @@ function MessageItem({ message: m, first, me, byId, canModerate, onThread, inThr
   const [draft, setDraft] = useState(m.body);
   const [menu, setMenu] = useState(false);
   const p = m.user_id ? byId.get(m.user_id) : undefined;
-  const name = m.source === 'webhook' ? m.sender_name ?? 'Integration' : p ? memberName(p) : 'Former member';
+  const name = m.source !== 'user' ? m.sender_name ?? 'Integration' : p ? memberName(p) : 'Former member';
   const mine = m.user_id === me && m.source === 'user';
   const deleted = !!m.deleted_at;
 
@@ -1194,6 +1196,7 @@ function MessageItem({ message: m, first, me, byId, canModerate, onThread, inThr
             <span className="text-[15px] font-bold text-navy-900">{name}</span>
             {m.source === 'user' && <StatusMark userId={m.user_id} />}
             {m.source === 'webhook' && <span className="rounded bg-[#ECEEF2] px-[5px] py-px text-[10px] font-bold uppercase text-[#5A6476]">App{typeof m.meta?.via === 'string' && m.meta.via !== name ? ` · ${m.meta.via}` : ''}</span>}
+            {m.source === 'system' && <span className="rounded bg-gold-50 px-[5px] py-px text-[10px] font-bold uppercase text-gold-800">Automation</span>}
             {p?.title && m.source === 'user' && <span className="text-xs text-[#8A93A5]">{p.title}</span>}
             <time className="text-xs text-[#8A93A5]" dateTime={m.created_at}>{time(m.created_at)}</time>
           </p>
@@ -1394,7 +1397,7 @@ function ThreadPanel({ parent, channel, title, me, people, byId, member, canMode
   };
 
   const p = parent.user_id ? byId.get(parent.user_id) : undefined;
-  const who = parent.source === 'webhook' ? parent.sender_name ?? 'the app' : parent.user_id === me ? 'your' : `${p ? p.first_name ?? memberName(p) : 'their'}’s`;
+  const who = parent.source !== 'user' ? parent.sender_name ?? 'the app' : parent.user_id === me ? 'your' : `${p ? p.first_name ?? memberName(p) : 'their'}’s`;
   const heading = who === 'your' ? 'Replies to your message' : `Replies to ${who} message`;
   return (
     <aside className="fixed inset-0 z-40 flex flex-col bg-white sm:static sm:z-auto sm:w-[400px] sm:shrink-0 sm:border-l sm:border-[#E8EBF0]" aria-label={heading}>

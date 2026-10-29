@@ -30,7 +30,7 @@ type SheetState =
   | { kind: 'edit' }
   | { kind: 'errors' } | { kind: 'notes' } | { kind: 'switcher' } | { kind: 'versions' } | { kind: 'test' };
 
-const EMPTY_OPTIONS: Options = { tags: [], accounts: [], people: [], workflowList: [], users: {}, forms: {}, calendars: {}, events: {}, workflows: {} };
+const EMPTY_OPTIONS: Options = { tags: [], accounts: [], people: [], workflowList: [], channelList: [], departmentList: [], users: {}, forms: {}, calendars: {}, events: {}, workflows: {}, channels: {}, departments: {} };
 
 /** A new workflow handed over from the Workflows page (recipe, description or import). */
 export interface Preset { name: string; notes?: string; triggers: Trigger[]; steps: Step[]; settings?: Editable['settings'] }

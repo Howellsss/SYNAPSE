@@ -16,7 +16,7 @@ export type TriggerType =
 export type StepType =
   | 'add_tag' | 'remove_tag' | 'update_field' | 'assign_user' | 'remove_assigned_user' | 'set_dnd'
   | 'add_note' | 'add_task'
-  | 'send_email' | 'notify'
+  | 'send_email' | 'notify' | 'post_to_channel' | 'notify_department' | 'create_meeting'
   | 'wait' | 'if_else' | 'add_to_workflow' | 'remove_from_workflow' | 'end'
   | 'webhook';
 
@@ -223,6 +223,9 @@ export function checkStep(s: Step): string | null {
     case 'add_task': return str(c.title) ? null : 'Give the task a title.';
     case 'send_email': return !str(c.subject) ? 'Add a subject.' : !str(c.body) ? 'Write the email.' : null;
     case 'notify': return !str(c.title) ? 'Add a title for the notification.' : c.to === 'users' && !list(c.users).length ? 'Choose who to notify.' : null;
+    case 'post_to_channel': return !str(c.channel_id) ? 'Choose a channel.' : !str(c.text) ? 'Write the message.' : null;
+    case 'notify_department': return !str(c.department_id) ? 'Choose a department.' : !str(c.title) ? 'Add a title for the notification.' : null;
+    case 'create_meeting': return null;
     case 'wait': return Number(c.amount) >= 1 ? null : 'Wait at least 1.';
     case 'if_else': return Array.isArray(c.conditions) && c.conditions.length ? null : 'Add at least one condition.';
     case 'add_to_workflow': return str(c.workflow_id) ? null : 'Choose a workflow.';
