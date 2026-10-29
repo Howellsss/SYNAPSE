@@ -31,6 +31,8 @@ CREATE OR REPLACE FUNCTION cron.unschedule(a text) RETURNS boolean LANGUAGE sql 
 CREATE OR REPLACE FUNCTION cron.unschedule(a bigint) RETURNS boolean LANGUAGE sql AS $$ SELECT true $$;
 
 CREATE TABLE IF NOT EXISTS net.requests (id bigserial PRIMARY KEY, url text, body jsonb, headers jsonb, at timestamptz DEFAULT now());
+-- Where pg_net puts each answer; tests fill it in to play the receiving server.
+CREATE TABLE IF NOT EXISTS net._http_response (id bigint PRIMARY KEY, status_code int, content_type text, headers jsonb, content text, timed_out boolean, error_msg text, created timestamptz DEFAULT now());
 CREATE OR REPLACE FUNCTION net.http_post(url text, body jsonb DEFAULT '{}', params jsonb DEFAULT '{}', headers jsonb DEFAULT '{}', timeout_milliseconds int DEFAULT 1000)
 RETURNS bigint LANGUAGE sql AS $$ INSERT INTO net.requests(url, body, headers) VALUES (url, body, headers) RETURNING id $$;
 
