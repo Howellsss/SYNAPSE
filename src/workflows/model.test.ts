@@ -50,11 +50,25 @@ describe('workflow model', () => {
   });
 
   it('every recipe is complete apart from the sender account', () => {
+    // The alerts leave the department / channel for you to pick; with those picked, nothing is missing.
+    const pick = (steps: Step[]): Step[] => steps.map((x) => ({ ...x, config: { ...x.config, ...('department_id' in x.config ? { department_id: 'dep' } : {}), ...('channel_id' in x.config ? { channel_id: 'ch' } : {}) } }));
     for (const r of RECIPES) {
       const b = r.build();
-      const left = issues(b.triggers, b.steps, settingsFrom({ sender: { account_id: 'acc' } }));
+      const left = issues(b.triggers, pick(b.steps), settingsFrom({ sender: { account_id: 'acc' } }));
       expect(left, r.key).toEqual([]);
     }
+  });
+
+  it('has the three ready-made alerts, built on the new actions', () => {
+    const steps = (key: string) => RECIPES.find((r) => r.key === key)!.build().steps;
+    expect(steps('call_request').map((x) => x.type)).toEqual(['notify_department', 'add_task']);
+    const video = steps('video_call');
+    expect(video.map((x) => x.type)).toEqual(['create_meeting', 'notify_department', 'send_email']);
+    expect(String(video[1].config.body)).toContain('{{meeting.link}}');
+    expect(String(video[2].config.body)).toContain('{{meeting.link}}');
+    const form = steps('form_filled');
+    expect(form.map((x) => x.type)).toEqual(['post_to_channel']);
+    expect(String(form[0].config.text)).toContain('{{form.answers}}');
   });
 
   it('turns older workflows into triggers and steps', () => {
