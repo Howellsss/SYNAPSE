@@ -108,13 +108,15 @@ export async function deleteWorkflow(id: string): Promise<string | null> {
 
 export interface Options extends Lookups {
   tags: string[];
+  channelList: { id: string; name: string; department: boolean }[];
+  departmentList: { id: string; name: string }[];
   accounts: { id: string; email: string; display_name: string | null }[];
   people: { id: string; name: string }[];
   workflowList: { id: string; name: string }[];
 }
 
 export async function loadOptions(workspaceId: string, meId: string | null): Promise<Options> {
-  const [tags, members, forms, calendars, events, workflows, accounts] = await Promise.all([
+  const [tags, members, forms, calendars, events, workflows, accounts, channels, departments] = await Promise.all([
     supabase.from('tags').select('name').eq('workspace_id', workspaceId).order('name'),
     supabase.from('workspace_members').select('user_id').eq('workspace_id', workspaceId),
     supabase.from('forms').select('id, name').eq('workspace_id', workspaceId).order('name'),
@@ -122,7 +124,11 @@ export async function loadOptions(workspaceId: string, meId: string | null): Pro
     supabase.from('events').select('id, title').eq('workspace_id', workspaceId).order('starts_at', { ascending: false }).limit(200),
     supabase.from('workflows').select('id, name').eq('workspace_id', workspaceId).order('name'),
     supabase.from('email_accounts').select('id, email, display_name, status').eq('workspace_id', workspaceId),
+    supabase.from('chat_channels').select('id, name, is_department').eq('workspace_id', workspaceId).eq('kind', 'channel').is('archived_at', null).order('name'),
+    supabase.from('departments').select('id, name').eq('workspace_id', workspaceId).order('name'),
   ]);
+  const channelRows = ((channels.data ?? []) as { id: string; name: string; is_department?: boolean }[]);
+  const departmentRows = ((departments.data ?? []) as { id: string; name: string }[]);
   const ids = ((members.data ?? []) as { user_id: string }[]).map((m) => m.user_id);
   const { data: profiles } = ids.length ? await supabase.from('profiles').select('user_id, first_name, last_name').in('user_id', ids) : { data: [] };
   const people = ids.map((id) => {
@@ -141,6 +147,10 @@ export async function loadOptions(workspaceId: string, meId: string | null): Pro
     events: map((events.data ?? []) as { id: string; title: string }[], (r) => [r.id, r.title]),
     workflows: map(wfRows, (r) => [r.id, r.name]),
     workflowList: wfRows,
+    channels: map(channelRows, (r) => [r.id, r.name]),
+    channelList: channelRows.map((r) => ({ id: r.id, name: r.name, department: !!r.is_department })),
+    departments: map(departmentRows, (r) => [r.id, r.name]),
+    departmentList: departmentRows,
     accounts: ((accounts.data ?? []) as { id: string; email: string; display_name: string | null; status: string }[]).filter((a) => a.status !== 'revoked'),
   };
 }

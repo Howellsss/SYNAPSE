@@ -2,7 +2,7 @@ import {
   UserPlus, UserCog, Tag, BellOff, StickyNote, Cake, CalendarClock, ListPlus, AlarmClock, ListChecks,
   CalendarPlus, CalendarCheck2, FileText, MessageCircleReply, Ticket,
   Tags, TagsIcon, PenLine, UserCheck, UserMinus, Moon, NotebookPen, ClipboardList, Mail, BellRing,
-  Hourglass, GitBranch, Workflow, LogOut, Square, Webhook, type LucideIcon,
+  Hourglass, GitBranch, Workflow, LogOut, Square, Webhook, Hash, Users, Video, type LucideIcon,
 } from 'lucide-react';
 import type { Config, StepType, TriggerType } from './model';
 import { waitLabel } from './model';
@@ -14,9 +14,11 @@ export interface Lookups {
   calendars: Record<string, string>;
   events: Record<string, string>;
   workflows: Record<string, string>;
+  channels: Record<string, string>;
+  departments: Record<string, string>;
 }
 
-export const EMPTY_LOOKUPS: Lookups = { users: {}, forms: {}, calendars: {}, events: {}, workflows: {} };
+export const EMPTY_LOOKUPS: Lookups = { users: {}, forms: {}, calendars: {}, events: {}, workflows: {}, channels: {}, departments: {} };
 
 /** A colour family for an icon chip: SYNAPSE navy, gold, indigo, green, burgundy, slate. */
 export type Tone = 'navy' | 'gold' | 'indigo' | 'green' | 'burgundy' | 'slate';
@@ -185,6 +187,9 @@ export const STEPS: StepDef[] = [
   { type: 'set_dnd', label: 'Do Not Disturb', group: 'Contact', icon: Moon, tone: 'slate', description: 'Turn Do Not Disturb on or off, for all channels or some.', defaults: () => ({ mode: 'enable', scope: 'all', channels: [] }), summary: (c) => `${c.mode === 'disable' ? 'Turn off' : 'Turn on'} for ${c.scope === 'channels' ? arr(c.channels).join(', ') || '…' : 'all channels'}` },
   { type: 'send_email', label: 'Send email', group: 'Messages & alerts', icon: Mail, tone: 'green', description: 'Email the contact from your connected Gmail.', defaults: () => ({ subject: '', body: '' }), summary: (c) => String(c.subject || 'No subject yet') },
   { type: 'notify', label: 'Internal notification', group: 'Messages & alerts', icon: BellRing, tone: 'burgundy', description: 'Alert someone on your team (under the bell).', defaults: () => ({ to: 'owner', users: [], title: '', body: '' }), summary: (c, l) => `To ${c.to === 'everyone' ? 'everyone' : c.to === 'users' ? names(c.users, l.users) || '…' : 'the assigned user'}` },
+  { type: 'post_to_channel', label: 'Post to a channel', group: 'Messages & alerts', icon: Hash, tone: 'navy', description: 'Post a message in a Conversations channel, e.g. “New lead: …”.', defaults: () => ({ channel_id: '', text: '{{contact.name}} · {{contact.link}}' }), summary: (c, l) => (c.channel_id ? `In #${l.channels[String(c.channel_id)] ?? 'a channel'}` : 'Choose a channel') },
+  { type: 'notify_department', label: 'Notify a department', group: 'Messages & alerts', icon: Users, tone: 'burgundy', description: 'Alert everyone in a department (bell) and post in its channel.', defaults: () => ({ department_id: '', title: '', body: '', post: true }), summary: (c, l) => (c.department_id ? `Everyone in ${l.departments[String(c.department_id)] ?? 'a department'}` : 'Choose a department') },
+  { type: 'create_meeting', label: 'Create meeting link', group: 'Messages & alerts', icon: Video, tone: 'indigo', description: 'Make a video meeting; use {{meeting.link}} in later steps.', defaults: () => ({ title: 'Call with {{contact.name}}', duration_min: 30, host: 'owner' }), summary: (c) => `${String(c.title || 'Meeting')} · ${Number(c.duration_min) || 30} min` },
   { type: 'add_note', label: 'Add note', group: 'Notes & tasks', icon: NotebookPen, tone: 'gold', description: 'Write a note on the contact.', defaults: () => ({ text: '' }), summary: (c) => String(c.text || 'Write the note') },
   { type: 'add_task', label: 'Add task', group: 'Notes & tasks', icon: ClipboardList, tone: 'indigo', description: 'Create a to-do on the contact, with a due date.', defaults: () => ({ title: '', body: '', due_in_days: '1', assign: 'owner' }), summary: (c) => `${c.title || 'Task'}${c.due_in_days ? ` · due in ${c.due_in_days} day${c.due_in_days === '1' ? '' : 's'}` : ''}` },
   { type: 'wait', label: 'Wait', group: 'Timing & logic', icon: Hourglass, tone: 'slate', description: 'Pause before the next step: minutes, hours or days.', defaults: () => ({ amount: 1, unit: 'days' }), summary: (c) => waitLabel(c) },

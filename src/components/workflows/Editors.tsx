@@ -246,6 +246,42 @@ export function StepEditor({ step, onChange, o, selfId }: { step: Step; onChange
         </>
       );
       break;
+    case 'post_to_channel':
+      body = (
+        <>
+          <Select label="Channel" value={s(c.channel_id)} onChange={(v) => set({ channel_id: v })}
+            options={[{ value: '', label: 'Choose…' }, ...o.channelList.map((x) => ({ value: x.id, label: `#${x.name}${x.department ? ' (department)' : ''}` }))]}
+            hint={o.channelList.length ? 'Posted as “Workflow: …”. Only people in a private channel see it.' : 'Create a channel in Conversations first.'} />
+          <TextArea label="Message" rows={4} value={s(c.text)} onChange={(v) => set({ text: v })} placeholder="New lead: {{contact.name}} {{contact.link}}" />
+          <MergeFields onPick={append('text')} />
+        </>
+      );
+      break;
+    case 'notify_department':
+      body = (
+        <>
+          <Select label="Department" value={s(c.department_id)} onChange={(v) => set({ department_id: v })}
+            options={[{ value: '', label: 'Choose…' }, ...o.departmentList.map((x) => ({ value: x.id, label: x.name }))]}
+            hint={o.departmentList.length ? undefined : 'Create departments in Settings → Departments first.'} />
+          <TextInput label="Title" value={s(c.title)} onChange={(v) => set({ title: v })} placeholder="{{contact.name}} asked for a call" />
+          <TextArea label="Message (optional)" rows={3} value={s(c.body)} onChange={(v) => set({ body: v })} placeholder="{{contact.phone}} · {{contact.link}}" />
+          <MergeFields onPick={append('body')} />
+          <Switch label="Also post in the department’s channel" checked={c.post !== false} onChange={(v) => set({ post: v })} />
+        </>
+      );
+      break;
+    case 'create_meeting':
+      body = (
+        <>
+          <TextInput label="Meeting title" value={s(c.title)} onChange={(v) => set({ title: v })} placeholder="Call with {{contact.name}}" />
+          <div className="grid grid-cols-2 gap-3">
+            <TextInput label="Length (minutes)" type="number" value={s(c.duration_min) || '30'} onChange={(v) => set({ duration_min: Math.min(600, Math.max(5, Number(v) || 30)) })} />
+            <Select label="Host" value={s(c.host) || 'owner'} onChange={(v) => set({ host: v })} options={[{ value: 'owner', label: 'Contact’s assigned user' }, ...people(o)]} />
+          </div>
+          <p className="text-xs text-ivory-700">Anyone with the link can join, guests included. Put <span className="font-mono">{'{{meeting.link}}'}</span> in a later email, channel post or notification.</p>
+        </>
+      );
+      break;
     case 'wait':
       body = (
         <div className="grid grid-cols-[1fr_1.4fr] gap-3">
