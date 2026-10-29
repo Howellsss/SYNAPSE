@@ -51,10 +51,14 @@ const ROLE_INTRO: Record<string, string> = {
 };
 
 export function AcceptInvitePage({ token }: { token: string }) {
-  const { user, signIn, signUp } = useAuth();
+  const { user, signIn, signUp, signOut, resetPassword } = useAuth();
   const [invitation, setInvitation] = useState<InvitationData | null>(null);
   const [loading, setLoading] = useState(true);
+  // The invitation itself can't be used (whole page) vs. something to fix in the form (shown there).
   const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [wrongPassword, setWrongPassword] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [password, setPassword] = useState('');
   const [firstName, setFirstName] = useState('');
@@ -92,19 +96,35 @@ export function AcceptInvitePage({ token }: { token: string }) {
     e.preventDefault();
     if (!invitation) return;
     setSubmitting(true);
-    setError(null);
+    setFormError(null);
+    setWrongPassword(false);
+    setNotice(null);
 
     if (mode === 'signup') {
-      const { error } = await signUp(invitation.email, password, firstName, lastName);
+      const { error, needsConfirmation } = await signUp(invitation.email, password, firstName, lastName);
       if (error) {
-        setError(error);
+        setFormError(/already registered|already exists/i.test(error)
+          ? `There's already a SYNAPSE account for ${invitation.email}. Sign in with its password instead.`
+          : error);
+        if (/already registered|already exists/i.test(error)) setMode('signin');
+        setSubmitting(false);
+        return;
+      }
+      if (needsConfirmation) {
+        // The invitation is accepted on their first sign-in after confirming.
+        setNotice(`Almost there: we've sent a confirmation link to ${invitation.email}. Open it, then sign in, and you'll join ${invitation.workspaces?.name ?? 'the workspace'} straight away.`);
         setSubmitting(false);
         return;
       }
     } else {
       const { error } = await signIn(invitation.email, password);
       if (error) {
-        setError(error);
+        if (/invalid login credentials/i.test(error)) {
+          setWrongPassword(true);
+          setFormError(`That password didn't work for ${invitation.email}, or there's no SYNAPSE account with this email yet.`);
+        } else {
+          setFormError(error);
+        }
         setSubmitting(false);
         return;
       }
@@ -113,14 +133,14 @@ export function AcceptInvitePage({ token }: { token: string }) {
     // After auth succeeds, accept the invitation
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
-      setError('Authentication failed. Please try again.');
+      setFormError('Signing in didn’t finish. Please try again.');
       setSubmitting(false);
       return;
     }
 
     const acceptErr = await acceptInvite(token, invitation, userData.user.id);
     if (acceptErr) {
-      setError(acceptErr);
+      setFormError(acceptErr);
       setSubmitting(false);
       return;
     }
@@ -233,7 +253,7 @@ export function AcceptInvitePage({ token }: { token: string }) {
           <p className="text-ivory-600 mt-2 text-sm">
             {user
               ? `You're signed in as ${user.email}. Click below to join ${invitation.workspaces?.name ?? 'the workspace'}.`
-              : `You've been invited to join ${invitation.workspaces?.name ?? 'a workspace'} as a ${invitation.role}.`}
+              : `You've been invited to join ${invitation.workspaces?.name ?? 'a workspace'} as ${invitation.role === 'admin' ? 'an Admin' : 'a User'}.`}
           </p>
 
           {user ? (
@@ -241,9 +261,10 @@ export function AcceptInvitePage({ token }: { token: string }) {
               <button
                 onClick={async () => {
                   setSubmitting(true);
+                  setFormError(null);
                   const acceptErr = await acceptInvite(token, invitation, user.id);
                   if (acceptErr) {
-                    setError(acceptErr);
+                    setFormError(acceptErr);
                     setSubmitting(false);
                     return;
                   }
@@ -258,6 +279,17 @@ export function AcceptInvitePage({ token }: { token: string }) {
               >
                 {submitting ? 'Joining...' : 'Accept Invitation'}
               </button>
+              {formError && (
+                <div role="alert" className="mt-4 bg-red-50 text-red-700 text-sm rounded-xl px-4 py-3 border border-red-100">{formError}</div>
+              )}
+              {user.email?.toLowerCase() !== invitation.email.toLowerCase() && (
+                <p className="mt-4 text-sm text-ivory-600">
+                  This invitation is for <b>{invitation.email}</b>.{' '}
+                  <button type="button" onClick={() => { void signOut(); setFormError(null); }} className="font-semibold text-gold-700 hover:text-gold-600">
+                    Sign out and use that email
+                  </button>
+                </p>
+              )}
             </div>
           ) : (
             <form onSubmit={handleAccept} className="mt-8 space-y-4">
@@ -311,10 +343,28 @@ export function AcceptInvitePage({ token }: { token: string }) {
                 />
               </div>
 
-              {error && (
-                <div className="bg-red-50 text-red-700 text-sm rounded-xl px-4 py-3 border border-red-100">
-                  {error}
+              {formError && (
+                <div role="alert" className="bg-red-50 text-red-700 text-sm rounded-xl px-4 py-3 border border-red-100">
+                  {formError}
+                  {wrongPassword && (
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                      <button type="button" onClick={() => { setMode('signup'); setFormError(null); setWrongPassword(false); }} className="font-semibold text-navy-800 underline">
+                        Create my account
+                      </button>
+                      <button type="button" onClick={async () => {
+                        const { error: resetErr } = await resetPassword(invitation.email);
+                        setFormError(null); setWrongPassword(false);
+                        setNotice(resetErr ? null : `We've emailed ${invitation.email} a link to set a new password. Then come back to this invitation.`);
+                        if (resetErr) setFormError(resetErr);
+                      }} className="font-semibold text-navy-800 underline">
+                        Reset my password
+                      </button>
+                    </div>
+                  )}
                 </div>
+              )}
+              {notice && (
+                <div role="status" className="bg-green-50 text-green-800 text-sm rounded-xl px-4 py-3 border border-green-100">{notice}</div>
               )}
 
               <button
@@ -340,7 +390,7 @@ export function AcceptInvitePage({ token }: { token: string }) {
             <p className="text-center text-sm text-ivory-600 mt-6">
               {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
               <button
-                onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError(null); }}
+                onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setFormError(null); setWrongPassword(false); setNotice(null); }}
                 className="font-semibold text-gold-700 hover:text-gold-600 transition-colors"
               >
                 {mode === 'signin' ? 'Sign up' : 'Sign in'}
