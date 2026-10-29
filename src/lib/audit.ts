@@ -30,7 +30,7 @@ export const AUDIT_CATEGORIES: { key: AuditCategory; label: string }[] = [
 const PEOPLE = ['member_joined', 'member_invited', 'invite_cancelled', 'role_changed', 'access_changed', 'member_suspended', 'member_reactivated', 'member_removed'];
 const PUBLISHING = ['workflow_published', 'workflow_paused', 'form_published', 'form_unpublished', 'workflow_activated'];
 const SETTINGS = ['settings_changed', 'email_connected', 'email_disconnected', 'integration_connected', 'integration_disconnected',
-  'webhook_added', 'webhook_changed', 'webhook_removed', 'room_assigned', 'room_unassigned'];
+  'webhook_added', 'webhook_changed', 'webhook_removed', 'room_assigned', 'room_unassigned', 'api_key_created', 'api_key_revoked'];
 
 export function categoryOf(action: string): AuditCategory {
   if (PEOPLE.includes(action)) return 'people';
@@ -105,6 +105,8 @@ export function describeAudit(e: Pick<AuditEntry, 'action' | 'details'>): { acto
     case 'webhook_added': return { actor, text: `added a webhook to ${str(d.name) ?? 'a web address'}` };
     case 'webhook_changed': return { actor, text: `changed the webhook to ${str(d.name) ?? 'a web address'}` };
     case 'webhook_removed': return { actor, text: `removed the webhook to ${str(d.name) ?? 'a web address'}` };
+    case 'api_key_created': return { actor, text: `made the API key ${quote(d.name)} (${str(d.access) ?? 'read and write'})` };
+    case 'api_key_revoked': return { actor, text: `revoked the API key ${quote(d.name)}` };
     case 'room_assigned': return { actor, text: `gave ${str(d.person) ?? 'someone'} the room ${quote(d.name)}` };
     case 'room_unassigned': return { actor, text: `took ${str(d.person) ?? 'someone'} off the room ${quote(d.name)}` };
   }

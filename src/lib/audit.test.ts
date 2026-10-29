@@ -27,6 +27,11 @@ describe('describeAudit', () => {
     expect(d('department_renamed', { from: 'Sales', name: 'Sales EMEA' }).text).toBe('renamed the department “Sales” to “Sales EMEA”');
     expect(d('settings_changed', { area: 'company', fields: ['name', 'logo_url'] }).text).toBe('changed the company name and logo');
   });
+  it('names API keys made and revoked', () => {
+    expect(d('api_key_created', { name: 'Zapier', access: 'read only' }).text).toBe('made the API key “Zapier” (read only)');
+    expect(d('api_key_revoked', { name: 'Zapier' }).text).toBe('revoked the API key “Zapier”');
+    expect(categoryOf('api_key_revoked')).toBe('settings');
+  });
   it('falls back to the action words', () => {
     expect(describeAudit({ action: 'calendar_shared', details: null })).toEqual({ actor: 'Someone', text: 'calendar shared' });
   });
