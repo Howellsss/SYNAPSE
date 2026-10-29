@@ -232,6 +232,49 @@ DO $$ DECLARE w uuid; c uuid; ev uuid; BEGIN
   PERFORM t.check(t.runs(w, c) = 1, 'registering for the event starts it');
 EXCEPTION WHEN OTHERS THEN PERFORM t.crashed('Trigger: event registration', SQLERRM); END $$;
 
+DO $$ DECLARE w uuid; c uuid; BEGIN
+  PERFORM t.case('Trigger: Do Not Disturb changed'); PERFORM t.reset();
+  c := t.contact('Dina'); PERFORM t.tick();
+  w := t.tagging_flow('DND on for email', '{"type": "contact_dnd", "filters": {"flag": "enabled_specific", "channels": ["email"]}}');
+  UPDATE contacts SET dnd_channels = ARRAY['sms'] WHERE id = c; PERFORM t.tick();
+  PERFORM t.check(t.runs(w, c) = 0, 'turning on Do Not Disturb for another channel does not start it');
+  UPDATE contacts SET dnd_channels = ARRAY['sms', 'email'] WHERE id = c; PERFORM t.tick();
+  PERFORM t.check(t.runs(w, c) = 1, 'turning it on for email starts it');
+  UPDATE workflows SET status = 'draft' WHERE id = w;
+  w := t.tagging_flow('DND all on', '{"type": "contact_dnd", "filters": {"flag": "enabled_all"}}');
+  UPDATE contacts SET dnd_all = true WHERE id = c; PERFORM t.tick();
+  PERFORM t.check(t.runs(w, c) = 1, 'turning on Do Not Disturb for everything starts an "all channels" workflow');
+EXCEPTION WHEN OTHERS THEN PERFORM t.crashed('Trigger: Do Not Disturb changed', SQLERRM); END $$;
+
+DO $$ DECLARE w uuid; ws uuid; c uuid; other uuid; k uuid; tz text; today date; BEGIN
+  PERFORM t.case('Triggers: custom date reminder and task reminder'); PERFORM t.reset();
+  -- Like birthdays, these fire from 8 AM in the account's time zone: use one where it is daytime now.
+  SELECT name INTO tz FROM pg_timezone_names WHERE (now() AT TIME ZONE name)::time BETWEEN '09:00' AND '22:00' AND name LIKE '%/%' ORDER BY name LIMIT 1;
+  UPDATE workspaces SET timezone = tz WHERE id = t.ws();
+  today := (now() AT TIME ZONE tz)::date;
+  -- Custom date: 3 days before the date (this year's date, matching the year), only for tagged contacts.
+  c := t.contact('Cleo', jsonb_build_object('date_of_birth', today + 3));
+  other := t.contact('Cole', jsonb_build_object('date_of_birth', today + 3));
+  PERFORM t.tag(c, 'renewal'); PERFORM t.tick();
+  w := t.tagging_flow('Renewal reminder', '{"type": "custom_date_reminder", "filters": {"field": "date_of_birth", "offset": "before", "days": 3, "match_year": true, "has_tag": "renewal"}}');
+  PERFORM t.tick();
+  PERFORM t.check(t.runs(w, c) = 1, 'custom date: runs 3 days before the date');
+  PERFORM t.check(t.runs(w, other) = 0, 'custom date: only for contacts with the chosen tag');
+  PERFORM t.tick();
+  PERFORM t.check(t.runs(w, c) = 1, 'custom date: only once that day');
+  UPDATE workflows SET status = 'draft' WHERE id = w;
+  -- Task reminder: the day before a task is due.
+  INSERT INTO tasks(workspace_id, contact_id, title, due_at) VALUES (t.ws(), other, 'Send contract', ((today + 1) + time '15:00') AT TIME ZONE tz) RETURNING id INTO k;
+  INSERT INTO tasks(workspace_id, contact_id, title, due_at) VALUES (t.ws(), c, 'Later task', ((today + 5) + time '15:00') AT TIME ZONE tz);
+  PERFORM t.tick();
+  ws := t.flow('Due tomorrow', '[{"id": "tr1", "type": "task_reminder", "filters": {"offset": "before", "days": 1}}]', '{"s1": {"type": "add_tag", "config": {"tags": ["task-due"]}}}');
+  PERFORM t.tick();
+  PERFORM t.check(t.has_tag(other, 'task-due') AND (SELECT context->>'title' FROM wf_runs WHERE workflow_id = ws AND contact_id = other) = 'Send contract',
+    'task reminder: runs the day before the task is due, with the task');
+  PERFORM t.check(t.runs(ws, c) = 0, 'task reminder: not for a task due another day');
+  UPDATE workspaces SET timezone = 'UTC' WHERE id = t.ws();
+EXCEPTION WHEN OTHERS THEN PERFORM t.crashed('Triggers: custom date reminder and task reminder', SQLERRM); END $$;
+
 -- ============================================================================ actions
 
 DO $$ DECLARE w uuid; c uuid; BEGIN
