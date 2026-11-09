@@ -148,7 +148,11 @@ export interface FormElement {
 
 export interface FormSection {
   id: string;
+  /** The builder's name for it; people filling the form never see it. */
   name: string;
+  /** A heading people see above the section's fields ("Your details"), and a line under it. */
+  title?: string;
+  description?: string;
   visible: boolean;
   columnCount: ColumnCount;
   style?: ElementStyle;

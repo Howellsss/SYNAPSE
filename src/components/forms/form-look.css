@@ -145,12 +145,47 @@
 }
 .sf-field:focus-within .sf-label { color: var(--sf-label-active) !important; }
 .sf-req {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--sf-accent);
-  transform: translateY(-2px);
+  color: var(--sf-error);
+  font-weight: 700;
+  margin-left: -2px;
+}
+.sf-optional {
+  color: var(--sf-muted);
+  font-weight: 400;
+  font-size: 0.9em;
+}
+
+/* What needs fixing, at the top of the form after a try to go on. */
+.sf-summary {
+  border: 1.5px solid color-mix(in srgb, var(--sf-error) 45%, transparent);
+  background: color-mix(in srgb, var(--sf-error) 6%, var(--sf-surface));
+  border-radius: 14px;
+  padding: 14px 18px;
+  animation: sf-in 0.25s ease-out both;
+}
+.sf-summary-title { display: flex; align-items: center; gap: 8px; margin: 0; font-weight: 700; font-size: 15px; color: var(--sf-error); }
+.sf-summary ul { margin: 8px 0 0; padding: 0 0 0 24px; list-style: disc; color: var(--sf-error); }
+.sf-summary li { margin-top: 4px; font-size: 14px; }
+.sf-summary button { all: unset; cursor: pointer; color: var(--sf-body); text-decoration: underline; text-underline-offset: 3px; }
+.sf-summary button span { font-weight: 600; }
+.sf-summary button:focus-visible { outline: 2px solid var(--sf-focus); outline-offset: 2px; border-radius: 4px; }
+
+/* A section's heading, with a hairline that runs out to the edge. */
+.sf-section-head { padding-bottom: 12px; border-bottom: 1px solid var(--sf-field-border); }
+
+/* On a phone the form is the page: the main button stays in reach at the bottom. */
+.sf-edge { position: relative; }
+.sf-edge.sf-card { overflow: visible; }
+.sf-nav-sticky {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  padding-top: 12px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  background: color-mix(in srgb, var(--sf-surface) 92%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid var(--sf-field-border);
 }
 
 .sf-input {

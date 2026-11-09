@@ -215,6 +215,25 @@ export function nextStep(steps: { def: FormDefinition; origin: string[] }, from:
 
 // ---------- checking answers ----------
 
+/** What to say when a required field is left empty, in the words that fit the field. */
+function emptyMessage(type: string): string {
+  switch (type) {
+    case 'consent': return 'Please tick this box to continue.';
+    case 'signature': return 'Please sign here.';
+    case 'file_upload': return 'Please add a file.';
+    case 'email': return 'Enter your email address.';
+    case 'phone': return 'Enter your phone number.';
+    case 'first_name': return 'Enter your first name.';
+    case 'last_name': return 'Enter your last name.';
+    case 'full_name': return 'Enter your full name.';
+    case 'radio': case 'dropdown': case 'yes_no': case 'country': return 'Please choose an option.';
+    case 'checkbox': case 'multi_select': return 'Please choose at least one.';
+    case 'date': case 'date_of_birth': return 'Please pick a date.';
+    case 'rating': case 'scale': return 'Please pick a score.';
+    default: return 'Please fill this in.';
+  }
+}
+
 export function fieldError(el: FormElement & { field: FieldDefinition }, value: string, required: boolean): string | null {
   const f = el.field;
   const v = (value ?? '').trim();
@@ -225,7 +244,7 @@ export function fieldError(el: FormElement & { field: FieldDefinition }, value: 
     return null;
   }
   if (el.type === 'captcha') return v === CAPTCHA_OK ? null : v ? 'That’s not right. Try the sum again.' : 'Please answer the quick check.';
-  if (!v) return required ? (el.type === 'consent' ? 'Please tick this box to continue.' : el.type === 'signature' ? 'Please sign here.' : el.type === 'file_upload' ? 'Please add a file.' : 'This is required.') : null;
+  if (!v) return required ? emptyMessage(el.type) : null;
   if (el.type === 'monetary' && (Number.isNaN(Number(v)) || Number(v) < 0)) return 'Enter an amount.';
   if (el.type === 'date_of_birth' && v > new Date().toISOString().slice(0, 10)) return 'That date is in the future.';
   if (el.type === 'email' && !EMAIL_RE.test(v)) return 'Enter a valid email address.';
