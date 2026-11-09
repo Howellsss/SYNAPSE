@@ -17,6 +17,14 @@ export interface EventQuestion {
   options?: string[];
 }
 
+/** Whether a registration type takes people now, and if not why. */
+export type TypeState = 'open' | 'full' | 'closed' | 'not_open_yet' | 'ended' | 'cancelled' | 'unavailable';
+export type TypeStatus = 'draft' | 'open' | 'closed';
+
+/**
+ * A ticket, which is also a registration type: with a web address (/e/<event>/<slug>) and a form
+ * it has its own registration page; with approval, people apply and wait to be selected.
+ */
 export interface EventTicket {
   id: string;
   name: string;
@@ -26,7 +34,19 @@ export interface EventTicket {
   capacity: number | null;
   /** Places left (public view only); null = unlimited. */
   remaining?: number | null;
+  slug?: string | null;
+  form_id?: string | null;
+  requires_approval?: boolean;
+  opens_at?: string | null;
+  closes_at?: string | null;
+  status?: TypeStatus;
+  /** Public view: it has a form, and whether it takes people now. */
+  has_form?: boolean;
+  state?: TypeState;
 }
+
+/** An event's own colours, used on its pages and emails. */
+export interface EventBrand { primary?: string; accent?: string; ink?: string; palette?: string[] }
 
 /** An event as hosts see it (from the events table). */
 export interface HostEvent {
@@ -39,8 +59,9 @@ export interface HostEvent {
   description: string;
   category: string;
   cover_url: string | null;
-  starts_at: string;
-  ends_at: string;
+  /** Both empty while the date is to be announced. */
+  starts_at: string | null;
+  ends_at: string | null;
   timezone: string;
   mode: EventMode;
   venue_name: string;
@@ -51,6 +72,11 @@ export interface HostEvent {
   status: EventStatus;
   visibility: EventVisibility;
   questions: EventQuestion[];
+  tagline: string;
+  programme: string[];
+  organiser_logo_url: string | null;
+  brand: EventBrand;
+  privacy_notice: string;
   created_at: string;
   updated_at: string;
 }
@@ -65,8 +91,9 @@ export interface PublicEvent {
   description?: string;
   category: string;
   cover_url: string | null;
-  starts_at: string;
-  ends_at: string;
+  /** Both empty while the date is to be announced. */
+  starts_at: string | null;
+  ends_at: string | null;
   timezone: string;
   mode: EventMode;
   venue_name: string;
@@ -75,10 +102,19 @@ export interface PublicEvent {
   status: EventStatus;
   visibility: EventVisibility;
   organiser_name: string;
+  organiser_logo_url?: string | null;
+  tagline?: string;
+  programme?: string[];
+  brand?: EventBrand;
   questions?: EventQuestion[];
   registered: number;
   tickets: EventTicket[];
 }
+
+/** Statuses: attendees are confirmed at once; performers go applied → shortlisted → selected (or declined) → confirmed. */
+export type RegistrationStatus = 'confirmed' | 'applied' | 'shortlisted' | 'selected' | 'declined' | 'cancelled';
+/** The statuses that hold a place and carry a ticket. */
+export const holdsPlace = (s: RegistrationStatus) => s === 'confirmed' || s === 'selected';
 
 export interface Registration {
   id: string;
@@ -92,20 +128,24 @@ export interface Registration {
   answers: Record<string, string | boolean>;
   pin: string;
   qr_token: string;
-  status: 'confirmed' | 'cancelled';
+  status: RegistrationStatus;
   payment_status: 'free' | 'unpaid' | 'paid';
   amount_minor: number;
   checked_in_at: string | null;
+  ticket_code: string | null;
+  consent_at: string | null;
   created_at: string;
 }
 
 export interface PublicTicket {
   qr_token: string;
   pin: string;
+  ticket_code?: string | null;
+  requires_approval?: boolean;
   first_name: string;
   last_name: string;
   email: string;
-  status: 'confirmed' | 'cancelled';
+  status: RegistrationStatus;
   payment_status: 'free' | 'unpaid' | 'paid';
   amount_minor: number;
   checked_in_at: string | null;
@@ -168,7 +208,10 @@ export function priceFrom(tickets: Pick<EventTicket, 'price_minor' | 'currency'>
   return tickets.length > 1 ? `From ${p}` : p;
 }
 
-export function eventDateLine(startsAt: string, endsAt: string, timeZone?: string): string {
+export const DATE_TBA = 'Date to be announced';
+
+export function eventDateLine(startsAt: string | null, endsAt: string | null, timeZone?: string): string {
+  if (!startsAt || !endsAt) return DATE_TBA;
   const s = new Date(startsAt);
   const e = new Date(endsAt);
   const tz = timeZone ? { timeZone } : {};
@@ -213,8 +256,9 @@ export function isoToZoned(iso: string, timeZone: string): string {
 export type DateFilter = 'any' | 'today' | 'weekend' | 'week' | 'month';
 
 /** Does an event (by its start/end) fall in the chosen window, measured from `now`? */
-export function inDateWindow(startsAt: string, endsAt: string, f: DateFilter, now = new Date()): boolean {
+export function inDateWindow(startsAt: string | null, endsAt: string | null, f: DateFilter, now = new Date()): boolean {
   if (f === 'any') return true;
+  if (!startsAt || !endsAt) return false;
   const s = new Date(startsAt).getTime();
   const e = new Date(endsAt).getTime();
   const day0 = new Date(now); day0.setHours(0, 0, 0, 0);
@@ -262,8 +306,9 @@ export function tokenFromScan(text: string): string | null {
 
 const icsDate = (d: Date) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
 
-/** Google Calendar link and an .ics file body for "Add to calendar". */
+/** Google Calendar link and an .ics file body for "Add to calendar" (none while the date is to be announced). */
 export function calendarLinks(e: Pick<PublicEvent, 'title' | 'summary' | 'starts_at' | 'ends_at' | 'slug' | 'mode' | 'venue_name' | 'address' | 'city'>, origin?: string) {
+  if (!e.starts_at || !e.ends_at) return null;
   const url = eventUrl(e.slug, origin);
   const location = e.mode === 'online' ? url : [e.venue_name, e.address, e.city].filter(Boolean).join(', ');
   const details = `${e.summary ? e.summary + '\n\n' : ''}${url}`;
@@ -307,9 +352,9 @@ const csvCell = (v: unknown) => {
 
 export function registrationsCsv(regs: Registration[], tickets: EventTicket[], questions: EventQuestion[]): string {
   const ticketName = (id: string | null) => tickets.find((t) => t.id === id)?.name ?? '';
-  const head = ['First name', 'Last name', 'Email', 'Phone', 'Ticket', 'Payment', 'PIN', 'Checked in', 'Registered', ...questions.map((q) => q.label)];
+  const head = ['First name', 'Last name', 'Email', 'Phone', 'Ticket', 'Status', 'Ticket code', 'Payment', 'PIN', 'Checked in', 'Registered', ...questions.map((q) => q.label)];
   const rows = regs.map((r) => [
-    r.first_name, r.last_name, r.email, r.phone, ticketName(r.ticket_id), r.payment_status, r.pin,
+    r.first_name, r.last_name, r.email, r.phone, ticketName(r.ticket_id), r.status, r.ticket_code ?? '', r.payment_status, r.pin,
     r.checked_in_at ? new Date(r.checked_in_at).toISOString() : '', new Date(r.created_at).toISOString(),
     ...questions.map((q) => { const a = r.answers?.[q.id]; return typeof a === 'boolean' ? (a ? 'Yes' : 'No') : a ?? ''; }),
   ]);
@@ -325,6 +370,18 @@ export function registerErrorText(message: string): string {
   if (/name_required/.test(message)) return 'Please enter your first name.';
   if (/event_over/.test(message)) return 'This event has ended.';
   if (/event_not_found|ticket_not_found/.test(message)) return "This event isn't open for registration.";
+  return 'Something went wrong. Please try again.';
+}
+
+/** Readable text for errors raised by event_register (registering through a type's form). */
+export function typeRegisterErrorText(message: string): string {
+  if (/consent_required/.test(message)) return 'Please tick the consent box to continue.';
+  if (/email_invalid/.test(message)) return 'Please enter a valid email address.';
+  if (/name_required/.test(message)) return 'Please enter your name.';
+  if (/\bfull\b/.test(message)) return 'Sorry, every place has just been taken.';
+  if (/not_open_yet/.test(message)) return "Registration hasn't opened yet.";
+  if (/closed|not_found/.test(message)) return 'Registration is closed.';
+  if (/busy/.test(message)) return 'Lots of people are registering right now. Please try again in a minute.';
   return 'Something went wrong. Please try again.';
 }
 
@@ -361,6 +418,32 @@ export async function registerForEvent(input: {
   return { data: data as { qr_token: string; pin: string }, error: null };
 }
 
+/** What a registration page shows: the event, the type (and whether it's open), and its form. */
+export interface RegistrationPage {
+  event: PublicEvent;
+  privacy_notice?: string;
+  type: (Pick<EventTicket, 'id' | 'name' | 'description' | 'price_minor' | 'currency' | 'opens_at' | 'closes_at'> & { slug: string; requires_approval: boolean; state: TypeState }) | null;
+  form: { id: string; name: string; description: string | null; definition: unknown } | null;
+}
+
+export async function fetchRegistrationPage(slug: string, type: string): Promise<{ data: RegistrationPage | null; error: string | null }> {
+  const { data, error } = await supabase.rpc('public_event_registration', { p_slug: slug, p_type: type });
+  if (error) return { data: null, error: missingTable(error.message) || /public_event_registration/.test(error.message) ? NOT_SET_UP : error.message };
+  return { data: (data ?? null) as RegistrationPage | null, error: null };
+}
+
+export type TypeRegisterResult =
+  | { status: 'confirmed' | 'selected'; first_name: string; type_name: string; qr_token: string; ticket_code: string | null }
+  | { status: 'applied'; first_name: string; type_name: string }
+  | { status: 'duplicate'; type_name: string };
+
+/** Register (or apply) through a registration type's form. */
+export async function registerThroughForm(slug: string, type: string, answers: Record<string, string>): Promise<{ data: TypeRegisterResult | null; error: string | null }> {
+  const { data, error } = await supabase.rpc('event_register', { p_slug: slug, p_type: type, p_answers: answers });
+  if (error) return { data: null, error: typeRegisterErrorText(error.message) };
+  return { data: data as TypeRegisterResult, error: null };
+}
+
 export async function fetchTicket(token: string): Promise<{ data: PublicTicket | null; error: string | null }> {
   const { data, error } = await supabase.rpc('public_ticket', { p_token: token });
   if (error) return { data: null, error: missingTable(error.message) ? NOT_SET_UP : 'We couldn’t find this ticket.' };
@@ -369,19 +452,20 @@ export async function fetchTicket(token: string): Promise<{ data: PublicTicket |
 
 // ---------------------------------------------------------------- hosts
 
-const EVENT_COLS = 'id, workspace_id, created_by, slug, title, summary, description, category, cover_url, starts_at, ends_at, timezone, mode, venue_name, address, city, online_url, organiser_name, status, visibility, questions, created_at, updated_at';
+const EVENT_COLS = 'id, workspace_id, created_by, slug, title, summary, description, category, cover_url, starts_at, ends_at, timezone, mode, venue_name, address, city, online_url, organiser_name, status, visibility, questions, tagline, programme, organiser_logo_url, brand, privacy_notice, created_at, updated_at';
+const TICKET_COLS = 'id, name, description, price_minor, currency, capacity, sort, slug, form_id, requires_approval, opens_at, closes_at, status';
 
 export interface EventSummary extends HostEvent { registered: number; checked_in: number; capacity: number | null; tickets: EventTicket[] }
 
 export async function listEvents(workspaceId: string): Promise<{ data: EventSummary[]; error: string | null }> {
-  const { data, error } = await supabase.from('events').select(EVENT_COLS).eq('workspace_id', workspaceId).order('starts_at', { ascending: false }).limit(500);
+  const { data, error } = await supabase.from('events').select(EVENT_COLS).eq('workspace_id', workspaceId).order('starts_at', { ascending: false, nullsFirst: true }).limit(500);
   if (error) return { data: [], error: missingTable(error.message) ? NOT_SET_UP : error.message };
   const events = (data ?? []) as HostEvent[];
   if (!events.length) return { data: [], error: null };
   const ids = events.map((e) => e.id);
   const [{ data: tickets }, { data: regs }] = await Promise.all([
-    supabase.from('event_tickets').select('id, event_id, name, description, price_minor, currency, capacity, sort').in('event_id', ids).order('sort'),
-    supabase.from('event_registrations').select('event_id, checked_in_at').in('event_id', ids).eq('status', 'confirmed'),
+    supabase.from('event_tickets').select(`event_id, ${TICKET_COLS}`).in('event_id', ids).order('sort'),
+    supabase.from('event_registrations').select('event_id, checked_in_at').in('event_id', ids).in('status', ['confirmed', 'selected']),
   ]);
   return {
     data: events.map((e) => {
@@ -402,12 +486,12 @@ export async function listEvents(workspaceId: string): Promise<{ data: EventSumm
 export async function getEvent(id: string): Promise<{ event: HostEvent | null; tickets: EventTicket[]; error: string | null }> {
   const { data, error } = await supabase.from('events').select(EVENT_COLS).eq('id', id).maybeSingle();
   if (error) return { event: null, tickets: [], error: missingTable(error.message) ? NOT_SET_UP : error.message };
-  const { data: tickets } = await supabase.from('event_tickets').select('id, name, description, price_minor, currency, capacity, sort').eq('event_id', id).order('sort');
+  const { data: tickets } = await supabase.from('event_tickets').select(TICKET_COLS).eq('event_id', id).order('sort');
   return { event: data as HostEvent | null, tickets: (tickets ?? []) as EventTicket[], error: null };
 }
 
 export type EventDraft = Omit<HostEvent, 'id' | 'workspace_id' | 'created_by' | 'created_at' | 'updated_at'>;
-export type TicketDraft = Omit<EventTicket, 'id' | 'remaining'> & { id?: string };
+export type TicketDraft = Omit<EventTicket, 'id' | 'remaining' | 'has_form' | 'state'> & { id?: string };
 
 /** Create or update an event and its tickets. Tickets left out are removed (if nobody holds one). */
 export async function saveEvent(input: {
@@ -436,7 +520,11 @@ export async function saveEvent(input: {
   const remove = ((existing ?? []) as { id: string }[]).map((t) => t.id).filter((tid) => !keep.has(tid));
   if (remove.length) await supabase.from('event_tickets').delete().in('id', remove);
   for (const [i, t] of input.tickets.entries()) {
-    const body = { name: t.name, description: t.description, price_minor: t.price_minor, currency: t.currency, capacity: t.capacity, sort: i };
+    const body = {
+      name: t.name, description: t.description, price_minor: t.price_minor, currency: t.currency, capacity: t.capacity, sort: i,
+      slug: t.slug || null, form_id: t.form_id || null, requires_approval: !!t.requires_approval,
+      opens_at: t.opens_at || null, closes_at: t.closes_at || null, status: t.status ?? 'open',
+    };
     const { error } = t.id
       ? await supabase.from('event_tickets').update(body).eq('id', t.id)
       : await supabase.from('event_tickets').insert({ ...body, event_id: id });
@@ -448,9 +536,20 @@ export async function saveEvent(input: {
 function friendlySaveError(msg: string): string {
   if (missingTable(msg)) return NOT_SET_UP;
   if (/ends_at >= starts_at|events_check/.test(msg)) return 'The event must end after it starts.';
+  if (/events_dates_together/.test(msg)) return 'Give both a start and an end, or mark the date as to be announced.';
+  if (/event_tickets_slug_key/.test(msg)) return 'Two registration types have the same web address. Give each its own.';
   if (/slug/.test(msg)) return 'That web address is taken or not valid. Use lowercase letters, numbers and dashes.';
   return msg;
 }
+
+/** The account's forms, to pick one for a registration type. */
+export async function listWorkspaceForms(workspaceId: string): Promise<{ id: string; name: string; status: string }[]> {
+  const { data } = await supabase.from('forms').select('id, name, status').eq('workspace_id', workspaceId).order('updated_at', { ascending: false }).limit(200);
+  return (data ?? []) as { id: string; name: string; status: string }[];
+}
+
+/** "Performer application" → "performer-application": a type's web address. */
+export const typeSlug = (name: string) => name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/g, '') || 'register';
 
 export async function setEventStatus(id: string, status: EventStatus) {
   const { error } = await supabase.from('events').update({ status, updated_at: new Date().toISOString() }).eq('id', id);
@@ -474,7 +573,7 @@ export async function uploadCover(workspaceId: string, file: File): Promise<{ ur
 
 export async function listRegistrations(eventId: string): Promise<{ data: Registration[]; error: string | null }> {
   const { data, error } = await supabase.from('event_registrations')
-    .select('id, event_id, ticket_id, contact_id, first_name, last_name, email, phone, answers, pin, qr_token, status, payment_status, amount_minor, checked_in_at, created_at')
+    .select('id, event_id, ticket_id, contact_id, first_name, last_name, email, phone, answers, pin, qr_token, status, payment_status, amount_minor, checked_in_at, ticket_code, consent_at, created_at')
     .eq('event_id', eventId).order('created_at', { ascending: false }).limit(5000);
   if (error) return { data: [], error: error.message };
   return { data: (data ?? []) as Registration[], error: null };

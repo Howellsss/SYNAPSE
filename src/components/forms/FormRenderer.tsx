@@ -81,6 +81,8 @@ interface FormRendererProps {
   fill?: boolean;
   /** The form is the page (its public link and the builder preview): drawn on a raised card. */
   stage?: boolean;
+  /** On a stage, the card fills the column it's given (an event's registration page) instead of its own width. */
+  panel?: boolean;
 }
 
 // Helper: resolve effective background CSS
@@ -110,7 +112,7 @@ export function FormRenderer({
   builderMode = false, selectedElementId, onSelectElement,
   answers = {}, onAnswerChange,
   currentPage = 0, totalPages = 1,
-  onSubmit, onNext, onPrevious, runtime, fill = false, stage = false,
+  onSubmit, onNext, onPrevious, runtime, fill = false, stage = false, panel = false,
 }: FormRendererProps) {
   const theme = definition.theme;
   const page = definition.pages[currentPageIndex];
@@ -124,7 +126,7 @@ export function FormRenderer({
   // On a page of its own the card is never a thin strip: at least 720px wide on bigger screens.
   const page_ = stage && !fill && !builderMode;
   const phone = viewport === 'mobile';
-  const maxFormWidth = page_ && setWidth !== '100%' ? `max(720px, ${setWidth})` : setWidth;
+  const maxFormWidth = page_ && setWidth !== '100%' ? (panel ? '100%' : `max(720px, ${setWidth})`) : setWidth;
   const pad = page_ ? (phone ? 20 : Math.max(theme.layout.pagePadding, 40)) : theme.layout.pagePadding;
 
   // As a page of its own, every layout but full width sits on a raised card; inside another page
@@ -259,7 +261,7 @@ export function FormRenderer({
   // Room around the card so it floats, and a soft glow of the form's colours behind it.
   // On its own page the page paints the colour (and the glow), so the card floats over it.
   const floating = stage && carded && !fill && !builderMode;
-  const floatPad = floating && layoutPreset !== 'centered' ? { padding: edge ? '0' : viewport === 'tablet' ? '24px 0 48px' : '32px 0 56px' } : {};
+  const floatPad = floating && layoutPreset !== 'centered' && !panel ? { padding: edge ? '0' : viewport === 'tablet' ? '24px 0 48px' : '32px 0 56px' } : {};
 
   return (
     <div className="sf relative w-full transition-all duration-300" style={{ ...(stage && carded && theme.background.type === 'solid' ? {} : bgStyle), ...themeVars(theme), fontFamily: theme.typography.primaryFont, ...centeredWrapper, ...floatPad }}>

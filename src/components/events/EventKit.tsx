@@ -3,7 +3,7 @@ import { MapPin, Ticket, Users } from 'lucide-react';
 import { HowellsLogo } from '@/components/layout/Sidebar';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from '@/lib/router';
-import { DEFAULT_COVER, categoryLabel, placeLine, priceFrom, type PublicEvent } from '@/lib/events';
+import { DEFAULT_COVER, categoryLabel, DATE_TBA, placeLine, priceFrom, type PublicEvent } from '@/lib/events';
 import { cn } from '@/lib/utils';
 import { useEventFonts, useQrDataUrl } from './hooks';
 
@@ -62,9 +62,17 @@ export function EventsShell({ children }: { children: ReactNode }) {
 }
 
 /** The gold-topped date tile on event cards: OCT / 10. */
-export function DateTile({ iso, timeZone, className }: { iso: string; timeZone?: string; className?: string }) {
-  const d = new Date(iso);
+export function DateTile({ iso, timeZone, className }: { iso: string | null; timeZone?: string; className?: string }) {
   const tz = timeZone ? { timeZone } : {};
+  if (!iso) {
+    return (
+      <div className={cn('flex w-14 flex-col items-center overflow-hidden rounded-2xl bg-white text-center shadow-[0_4px_16px_rgba(13,28,59,0.18)]', className)} aria-label="Date to be announced">
+        <span className="w-full bg-gold-400 py-0.5 text-[10px] font-bold uppercase tracking-wider text-navy-900">Date</span>
+        <span className="py-1 font-event-display text-base font-semibold leading-tight text-navy-900">TBA</span>
+      </div>
+    );
+  }
+  const d = new Date(iso);
   return (
     <div className={cn('flex w-14 flex-col items-center overflow-hidden rounded-2xl bg-white text-center shadow-[0_4px_16px_rgba(13,28,59,0.18)]', className)}>
       <span className="w-full bg-gold-400 py-0.5 text-[10px] font-bold uppercase tracking-wider text-navy-900">{d.toLocaleDateString('en-GB', { month: 'short', ...tz })}</span>
@@ -75,7 +83,9 @@ export function DateTile({ iso, timeZone, className }: { iso: string; timeZone?:
 
 export function EventCard({ event, onOpen }: { event: Pick<PublicEvent, 'slug' | 'title' | 'cover_url' | 'starts_at' | 'timezone' | 'category' | 'mode' | 'venue_name' | 'city' | 'tickets' | 'registered' | 'organiser_name'>; onOpen: () => void }) {
   const soldOut = event.tickets.length > 0 && event.tickets.every((t) => t.remaining === 0);
-  const time = new Date(event.starts_at).toLocaleString('en-GB', { weekday: 'short', hour: 'numeric', minute: '2-digit', hour12: true, timeZone: event.timezone || undefined });
+  const time = event.starts_at
+    ? new Date(event.starts_at).toLocaleString('en-GB', { weekday: 'short', hour: 'numeric', minute: '2-digit', hour12: true, timeZone: event.timezone || undefined })
+    : DATE_TBA;
   return (
     <a
       href={`/e/${event.slug}`}
