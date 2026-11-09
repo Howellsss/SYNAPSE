@@ -270,6 +270,45 @@ DO $$ DECLARE r jsonb; ada event_registrations; bo event_registrations; other uu
   PERFORM set_config('request.jwt.claim.sub', '', true);
 EXCEPTION WHEN OTHERS THEN PERFORM set_config('request.jwt.claim.sub', '', true); PERFORM tev.crashed('Check-in', SQLERRM); END $$;
 
+DO $$ DECLARE r jsonb; ev uuid; att uuid; perf uuid; reg event_registrations; outsider uuid := 'f0000000-0000-4000-8000-0000000000b3'; BEGIN
+  RAISE NOTICE 'The organiser''s dashboard: forms, adding by hand, sending tickets';
+  PERFORM tev.reset();
+  DELETE FROM email_accounts WHERE workspace_id = tev.ws();
+  INSERT INTO email_accounts(workspace_id, user_id, email) VALUES (tev.ws(), tev.owner(), 'hello@derasperks.example');
+  INSERT INTO auth.users(id, email) VALUES (outsider, 'outsider@example.com') ON CONFLICT DO NOTHING;
+  INSERT INTO workspace_members(workspace_id, user_id, role) VALUES (tev.ws(), outsider, 'member') ON CONFLICT DO NOTHING;
+  SELECT id INTO ev FROM events WHERE slug = 'unscathed';
+  SELECT id INTO att FROM event_tickets WHERE event_id = ev AND slug = 'register';
+  SELECT id INTO perf FROM event_tickets WHERE event_id = ev AND slug = 'apply';
+
+  PERFORM tev.check(tev.raises(format('SELECT event_registration_forms(%L)', ev)) = 'not_allowed', 'signed out: no forms');
+  PERFORM set_config('request.jwt.claim.sub', outsider::text, true);
+  PERFORM tev.check(tev.raises(format('SELECT event_add_registration(%L, %L, %L, %L, %L)', ev, att, 'Gate', 'Crasher', 'gate@example.com')) = 'not_allowed',
+    'a member without Events can''t add people');
+  PERFORM set_config('request.jwt.claim.sub', tev.owner()::text, true);
+  r := event_registration_forms(ev);
+  PERFORM tev.check(jsonb_array_length(r) = 2 AND r->0->'definition'->'elements'->'e2'->'field'->>'label' = 'Email', 'the organiser gets each type''s questions');
+
+  r := event_add_registration(ev, att, 'Wale', 'Adeyemi', 'Wale@Example.com', '0803 999 0000');
+  SELECT * INTO reg FROM event_registrations WHERE id = (r->>'id')::uuid;
+  PERFORM tev.check(reg.status = 'confirmed' AND reg.ticket_code ~ '^UNS-' AND reg.email = 'wale@example.com' AND reg.contact_id IS NOT NULL, 'a walk-in: confirmed, with a ticket code and a contact');
+  PERFORM tev.check((r->>'emailed')::boolean AND EXISTS (SELECT 1 FROM messages WHERE to_address = 'wale@example.com' AND subject LIKE 'You''re in%'), 'and their ticket is emailed');
+  PERFORM tev.check(tev.raises(format('SELECT event_add_registration(%L, %L, %L, %L, %L)', ev, att, 'Wale', 'A', 'wale@example.com')) = 'duplicate', 'the same email twice is refused');
+  r := event_add_registration(ev, perf, 'Ife', 'Okon', 'ife@example.com', NULL, false);
+  SELECT * INTO reg FROM event_registrations WHERE id = (r->>'id')::uuid;
+  PERFORM tev.check(reg.status = 'selected' AND reg.ticket_code IS NOT NULL AND NOT (r->>'emailed')::boolean AND NOT EXISTS (SELECT 1 FROM messages WHERE to_address = 'ife@example.com'),
+    'an invited performer is selected straight away; nothing sent when not asked');
+  r := event_send_ticket(reg.id);
+  PERFORM tev.check((r->>'sent')::boolean AND EXISTS (SELECT 1 FROM messages WHERE to_address = 'ife@example.com' AND subject = 'You''ve been selected: UNSCATHED'), 'sending the ticket later works');
+  PERFORM tev.check(tev.raises(format('SELECT event_send_ticket(%L)', reg.id)) = 'too_soon', 'but not twice in a minute');
+  UPDATE event_tickets SET capacity = 2 WHERE id = att;
+  PERFORM event_add_registration(ev, att, 'Two', 'Seats', 'two@example.com', NULL, false);
+  PERFORM tev.check(tev.raises(format('SELECT event_add_registration(%L, %L, %L, %L, %L)', ev, att, 'Three', 'Seats', 'three@example.com')) = 'full', 'a full type is refused');
+  PERFORM tev.check((event_add_registration(ev, att, 'Three', 'Seats', 'three@example.com', NULL, false, true)->>'status') = 'confirmed', 'unless the organiser adds them anyway');
+  PERFORM tev.check(EXISTS (SELECT 1 FROM audit_logs WHERE action = 'registration_added'), 'adding is in the audit log');
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+EXCEPTION WHEN OTHERS THEN PERFORM set_config('request.jwt.claim.sub', '', true); PERFORM tev.crashed('Dashboard', SQLERRM); END $$;
+
 DO $$ DECLARE f int; p int; r record; BEGIN
   SELECT count(*) INTO f FROM tev.failures; SELECT count(*) INTO p FROM tev.passes;
   IF f > 0 THEN
