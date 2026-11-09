@@ -127,3 +127,18 @@ describe('file checks', () => {
     expect(acceptAttr([])).toBeUndefined();
   });
 });
+
+describe('friendly messages for empty fields', () => {
+  const msg = (type: Parameters<typeof createElement>[0]) => fieldError(createElement(type, 0) as FormElement & { field: FieldDefinition }, '', true);
+  it('says what to do, in the words of the field', () => {
+    expect(msg('email')).toBe('Enter your email address.');
+    expect(msg('first_name')).toBe('Enter your first name.');
+    expect(msg('radio')).toBe('Please choose an option.');
+    expect(msg('checkbox')).toBe('Please choose at least one.');
+    expect(msg('consent')).toBe('Please tick this box to continue.');
+    expect(msg('long_text')).toBe('Please fill this in.');
+  });
+  it('still checks what was typed', () => {
+    expect(fieldError(createElement('email', 0) as FormElement & { field: FieldDefinition }, 'nope', true)).toBe('Enter a valid email address.');
+  });
+});

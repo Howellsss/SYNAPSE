@@ -70,6 +70,10 @@ export function FormPlayer({ definition, formName, formDescription, kind, viewpo
     doneFromOutside ? { kind: 'done', note: doneFromOutside.note } : null,
   );
   const [failure, setFailure] = useState<string | null>(null);
+  // After a try to go on with mistakes, they're listed at the top until fixed.
+  const [summaryOn, setSummaryOn] = useState(false);
+  // One submission at a time, however fast the button is pressed.
+  const sending = useRef(false);
   const trap = useRef('');
   const top = useRef<HTMLDivElement>(null);
 
@@ -85,11 +89,34 @@ export function FormPlayer({ definition, formName, formDescription, kind, viewpo
 
   const showErrors = (errs: Record<string, string>) => {
     setErrors(errs);
+    setSummaryOn(true);
     const first = Object.keys(errs)[0];
-    if (first) requestAnimationFrame(() => document.getElementById(`field-${first}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+    // Straight to the first mistake: scrolled into view, with the cursor in it.
+    if (first) requestAnimationFrame(() => {
+      const box = document.getElementById(`field-${first}`);
+      box?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      (box?.querySelector('input:not([type=hidden]), select, textarea, button') as HTMLElement | null)?.focus({ preventScroll: true });
+    });
+  };
+
+  // Leaving a field checks it: a mistake shows at once, and goes as soon as it's put right.
+  // An empty field is only flagged once they've tried to go on.
+  const checkField = (fieldId: string) => {
+    const err = stepErrors(steps.def, step, answers, state)[fieldId];
+    const typed = !!String(answers[fieldId] ?? '').trim();
+    setErrors((e) => {
+      if (err && (typed || summaryOn || e[fieldId])) return e[fieldId] === err ? e : { ...e, [fieldId]: err };
+      if (!err && e[fieldId]) { const c = { ...e }; delete c[fieldId]; return c; }
+      return e;
+    });
   };
 
   const finish = async (disqualified: boolean) => {
+    if (sending.current) return;
+    sending.current = true;
+    try { await send(disqualified); } finally { sending.current = false; }
+  };
+  const send = async (disqualified: boolean) => {
     const quiz = scoreQuiz(steps.def, finalAnswers(steps.def, answers, state));
     const payload: FormPayload = { answers: finalAnswers(steps.def, answers, state), quiz, payment: disqualified ? null : due, disqualified, trap: trap.current };
     // Signatures are drawings until now: send each as a picture and keep its link.
@@ -144,9 +171,11 @@ export function FormPlayer({ definition, formName, formDescription, kind, viewpo
   }, [end, onSubmit, definition.settings.redirectNewTab]);
 
   const goNext = () => {
+    if (busy || sending.current) return;
     const errs = stepErrors(steps.def, step, answers, state);
     if (Object.keys(errs).length) { showErrors(errs); return; }
     setErrors({});
+    setSummaryOn(false);
     if (state.disqualify) { void finish(true); return; }
     if (isLast) { void finish(false); return; }
     setHistory((h) => [...h, step]);
@@ -154,6 +183,7 @@ export function FormPlayer({ definition, formName, formDescription, kind, viewpo
   };
   const goBack = () => {
     setErrors({});
+    setSummaryOn(false);
     setHistory((h) => { const copy = [...h]; const prev = copy.pop(); if (prev !== undefined) setStep(prev); return copy; });
   };
 
@@ -164,6 +194,7 @@ export function FormPlayer({ definition, formName, formDescription, kind, viewpo
   const onPicked = autoAdvance ? () => window.setTimeout(() => goNextRef.current(), 260) : undefined;
 
   const theme = definition.theme;
+  const labelOf = (fieldId: string) => Object.values(steps.def.elements).find((el) => el.field?.fieldId === fieldId)?.field?.label || 'This field';
   const runtime: FormRuntime = {
     hidden: state.hidden, required: state.required, errors,
     canGoBack: history.length > 0 && definition.settings.allowBackNavigation !== false,
@@ -172,6 +203,8 @@ export function FormPlayer({ definition, formName, formDescription, kind, viewpo
     autoComplete: definition.settings.disableAutofill ? 'off' : 'on',
     onPicked,
     formId,
+    onFieldBlur: checkField,
+    summary: summaryOn ? Object.entries(errors).map(([fieldId, message]) => ({ fieldId, label: labelOf(fieldId), message })) : undefined,
   };
 
   if (end) {
@@ -225,7 +258,7 @@ function EndScreen({ definition, formName, end, preview, stage }: {
   const post = definition.notifications.postSubmission;
   const quiz = definition.settings.quiz;
   const card: React.CSSProperties = {
-    maxWidth: '640px', margin: '0 auto', background: theme.colors.surfaceBackground, borderRadius: '24px', padding: '48px 32px 44px',
+    maxWidth: '720px', margin: '0 auto', background: theme.colors.surfaceBackground, borderRadius: '24px', padding: '48px 32px 44px',
     textAlign: 'center', fontFamily: theme.typography.primaryFont,
     boxShadow: '0 0 0 1px rgba(16,24,40,0.04), 0 4px 8px rgba(16,24,40,0.04), 0 32px 64px -20px rgba(16,24,40,0.22)',
   };

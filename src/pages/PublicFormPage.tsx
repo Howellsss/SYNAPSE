@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useViewport } from '@/lib/useViewport';
 import { supabase } from '@/lib/supabase';
 import { publicOrigin } from '@/lib/publicUrl';
 import type { FormDefinition } from '@/lib/form-builder-types';
@@ -7,6 +8,7 @@ import { attribution, closedReason, prefillAnswers, type FormKind } from '@/lib/
 import { FormPlayer, type FormPayload, type SubmitOutcome } from '@/components/forms/FormPlayer';
 import { themeVars } from '@/components/forms/formLook';
 import { LoadingSpinner } from '@/components/ui/States';
+import { cn } from '@/lib/utils';
 
 interface PublicForm { id: string; name: string; description: string | null; type: FormKind; status: string; definition: FormDefinition | null }
 
@@ -14,6 +16,7 @@ interface PublicForm { id: string; name: string; description: string | null; typ
 export function PublicFormPage({ formId }: { formId: string }) {
   const [form, setForm] = useState<PublicForm | null>(null);
   const [missing, setMissing] = useState(false);
+  const viewport = useViewport();
   const params = useMemo(() => new URLSearchParams(window.location.hash.split('?')[1] ?? window.location.search), []);
   useEffect(() => {
     let alive = true;
@@ -49,14 +52,14 @@ export function PublicFormPage({ formId }: { formId: string }) {
   };
 
   return (
-    <Shell background={def.theme.background.type === 'solid' ? def.theme.background.color : def.theme.colors.pageBackground}
+    <Shell edge={viewport === 'mobile'} background={def.theme.background.type === 'solid' ? def.theme.background.color : def.theme.colors.pageBackground}
       glow={def.theme.background.type === 'solid' && def.theme.layoutPreset !== 'full_width' && def.theme.layoutPreset !== 'split' ? themeVars(def.theme) : undefined}>
       <FormPlayer
         definition={def}
         formName={form.name}
         formDescription={form.description}
         kind={form.type}
-        viewport={window.innerWidth < 640 ? 'mobile' : 'desktop'}
+        viewport={viewport}
         initialAnswers={prefillAnswers(def, params)}
         onSubmit={submit}
         formId={form.id}
@@ -74,12 +77,15 @@ async function readError(error: unknown): Promise<string | null> {
   return null;
 }
 
-/** The page behind the form; with `glow`, a soft light of the form's colours drifts behind the card. */
-function Shell({ children, background = '#FFFFFF', glow }: { children: React.ReactNode; background?: string; glow?: React.CSSProperties }) {
+/**
+ * The page behind the form; with `glow`, a soft light of the form's colours drifts behind the card.
+ * `edge`: on a phone the form fills the screen instead of floating on a card.
+ */
+function Shell({ children, background = '#FFFFFF', glow, edge = false }: { children: React.ReactNode; background?: string; glow?: React.CSSProperties; edge?: boolean }) {
   return (
-    <div className={glow ? 'sf relative min-h-[100dvh] w-full py-6 sm:py-10' : 'min-h-[100dvh] w-full py-6 sm:py-10'} style={{ background, ...glow }}>
-      {glow && <div className="sf-backdrop" aria-hidden />}
-      <div className="relative z-[1] mx-auto w-full max-w-5xl px-3 sm:px-6">{children}</div>
+    <div className={cn(glow && 'sf relative', 'min-h-[100dvh] w-full', edge ? 'py-0' : 'py-6 sm:py-10')} style={{ background, ...glow }}>
+      {glow && !edge && <div className="sf-backdrop" aria-hidden />}
+      <div className={cn('relative z-[1] mx-auto w-full max-w-5xl', edge ? 'px-0' : 'px-4 sm:px-12')}>{children}</div>
     </div>
   );
 }

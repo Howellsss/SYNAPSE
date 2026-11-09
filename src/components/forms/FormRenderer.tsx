@@ -30,6 +30,10 @@ export interface FormRuntime {
   onPicked?: () => void;
   /** The form files are sent to (File Upload). Absent on the builder canvas. */
   formId?: string;
+  /** Someone left a field: check it there and then. */
+  onFieldBlur?: (fieldId: string) => void;
+  /** After a try to go on with mistakes: listed at the top, each a link to its field. */
+  summary?: { fieldId: string; label: string; message: string }[];
 }
 const RuntimeCtx = createContext<FormRuntime | null>(null);
 /** What a Button element can do while the form is filled in. */
@@ -115,22 +119,29 @@ export function FormRenderer({
   const showOverlay = theme.background.type === 'image' && theme.background.imageUrl && theme.background.overlayOpacity > 0;
   const split = isSplitLayout(theme, viewport);
   const layoutPreset = theme.layoutPreset;
-  const maxFormWidth = WIDTH[theme.layout.formWidth] || theme.maxFormWidth || '640px';
+  const setWidth = WIDTH[theme.layout.formWidth] || theme.maxFormWidth || '640px';
+  // On a page of its own the card is never a thin strip: at least 720px wide on bigger screens.
+  const page_ = stage && !fill && !builderMode;
+  const phone = viewport === 'mobile';
+  const maxFormWidth = page_ && setWidth !== '100%' ? `max(720px, ${setWidth})` : setWidth;
+  const pad = page_ ? (phone ? 20 : Math.max(theme.layout.pagePadding, 40)) : theme.layout.pagePadding;
 
   // As a page of its own, every layout but full width sits on a raised card; inside another page
   // (a booking page) only the Card layout does.
   const carded = stage ? layoutPreset !== 'full_width' : layoutPreset === 'card';
   const containerClass = cn(carded && stage && 'sf-card', layoutPreset === 'full_width' && 'w-full');
 
+  // On a phone the form is the page: edge to edge, no floating card.
+  const edge = page_ && phone;
   const surfaceStyle: React.CSSProperties = {
     backgroundColor: theme.colors.surfaceBackground,
-    borderRadius: carded ? CARD_RADIUS[theme.layout.containerRadius] : undefined,
-    boxShadow: carded ? CARD_SHADOW[theme.layout.containerShadow] : undefined,
+    borderRadius: carded && !edge ? CARD_RADIUS[theme.layout.containerRadius] : undefined,
+    boxShadow: carded && !edge ? CARD_SHADOW[theme.layout.containerShadow] : undefined,
     fontFamily: theme.typography.primaryFont,
   };
 
   const paddingStyle: React.CSSProperties = {
-    padding: `${theme.layout.pagePadding}px`,
+    padding: `${pad}px`,
   };
 
   const branding = theme.branding;
@@ -143,10 +154,11 @@ export function FormRenderer({
     <RuntimeCtx.Provider value={runtime ?? null}>
     <ActionsCtx.Provider value={builderMode ? null : actions}>
       {definition.header.enabled && (
-        <FormHeader definition={definition} formName={formName} formDescription={formDescription} currentPage={currentPage} totalPages={totalPages} />
+        <FormHeader definition={definition} formName={formName} formDescription={formDescription} currentPage={currentPage} totalPages={totalPages} pad={pad} />
       )}
 
       <div style={paddingStyle}>
+        {!builderMode && !!runtime?.summary?.length && <ErrorSummary items={runtime.summary} theme={theme} />}
         {page.sectionIds.map(sectionId => {
           const section = definition.sections[sectionId];
           if (!section || !section.visible) return null;
@@ -154,16 +166,17 @@ export function FormRenderer({
         })}
 
         {!builderMode && runtime && (
-          <div className="mt-9 flex flex-wrap items-center gap-3" style={{ justifyContent: runtime.canGoBack ? 'space-between' : navAlign }}>
+          <div className={cn('mt-9 flex flex-wrap items-center gap-3', edge && 'sf-nav-sticky')}
+            style={{ justifyContent: runtime.canGoBack ? 'space-between' : navAlign, ...(edge ? { marginLeft: `-${pad}px`, marginRight: `-${pad}px`, paddingLeft: `${pad}px`, paddingRight: `${pad}px` } : {}) }}>
             {runtime.canGoBack && (
               <button type="button" onClick={onPrevious} disabled={runtime.busy} className="sf-btn" style={getButtonStyle(theme, theme.buttonStyle, 'outline')}>
                 <ArrowLeft className="sf-arrow sf-arrow-back h-4 w-4" aria-hidden /> Back
               </button>
             )}
-            <div className="flex items-center gap-4" style={{ flex: theme.buttonStyle.width === 'full' && !runtime.canGoBack ? 1 : undefined, flexDirection: navAlign === 'flex-end' ? 'row-reverse' : undefined }}>
+            <div className="flex items-center gap-4" style={{ flex: (theme.buttonStyle.width === 'full' || edge) && !runtime.canGoBack ? 1 : undefined, flexDirection: navAlign === 'flex-end' ? 'row-reverse' : undefined }}>
               <button type="button" onClick={runtime.isLast ? onSubmit : onNext} disabled={runtime.busy} aria-busy={runtime.busy || undefined}
                 className="sf-btn sf-btn-primary"
-                style={{ ...getButtonStyle(theme, theme.buttonStyle, undefined, theme.buttonStyle.width === 'full' ? '100%' : 'auto'), opacity: runtime.busy ? 0.75 : 1 }}>
+                style={{ ...getButtonStyle(theme, theme.buttonStyle, undefined, theme.buttonStyle.width === 'full' || edge ? '100%' : 'auto'), opacity: runtime.busy ? 0.75 : 1 }}>
                 {runtime.busy
                   ? <><Loader2 className="sf-spin h-4 w-4" aria-hidden /> Sending…</>
                   : <>{runtime.isLast ? runtime.submitLabel || 'Submit' : 'Next'} <ArrowRight className="sf-arrow h-4 w-4" aria-hidden /></>}
@@ -190,12 +203,12 @@ export function FormRenderer({
       </div>
 
       {definition.footer.enabled && definition.footer.content && (
-        <div style={{ padding: `${theme.layout.pagePadding}px`, textAlign: 'center', fontSize: '12px', color: theme.colors.mutedText, borderTop: `1px solid ${theme.colors.border}` }}>
+        <div style={{ padding: `${pad}px`, textAlign: 'center', fontSize: '12px', color: theme.colors.mutedText, borderTop: `1px solid ${theme.colors.border}` }}>
           {definition.footer.content}
         </div>
       )}
       {hasBrandFooter && (
-        <div style={{ padding: `14px ${theme.layout.pagePadding}px`, textAlign: 'center', fontSize: '12px', lineHeight: 1.6, color: theme.colors.mutedText, borderTop: `1px solid ${theme.colors.border}`, fontFamily: theme.typography.bodyFont }}>
+        <div style={{ padding: `14px ${pad}px`, textAlign: 'center', fontSize: '12px', lineHeight: 1.6, color: theme.colors.mutedText, borderTop: `1px solid ${theme.colors.border}`, fontFamily: theme.typography.bodyFont }}>
           {(branding.companyName || branding.footerText) && <p style={{ margin: 0 }}>{[branding.companyName, branding.footerText].filter(Boolean).join(' · ')}</p>}
           {(branding.privacyLink || branding.termsLink) && (
             <p style={{ margin: '4px 0 0', display: 'flex', justifyContent: 'center', gap: '14px' }}>
@@ -245,13 +258,13 @@ export function FormRenderer({
   // Room around the card so it floats, and a soft glow of the form's colours behind it.
   // On its own page the page paints the colour (and the glow), so the card floats over it.
   const floating = stage && carded && !fill && !builderMode;
-  const floatPad = floating && layoutPreset !== 'centered' ? { padding: viewport === 'mobile' ? '8px 0 24px' : '32px 0 56px' } : {};
+  const floatPad = floating && layoutPreset !== 'centered' ? { padding: edge ? '0' : viewport === 'tablet' ? '24px 0 48px' : '32px 0 56px' } : {};
 
   return (
     <div className="sf relative w-full transition-all duration-300" style={{ ...(stage && carded && theme.background.type === 'solid' ? {} : bgStyle), ...themeVars(theme), fontFamily: theme.typography.primaryFont, ...centeredWrapper, ...floatPad }}>
       {showOverlay && <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: theme.background.overlayColor, opacity: theme.background.overlayOpacity / 100 }} />}
       <div className="relative" style={{ ...wrapperStyle, width: layoutPreset === 'centered' ? '100%' : undefined }}>
-        <div className={cn('overflow-hidden', containerClass)} style={surfaceStyle}>
+        <div className={cn(edge ? 'sf-edge' : 'overflow-hidden', containerClass)} style={surfaceStyle}>
           {formBody}
         </div>
       </div>
@@ -298,14 +311,37 @@ export function getButtonStyle(theme: FormTheme, btn: ThemeButtonStyle, variantO
 }
 
 // ============================================================
+// MISTAKES, LISTED AT THE TOP
+// ============================================================
+
+/** After a try to go on: what needs fixing, each a link that takes you to the field. */
+function ErrorSummary({ items, theme }: { items: { fieldId: string; label: string; message: string }[]; theme: FormTheme }) {
+  const go = (fieldId: string) => {
+    const box = document.getElementById(`field-${fieldId}`);
+    box?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    (box?.querySelector('input:not([type=hidden]), select, textarea, button') as HTMLElement | null)?.focus({ preventScroll: true });
+  };
+  return (
+    <div role="alert" className="sf-summary" style={{ fontFamily: theme.typography.bodyFont, marginBottom: '28px' }}>
+      <p className="sf-summary-title"><AlertCircle className="h-4 w-4 shrink-0" aria-hidden /> {items.length === 1 ? 'One thing needs your attention' : `${items.length} things need your attention`}</p>
+      <ul>
+        {items.map((it) => (
+          <li key={it.fieldId}><button type="button" onClick={() => go(it.fieldId)}><span>{it.label}</span>: {it.message}</button></li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// ============================================================
 // HEADER
 // ============================================================
 
-export function FormHeader({ definition, formName, formDescription, currentPage, totalPages }: {
-  definition: FormDefinition; formName: string; formDescription?: string | null; currentPage: number; totalPages: number;
+export function FormHeader({ definition, formName, formDescription, currentPage, totalPages, pad: padIn }: {
+  definition: FormDefinition; formName: string; formDescription?: string | null; currentPage: number; totalPages: number; pad?: number;
 }) {
   const { header, theme } = definition;
-  const pad = theme.layout.pagePadding;
+  const pad = padIn ?? theme.layout.pagePadding;
   const centered = theme.layout.contentAlign === 'center';
   return (
     <div style={{ padding: `${pad + 8}px ${pad}px ${Math.round(pad * 0.25)}px`, textAlign: centered ? 'center' : undefined }}>
@@ -384,6 +420,9 @@ function RenderSection({ section, definition, builderMode, selectedElementId, on
   // People filling it in never see an empty column: the fields take the full width.
   const shown = builderMode ? columns : columns.filter((c) => c.length > 0);
   const cols = Math.max(shown.length, 1);
+  // One column: fields set to half (or a third) width sit side by side; on a phone, one per row.
+  const flow = cols === 1 && !builderMode;
+  const span = (el: FormElement) => (viewport === 'mobile' || el.type === 'button' ? 6 : el.style?.width === 'half' ? 3 : el.style?.width === 'third' ? 2 : 6);
 
   const sectionStyle: React.CSSProperties = {
     backgroundColor: style?.backgroundColor,
@@ -400,6 +439,21 @@ function RenderSection({ section, definition, builderMode, selectedElementId, on
     <div className="relative last:mb-0" style={sectionStyle}>
       {showOverlay && <div className="absolute inset-0" style={{ backgroundColor: style!.overlayColor, opacity: style!.overlayOpacity! / 100, borderRadius: style?.borderRadius, pointerEvents: 'none' }} />}
       <div className="relative">
+        {section.title && !builderMode && (
+          <div className="sf-section-head" style={{ marginBottom: `${Math.max(theme.layout.fieldSpacing, 16)}px` }}>
+            <h2 style={{ margin: 0, fontFamily: theme.typography.headingFont, color: theme.colors.heading, fontSize: '18px', fontWeight: 700, letterSpacing: '-0.01em' }}>{section.title}</h2>
+            {section.description && <p style={{ margin: '4px 0 0', fontFamily: theme.typography.bodyFont, color: theme.colors.mutedText, fontSize: '14px', lineHeight: 1.55 }}>{section.description}</p>}
+          </div>
+        )}
+        {flow ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', columnGap: `${Math.max(theme.layout.columnGap, 16)}px`, rowGap: `${theme.layout.fieldSpacing}px` }}>
+            {shown[0]?.map((el, i) => (
+              <div key={el.id} style={{ gridColumn: `span ${span(el)}`, minWidth: 0 }}>
+                <RenderElement index={i} element={el} definition={definition} builderMode={builderMode} selected={selectedElementId === el.id} onSelect={onSelectElement} answers={answers} onAnswerChange={onAnswerChange} viewport={viewport} inGrid />
+              </div>
+            ))}
+          </div>
+        ) : (
         <div className={cn(cols === 2 && 'grid grid-cols-1 sm:grid-cols-2', cols === 3 && 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3', cols === 1 && 'space-y-0')} style={{ gap: cols > 1 ? `${theme.layout.columnGap}px` : undefined }}>
           {shown.map((colElements, colIdx) => (
             <div key={colIdx} style={{ display: 'flex', flexDirection: 'column', gap: `${theme.layout.fieldSpacing}px` }}>
@@ -408,6 +462,7 @@ function RenderSection({ section, definition, builderMode, selectedElementId, on
             </div>
           ))}
         </div>
+        )}
       </div>
     </div>
   );
@@ -444,14 +499,16 @@ export function surfaceOf(theme: FormTheme): React.CSSProperties {
 }
 export const formWidthOf = (theme: FormTheme) => WIDTH[theme.layout.formWidth] || theme.maxFormWidth || '640px';
 
-function RenderElement({ element, index = 0, definition, builderMode, selected, onSelect, answers, onAnswerChange }: {
+function RenderElement({ element, index = 0, definition, builderMode, selected, onSelect, answers, onAnswerChange, inGrid = false }: {
   element: FormElement; index?: number; definition: FormDefinition; builderMode: boolean; selected: boolean; onSelect?: (id: string) => void; answers: Record<string, string>; onAnswerChange?: (fieldId: string, value: string) => void; viewport: Viewport;
+  /** Placed in the section's grid, which already gives it its width. */
+  inGrid?: boolean;
 }) {
   const style = element.style;
   const elementStyle: React.CSSProperties = {
     color: style?.textColor, fontSize: style?.fontSize, fontWeight: style?.fontWeight ? WEIGHT[style.fontWeight] : undefined,
     textAlign: style?.textAlign, marginTop: style?.marginTop, marginBottom: style?.marginBottom,
-    width: style?.width && WIDTH_PCT[style.width] && element.type !== 'button' ? WIDTH_PCT[style.width] : undefined,
+    width: !inGrid && style?.width && WIDTH_PCT[style.width] && element.type !== 'button' ? WIDTH_PCT[style.width] : undefined,
     backgroundColor: style?.backgroundColor, borderRadius: style?.borderRadius, padding: style?.padding,
     ['--sf-i' as string]: index,
   };
@@ -538,7 +595,8 @@ function FieldRenderer({ element, definition, builderMode, value, onChange }: {
     color: fs.textColor,
     height: `${Math.max(fs.height, 48)}px`,
     padding: `0 ${Math.max(fs.padding, 14)}px`,
-    fontSize: `max(${theme.typography.bodySize}, 15px)`,
+    // 16px at least: smaller text makes iPhones zoom in when the field is tapped.
+    fontSize: `max(${theme.typography.bodySize}, 16px)`,
     fontFamily: theme.typography.bodyFont,
   };
   const labelStyle: React.CSSProperties = {
@@ -567,18 +625,28 @@ function FieldRenderer({ element, definition, builderMode, value, onChange }: {
   const error = runtime?.errors[f.fieldId];
   if (element.type === 'hidden' || element.type === 'source' || element.type === 'payment') return null;
 
+  // The label, its help line and any mistake are tied to the input, so screen readers read them out.
+  const ids = fieldIds(f.fieldId);
+  const describedBy = [f.description ? ids.help : '', error ? ids.error : ''].filter(Boolean).join(' ') || undefined;
+  const a11y: A11y = { id: ids.input, 'aria-describedby': describedBy, 'aria-invalid': error ? true : undefined, 'aria-required': required || undefined };
+  const labelled = LABELLED_INPUT.has(element.type);
+  const LabelTag = labelled ? 'label' : 'span';
+
   return (
-    <div id={`field-${f.fieldId}`} data-invalid={error ? 'true' : undefined} className={cn('sf-field', error && 'sf-invalid')}>
-      <label className="sf-label" style={labelStyle}>
+    <div id={`field-${f.fieldId}`} data-invalid={error ? 'true' : undefined} className={cn('sf-field', error && 'sf-invalid')}
+      onBlur={runtime?.onFieldBlur ? (e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) runtime.onFieldBlur!(f.fieldId); } : undefined}>
+      <LabelTag id={ids.label} htmlFor={labelled ? ids.input : undefined} className="sf-label" style={labelStyle}>
         <span>{f.label}</span>
-        {required && <span className="sf-req" title="Required" aria-label="required" />}
-      </label>
-      {f.description && <p style={helpStyle}>{f.description}</p>}
+        {required
+          ? <><span className="sf-req" aria-hidden>*</span><span className="sf-sr">(required)</span></>
+          : <span className="sf-optional">(optional)</span>}
+      </LabelTag>
+      {f.description && <p id={ids.help} style={helpStyle}>{f.description}</p>}
       <div>
-        {renderFieldInput(element, f, value, handleChange, inputStyle, theme, disabled, runtime?.formId)}
+        {renderFieldInput(element, f, value, handleChange, inputStyle, theme, disabled, runtime?.formId, a11y)}
       </div>
       {error && (
-        <p role="alert" className="sf-error" style={{ color: theme.colors.error, fontSize: theme.fieldStyle.errorSize, fontWeight: 500, marginTop: `${Math.max(theme.fieldStyle.errorSpacing, 8)}px`, fontFamily: theme.typography.bodyFont }}>
+        <p id={ids.error} role="alert" className="sf-error" style={{ color: theme.colors.error, fontSize: theme.fieldStyle.errorSize, fontWeight: 500, marginTop: `${Math.max(theme.fieldStyle.errorSpacing, 8)}px`, fontFamily: theme.typography.bodyFont }}>
           <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden /> {error}
         </p>
       )}
@@ -586,17 +654,24 @@ function FieldRenderer({ element, definition, builderMode, value, onChange }: {
   );
 }
 
+/** The ids that tie a field's label, help and mistake to its input. */
+const fieldIds = (fieldId: string) => ({ input: `sf-in-${fieldId}`, label: `sf-label-${fieldId}`, help: `sf-help-${fieldId}`, error: `sf-err-${fieldId}` });
+type A11y = { id: string; 'aria-describedby'?: string; 'aria-invalid'?: boolean; 'aria-required'?: boolean };
+/** Fields with one input the label can point at (the rest are groups, named by their label). */
+const LABELLED_INPUT = new Set(['text_field', 'first_name', 'last_name', 'city', 'state', 'full_name', 'company', 'job_title', 'postal_code', 'website', 'email', 'phone',
+  'number', 'date', 'date_of_birth', 'time', 'monetary', 'long_text', 'address', 'country', 'dropdown']);
+
 const CURRENCY_SIGN = (cur: string) => {
   try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: (cur || 'usd').toUpperCase(), currencyDisplay: 'narrowSymbol' }).formatToParts(0).find((p) => p.type === 'currency')?.value ?? '$'; } catch { return '$'; }
 };
 
-function renderFieldInput(element: FormElement, f: NonNullable<FormElement['field']>, value: string, onChange: (v: string) => void, inputStyle: React.CSSProperties, theme: FormTheme, disabled: boolean, formId?: string): React.ReactNode {
+function renderFieldInput(element: FormElement, f: NonNullable<FormElement['field']>, value: string, onChange: (v: string) => void, inputStyle: React.CSSProperties, theme: FormTheme, disabled: boolean, formId?: string, a11y?: A11y): React.ReactNode {
   const type = element.type;
   if (type === 'payment') return <PaymentInput config={f.payment} value={value} onChange={onChange} theme={theme} inputStyle={inputStyle} disabled={disabled} />;
   const fs = theme.fieldStyle;
   const baseClass = 'sf-input';
   const text = (inputType: string, extra?: React.InputHTMLAttributes<HTMLInputElement>) =>
-    <input type={inputType} className={baseClass} style={inputStyle} value={value} onChange={e => onChange(e.target.value)} placeholder={f.placeholder} disabled={disabled} {...extra} />;
+    <input type={inputType} className={baseClass} style={inputStyle} value={value} onChange={e => onChange(e.target.value)} placeholder={f.placeholder} disabled={disabled} {...a11y} {...extra} />;
 
   switch (type) {
     case 'text_field': case 'first_name': case 'last_name': case 'city': case 'state':
@@ -617,27 +692,27 @@ function renderFieldInput(element: FormElement, f: NonNullable<FormElement['fiel
       return (
         <div className="relative">
           <span className="pointer-events-none absolute left-0 top-0 z-[1] flex h-full items-center font-semibold" style={{ paddingLeft: `${Math.max(fs.padding, 14)}px`, color: theme.colors.mutedText, fontSize: `max(${theme.typography.bodySize}, 15px)` }}>{sign}</span>
-          <input type="text" inputMode="decimal" className={baseClass} style={{ ...inputStyle, paddingLeft: `${Math.max(fs.padding, 14) + sign.length * 10 + 8}px` }} value={value}
+          <input type="text" inputMode="decimal" {...a11y} className={baseClass} style={{ ...inputStyle, paddingLeft: `${Math.max(fs.padding, 14) + sign.length * 10 + 8}px` }} value={value}
             onChange={e => onChange(e.target.value.replace(/[^0-9.]/g, ''))} placeholder={f.placeholder || '0.00'} disabled={disabled} />
         </div>
       );
     }
     case 'long_text': case 'address':
-      return <textarea className={cn(baseClass, 'resize-y', type === 'address' ? 'min-h-[88px]' : 'min-h-[128px]')} style={{ ...inputStyle, height: 'auto', padding: `12px ${Math.max(fs.padding, 14)}px` }} value={value} onChange={e => onChange(e.target.value)} placeholder={f.placeholder} disabled={disabled} autoComplete={type === 'address' ? 'street-address' : undefined} />;
+      return <textarea {...a11y} className={cn(baseClass, 'resize-y', type === 'address' ? 'min-h-[88px]' : 'min-h-[128px]')} style={{ ...inputStyle, height: 'auto', padding: `12px ${Math.max(fs.padding, 14)}px` }} value={value} onChange={e => onChange(e.target.value)} placeholder={f.placeholder} disabled={disabled} autoComplete={type === 'address' ? 'street-address' : undefined} />;
     case 'country':
       return (
-        <select className={baseClass} style={{ ...inputStyle, color: value ? fs.textColor : fs.placeholderColor }} value={value} onChange={e => onChange(e.target.value)} disabled={disabled} autoComplete="country-name">
+        <select {...a11y} className={baseClass} style={{ ...inputStyle, color: value ? fs.textColor : fs.placeholderColor }} value={value} onChange={e => onChange(e.target.value)} disabled={disabled} autoComplete="country-name">
           <option value="">{f.placeholder || 'Choose a country'}</option>
           {countryNames().map(n => <option key={n} value={n}>{n}</option>)}
         </select>
       );
     case 'radio': case 'yes_no': case 'checkbox': case 'multi_select': case 'dropdown':
-      return <ChoiceInput type={type} field={f} value={value} onChange={onChange} theme={theme} inputStyle={inputStyle} disabled={disabled} />;
+      return <ChoiceInput type={type} field={f} value={value} onChange={onChange} theme={theme} inputStyle={inputStyle} disabled={disabled} a11y={a11y} />;
     case 'consent': {
       const on = value === 'true';
       return (
         <label className="sf-consent" data-on={on} style={{ borderRadius: tileRadius(theme) }}>
-          <input type="checkbox" className="sf-sr" checked={on} onChange={e => onChange(e.target.checked ? 'true' : '')} disabled={disabled} />
+          <input type="checkbox" className="sf-sr" checked={on} onChange={e => onChange(e.target.checked ? 'true' : '')} disabled={disabled} aria-describedby={a11y?.['aria-describedby']} aria-invalid={a11y?.['aria-invalid']} aria-required={a11y?.['aria-required']} />
           <span className="sf-mark" style={{ borderRadius: '6px' }} aria-hidden><Check className="h-3.5 w-3.5" strokeWidth={3} /></span>
           <span style={{ color: theme.colors.bodyText, fontFamily: theme.typography.bodyFont, fontSize: `max(${theme.typography.bodySize}, 14px)`, lineHeight: 1.55 }}>{element.content?.text || 'I agree to be contacted regarding my submission.'}</span>
         </label>
@@ -673,9 +748,11 @@ function renderFieldInput(element: FormElement, f: NonNullable<FormElement['fiel
 }
 
 /** Radio, Yes/No, Checkbox, Multi-select and Dropdown, each with an optional "Other" answer. */
-function ChoiceInput({ type, field: f, value, onChange, theme, inputStyle, disabled }: {
-  type: string; field: NonNullable<FormElement['field']>; value: string; onChange: (v: string) => void; theme: FormTheme; inputStyle: React.CSSProperties; disabled: boolean;
+function ChoiceInput({ type: asked, field: f, value, onChange, theme, inputStyle, disabled, a11y }: {
+  type: string; field: NonNullable<FormElement['field']>; value: string; onChange: (v: string) => void; theme: FormTheme; inputStyle: React.CSSProperties; disabled: boolean; a11y?: A11y;
 }) {
+  // A single choice of more than six options is easier as a list to pick from.
+  const type = asked === 'radio' && (f.options?.length ?? 0) > 6 ? 'dropdown' : asked;
   const options = type === 'yes_no' ? (f.options?.length ? f.options : ['Yes', 'No']) : (f.options || []);
   const multi = type === 'checkbox' || type === 'multi_select';
   const other = !!f.allowOther && type !== 'yes_no';
@@ -694,7 +771,7 @@ function ChoiceInput({ type, field: f, value, onChange, theme, inputStyle, disab
   if (type === 'dropdown') {
     return (
       <>
-        <select className="sf-input" style={{ ...inputStyle, color: value || otherOn ? theme.fieldStyle.textColor : theme.fieldStyle.placeholderColor }} disabled={disabled}
+        <select {...a11y} aria-labelledby={fieldIds(f.fieldId).label} className="sf-input" style={{ ...inputStyle, color: value || otherOn ? theme.fieldStyle.textColor : theme.fieldStyle.placeholderColor }} disabled={disabled}
           value={otherOn ? '__other__' : value} onChange={(e) => { if (e.target.value === '__other__') { setOtherOn(true); onChange(''); } else { setOtherOn(false); onChange(e.target.value); } }}>
           <option value="">{f.placeholder || 'Choose one'}</option>
           {options.map((opt, i) => <option key={i} value={opt}>{opt}</option>)}
@@ -739,7 +816,7 @@ function ChoiceInput({ type, field: f, value, onChange, theme, inputStyle, disab
   const twoUp = type !== 'yes_no' && options.length >= 4 && options.every((o) => o.length <= 28);
 
   return (
-    <div role={multi ? 'group' : 'radiogroup'} aria-label={f.label} onKeyDown={onKeyDown}>
+    <div role={multi ? 'group' : 'radiogroup'} aria-labelledby={fieldIds(f.fieldId).label} aria-describedby={a11y?.['aria-describedby']} aria-invalid={a11y?.['aria-invalid']} aria-required={a11y?.['aria-required']} onKeyDown={onKeyDown}>
       <div className={type === 'yes_no' ? 'sf-yesno' : cn('sf-tiles', twoUp && 'sf-tiles-2')}>
         {options.map((opt, i) => tile(String(i), opt, multi ? known.includes(opt) : value === opt && !otherOn, () => toggle(opt), i))}
         {other && tile('__other__', 'Other', otherOn, toggleOther, options.length)}
