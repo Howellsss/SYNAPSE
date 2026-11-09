@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { ArrowDown, ArrowUp, Copy, Plus, Trash2, X } from 'lucide-react';
 import {
   CONTACT_FIELD_LABELS, ELEMENT_LIBRARY,
-  type ColumnCount, type ContactFieldKey, type ElementContent, type ElementStyle, type FieldDefinition,
+  type ContactFieldKey, type ElementContent, type ElementStyle, type FieldDefinition,
   type FormDefinition, type FormElement, type FormHeader, type FormSection, type FormTheme, type QuizSettings,
 } from '@/lib/form-builder-types';
 import { LinkKeyEditor, QuizScoringEditor } from './FieldExtras';
 import { ImagePicker } from './ImagePicker';
 import { ColorField, Field, Group, PanelButton, Segmented, SwitchRow, areaCls, inputCls } from './builder-ui';
 import { cn } from '@/lib/utils';
+import { dialCountries } from '@/lib/phone';
 
 interface PropertyPanelProps {
   definition: FormDefinition;
@@ -24,7 +25,7 @@ interface PropertyPanelProps {
   onUpdateElementField: (id: string, updates: Partial<FieldDefinition>) => void;
   onUpdateElementContent: (id: string, updates: Partial<ElementContent>) => void;
   onUpdateElementStyle: (id: string, updates: Partial<ElementStyle>) => void;
-  onUpdateSection: (id: string, updates: Partial<{ name: string; visible: boolean; columnCount: ColumnCount; style?: ElementStyle }>) => void;
+  onUpdateSection: (id: string, updates: Partial<Pick<FormSection, 'name' | 'title' | 'description' | 'visible' | 'columnCount' | 'style'>>) => void;
   onDuplicateElement: (id: string) => void;
   onRemoveElement: (id: string) => void;
   onDeselect: () => void;
@@ -119,7 +120,7 @@ function FormSettingsPanel({ definition, formName, formDescription, onUpdateForm
 
 // ---------- an element ----------
 
-function ElementSettings({ element, quiz, onUpdateElementField, onUpdateElementContent }: PropertyPanelProps & { element: FormElement; quiz?: QuizSettings }) {
+function ElementSettings({ element, quiz, onUpdateElementField, onUpdateElementContent, onUpdateElementStyle }: PropertyPanelProps & { element: FormElement; quiz?: QuizSettings }) {
   const f = element.field;
   const c = element.content;
   const setF = (u: Partial<FieldDefinition>) => onUpdateElementField(element.id, u);
@@ -177,12 +178,38 @@ function ElementSettings({ element, quiz, onUpdateElementField, onUpdateElementC
         {PLACEHOLDER.has(type) && <Field label="Placeholder"><input className={inputCls} value={f.placeholder || ''} onChange={(e) => setF({ placeholder: e.target.value })} /></Field>}
         {!unseen && type !== 'captcha' && type !== 'payment' && <SwitchRow label="Required" hint={type === 'consent' ? 'They must tick it to send the form.' : undefined} checked={f.required} onChange={(v) => setF({ required: v })} />}
         {!unseen && type !== 'captcha' && <SwitchRow label="Visible" hint="Turn off to hide it (logic can still show it)." checked={f.visible !== false} onChange={(v) => setF({ visible: v })} />}
+        {!unseen && type !== 'captcha' && (
+          <Field label="Width" hint="Half-width fields sit side by side (in a one-column section); on a phone they stack.">
+            <Segmented size="sm" value={element.style?.width === 'half' ? 'half' : 'full'} onChange={(v) => onUpdateElementStyle(element.id, { width: v === 'half' ? 'half' : undefined })}
+              options={[{ value: 'full', label: 'Full' }, { value: 'half', label: 'Half' }]} />
+          </Field>
+        )}
         {type === 'captcha' && <p className="text-[12px] leading-relaxed text-[#6E6E73]">People answer a small sum before sending. It stops most automated spam, on top of the hidden trap every form has.</p>}
       </Group>
 
       {type === 'consent' && (
         <Group title="Agreement">
           <Field label="What they agree to"><textarea className={areaCls} value={c?.text || ''} onChange={(e) => setC({ text: e.target.value })} placeholder="I agree to the terms and privacy policy." /></Field>
+          <Field label="Link after it (optional)" hint="Opens in a new tab, e.g. your privacy notice.">
+            <input className={inputCls} value={c?.consentLinkUrl || ''} onChange={(e) => setC({ consentLinkUrl: e.target.value.trim() })} placeholder="https://" />
+          </Field>
+          {c?.consentLinkUrl && (
+            <>
+              {!/^https?:\/\//i.test(c.consentLinkUrl) && <p className="text-[11.5px] text-[#B25000]">Start the link with https://</p>}
+              <Field label="Link words"><input className={inputCls} value={c?.consentLinkText || ''} onChange={(e) => setC({ consentLinkText: e.target.value })} placeholder="Read the privacy notice" /></Field>
+            </>
+          )}
+        </Group>
+      )}
+
+      {type === 'phone' && (
+        <Group title="Country">
+          <Field label="Country code" hint="People pick their country (this one first) and type the number; it's saved as +234 803…">
+            <select className={inputCls} value={f.phoneCountry || ''} onChange={(e) => setF({ phoneCountry: e.target.value || undefined })}>
+              <option value="">None: they type the whole number</option>
+              {dialCountries().map((cn_) => <option key={cn_.iso} value={cn_.iso}>{cn_.name} (+{cn_.dial})</option>)}
+            </select>
+          </Field>
         </Group>
       )}
 
@@ -223,7 +250,8 @@ function ElementSettings({ element, quiz, onUpdateElementField, onUpdateElementC
         </Group>
       )}
       {type === 'number' && <Group title="Limits"><MinMax label="Number" v={f.validation} onChange={(validation) => setF({ validation })} /></Group>}
-      {['text_field', 'long_text'].includes(type) && <TextRules f={f} onChange={setF} />}
+      {['text_field', 'long_text', 'website'].includes(type) && <TextRules f={f} onChange={setF} />}
+      {type === 'website' && <p className="px-1 text-[11.5px] leading-relaxed text-[#6E6E73]">Answers must be a web address (like instagram.com/name or https://…).</p>}
 
       {type === 'file_upload' && (
         <Group title="Files">
@@ -354,13 +382,15 @@ function StyleSettings({ element, onUpdate }: { element: FormElement; onUpdate: 
 
 // ---------- a section ----------
 
-function SectionSettings({ section, onUpdate }: { section: FormSection; onUpdate: (id: string, u: Partial<{ name: string; visible: boolean; columnCount: ColumnCount; style?: ElementStyle }>) => void }) {
+function SectionSettings({ section, onUpdate }: { section: FormSection; onUpdate: PropertyPanelProps['onUpdateSection'] }) {
   const s = section.style || {};
   const setStyle = (u: Partial<ElementStyle>) => onUpdate(section.id, { style: { ...s, ...u } });
   return (
     <>
       <Group title="Section">
         <Field label="Name (for you)"><input className={inputCls} value={section.name} onChange={(e) => onUpdate(section.id, { name: e.target.value })} /></Field>
+        <Field label="Heading people see (optional)" hint="Groups the fields under it, e.g. “Your details”."><input className={inputCls} value={section.title || ''} onChange={(e) => onUpdate(section.id, { title: e.target.value })} placeholder="None" /></Field>
+        {section.title && <Field label="Line under the heading (optional)"><input className={inputCls} value={section.description || ''} onChange={(e) => onUpdate(section.id, { description: e.target.value })} /></Field>}
         <Field label="Columns"><Segmented size="sm" value={section.columnCount} onChange={(v) => onUpdate(section.id, { columnCount: v })} options={[{ value: 1, label: 'One' }, { value: 2, label: 'Two' }, { value: 3, label: 'Three' }]} /></Field>
         <SwitchRow label="Visible" hint="Hidden sections stay here, faded, so you can bring them back." checked={section.visible} onChange={(v) => onUpdate(section.id, { visible: v })} />
       </Group>

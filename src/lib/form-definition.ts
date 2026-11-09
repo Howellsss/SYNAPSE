@@ -77,7 +77,7 @@ export function createDefaultDefinition(formName: string, description?: string |
 
   const firstName = makeField('first_name', 'First Name', 0, { required: true, placeholder: 'John', mappedContactField: 'first_name' });
   const lastName = makeField('last_name', 'Last Name', 1, { required: true, placeholder: 'Doe', mappedContactField: 'last_name' });
-  const phone = makeField('phone', 'Phone Number', 2, { placeholder: '+1 (555) 000-0000', mappedContactField: 'phone' });
+  const phone = makeField('phone', 'Phone Number', 2, { placeholder: '801 234 5678', mappedContactField: 'phone', phoneCountry: 'NG' });
   const email = makeField('email', 'Email Address', 3, { required: true, placeholder: 'john@example.com', mappedContactField: 'email' });
   const consent = makeField('consent', 'Consent', 4, { required: true });
   consent.content = { text: 'I agree to be contacted regarding my submission.' };
@@ -168,7 +168,7 @@ function createDefaultField(type: ElementType): FieldDefinition {
   if (type === 'first_name') { base.label = 'First Name'; base.required = true; base.placeholder = 'John'; base.mappedContactField = 'first_name'; }
   if (type === 'last_name') { base.label = 'Last Name'; base.required = true; base.placeholder = 'Doe'; base.mappedContactField = 'last_name'; }
   if (type === 'email') { base.label = 'Email Address'; base.required = true; base.placeholder = 'john@example.com'; base.mappedContactField = 'email'; }
-  if (type === 'phone') { base.label = 'Phone Number'; base.placeholder = '+1 (555) 000-0000'; base.mappedContactField = 'phone'; }
+  if (type === 'phone') { base.label = 'Phone Number'; base.placeholder = '801 234 5678'; base.mappedContactField = 'phone'; base.phoneCountry = 'NG'; }
   if (type === 'text_field') { base.label = 'Short Answer'; base.placeholder = 'Enter your answer'; }
   if (type === 'long_text') { base.label = 'Long Answer'; base.placeholder = 'Enter your answer'; }
   if (type === 'number') { base.label = 'Number'; base.placeholder = '0'; }

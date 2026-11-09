@@ -66,6 +66,9 @@ export interface ElementContent {
   scaleStep?: number;
   scaleMinLabel?: string;
   scaleMaxLabel?: string;
+  /** Consent: a link after the agreement text, e.g. to the privacy notice. */
+  consentLinkText?: string;
+  consentLinkUrl?: string;
 }
 
 export type ContactFieldKey = 'first_name' | 'last_name' | 'full_name' | 'email' | 'phone' | 'company' | 'job_title' | 'date_of_birth';
@@ -88,6 +91,8 @@ export interface FieldDefinition {
   mappedContactField?: ContactFieldKey | null;
   /** Monetary: the currency shown beside the amount (ISO code, e.g. usd). */
   currency?: string;
+  /** Phone: the country picked to start with (ISO code, e.g. NG). Without it the number is typed freely. */
+  phoneCountry?: string;
   validation?: FieldValidation;
   visible?: boolean;
   allowedFileTypes?: string[];

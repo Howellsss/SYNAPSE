@@ -248,7 +248,8 @@ export function fieldError(el: FormElement & { field: FieldDefinition }, value: 
   if (el.type === 'monetary' && (Number.isNaN(Number(v)) || Number(v) < 0)) return 'Enter an amount.';
   if (el.type === 'date_of_birth' && v > new Date().toISOString().slice(0, 10)) return 'That date is in the future.';
   if (el.type === 'email' && !EMAIL_RE.test(v)) return 'Enter a valid email address.';
-  if (el.type === 'phone' && v.replace(/\D/g, '').length < 7) return 'Enter a valid phone number.';
+  // With a country code ("+234 803…"), the number after the code is what's checked.
+  if (el.type === 'phone' && v.replace(/^\+\d{1,4}\s+/, '').replace(/\D/g, '').length < 7) return 'Enter a valid phone number.';
   if (el.type === 'website' && !/^(https?:\/\/)?[^\s.]+\.[^\s]{2,}$/i.test(v)) return 'Enter a valid web address.';
   const val = f.validation;
   if (val) {

@@ -142,3 +142,14 @@ describe('friendly messages for empty fields', () => {
     expect(fieldError(createElement('email', 0) as FormElement & { field: FieldDefinition }, 'nope', true)).toBe('Enter a valid email address.');
   });
 });
+
+describe('phone with a country code', () => {
+  it('new phone fields start on Nigeria (+234)', () => {
+    expect(createElement('phone', 0).field?.phoneCountry).toBe('NG');
+  });
+  it('checks the number after the code', () => {
+    const el = createElement('phone', 0) as FormElement & { field: FieldDefinition };
+    expect(fieldError(el, '+234 803 12', true)).toBe('Enter a valid phone number.');
+    expect(fieldError(el, '+234 803 123 4567', true)).toBeNull();
+  });
+});

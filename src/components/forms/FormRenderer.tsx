@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { createContext, useContext, useState } from 'react';
 import { AlertCircle, ArrowLeft, ArrowRight, Check, ImagePlus, Loader2 } from 'lucide-react';
 import { countryNames } from '@/lib/countries';
+import { DIAL, dialCountries, flagOf, joinPhone, splitPhone } from '@/lib/phone';
 import { CAPTCHA_OK, CAPTCHA_WRONG, money, paymentFor, splitMulti } from '@/lib/form-engine';
 import { FileUploadInput, SignatureInput } from './ResponseInputs';
 import './form-look.css';
@@ -473,13 +474,13 @@ function RenderSection({ section, definition, builderMode, selectedElementId, on
 // ============================================================
 
 /** One element as the builder canvas shows it: exactly as on the form, but not fillable. */
-export function BuilderElement({ element, definition }: { element: FormElement; definition: FormDefinition }) {
+export function BuilderElement({ element, definition, inGrid = false }: { element: FormElement; definition: FormDefinition; inGrid?: boolean }) {
   const style = element.style;
   return (
     <div style={{
       color: style?.textColor, textAlign: style?.textAlign, backgroundColor: style?.backgroundColor, borderRadius: style?.borderRadius, padding: style?.padding,
       marginTop: style?.marginTop, marginBottom: style?.marginBottom,
-      width: style?.width && WIDTH_PCT[style.width] && element.type !== 'button' ? WIDTH_PCT[style.width] : undefined,
+      width: !inGrid && style?.width && WIDTH_PCT[style.width] && element.type !== 'button' ? WIDTH_PCT[style.width] : undefined,
     }}>
       {renderElementContent(element, definition, true, {}, undefined)}
     </div>
@@ -682,7 +683,10 @@ function renderFieldInput(element: FormElement, f: NonNullable<FormElement['fiel
     case 'postal_code': return text('text', { autoComplete: 'postal-code', inputMode: 'text' });
     case 'website': return text('url', { autoComplete: 'url', inputMode: 'url' });
     case 'email': return text('email', { autoComplete: 'email', inputMode: 'email' });
-    case 'phone': return text('tel', { autoComplete: 'tel', inputMode: 'tel' });
+    case 'phone':
+      return f.phoneCountry
+        ? <PhoneInput country={f.phoneCountry} value={value} onChange={onChange} inputStyle={inputStyle} theme={theme} placeholder={f.placeholder} disabled={disabled} a11y={a11y} />
+        : text('tel', { autoComplete: 'tel', inputMode: 'tel' });
     case 'number': return text('number', { inputMode: 'decimal' });
     case 'date': return text('date');
     case 'date_of_birth': return text('date', { autoComplete: 'bday', max: new Date().toISOString().slice(0, 10) });
@@ -714,7 +718,12 @@ function renderFieldInput(element: FormElement, f: NonNullable<FormElement['fiel
         <label className="sf-consent" data-on={on} style={{ borderRadius: tileRadius(theme) }}>
           <input type="checkbox" className="sf-sr" checked={on} onChange={e => onChange(e.target.checked ? 'true' : '')} disabled={disabled} aria-describedby={a11y?.['aria-describedby']} aria-invalid={a11y?.['aria-invalid']} aria-required={a11y?.['aria-required']} />
           <span className="sf-mark" style={{ borderRadius: '6px' }} aria-hidden><Check className="h-3.5 w-3.5" strokeWidth={3} /></span>
-          <span style={{ color: theme.colors.bodyText, fontFamily: theme.typography.bodyFont, fontSize: `max(${theme.typography.bodySize}, 14px)`, lineHeight: 1.55 }}>{element.content?.text || 'I agree to be contacted regarding my submission.'}</span>
+          <span style={{ color: theme.colors.bodyText, fontFamily: theme.typography.bodyFont, fontSize: `max(${theme.typography.bodySize}, 14px)`, lineHeight: 1.55 }}>
+            {element.content?.text || 'I agree to be contacted regarding my submission.'}
+            {element.content?.consentLinkUrl && /^https?:\/\//i.test(element.content.consentLinkUrl) && (
+              <> <a href={element.content.consentLinkUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: theme.colors.primary, fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: '3px' }}>{element.content.consentLinkText || 'Read the privacy notice'}</a></>
+            )}
+          </span>
         </label>
       );
     }
@@ -745,6 +754,29 @@ function renderFieldInput(element: FormElement, f: NonNullable<FormElement['fiel
     case 'captcha': return <CaptchaInput fieldId={f.fieldId} value={value} onChange={onChange} theme={theme} inputStyle={inputStyle} disabled={disabled} />;
     default: return null;
   }
+}
+
+/** A phone number with its country: the flag and code to pick, then the number. */
+function PhoneInput({ country, value, onChange, inputStyle, theme, placeholder, disabled, a11y }: {
+  country: string; value: string; onChange: (v: string) => void; inputStyle: React.CSSProperties; theme: FormTheme; placeholder?: string; disabled: boolean; a11y?: A11y;
+}) {
+  const parsed = splitPhone(value, country);
+  const [iso, setIso] = useState(parsed.iso);
+  const [typed, setTyped] = useState(parsed.number);
+  const set = (nextIso: string, nextTyped: string) => { setIso(nextIso); setTyped(nextTyped); onChange(joinPhone(nextIso, nextTyped)); };
+  return (
+    <div className="sf-phone">
+      <label className="sf-phone-code" style={{ ...inputStyle, width: 'auto', padding: 0 }}>
+        <span className="sf-sr">Country code</span>
+        <span aria-hidden className="sf-phone-show">{flagOf(iso)} +{DIAL[iso]}</span>
+        <select value={iso} disabled={disabled} onChange={(e) => set(e.target.value, typed)} aria-describedby={a11y?.['aria-describedby']} style={{ fontFamily: theme.typography.bodyFont }}>
+          {dialCountries().map((c) => <option key={c.iso} value={c.iso}>{c.name} (+{c.dial})</option>)}
+        </select>
+      </label>
+      <input type="tel" className="sf-input" style={inputStyle} value={typed} onChange={(e) => set(iso, e.target.value)} placeholder={placeholder} disabled={disabled}
+        autoComplete="tel-national" inputMode="tel" {...a11y} />
+    </div>
+  );
 }
 
 /** Radio, Yes/No, Checkbox, Multi-select and Dropdown, each with an optional "Other" answer. */
