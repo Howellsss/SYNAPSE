@@ -37,4 +37,10 @@ CREATE OR REPLACE FUNCTION net.http_post(url text, body jsonb DEFAULT '{}', para
 RETURNS bigint LANGUAGE sql AS $$ INSERT INTO net.requests(url, body, headers) VALUES (url, body, headers) RETURNING id $$;
 
 GRANT USAGE ON SCHEMA auth, storage, extensions TO anon, authenticated;
+-- Like Supabase: the app's roles may use everything created in public unless a migration revokes it.
+DO $$ BEGIN CREATE ROLE service_role NOLOGIN BYPASSRLS; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
 DO $$ BEGIN CREATE PUBLICATION supabase_realtime; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
