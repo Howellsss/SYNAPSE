@@ -84,6 +84,7 @@ export function EventBuilder({ eventId }: { eventId?: string }) {
   const [templates, setTemplates] = useState<Partial<Record<EmailKind, { subject?: string; message?: string }>>>({});
   const [accountId, setAccountId] = useState('');
   const [footerLine, setFooterLine] = useState('');
+  const [reminders, setReminders] = useState(true);
   const [accounts, setAccounts] = useState<{ id: string; email: string; status: string }[] | null>(null);
   const logoRef = useRef<HTMLInputElement>(null);
   const setTicket = (i: number, patch: Partial<TicketRow>) => setTickets((all) => all.map((x, j) => (j === i ? { ...x, ...patch } : x)));
@@ -107,7 +108,7 @@ export function EventBuilder({ eventId }: { eventId?: string }) {
       if (event.starts_at && event.ends_at) { setStart(isoToZoned(event.starts_at, event.timezone)); setEnd(isoToZoned(event.ends_at, event.timezone)); } else setDateTba(true);
       setTagline(event.tagline ?? ''); setProgramme((event.programme ?? []).join(', ')); setLogo(event.organiser_logo_url ?? null);
       setBrandPrimary(event.brand?.primary ?? ''); setBrandAccent(event.brand?.accent ?? ''); setPrivacy(event.privacy_notice ?? '');
-      setTemplates(event.email_templates ?? {}); setAccountId(event.email_account_id ?? ''); setFooterLine(event.footer_line ?? '');
+      setTemplates(event.email_templates ?? {}); setAccountId(event.email_account_id ?? ''); setFooterLine(event.footer_line ?? ''); setReminders(event.reminders_enabled ?? true);
       setMode(event.mode); setVenue(event.venue_name); setAddress(event.address); setCity(event.city); setOnline(event.online_url);
       setOrganiser(event.organiser_name); setVisibility(event.visibility); setStatus(event.status); setQuestions(event.questions ?? []);
       setTickets(ts.map((t) => ({
@@ -187,7 +188,7 @@ export function EventBuilder({ eventId }: { eventId?: string }) {
         const own = { ...(t.subject?.trim() && t.subject.trim() !== subject ? { subject: t.subject.trim() } : {}), ...(t.message?.trim() && t.message.trim() !== message ? { message: t.message.trim() } : {}) };
         return [kind, own];
       }).filter(([, own]) => Object.keys(own as object).length)),
-      email_account_id: accountId || null, footer_line: footerLine.trim(),
+      email_account_id: accountId || null, footer_line: footerLine.trim(), reminders_enabled: reminders,
     };
     const ticketDrafts: TicketDraft[] = tickets.map((t) => ({
       id: t.id, name: t.name.trim(), description: t.description.trim(), currency: t.currency,
@@ -342,13 +343,13 @@ export function EventBuilder({ eventId }: { eventId?: string }) {
               <ColourField label="Main colour" value={brandPrimary} onChange={setBrandPrimary} />
               <ColourField label="Accent colour" value={brandAccent} onChange={setBrandAccent} />
             </div>
-            <Field label="Privacy notice" hint="Shown on registration pages: what you collect, why, how long you keep it and who sees it.">
+            <Field label="Privacy notice" hint="Shown on registration pages: what you collect, why, how long you keep it and who sees it. Left empty, a standard notice in your name is shown.">
               <textarea value={privacy} onChange={(e) => setPrivacy(e.target.value.slice(0, 8000))} rows={4} className="input-field" placeholder="We collect your name, email and phone to manage your registration…" />
             </Field>
           </Section>
 
           <Section title="Emails">
-            <EmailSettings accounts={accounts} accountId={accountId} onAccount={setAccountId} footerLine={footerLine} onFooter={setFooterLine}
+            <EmailSettings accounts={accounts} accountId={accountId} onAccount={setAccountId} footerLine={footerLine} onFooter={setFooterLine} reminders={reminders} onReminders={setReminders} dateSet={!dateTba}
               templates={templates} onTemplate={(kind, patch) => setTemplates((all) => ({ ...all, [kind]: { ...all[kind], ...patch } }))} />
           </Section>
 
@@ -425,16 +426,16 @@ function TypeSettings({ t, eventSlug, forms, onChange }: { t: TicketRow; eventSl
 }
 
 /** Where the emails come from, the line at their foot, and the wording of each. */
-function EmailSettings({ accounts, accountId, onAccount, footerLine, onFooter, templates, onTemplate }: {
+function EmailSettings({ accounts, accountId, onAccount, footerLine, onFooter, reminders, onReminders, dateSet, templates, onTemplate }: {
   accounts: { id: string; email: string; status: string }[] | null; accountId: string; onAccount: (v: string) => void;
-  footerLine: string; onFooter: (v: string) => void;
+  footerLine: string; onFooter: (v: string) => void; reminders: boolean; onReminders: (v: boolean) => void; dateSet: boolean;
   templates: Partial<Record<EmailKind, { subject?: string; message?: string }>>; onTemplate: (kind: EmailKind, patch: { subject?: string; message?: string }) => void;
 }) {
   const [open, setOpen] = useState<EmailKind | null>(null);
   const active = (accounts ?? []).filter((a) => a.status === 'active');
   return (
     <>
-      <p className="-mt-1 text-sm text-ivory-700">People get an email when they register, apply, are selected or aren’t. Tickets come with their QR code, in your event’s colours.</p>
+      <p className="-mt-1 text-sm text-ivory-700">People get an email when they register, apply, are selected or aren’t, and a reminder the day before. Tickets come with their QR code, in your event’s colours.</p>
       {accounts !== null && !active.length ? (
         <p className="rounded-2xl bg-gold-50 px-4 py-3 text-sm text-gold-900">
           No email account is connected, so no emails will go out (people still see their ticket on screen). Connect one in <a href="/#/settings?tab=email" className="font-semibold underline">Settings → Email</a>.
@@ -450,6 +451,11 @@ function EmailSettings({ accounts, accountId, onAccount, footerLine, onFooter, t
       <Field label="Line at the foot of emails and tickets (optional)" hint="e.g. a scripture or a sign-off">
         <input value={footerLine} onChange={(e) => onFooter(e.target.value.slice(0, 300))} className="input-field" />
       </Field>
+      <label className="flex items-start gap-3 rounded-2xl border border-navy-100 px-4 py-3 text-sm text-navy-800">
+        <input type="checkbox" checked={reminders} onChange={(e) => onReminders(e.target.checked)} className="mt-0.5 h-5 w-5 rounded border-navy-200 accent-navy-800" />
+        <span><span className="font-semibold">Send a reminder 24 hours before</span>
+          <span className="block text-xs text-ivory-700">{dateSet ? 'Everyone with a ticket who hasn’t checked in gets it once, with their ticket.' : 'It starts once you set the event’s date.'}</span></span>
+      </label>
       <div className="divide-y divide-navy-100 overflow-hidden rounded-2xl border border-navy-100">
         {EMAIL_KINDS.map((k) => {
           const t = templates[k.kind] ?? {};
@@ -467,7 +473,7 @@ function EmailSettings({ accounts, accountId, onAccount, footerLine, onFooter, t
                 <div className="space-y-3 px-4 pb-4">
                   <Field label="Subject"><input value={t.subject ?? k.subject} onChange={(e) => onTemplate(k.kind, { subject: e.target.value.slice(0, 200) })} className="input-field" /></Field>
                   <Field label="Message"><textarea value={t.message ?? k.message} onChange={(e) => onTemplate(k.kind, { message: e.target.value.slice(0, 4000) })} rows={6} className="input-field" /></Field>
-                  <p className="text-xs text-ivory-700">You can use {'{{first_name}}'}, {'{{name}}'}, {'{{event}}'}, {'{{type}}'}, {'{{code}}'}, {'{{date}}'}, {'{{venue}}'} and {'{{ticket_link}}'}. {['confirmed', 'selected'].includes(k.kind) ? 'The ticket with its QR code is added under your message.' : ''}</p>
+                  <p className="text-xs text-ivory-700">You can use {'{{first_name}}'}, {'{{name}}'}, {'{{event}}'}, {'{{type}}'}, {'{{code}}'}, {'{{date}}'}, {'{{venue}}'} and {'{{ticket_link}}'}. {['confirmed', 'selected', 'reminder'].includes(k.kind) ? 'The ticket with its QR code is added under your message.' : ''}</p>
                   {changed && <button type="button" onClick={() => onTemplate(k.kind, { subject: undefined, message: undefined })} className="btn-ghost btn-sm">Use the default wording</button>}
                 </div>
               )}

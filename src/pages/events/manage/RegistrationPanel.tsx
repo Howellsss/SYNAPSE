@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle2, ExternalLink, Mail, Undo2 } from 'lucide-react';
+import { CheckCircle2, ExternalLink, Mail, Trash2, Undo2 } from 'lucide-react';
 import { Drawer } from '@/components/ui/Drawer';
 import {
   answerLink, formatPrice, holdsPlace, labelledAnswers, STATUS_LABEL,
@@ -14,6 +14,7 @@ export interface RegActions {
   markPaid: (r: Registration) => void;
   send: (r: Registration) => Promise<void>;
   open: (r: Registration) => void;
+  erase: (r: Registration) => void;
 }
 
 const STATUS_PILL: Record<RegistrationStatus, string> = {
@@ -115,6 +116,12 @@ export function RegistrationPanel({ reg, ticket, fields, onClose, actions, busy 
               ? <button type="button" disabled={busy} onClick={() => actions.setStatus(reg, approval ? 'applied' : 'confirmed')} className="text-sm font-semibold text-navy-700 hover:text-navy-900">Restore this registration</button>
               : reg.status !== 'declined' && <button type="button" disabled={busy} onClick={() => actions.setStatus(reg, 'cancelled')} className="text-sm font-semibold text-red-700 hover:text-red-800">Cancel this registration</button>}
           </div>
+        </section>
+
+        <section className="space-y-2 border-t border-navy-100 pt-5">
+          <h3 className="text-sm font-semibold text-navy-800">Their data</h3>
+          <p className="text-sm text-ivory-700">If {reg.first_name} asks you to delete their details, this removes the registration, their answers and the emails sent to them for this event.</p>
+          <button type="button" disabled={busy} onClick={() => actions.erase(reg)} className="flex h-10 items-center gap-1.5 rounded-lg bg-white px-4 text-sm font-semibold text-red-700 ring-1 ring-inset ring-red-200 hover:bg-red-50 disabled:opacity-50"><Trash2 className="h-4 w-4" /> Delete their data</button>
         </section>
       </div>
     </Drawer>

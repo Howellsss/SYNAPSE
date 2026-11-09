@@ -309,6 +309,64 @@ DO $$ DECLARE r jsonb; ev uuid; att uuid; perf uuid; reg event_registrations; ou
   PERFORM set_config('request.jwt.claim.sub', '', true);
 EXCEPTION WHEN OTHERS THEN PERFORM set_config('request.jwt.claim.sub', '', true); PERFORM tev.crashed('Dashboard', SQLERRM); END $$;
 
+DO $$ DECLARE r jsonb; ev uuid; reg event_registrations; old_reg event_registrations; n int; sub uuid; cid uuid; outsider uuid := 'f0000000-0000-4000-8000-0000000000b3'; BEGIN
+  RAISE NOTICE 'Reminders 24 hours before, and deleting someone''s data';
+  PERFORM tev.reset();
+  DELETE FROM email_accounts WHERE workspace_id = tev.ws();
+  INSERT INTO email_accounts(workspace_id, user_id, email) VALUES (tev.ws(), tev.owner(), 'hello@derasperks.example');
+  SELECT id INTO ev FROM events WHERE slug = 'unscathed';
+  PERFORM event_register('unscathed', 'register', tev.answers('Ada Obi', 'ada@example.com'));
+  PERFORM event_register('unscathed', 'register', tev.answers('Bo Eze', 'bo@example.com', '+234 803 222 3333'));
+  PERFORM event_register('unscathed', 'apply', tev.answers('Cy Ola', 'cy@example.com', '+234 803 444 5555'));
+  -- They registered a while ago (the reminder skips anyone who registered in the last two hours).
+  UPDATE event_registrations SET created_at = now() - interval '3 days' WHERE event_id = ev;
+  PERFORM tev.check(event_send_reminders() = 0, 'date to be announced: no reminders');
+  UPDATE events SET starts_at = now() + interval '30 hours', ends_at = now() + interval '34 hours' WHERE id = ev;
+  PERFORM tev.check(event_send_reminders() = 0, 'more than a day away: not yet');
+  UPDATE events SET starts_at = now() + interval '20 hours', ends_at = now() + interval '24 hours' WHERE id = ev;
+  UPDATE event_registrations SET checked_in_at = now() WHERE email = 'bo@example.com';
+  n := event_send_reminders();
+  PERFORM tev.check(n = 1 AND EXISTS (SELECT 1 FROM messages WHERE to_address = 'ada@example.com' AND subject = 'Tomorrow: UNSCATHED' AND body LIKE '%Your ticket:%'),
+    'within a day: the attendee gets one reminder with their ticket (not the applicant, not someone already in)');
+  PERFORM tev.check(event_send_reminders() = 0, 'and only once');
+  UPDATE events SET email_templates = '{"reminder": {"subject": "See you soon at {{event}}"}}', reminders_enabled = false WHERE id = ev;
+  UPDATE event_registrations SET reminded_at = NULL WHERE email = 'ada@example.com';
+  PERFORM tev.check(event_send_reminders() = 0, 'switched off for this event: none');
+  UPDATE events SET reminders_enabled = true WHERE id = ev;
+  PERFORM event_send_reminders();
+  PERFORM tev.check(EXISTS (SELECT 1 FROM messages WHERE to_address = 'ada@example.com' AND subject = 'See you soon at UNSCATHED'), 'the organiser''s own wording is used');
+
+  -- Deleting a registration and its personal data on request.
+  SELECT * INTO reg FROM event_registrations WHERE email = 'ada@example.com';
+  INSERT INTO auth.users(id, email) VALUES (outsider, 'outsider@example.com') ON CONFLICT DO NOTHING;
+  INSERT INTO workspace_members(workspace_id, user_id, role) VALUES (tev.ws(), outsider, 'member') ON CONFLICT DO NOTHING;
+  PERFORM set_config('request.jwt.claim.sub', outsider::text, true);
+  PERFORM tev.check(tev.raises(format('SELECT event_erase_registration(%L)', reg.id)) = 'not_allowed', 'a member without Events can''t delete anyone');
+  PERFORM set_config('request.jwt.claim.sub', tev.owner()::text, true);
+  sub := reg.form_submission_id; cid := reg.contact_id;
+  r := event_erase_registration(reg.id);
+  PERFORM tev.check(NOT EXISTS (SELECT 1 FROM event_registrations WHERE id = reg.id) AND NOT EXISTS (SELECT 1 FROM form_submissions WHERE id = sub)
+    AND NOT EXISTS (SELECT 1 FROM messages WHERE to_address = 'ada@example.com') AND EXISTS (SELECT 1 FROM contacts WHERE id = cid),
+    'their registration, answers and emails are gone; their contact stays unless asked');
+  SELECT * INTO reg FROM event_registrations WHERE email = 'bo@example.com';
+  cid := reg.contact_id;
+  r := event_erase_registration(reg.id, true);
+  PERFORM tev.check((r->>'contact_deleted')::boolean AND NOT EXISTS (SELECT 1 FROM contacts WHERE id = cid), 'asked to: their contact is deleted too');
+  PERFORM tev.check(EXISTS (SELECT 1 FROM audit_logs WHERE action = 'registration_erased' AND details::text NOT LIKE '%bo@example.com%' AND details::text NOT LIKE '%Bo Eze%'),
+    'the audit log says it happened, without their details');
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+
+  -- Resend can't be used to flood inboxes.
+  UPDATE event_registrations SET last_email_at = now() WHERE event_id = ev;
+  INSERT INTO event_registrations(event_id, first_name, last_name, email, status, pin, last_email_at)
+  SELECT ev, 'P', 'Q' || g, 'p' || g || '@example.com', 'confirmed', lpad(g::text, 6, '0'), now() FROM generate_series(1, 30) g;
+  PERFORM event_register('unscathed', 'register', tev.answers('Di Eke', 'di@example.com', '+234 803 777 1111'));
+  UPDATE event_registrations SET last_email_at = now() - interval '1 hour' WHERE email = 'di@example.com';
+  SELECT count(*) INTO n FROM messages WHERE to_address = 'di@example.com';
+  PERFORM event_resend_ticket('unscathed', 'di@example.com');
+  PERFORM tev.check((SELECT count(*) FROM messages WHERE to_address = 'di@example.com') = n, 'more than 30 resends a minute for one event: the rest wait');
+EXCEPTION WHEN OTHERS THEN PERFORM set_config('request.jwt.claim.sub', '', true); PERFORM tev.crashed('Reminders and privacy', SQLERRM); END $$;
+
 DO $$ DECLARE f int; p int; r record; BEGIN
   SELECT count(*) INTO f FROM tev.failures; SELECT count(*) INTO p FROM tev.passes;
   IF f > 0 THEN
