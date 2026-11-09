@@ -44,6 +44,7 @@ DECLARE ev uuid;
 BEGIN
   DELETE FROM events WHERE workspace_id = tev.ws();
   DELETE FROM forms WHERE workspace_id = tev.ws();
+  DELETE FROM messages WHERE workspace_id = tev.ws();
   DELETE FROM contacts WHERE workspace_id = tev.ws();
   INSERT INTO events(workspace_id, created_by, slug, title, starts_at, ends_at, status, venue_name, city, tagline, programme)
   VALUES (tev.ws(), tev.owner(), 'unscathed', 'UNSCATHED', NULL, NULL, 'published', 'Light Nation', 'Port Harcourt', 'Words. Sound. Style.', ARRAY['Spoken Word', 'Music'])
@@ -123,6 +124,82 @@ DO $$ DECLARE ev uuid; tk uuid; r jsonb; BEGIN
   PERFORM tev.check(r->>'pin' ~ '^\d{6}$' AND EXISTS (SELECT 1 FROM event_registrations WHERE email = 'fe@example.com' AND status = 'confirmed'), 'the old registration (PIN and QR) still works');
   PERFORM tev.check(public_ticket((r->>'qr_token')::uuid)->>'ticket_name' = 'General', 'and its ticket page');
 EXCEPTION WHEN OTHERS THEN PERFORM tev.crashed('Events made before', SQLERRM); END $$;
+
+DO $$ DECLARE r jsonb; reg event_registrations; m messages; sig text; BEGIN
+  RAISE NOTICE 'Signed tickets and the confirmation email';
+  PERFORM tev.reset();
+  DELETE FROM email_accounts WHERE workspace_id = tev.ws();
+  r := event_register('unscathed', 'register', tev.answers('Ada Obi', 'ada@example.com'));
+  PERFORM tev.check(r->>'emailed' = 'false' AND NOT EXISTS (SELECT 1 FROM messages WHERE to_address = 'ada@example.com'), 'no email account connected: registered, nothing emailed (and it says so)');
+  INSERT INTO email_accounts(workspace_id, user_id, email, display_name) VALUES (tev.ws(), tev.owner(), 'hello@derasperks.example', 'Dera Speaks');
+  UPDATE events SET brand = '{"primary": "#E9472B"}', footer_line = 'Where the Spirit of the Lord is, there is freedom — 2 Corinthians 3:17',
+    email_templates = '{"confirmed": {"subject": "See you at {{event}}, {{first_name}}"}}' WHERE slug = 'unscathed';
+  r := event_register('unscathed', 'register', tev.answers('Bo Eze', 'bo@example.com', '+234 803 222 3333'));
+  SELECT * INTO reg FROM event_registrations WHERE email = 'bo@example.com';
+  SELECT * INTO m FROM messages WHERE to_address = 'bo@example.com';
+  PERFORM tev.check(r->>'emailed' = 'true' AND m.status = 'queued' AND m.form_submission_id = reg.form_submission_id AND m.email_account_id IS NOT NULL,
+    'with one: the ticket email is queued for the mailer');
+  PERFORM tev.check(m.subject = 'See you at UNSCATHED, Bo' AND m.body LIKE 'Hi Bo,%' AND m.body LIKE '%' || reg.ticket_code || '%', 'the organiser''s wording, with the name and the code filled in');
+  PERFORM tev.check(m.body_html LIKE '%#E9472B%' AND m.body_html LIKE '%2 Corinthians 3:17%' AND m.body_html LIKE '%/api/qr/' || reg.qr_token || '.png?v=%',
+    'branded, with the footer line and the QR picture');
+  sig := split_part(r->>'qr_url', '?v=', 2);
+  PERFORM tev.check(r->>'qr_url' LIKE '%/e/ticket/' || reg.qr_token || '?v=%' AND length(sig) = 16, 'the QR holds the ticket link and a signature');
+  PERFORM tev.check(ticket_sig_ok(reg.qr_token, sig) AND NOT ticket_sig_ok(reg.qr_token, '0000000000000000') AND NOT ticket_sig_ok(gen_random_uuid(), sig),
+    'the signature checks out, and a changed one or another ticket doesn''t');
+  PERFORM tev.check(ticket_qr_text(reg.qr_token, sig) = r->>'qr_url' AND ticket_qr_text(reg.qr_token, 'nope') IS NULL, 'the QR picture is only made for a signed ticket');
+  PERFORM tev.check((public_ticket(reg.qr_token)->>'qr_url') = r->>'qr_url' AND public_ticket(reg.qr_token)->>'footer_line' LIKE 'Where the Spirit%', 'the ticket page gets the signed link and the footer');
+  PERFORM tev.check(NOT has_function_privilege('anon', 'ticket_sig(uuid)', 'EXECUTE') AND NOT has_function_privilege('authenticated', 'event_email(uuid, text)', 'EXECUTE'),
+    'nobody outside can sign tickets or send emails');
+  r := event_register('unscathed', 'apply', tev.answers('Bo Eze', 'bo@example.com', '+234 803 222 3333'));
+  PERFORM tev.check(EXISTS (SELECT 1 FROM messages WHERE to_address = 'bo@example.com' AND subject = 'We''ve got your application: UNSCATHED' AND body_html NOT LIKE '%/api/qr/%'),
+    'an application gets the "received" email, without a ticket');
+EXCEPTION WHEN OTHERS THEN PERFORM tev.crashed('Signed tickets and email', SQLERRM); END $$;
+
+DO $$ DECLARE r jsonb; n int; BEGIN
+  RAISE NOTICE 'Resend my ticket';
+  PERFORM tev.reset();
+  DELETE FROM email_accounts WHERE workspace_id = tev.ws();
+  INSERT INTO email_accounts(workspace_id, user_id, email) VALUES (tev.ws(), tev.owner(), 'hello@derasperks.example');
+  PERFORM event_register('unscathed', 'register', tev.answers('Cy Ola', 'cy@example.com'));
+  SELECT count(*) INTO n FROM messages WHERE to_address = 'cy@example.com';
+  r := event_resend_ticket('unscathed', 'CY@example.com');
+  PERFORM tev.check(r->>'ok' = 'true' AND (SELECT count(*) FROM messages WHERE to_address = 'cy@example.com') = n, 'asking again within ten minutes sends nothing more');
+  UPDATE event_registrations SET last_email_at = now() - interval '11 minutes' WHERE email = 'cy@example.com';
+  PERFORM event_resend_ticket('unscathed', 'cy@example.com');
+  PERFORM tev.check((SELECT count(*) FROM messages WHERE to_address = 'cy@example.com') = n + 1, 'later, the ticket is sent again');
+  r := event_resend_ticket('unscathed', 'nobody@example.com');
+  PERFORM tev.check(r = '{"ok": true}'::jsonb AND NOT EXISTS (SELECT 1 FROM messages WHERE to_address = 'nobody@example.com'), 'an unknown email gets the same answer, and nothing is sent');
+EXCEPTION WHEN OTHERS THEN PERFORM tev.crashed('Resend', SQLERRM); END $$;
+
+DO $$ DECLARE rid uuid; r jsonb; reg event_registrations; BEGIN
+  RAISE NOTICE 'Selecting and declining applicants';
+  PERFORM tev.reset();
+  DELETE FROM email_accounts WHERE workspace_id = tev.ws();
+  INSERT INTO email_accounts(workspace_id, user_id, email) VALUES (tev.ws(), tev.owner(), 'hello@derasperks.example');
+  PERFORM event_register('unscathed', 'apply', tev.answers('Di Eke', 'di@example.com', '+234 803 444 5555'));
+  PERFORM event_register('unscathed', 'apply', tev.answers('Ed Uche', 'ed@example.com', '+234 803 666 7777'));
+  SELECT id INTO rid FROM event_registrations WHERE email = 'di@example.com';
+  BEGIN
+    PERFORM event_set_registration_status(rid, 'selected');
+    PERFORM tev.check(false, 'someone signed out can''t select');
+  EXCEPTION WHEN OTHERS THEN PERFORM tev.check(SQLERRM = 'not_allowed', 'someone signed out can''t select');
+  END;
+  PERFORM set_config('request.jwt.claim.sub', tev.owner()::text, true);
+  PERFORM event_set_registration_status(rid, 'shortlisted');
+  r := event_set_registration_status(rid, 'selected');
+  SELECT * INTO reg FROM event_registrations WHERE id = rid;
+  PERFORM tev.check(reg.status = 'selected' AND reg.ticket_code ~ '^UNS-' AND public_ticket(reg.qr_token)->>'qr_url' IS NOT NULL, 'selected: they get a ticket code and a signed ticket');
+  PERFORM tev.check(EXISTS (SELECT 1 FROM messages WHERE to_address = 'di@example.com' AND subject = 'You''ve been selected: UNSCATHED' AND body_html LIKE '%' || reg.ticket_code || '%'),
+    'and the "selected" email with their ticket');
+  PERFORM event_set_registration_status((SELECT id FROM event_registrations WHERE email = 'ed@example.com'), 'declined');
+  PERFORM tev.check(EXISTS (SELECT 1 FROM messages WHERE to_address = 'ed@example.com' AND subject = 'About your application: UNSCATHED')
+    AND (SELECT ticket_code IS NULL FROM event_registrations WHERE email = 'ed@example.com'), 'declined: the kind note, and no ticket');
+  UPDATE event_tickets SET capacity = 1 WHERE slug = 'apply';
+  PERFORM event_set_registration_status((SELECT id FROM event_registrations WHERE email = 'ed@example.com'), 'shortlisted');
+  PERFORM tev.check(tev.raises($q$SELECT event_set_registration_status((SELECT id FROM event_registrations WHERE email = 'ed@example.com'), 'selected')$q$) = 'full',
+    'selecting past the capacity is refused');
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+EXCEPTION WHEN OTHERS THEN PERFORM set_config('request.jwt.claim.sub', '', true); PERFORM tev.crashed('Selecting', SQLERRM); END $$;
 
 DO $$ DECLARE f int; p int; r record; BEGIN
   SELECT count(*) INTO f FROM tev.failures; SELECT count(*) INTO p FROM tev.passes;

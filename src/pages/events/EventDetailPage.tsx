@@ -9,6 +9,7 @@ import {
   formatPrice, placeLine, registerForEvent, ticketUrl, type EventTicket, type PublicEvent,
 } from '@/lib/events';
 import { EventCard, EventsShell, QrImage } from '@/components/events/EventKit';
+import { ResendTicket } from '@/components/events/ResendTicket';
 import { useQrDataUrl } from '@/components/events/hooks';
 import { LoadingSpinner } from '@/components/ui/States';
 import { cn } from '@/lib/utils';
@@ -160,6 +161,7 @@ export function EventDetailPage({ slug }: { slug: string }) {
                 <AddToCalendar event={event} />
                 <ShareButton event={event} />
               </div>
+              {formTypes.length > 0 && <LostTicket slug={event.slug} />}
             </div>
           </aside>
         </div>
@@ -252,6 +254,18 @@ function TicketOption({ t, selected, disabled, onSelect }: { t: EventTicket; sel
           : t.remaining != null && t.remaining <= 20 ? <span className="mt-1 block text-xs font-semibold text-gold-700">{t.remaining} left</span> : null}
       </span>
     </button>
+  );
+}
+
+/** "Lost your ticket?": opens the form that emails it again. */
+function LostTicket({ slug }: { slug: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-4 text-center">
+      {open ? <ResendTicket slug={slug} className="text-left" /> : (
+        <button type="button" onClick={() => setOpen(true)} className="text-sm font-semibold text-navy-700 underline underline-offset-4 hover:text-navy-900">Lost your ticket?</button>
+      )}
+    </div>
   );
 }
 
