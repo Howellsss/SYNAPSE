@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { CalendarDays, CalendarPlus, CheckCircle2, Download, ExternalLink, Globe, MapPin, Ticket } from 'lucide-react';
 import { useRouter } from '@/lib/router';
-import { calendarLinks, downloadFile, eventDateLine, fetchTicket, formatPrice, placeLine, ticketUrl, type PublicTicket } from '@/lib/events';
+import { calendarLinks, downloadFile, eventDateLine, fetchTicket, formatPrice, holdsPlace, placeLine, ticketUrl, type PublicTicket } from '@/lib/events';
 import { EventsShell, QrImage } from '@/components/events/EventKit';
 import { useQrDataUrl } from '@/components/events/hooks';
 import { LoadingSpinner } from '@/components/ui/States';
@@ -36,6 +36,9 @@ export function TicketPage({ token }: { token: string }) {
   const e = t.event;
   const cal = calendarLinks(e);
   const cancelled = t.status === 'cancelled' || e.status === 'cancelled';
+  // Only a confirmed (or selected) registration is a ticket; an application isn't, yet.
+  const pending = !cancelled && !holdsPlace(t.status);
+  const pendingText = t.status === 'declined' ? 'This application wasn’t selected this time.' : 'Your application is being reviewed. If you’re selected, your ticket appears here and in your email.';
 
   return (
     <EventsShell>
@@ -55,9 +58,17 @@ export function TicketPage({ token }: { token: string }) {
           <div className="px-6 pb-7 pt-6 text-center">
             {cancelled ? (
               <p className="rounded-2xl bg-burgundy-50 px-4 py-3 text-sm font-semibold text-burgundy-700">This {t.status === 'cancelled' ? 'registration' : 'event'} was cancelled.</p>
+            ) : pending ? (
+              <p className="rounded-2xl bg-navy-50 px-4 py-3 text-sm font-semibold text-navy-800">{pendingText}</p>
             ) : (
               <>
                 <div className="mx-auto w-fit"><QrImage text={link} size={220} /></div>
+                {t.ticket_code && (
+                  <>
+                    <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-ivory-700">Ticket code</p>
+                    <p className="font-event-display text-3xl font-semibold tracking-[0.12em] text-navy-900">{t.ticket_code}</p>
+                  </>
+                )}
                 <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-ivory-700">Check-in PIN</p>
                 <p className="font-event-display text-3xl font-semibold tracking-[0.3em] text-navy-900">{t.pin}</p>
               </>
@@ -77,8 +88,8 @@ export function TicketPage({ token }: { token: string }) {
         </div>
 
         <div className="mt-5 grid grid-cols-2 gap-2">
-          <button type="button" disabled={!qr || cancelled} onClick={() => { if (qr) { const a = document.createElement('a'); a.href = qr; a.download = `${e.slug}-ticket.png`; a.click(); } }} className="flex h-12 items-center justify-center gap-2 rounded-full bg-navy-800 text-sm font-semibold text-white hover:bg-navy-700 disabled:opacity-50"><Download className="h-4 w-4" /> Download QR</button>
-          <button type="button" onClick={() => downloadFile(`${e.slug}.ics`, cal.ics, 'text/calendar')} className="flex h-12 items-center justify-center gap-2 rounded-full text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50"><CalendarPlus className="h-4 w-4" /> Add to calendar</button>
+          <button type="button" disabled={!qr || cancelled || pending} onClick={() => { if (qr) { const a = document.createElement('a'); a.href = qr; a.download = `${e.slug}-ticket.png`; a.click(); } }} className="flex h-12 items-center justify-center gap-2 rounded-full bg-navy-800 text-sm font-semibold text-white hover:bg-navy-700 disabled:opacity-50"><Download className="h-4 w-4" /> Download QR</button>
+          <button type="button" disabled={!cal} title={cal ? undefined : 'The date is to be announced'} onClick={() => cal && downloadFile(`${e.slug}.ics`, cal.ics, 'text/calendar')} className="flex h-12 items-center justify-center gap-2 rounded-full text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50 disabled:opacity-50"><CalendarPlus className="h-4 w-4" /> Add to calendar</button>
         </div>
         <button type="button" onClick={() => navigate(`/e/${e.slug}`)} className="mt-3 w-full rounded-full py-3 text-sm font-semibold text-navy-700 hover:bg-navy-50">View event page</button>
       </div>

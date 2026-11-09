@@ -26,11 +26,13 @@ export function EventsPage() {
   const now = Date.now();
   const groups = useMemo(() => {
     const all = events ?? [];
-    const upcoming = all.filter((e) => e.status !== 'draft' && new Date(e.ends_at).getTime() >= now).sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+    // A date to be announced counts as upcoming, listed after the dated ones.
+    const ended = (e: EventSummary) => !!e.ends_at && new Date(e.ends_at).getTime() < now;
+    const upcoming = all.filter((e) => e.status !== 'draft' && !ended(e)).sort((a, b) => (a.starts_at ?? '~').localeCompare(b.starts_at ?? '~'));
     return {
       upcoming,
       drafts: all.filter((e) => e.status === 'draft'),
-      past: all.filter((e) => e.status !== 'draft' && new Date(e.ends_at).getTime() < now),
+      past: all.filter((e) => e.status !== 'draft' && ended(e)),
       all,
     };
   }, [events, now]);
@@ -120,7 +122,7 @@ function Metric({ label, value }: { label: string; value: number }) {
 }
 
 export function StatusBadge({ e }: { e: Pick<EventSummary, 'status' | 'ends_at' | 'visibility'> }) {
-  const past = new Date(e.ends_at).getTime() < Date.now();
+  const past = !!e.ends_at && new Date(e.ends_at).getTime() < Date.now();
   const [label, cls] = e.status === 'draft' ? ['Draft', 'bg-navy-50 text-navy-700']
     : e.status === 'cancelled' ? ['Cancelled', 'bg-burgundy-50 text-burgundy-700']
       : past ? ['Ended', 'bg-navy-50 text-ivory-700']

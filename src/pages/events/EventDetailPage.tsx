@@ -23,7 +23,7 @@ export function EventDetailPage({ slug }: { slug: string }) {
 
   const load = () => fetchPublicEvent(slug).then(({ data }) => {
     setEvent(data);
-    if (data) setTicketId((cur) => cur ?? data.tickets.find((t) => t.remaining !== 0)?.id ?? null);
+    if (data) setTicketId((cur) => cur ?? data.tickets.find((t) => t.remaining !== 0 && !(t.slug && t.has_form))?.id ?? null);
   });
 
   useEffect(() => {
@@ -31,7 +31,7 @@ export function EventDetailPage({ slug }: { slug: string }) {
     fetchPublicEvent(slug).then(({ data }) => {
       if (!alive) return;
       setEvent(data);
-      setTicketId(data?.tickets.find((t) => t.remaining !== 0)?.id ?? null);
+      setTicketId(data?.tickets.find((t) => t.remaining !== 0 && !(t.slug && t.has_form))?.id ?? null);
       if (data) document.title = `${data.title} · SYNAPSE Events`;
     });
     fetchPublicEvents().then(({ data }) => { if (alive) setMore(data.filter((e) => e.slug !== slug)); });
@@ -54,7 +54,10 @@ export function EventDetailPage({ slug }: { slug: string }) {
     );
   }
 
-  const ended = new Date(event.ends_at).getTime() < Date.now();
+  const ended = !!event.ends_at && new Date(event.ends_at).getTime() < Date.now();
+  // Types with a form of their own register on their own page; the rest here, as before.
+  const formTypes = event.tickets.filter((t) => t.slug && t.has_form);
+  const plain = event.tickets.filter((t) => !(t.slug && t.has_form));
   const cancelled = event.status === 'cancelled';
   const open = !ended && !cancelled;
   const fromOrganiser = more.filter((e) => e.organiser_id === event.organiser_id).slice(0, 4);
@@ -79,10 +82,16 @@ export function EventDetailPage({ slug }: { slug: string }) {
               {event.mode !== 'in_person' && <span className="rounded-full bg-navy-50 px-3 py-1 text-xs font-semibold text-navy-700">{event.mode === 'online' ? 'Online' : 'In person + online'}</span>}
             </div>
             <h1 className="mt-4 font-event-display text-[34px] font-semibold leading-[1.1] tracking-tight text-navy-900 sm:text-[48px]">{event.title}</h1>
+            {event.tagline && <p className="mt-3 text-sm font-semibold uppercase tracking-[0.18em] text-gold-700">{event.tagline}</p>}
             {event.summary && <p className="mt-4 text-lg leading-relaxed text-ivory-800">{event.summary}</p>}
+            {!!event.programme?.length && (
+              <ul className="mt-5 flex flex-wrap gap-2" aria-label="Programme">
+                {event.programme.map((p) => <li key={p} className="rounded-full bg-navy-50 px-3 py-1 text-xs font-semibold text-navy-700">{p}</li>)}
+              </ul>
+            )}
 
             <ul className="mt-7 space-y-4">
-              <InfoRow icon={<CalendarDays className="h-5 w-5" />} title={eventDateLine(event.starts_at, event.ends_at, event.timezone)} sub={event.timezone.replace(/_/g, ' ')} />
+              <InfoRow icon={<CalendarDays className="h-5 w-5" />} title={eventDateLine(event.starts_at, event.ends_at, event.timezone)} sub={event.starts_at ? event.timezone.replace(/_/g, ' ') : 'Register now and you’ll hear as soon as it’s set.'} />
               <InfoRow
                 icon={event.mode === 'online' ? <Globe className="h-5 w-5" /> : <MapPin className="h-5 w-5" />}
                 title={placeLine(event)}
@@ -117,23 +126,36 @@ export function EventDetailPage({ slug }: { slug: string }) {
 
           <aside className="lg:sticky lg:top-24 lg:self-start">
             <div className="rounded-[28px] border border-navy-100 bg-white p-5 shadow-[0_18px_50px_rgba(13,28,59,0.08)] sm:p-6">
-              {open && <Countdown startsAt={event.starts_at} />}
-              <h2 className="mt-5 font-event-display text-lg font-semibold text-navy-900">Tickets</h2>
-              {event.tickets.length ? (
-                <div className="mt-3 space-y-2" role="radiogroup" aria-label="Tickets">
-                  {event.tickets.map((t) => (
-                    <TicketOption key={t.id} t={t} selected={ticketId === t.id} disabled={!open || t.remaining === 0} onSelect={() => setTicketId(t.id)} />
-                  ))}
-                </div>
-              ) : <p className="mt-2 text-sm text-ivory-700">Registration hasn't opened yet.</p>}
-              <button
-                type="button"
-                disabled={!open || !ticketId}
-                onClick={() => setRegistering(true)}
-                className="mt-5 h-[52px] w-full rounded-full bg-gold-400 text-[15px] font-semibold text-navy-900 transition hover:bg-gold-300 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {cancelled ? 'Cancelled' : ended ? 'Event ended' : event.tickets.length && event.tickets.every((t) => t.remaining === 0) ? 'Sold out' : 'Register'}
-              </button>
+              {open && event.starts_at && <Countdown startsAt={event.starts_at} />}
+              {open && !event.starts_at && <p className="rounded-2xl bg-navy-900 px-4 py-3 text-center text-sm font-semibold text-white">Date to be announced</p>}
+              {formTypes.length > 0 && (
+                <>
+                  <h2 className="mt-5 font-event-display text-lg font-semibold text-navy-900">{formTypes.length > 1 ? 'Ways to take part' : 'Registration'}</h2>
+                  <div className="mt-3 space-y-2">
+                    {formTypes.map((t) => <TypeOption key={t.id} t={t} eventOpen={open} onGo={() => navigate(`/e/${event.slug}/${t.slug}`)} />)}
+                  </div>
+                </>
+              )}
+              {(plain.length > 0 || formTypes.length === 0) && (
+                <>
+                  <h2 className="mt-5 font-event-display text-lg font-semibold text-navy-900">Tickets</h2>
+                  {plain.length ? (
+                    <div className="mt-3 space-y-2" role="radiogroup" aria-label="Tickets">
+                      {plain.map((t) => (
+                        <TicketOption key={t.id} t={t} selected={ticketId === t.id} disabled={!open || t.remaining === 0} onSelect={() => setTicketId(t.id)} />
+                      ))}
+                    </div>
+                  ) : <p className="mt-2 text-sm text-ivory-700">Registration hasn't opened yet.</p>}
+                  <button
+                    type="button"
+                    disabled={!open || !ticketId}
+                    onClick={() => setRegistering(true)}
+                    className="mt-5 h-[52px] w-full rounded-full bg-gold-400 text-[15px] font-semibold text-navy-900 transition hover:bg-gold-300 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {cancelled ? 'Cancelled' : ended ? 'Event ended' : plain.length && plain.every((t) => t.remaining === 0) ? 'Sold out' : 'Register'}
+                  </button>
+                </>
+              )}
               <div className="mt-5 grid grid-cols-2 gap-2 border-t border-navy-100 pt-5">
                 <AddToCalendar event={event} />
                 <ShareButton event={event} />
@@ -233,9 +255,37 @@ function TicketOption({ t, selected, disabled, onSelect }: { t: EventTicket; sel
   );
 }
 
+/** A registration type with a page of its own: what it is, whether it's open, and the way in. */
+function TypeOption({ t, eventOpen, onGo }: { t: EventTicket; eventOpen: boolean; onGo: () => void }) {
+  const state = eventOpen ? t.state ?? 'open' : 'closed';
+  const note: Record<string, string> = {
+    full: 'Every place is taken', closed: 'Registration is closed', not_open_yet: t.opens_at ? `Opens ${new Date(t.opens_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : 'Opens soon',
+    ended: 'This event has ended', cancelled: 'Cancelled', unavailable: 'Not available',
+  };
+  const go = state === 'open';
+  return (
+    <div className="rounded-2xl p-4 ring-1 ring-inset ring-navy-100">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="font-semibold text-navy-900">{t.name}</span>
+        <span className="shrink-0 font-event-display text-sm font-semibold text-navy-900">{t.requires_approval ? 'Apply' : formatPrice(t.price_minor, t.currency)}</span>
+      </div>
+      {t.description && <p className="mt-0.5 text-sm text-ivory-700">{t.description}</p>}
+      {t.requires_approval && <p className="mt-1 text-xs font-medium text-ivory-700">Applications are reviewed; you get a ticket if you're selected.</p>}
+      {go ? (
+        <button type="button" onClick={onGo} className="mt-3 h-11 w-full rounded-full bg-gold-400 text-sm font-semibold text-navy-900 transition hover:bg-gold-300">
+          {t.requires_approval ? 'Apply now' : 'Register'}
+        </button>
+      ) : <p className="mt-2 text-xs font-semibold text-burgundy-600">{note[state] ?? 'Not available'}</p>}
+    </div>
+  );
+}
+
 function AddToCalendar({ event }: { event: PublicEvent }) {
   const [open, setOpen] = useState(false);
   const links = useMemo(() => calendarLinks(event), [event]);
+  if (!links) {
+    return <button type="button" disabled title="The date is to be announced" className="flex h-11 w-full items-center justify-center gap-2 rounded-full text-sm font-semibold text-navy-800 opacity-50 ring-1 ring-inset ring-navy-100"><CalendarPlus className="h-4 w-4" /> Calendar</button>;
+  }
   return (
     <div className="relative">
       <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex h-11 w-full items-center justify-center gap-2 rounded-full text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50">
@@ -421,8 +471,12 @@ function Confirmation({ event, ticketName, price, name, result }: { event: Publi
         <button type="button" onClick={() => navigate(`/e/ticket/${result.qr_token}`)} className="flex h-12 items-center justify-center gap-2 rounded-full text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50">
           <Ticket className="h-4 w-4" /> Open my ticket
         </button>
-        <a href={cal.google} target="_blank" rel="noreferrer" className="flex h-12 items-center justify-center gap-2 rounded-full text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50"><CalendarDays className="h-4 w-4" /> Google Calendar</a>
-        <button type="button" onClick={() => downloadFile(`${event.slug}.ics`, cal.ics, 'text/calendar')} className="flex h-12 items-center justify-center gap-2 rounded-full text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50"><CalendarPlus className="h-4 w-4" /> Apple / Outlook</button>
+        {cal && (
+          <>
+            <a href={cal.google} target="_blank" rel="noreferrer" className="flex h-12 items-center justify-center gap-2 rounded-full text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50"><CalendarDays className="h-4 w-4" /> Google Calendar</a>
+            <button type="button" onClick={() => downloadFile(`${event.slug}.ics`, cal.ics, 'text/calendar')} className="flex h-12 items-center justify-center gap-2 rounded-full text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50"><CalendarPlus className="h-4 w-4" /> Apple / Outlook</button>
+          </>
+        )}
       </div>
     </div>
   );

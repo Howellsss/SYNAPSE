@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 import {
-  calendarLinks, countdown, formatPrice, inDateWindow, placeLine, priceFrom, registerErrorText,
+  calendarLinks, countdown, eventDateLine, formatPrice, inDateWindow, placeLine, priceFrom, registerErrorText,
   registrationsCsv, slugify, tokenFromScan, zonedToIso, isoToZoned, type Registration,
 } from './events';
 
@@ -85,11 +85,15 @@ describe('calendarLinks', () => {
     const { google, ics } = calendarLinks({
       title: 'Jazz, Wine; Night', summary: 'Live band', slug: 'jazz', mode: 'in_person', venue_name: 'Hall', address: '1 Road', city: 'Lagos',
       starts_at: '2026-10-10T18:00:00Z', ends_at: '2026-10-10T21:00:00Z',
-    }, 'https://x.app');
+    }, 'https://x.app')!;
     expect(google).toContain('dates=20261010T180000Z/20261010T210000Z');
     expect(ics).toContain('SUMMARY:Jazz\\, Wine\\; Night');
     expect(ics).toContain('URL:https://x.app/e/jazz');
     expect(ics).toContain('LOCATION:Hall\\, 1 Road\\, Lagos');
+  });
+  it('has nothing to add while the date is to be announced', () => {
+    expect(calendarLinks({ title: 'T', summary: '', slug: 't', mode: 'in_person', venue_name: '', address: '', city: '', starts_at: null, ends_at: null })).toBeNull();
+    expect(eventDateLine(null, null)).toBe('Date to be announced');
   });
 });
 
@@ -97,16 +101,16 @@ describe('registrationsCsv', () => {
   it('exports attendees with answers and guards formulas', () => {
     const reg: Registration = {
       id: 'r', event_id: 'e', ticket_id: 't', contact_id: null, first_name: '=HYPERLINK("x")', last_name: 'Doe, Jr', email: 'a@b.co', phone: '',
-      answers: { q1: 'Vegan', q2: true }, pin: '012345', qr_token: 'tok', status: 'confirmed', payment_status: 'free', amount_minor: 0,
+      answers: { q1: 'Vegan', q2: true }, pin: '012345', qr_token: 'tok', status: 'confirmed', payment_status: 'free', amount_minor: 0, ticket_code: 'JAZ-7K4Q', consent_at: null,
       checked_in_at: null, created_at: '2026-10-01T00:00:00Z',
     };
     const csv = registrationsCsv([reg], [{ id: 't', name: 'VIP', description: '', price_minor: 0, currency: 'NGN', capacity: null }],
       [{ id: 'q1', label: 'Diet', type: 'text', required: false }, { id: 'q2', label: 'Newsletter', type: 'checkbox', required: false }]);
     const [head, row] = csv.split('\n');
-    expect(head).toBe('First name,Last name,Email,Phone,Ticket,Payment,PIN,Checked in,Registered,Diet,Newsletter');
+    expect(head).toBe('First name,Last name,Email,Phone,Ticket,Status,Ticket code,Payment,PIN,Checked in,Registered,Diet,Newsletter');
     expect(row).toContain(`"'=HYPERLINK(""x"")"`);
     expect(row).toContain('"Doe, Jr"');
-    expect(row).toContain('VIP,free,012345');
+    expect(row).toContain('VIP,confirmed,JAZ-7K4Q,free,012345');
     expect(row.endsWith('Vegan,Yes')).toBe(true);
   });
 });

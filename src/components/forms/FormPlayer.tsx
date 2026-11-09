@@ -32,7 +32,7 @@ export function rememberedDetails(): Record<string, string> {
  * pages; a survey goes slide by slide), with the logic, checks, quiz result and payment. Used by
  * the public page and the builder's preview (`onSubmit` absent: nothing is sent).
  */
-export function FormPlayer({ definition, formName, formDescription, kind, viewport = 'desktop', initialAnswers, onSubmit, done: doneFromOutside, formId, fill = false, stage = false }: {
+export function FormPlayer({ definition, formName, formDescription, kind, viewport = 'desktop', initialAnswers, onSubmit, done: doneFromOutside, formId, fill = false, stage = false, panel = false }: {
   definition: FormDefinition;
   /** Where files and signatures are sent (File Upload, Signature). */
   formId?: string;
@@ -48,6 +48,8 @@ export function FormPlayer({ definition, formName, formDescription, kind, viewpo
   fill?: boolean;
   /** The form is the page (its public link, the builder preview): drawn on a raised card. */
   stage?: boolean;
+  /** On a stage, fill the column it's given (an event's registration page). */
+  panel?: boolean;
 }) {
   const steps = useMemo(() => stepsOf(definition, kind), [definition, kind]);
   const [answers, setAnswers] = useState<Answers>(() => {
@@ -84,8 +86,15 @@ export function FormPlayer({ definition, formName, formDescription, kind, viewpo
   // Forms don't take payments.
   const due = null;
 
-  // Back to the top of the card when the step changes.
-  useEffect(() => { top.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, [step, end]);
+  // Back to the top of the card when the step changes (not when the form first appears: the
+  // page around it, like an event's details, stays in view).
+  const at = `${step}|${end?.kind ?? ''}`;
+  const lastAt = useRef(at);
+  useEffect(() => {
+    if (lastAt.current === at) return;
+    lastAt.current = at;
+    top.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [at]);
 
   const showErrors = (errs: Record<string, string>) => {
     setErrors(errs);
@@ -223,6 +232,7 @@ export function FormPlayer({ definition, formName, formDescription, kind, viewpo
           <FormRenderer
             fill={fill}
             stage={stage}
+            panel={panel}
             definition={steps.def}
             formName={formName}
             formDescription={formDescription}
