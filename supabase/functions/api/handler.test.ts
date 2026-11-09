@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { handle, keyFrom, readBody, route, type Deps, type Result } from "./handler";
+import { handle, keyFrom, qrPng, qrRoute, readBody, route, type Deps, type Result } from "./handler";
 
 const TOKEN = "a".repeat(64);
 const url = (path: string) => `https://x.supabase.co/functions/v1/api${path}`;
@@ -99,5 +99,45 @@ describe("API keys (/v1)", () => {
     expect((await handle(call("/v1/contacts", { method: "POST", headers: auth, body: "[1]" }), d)).status).toBe(400);
     expect((await handle(call("/v1/contacts", { method: "PUT", headers: auth, body: "{}" }), d)).status).toBe(405);
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("ticket QR pictures", () => {
+  const TOK = "6f1c2b0a-1111-4222-8333-944455556666";
+  const SIG = "0123456789abcdef";
+  // A 3×3 "QR" with only the middle module dark, to check the picture pixel by pixel.
+  const tiny = { size: 3, dark: (x: number, y: number) => x === 1 && y === 1 };
+
+  it("reads the token and signature from the address", () => {
+    expect(qrRoute(`https://x.supabase.co/functions/v1/api/qr/${TOK}.png?v=${SIG}`)).toEqual({ token: TOK, sig: SIG });
+    expect(qrRoute(`https://x.supabase.co/api/qr/${TOK}.png`)).toBeNull();
+    expect(qrRoute(`https://x.supabase.co/api/qr/${TOK}.png?v=short`)).toBeNull();
+  });
+
+  it("draws a real PNG: modules black, quiet zone white", async () => {
+    const png = await qrPng(tiny, 2, 1);
+    expect([...png.slice(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+    const view = new DataView(png.buffer);
+    expect(view.getUint32(16)).toBe(10); // (3 + 2×1) × 2 pixels wide
+    const idatLen = view.getUint32(33);
+    const { inflateSync } = await import("node:zlib");
+    const pixels = inflateSync(png.slice(41, 41 + idatLen));
+    const at = (x: number, y: number) => pixels[y * 11 + 1 + x];
+    expect(at(0, 0)).toBe(255);
+    expect(at(4, 4)).toBe(0); // the middle module
+    expect(at(6, 6)).toBe(255);
+  });
+
+  it("answers with the picture only for a signed ticket", async () => {
+    const d: Deps = {
+      async addContact() { throw new Error("no"); }, async apiRequest() { throw new Error("no"); },
+      async qrText(token, sig) { return sig === SIG ? `https://x/e/ticket/${token}?v=${sig}` : null; },
+      qrMatrix: () => tiny,
+    };
+    const ok = await handle(new Request(`https://x.supabase.co/functions/v1/api/qr/${TOK}.png?v=${SIG}`), d);
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get("content-type")).toBe("image/png");
+    const bad = await handle(new Request(`https://x.supabase.co/functions/v1/api/qr/${TOK}.png?v=ffffffffffffffff`), d);
+    expect(bad.status).toBe(404);
   });
 });

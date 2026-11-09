@@ -5,13 +5,16 @@ import { calendarLinks, downloadFile, eventDateLine, fetchTicket, formatPrice, h
 import { EventsShell, QrImage } from '@/components/events/EventKit';
 import { useQrDataUrl } from '@/components/events/hooks';
 import { LoadingSpinner } from '@/components/ui/States';
+import { downloadTicketImage } from '@/lib/ticketImage';
 
 /** /e/ticket/<token>: the attendee's pass, with QR and PIN. Only someone with the link can open it. */
 export function TicketPage({ token }: { token: string }) {
   const [, navigate] = useRouter();
   const [t, setT] = useState<PublicTicket | null | undefined>(undefined);
-  const link = ticketUrl(token);
+  // The QR holds the signed link the door scanner checks (the plain link if the database is older).
+  const link = t?.qr_url || ticketUrl(token);
   const qr = useQrDataUrl(t ? link : null, 800);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -88,10 +91,19 @@ export function TicketPage({ token }: { token: string }) {
         </div>
 
         <div className="mt-5 grid grid-cols-2 gap-2">
-          <button type="button" disabled={!qr || cancelled || pending} onClick={() => { if (qr) { const a = document.createElement('a'); a.href = qr; a.download = `${e.slug}-ticket.png`; a.click(); } }} className="flex h-12 items-center justify-center gap-2 rounded-full bg-navy-800 text-sm font-semibold text-white hover:bg-navy-700 disabled:opacity-50"><Download className="h-4 w-4" /> Download QR</button>
+          <button type="button" disabled={!qr || cancelled || pending || saving} onClick={() => {
+            if (!qr) return;
+            setSaving(true);
+            void downloadTicketImage({
+              eventTitle: e.title, tagline: e.tagline, dateLine: eventDateLine(e.starts_at, e.ends_at, e.timezone), place: placeLine(e),
+              typeName: t.ticket_name ?? 'Ticket', name: `${t.first_name} ${t.last_name}`.trim(), code: t.ticket_code ?? null, qrDataUrl: qr,
+              colour: e.brand?.primary, footer: t.footer_line || undefined,
+            }, `${e.slug}-ticket.png`).finally(() => setSaving(false));
+          }} className="flex h-12 items-center justify-center gap-2 rounded-full bg-navy-800 text-sm font-semibold text-white hover:bg-navy-700 disabled:opacity-50"><Download className="h-4 w-4" /> {saving ? 'Saving…' : 'Save ticket'}</button>
           <button type="button" disabled={!cal} title={cal ? undefined : 'The date is to be announced'} onClick={() => cal && downloadFile(`${e.slug}.ics`, cal.ics, 'text/calendar')} className="flex h-12 items-center justify-center gap-2 rounded-full text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50 disabled:opacity-50"><CalendarPlus className="h-4 w-4" /> Add to calendar</button>
         </div>
         <button type="button" onClick={() => navigate(`/e/${e.slug}`)} className="mt-3 w-full rounded-full py-3 text-sm font-semibold text-navy-700 hover:bg-navy-50">View event page</button>
+        {t.footer_line && <p className="mt-4 text-center text-sm italic text-ivory-700">{t.footer_line}</p>}
       </div>
     </EventsShell>
   );

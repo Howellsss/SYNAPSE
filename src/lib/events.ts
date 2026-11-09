@@ -77,6 +77,12 @@ export interface HostEvent {
   organiser_logo_url: string | null;
   brand: EventBrand;
   privacy_notice: string;
+  /** Per-email wording ({ confirmed: { subject, message }, … }); empty keeps the defaults. */
+  email_templates: Partial<Record<EmailKind, { subject?: string; message?: string }>>;
+  /** The connected account the emails go from (else the account's first). */
+  email_account_id: string | null;
+  /** A line at the foot of emails and tickets (e.g. a scripture). */
+  footer_line: string;
   created_at: string;
   updated_at: string;
 }
@@ -139,6 +145,9 @@ export interface Registration {
 
 export interface PublicTicket {
   qr_token: string;
+  /** What the QR holds: the ticket's link with its signature. */
+  qr_url?: string | null;
+  footer_line?: string;
   pin: string;
   ticket_code?: string | null;
   requires_approval?: boolean;
@@ -433,8 +442,8 @@ export async function fetchRegistrationPage(slug: string, type: string): Promise
 }
 
 export type TypeRegisterResult =
-  | { status: 'confirmed' | 'selected'; first_name: string; type_name: string; qr_token: string; ticket_code: string | null }
-  | { status: 'applied'; first_name: string; type_name: string }
+  | { status: 'confirmed' | 'selected'; first_name: string; type_name: string; qr_token: string; ticket_code: string | null; qr_url?: string | null; emailed?: boolean }
+  | { status: 'applied'; first_name: string; type_name: string; emailed?: boolean }
   | { status: 'duplicate'; type_name: string };
 
 /** Register (or apply) through a registration type's form. */
@@ -442,6 +451,40 @@ export async function registerThroughForm(slug: string, type: string, answers: R
   const { data, error } = await supabase.rpc('event_register', { p_slug: slug, p_type: type, p_answers: answers });
   if (error) return { data: null, error: typeRegisterErrorText(error.message) };
   return { data: data as TypeRegisterResult, error: null };
+}
+
+/** Email the ticket again. Answers the same whether or not the email registered. */
+export async function resendTicket(slug: string, email: string): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc('event_resend_ticket', { p_slug: slug, p_email: email.trim() });
+  return { error: error ? 'Something went wrong. Please try again.' : null };
+}
+
+export type EmailKind = 'confirmed' | 'applied' | 'selected' | 'declined';
+/** The emails people get, and the wording each starts with (kept in step with event_email_default). */
+export const EMAIL_KINDS: { kind: EmailKind; label: string; when: string; subject: string; message: string }[] = [
+  { kind: 'confirmed', label: 'Registered', when: 'when someone registers (with their ticket)', subject: "You're in: {{event}}",
+    message: "Hi {{first_name}},\n\nYou're registered for {{event}}. Your ticket is below: show the QR code at the door, or give your ticket code {{code}}.\n\nSee you there!" },
+  { kind: 'applied', label: 'Application received', when: 'when someone applies', subject: "We've got your application: {{event}}",
+    message: "Hi {{first_name}},\n\nThank you for applying ({{type}}) for {{event}}. We read every application and we'll be in touch once we've decided." },
+  { kind: 'selected', label: 'Selected', when: 'when you select an applicant (with their ticket)', subject: "You've been selected: {{event}}",
+    message: "Hi {{first_name}},\n\nGreat news: you've been selected for {{event}}! Your ticket is below. Show the QR code at the door, or give your ticket code {{code}}.\n\nWe can't wait to see you." },
+  { kind: 'declined', label: 'Not selected', when: 'when you decline an applicant', subject: 'About your application: {{event}}',
+    message: "Hi {{first_name}},\n\nThank you so much for applying to {{event}}. We had more applications than places this time, so we can't offer you a spot, but we'd love to see you there, and we hope you'll apply again." },
+];
+
+/** The account's connected email accounts (the ones emails can go from). */
+export async function listEmailAccounts(workspaceId: string): Promise<{ id: string; email: string; status: string }[]> {
+  const { data } = await supabase.from('email_accounts').select('id, email, status').eq('workspace_id', workspaceId).order('created_at');
+  return (data ?? []) as { id: string; email: string; status: string }[];
+}
+
+/** Move an application along (applied → shortlisted → selected / declined …); selecting sends the ticket. */
+export async function setRegistrationStatus(id: string, status: RegistrationStatus, notify = true): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc('event_set_registration_status', { p_reg: id, p_status: status, p_notify: notify });
+  if (!error) return { error: null };
+  if (/full/.test(error.message)) return { error: 'Every place for this type is taken. Raise its capacity first.' };
+  if (/not_allowed/.test(error.message)) return { error: 'You need access to Events to do this.' };
+  return { error: error.message };
 }
 
 export async function fetchTicket(token: string): Promise<{ data: PublicTicket | null; error: string | null }> {
@@ -452,7 +495,7 @@ export async function fetchTicket(token: string): Promise<{ data: PublicTicket |
 
 // ---------------------------------------------------------------- hosts
 
-const EVENT_COLS = 'id, workspace_id, created_by, slug, title, summary, description, category, cover_url, starts_at, ends_at, timezone, mode, venue_name, address, city, online_url, organiser_name, status, visibility, questions, tagline, programme, organiser_logo_url, brand, privacy_notice, created_at, updated_at';
+const EVENT_COLS = 'id, workspace_id, created_by, slug, title, summary, description, category, cover_url, starts_at, ends_at, timezone, mode, venue_name, address, city, online_url, organiser_name, status, visibility, questions, tagline, programme, organiser_logo_url, brand, privacy_notice, email_templates, email_account_id, footer_line, created_at, updated_at';
 const TICKET_COLS = 'id, name, description, price_minor, currency, capacity, sort, slug, form_id, requires_approval, opens_at, closes_at, status';
 
 export interface EventSummary extends HostEvent { registered: number; checked_in: number; capacity: number | null; tickets: EventTicket[] }

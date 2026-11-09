@@ -8,7 +8,9 @@ import {
 import { deserializeDefinition } from '@/lib/form-definition';
 import { useViewport } from '@/lib/useViewport';
 import { EventsShell, QrImage } from '@/components/events/EventKit';
+import { ResendTicket } from '@/components/events/ResendTicket';
 import { useQrDataUrl } from '@/components/events/hooks';
+import { downloadTicketImage } from '@/lib/ticketImage';
 import { FormPlayer, type FormPayload, type SubmitOutcome } from '@/components/forms/FormPlayer';
 import { LoadingSpinner } from '@/components/ui/States';
 import { cn } from '@/lib/utils';
@@ -24,6 +26,7 @@ export function EventRegisterPage({ slug, type }: { slug: string; type: string }
   const [page, setPage] = useState<RegistrationPage | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<TypeRegisterResult | null>(null);
+  const [typedEmail, setTypedEmail] = useState('');
 
   useEffect(() => {
     let alive = true;
@@ -53,6 +56,9 @@ export function EventRegisterPage({ slug, type }: { slug: string; type: string }
   const submit = async (p: FormPayload): Promise<SubmitOutcome> => {
     const { data, error: err } = await registerThroughForm(slug, type, p.answers);
     if (err || !data) return { ok: false, error: err ?? 'Something went wrong. Please try again.' };
+    // The email they gave, to offer resending to it if they're already registered.
+    const emailField = definition ? Object.values(definition.elements).find((el) => el.field?.mappedContactField === 'email' || el.type === 'email')?.field?.fieldId : undefined;
+    setTypedEmail(emailField ? String(p.answers[emailField] ?? '') : '');
     setDone(data);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     return { ok: true };
@@ -62,7 +68,7 @@ export function EventRegisterPage({ slug, type }: { slug: string; type: string }
   if (!t || !definition || !page.form) {
     right = <StateCard icon={<Ticket className="h-6 w-6" />} title="This registration link isn’t available" text="It may have been switched off. See the event page for the ways to take part." />;
   } else if (done) {
-    right = <Done result={done} event={event} />;
+    right = <Done result={done} event={event} email={typedEmail} />;
   } else if (t.state !== 'open') {
     const opens = t.opens_at ? new Date(t.opens_at).toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit', timeZone: event.timezone || undefined }) : null;
     const states: Record<string, [string, string]> = {
@@ -176,10 +182,13 @@ function StateCard({ icon, title, text }: { icon: React.ReactNode; title: string
 }
 
 /** After they send: the ticket (attendees), the application received (performers), or already registered. */
-function Done({ result, event }: { result: TypeRegisterResult; event: PublicEvent }) {
+function Done({ result, event, email }: { result: TypeRegisterResult; event: PublicEvent; email: string }) {
   const [, navigate] = useRouter();
-  const link = 'qr_token' in result && result.qr_token ? ticketUrl(result.qr_token) : null;
+  // The QR holds the signed link the door scanner checks (the plain link if the database is older).
+  const link = 'qr_token' in result && result.qr_token ? result.qr_url || ticketUrl(result.qr_token) : null;
   const qr = useQrDataUrl(link, 800);
+  const [saving, setSaving] = useState(false);
+  const emailed = 'emailed' in result && result.emailed;
 
   if (result.status === 'duplicate') {
     return (
@@ -187,8 +196,9 @@ function Done({ result, event }: { result: TypeRegisterResult; event: PublicEven
         <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-navy-50 text-navy-700"><Ticket className="h-6 w-6" /></span>
         <h2 className="mt-4 font-event-display text-2xl font-semibold text-navy-900">You’re already registered</h2>
         <p className="mx-auto mt-2 max-w-md text-[15px] leading-relaxed text-ivory-700">
-          This email or phone number already has a {result.type_name} registration for {event.title}. Use the ticket link you got when you registered.
+          This email or phone number is already registered for {event.title} ({result.type_name}). Lost your ticket? We can email it again.
         </p>
+        <ResendTicket slug={event.slug} initialEmail={email} className="mx-auto mt-5 max-w-md" />
       </div>
     );
   }
@@ -199,6 +209,7 @@ function Done({ result, event }: { result: TypeRegisterResult; event: PublicEven
         <h2 className="mt-4 font-event-display text-[28px] font-semibold text-navy-900">Application received</h2>
         <p className="mx-auto mt-2 max-w-md text-[15px] leading-relaxed text-ivory-700">
           Thank you, {result.first_name}. {event.organiser_name || 'The organiser'} reviews every application. If you’re selected, you’ll get your ticket then.
+          {emailed && ' We’ve emailed you to confirm we received it.'}
         </p>
         <button type="button" onClick={() => navigate(`/e/${event.slug}`)} className="mt-6 h-12 rounded-full px-6 text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50">Back to the event</button>
       </div>
@@ -216,10 +227,18 @@ function Done({ result, event }: { result: TypeRegisterResult; event: PublicEven
           <p className="font-event-display text-3xl font-semibold tracking-[0.12em] text-navy-900" data-testid="ticket-code">{result.ticket_code}</p>
         </>
       )}
-      <p className="mx-auto mt-4 max-w-sm text-sm text-ivory-700">Show this QR code at the door, or give them your code. Save your ticket now; you can reopen it from its link anytime.</p>
+      <p className="mx-auto mt-4 max-w-sm text-sm text-ivory-700">
+        Show this QR code at the door, or give them your code. {emailed ? 'We’ve emailed your ticket to you too.' : 'Save your ticket now; you can reopen it from its link anytime.'}
+      </p>
       <div className="mx-auto mt-6 grid max-w-md gap-2 sm:grid-cols-2">
-        <button type="button" disabled={!qr} onClick={() => { if (qr) { const a = document.createElement('a'); a.href = qr; a.download = `${event.slug}-ticket.png`; a.click(); } }}
-          className="flex h-12 items-center justify-center gap-2 rounded-full bg-navy-800 text-sm font-semibold text-white hover:bg-navy-700 disabled:opacity-50"><Download className="h-4 w-4" /> Save QR</button>
+        <button type="button" disabled={!qr || saving} onClick={() => {
+          if (!qr) return;
+          setSaving(true);
+          void downloadTicketImage({
+            eventTitle: event.title, tagline: event.tagline, dateLine: eventDateLine(event.starts_at, event.ends_at, event.timezone), place: placeLine(event),
+            typeName: result.type_name, name: result.first_name, code: result.ticket_code, qrDataUrl: qr, colour: event.brand?.primary,
+          }, `${event.slug}-ticket.png`).finally(() => setSaving(false));
+        }} className="flex h-12 items-center justify-center gap-2 rounded-full bg-navy-800 text-sm font-semibold text-white hover:bg-navy-700 disabled:opacity-50"><Download className="h-4 w-4" /> {saving ? 'Saving…' : 'Save ticket'}</button>
         {'qr_token' in result && result.qr_token && (
           <button type="button" onClick={() => navigate(`/e/ticket/${result.qr_token}`)} className="flex h-12 items-center justify-center gap-2 rounded-full text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50"><Ticket className="h-4 w-4" /> Open my ticket</button>
         )}

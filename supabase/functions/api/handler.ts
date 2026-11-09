@@ -22,14 +22,24 @@
 // -> 201 { ok, contact_id, created: true }   200 { ok, contact_id, created: false }
 //    400 not JSON/form   404 unknown or switched-off link   413 over 64 KB   422 no email/phone
 //    429 over 120 a minute
+//
+// 3. Ticket QR pictures for event emails: GET /functions/v1/api/qr/<token>.png?v=<signature>.
+//    Only a correctly signed ticket gets a picture (ticket_qr_text checks the signature).
 
 export interface Result { ok: boolean; status: number; error?: string; contact_id?: string; created?: boolean }
 
 export interface ApiAnswer { status: number; body: unknown }
 
+/** A QR code as a square of dark (true) and light modules. */
+export interface QrMatrix { size: number; dark: (x: number, y: number) => boolean }
+
 export interface Deps {
   addContact(token: string, payload: Record<string, unknown>): Promise<Result>;
   apiRequest(key: string, method: string, path: string, query: Record<string, string>, body: Record<string, unknown>): Promise<ApiAnswer>;
+  /** The text a ticket's QR holds, only when the signature is right (else null). */
+  qrText?(token: string, sig: string): Promise<string | null>;
+  /** The QR code for some text. */
+  qrMatrix?(text: string): QrMatrix;
 }
 
 export const MAX_BYTES = 64 * 1024;
@@ -77,6 +87,9 @@ export function readBody(raw: string, contentType: string): Record<string, unkno
 
 export async function handle(req: Request, deps: Deps): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: cors });
+  // 3. A ticket's QR as a picture, for emails: /api/qr/<token>.png?v=<signature>.
+  const qr = qrRoute(req.url);
+  if (qr) return handleQr(qr, deps);
   const { kind, token, path } = route(req.url);
   if (kind === "v1") return handleApi(req, path, deps);
   if (!kind) return json(404, { error: "Unknown address. The API is at /functions/v1/api/v1/…; incoming contact links look like /functions/v1/api/incoming/<token>." });
@@ -115,4 +128,72 @@ async function handleApi(req: Request, path: string, deps: Deps): Promise<Respon
   const r = await deps.apiRequest(key, method, path, query, body).catch(() => null);
   if (!r || typeof r.status !== "number") return json(500, { error: "Something went wrong. Try again." });
   return json(r.status, r.body ?? {});
+}
+
+// ---------------------------------------------------------------- ticket QR pictures
+
+/** The ticket token and signature from /api/qr/<token>.png?v=<sig>. */
+export function qrRoute(url: string): { token: string; sig: string } | null {
+  const u = new URL(url);
+  const m = /\/api\/qr\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.png$/i.exec(u.pathname);
+  const sig = u.searchParams.get("v") ?? "";
+  return m && /^[0-9a-f]{16}$/i.test(sig) ? { token: m[1].toLowerCase(), sig: sig.toLowerCase() } : null;
+}
+
+async function handleQr(q: { token: string; sig: string }, deps: Deps): Promise<Response> {
+  if (!deps.qrText || !deps.qrMatrix) return json(404, { error: "Not here." });
+  const text = await deps.qrText(q.token, q.sig).catch(() => null);
+  if (!text) return json(404, { error: "No such ticket." });
+  const png = await qrPng(deps.qrMatrix(text));
+  return new Response(png, { status: 200, headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400, immutable" } });
+}
+
+/** A QR code as a black-on-white PNG: `scale` pixels a module, with the quiet zone around it. */
+export async function qrPng(m: QrMatrix, scale = 8, margin = 4): Promise<Uint8Array> {
+  const side = (m.size + margin * 2) * scale;
+  // One byte a pixel (greyscale), each row led by its filter byte (0: none).
+  const raw = new Uint8Array(side * (side + 1));
+  for (let y = 0; y < side; y++) {
+    const row = y * (side + 1);
+    raw[row] = 0;
+    const my = Math.floor(y / scale) - margin;
+    for (let x = 0; x < side; x++) {
+      const mx = Math.floor(x / scale) - margin;
+      const dark = mx >= 0 && my >= 0 && mx < m.size && my < m.size && m.dark(mx, my);
+      raw[row + 1 + x] = dark ? 0 : 255;
+    }
+  }
+  const zipped = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new CompressionStream("deflate"))).arrayBuffer());
+  const ihdr = new Uint8Array(13);
+  const dv = new DataView(ihdr.buffer);
+  dv.setUint32(0, side); dv.setUint32(4, side);
+  ihdr.set([8, 0, 0, 0, 0], 8); // 8-bit greyscale, no interlace
+  return concat([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", zipped), chunk("IEND", new Uint8Array(0))]);
+}
+
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+  return t;
+})();
+function crc32(bytes: Uint8Array): number {
+  let c = 0xffffffff;
+  for (const b of bytes) c = CRC_TABLE[(c ^ b) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+function chunk(type: string, data: Uint8Array): Uint8Array {
+  const out = new Uint8Array(12 + data.length);
+  const dv = new DataView(out.buffer);
+  dv.setUint32(0, data.length);
+  const typed = new TextEncoder().encode(type);
+  out.set(typed, 4);
+  out.set(data, 8);
+  dv.setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)));
+  return out;
+}
+function concat(parts: Uint8Array[]): Uint8Array {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const p of parts) { out.set(p, at); at += p.length; }
+  return out;
 }

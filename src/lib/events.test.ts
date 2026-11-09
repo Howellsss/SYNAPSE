@@ -133,3 +133,12 @@ describe('time zones', () => {
     expect(zonedToIso('nope', 'UTC')).toBe('');
   });
 });
+
+describe('ticket image', () => {
+  it('wraps long titles onto lines, ending with … when there are too many', async () => {
+    const { wrapLines } = await import('./ticketImage');
+    const measure = (s: string) => s.length * 10;
+    expect(wrapLines(measure, 'One two three four', 100)).toEqual(['One two', 'three four']);
+    expect(wrapLines(measure, 'aaaa bbbb cccc dddd eeee ffff', 90, 2)).toEqual(['aaaa bbbb', 'cccc…']);
+  });
+});
