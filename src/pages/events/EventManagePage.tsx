@@ -1,15 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  ArrowLeft, Ban, CalendarDays, CheckCircle2, Copy, Download, ExternalLink, MapPin, MoreHorizontal, Pencil,
-  RotateCcw, ScanLine, Search, Trash2, Undo2, Users,
+  ArrowLeft, Ban, CalendarDays, Copy, Download, ExternalLink, MapPin, MoreHorizontal, Pencil,
+  RotateCcw, ScanLine, Trash2, Undo2, Users,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useRouter } from '@/lib/router';
 import {
-  DEFAULT_COVER, deleteEvent, downloadFile, eventDateLine, eventUrl, formatPrice, getEvent, listRegistrations, placeLine,
-  registrationsCsv, setEventStatus, updateRegistration, type EventTicket, type HostEvent, type Registration,
+  DEFAULT_COVER, deleteEvent, downloadFile, eventDateLine, eventUrl, fetchRegistrationForms, formatPrice, getEvent, holdsPlace,
+  listRegistrations, placeLine, registrationsCsv, REVIEW_COLUMNS, sendTicket, setEventStatus, setRegistrationStatus, updateRegistration,
+  type AnswerField, type EventTicket, type HostEvent, type Registration, type RegistrationStatus, type TypeForm,
 } from '@/lib/events';
+import { Modal } from '@/components/ui/Modal';
+import { RegistrationPanel, type RegActions } from './manage/RegistrationPanel';
+import { Registrations } from './manage/Registrations';
+import { ReviewBoard } from './manage/ReviewBoard';
+import { AddRegistration } from './manage/AddRegistration';
 import { checkIn, checkInLog, checkInPath, invalidText, listCheckInStaff, setCheckInStaff, undoCheckIn, type CheckInLogEntry, type StaffMember } from '@/lib/checkin';
 import { publicOrigin } from '@/lib/publicUrl';
 import { useEventFonts } from '@/components/events/hooks';
@@ -19,9 +25,9 @@ import { Popover } from '@/components/spaces/room/Popover';
 import { StatusBadge } from './EventsPage';
 import { cn } from '@/lib/utils';
 
-type Tab = 'overview' | 'attendees' | 'checkin';
+type Tab = 'overview' | 'registrations' | 'review' | 'checkin';
 
-/** /events/<id>: numbers, attendees and door check-in for one event. */
+/** /events/<id>: the organiser's dashboard: numbers, registrations, the performer review board and door check-in. */
 export function EventManagePage({ eventId }: { eventId: string }) {
   useEventFonts();
   const { workspace } = useAuth();
@@ -33,6 +39,12 @@ export function EventManagePage({ eventId }: { eventId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('overview');
   const [confirm, setConfirm] = useState<null | 'cancel' | 'delete'>(null);
+  const [forms, setForms] = useState<TypeForm[]>([]);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [change, setChange] = useState<{ reg: Registration; status: RegistrationStatus } | null>(null);
+  const [notify, setNotify] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const loadRegs = useCallback(async () => {
     const { data, error: err } = await listRegistrations(eventId);
@@ -42,7 +54,7 @@ export function EventManagePage({ eventId }: { eventId: string }) {
   const load = useCallback(async () => {
     const { event: e, tickets: ts, error: err } = await getEvent(eventId);
     setEvent(e); setTickets(ts); setError(err);
-    await loadRegs();
+    await Promise.all([loadRegs(), fetchRegistrationForms(eventId).then((f) => setForms(f.data))]);
   }, [eventId, loadRegs]);
 
   useEffect(() => { void load(); }, [load]);
@@ -69,19 +81,55 @@ export function EventManagePage({ eventId }: { eventId: string }) {
     if (err) { toast(err, 'error'); void loadRegs(); }
   };
 
+  const fieldsFor = (ticketId: string | null): AnswerField[] => forms.find((f) => f.ticket_id === ticketId)?.fields ?? [];
+
+  // Status changes go through the database (capacity, ticket codes, emails, audit log).
+  const applyStatus = async (reg: Registration, status: RegistrationStatus, send: boolean) => {
+    setBusyId(reg.id);
+    const { error: err } = await setRegistrationStatus(reg.id, status, send);
+    setBusyId(null);
+    if (err) { toast(err, 'error'); return; }
+    const name = `${reg.first_name} ${reg.last_name}`.trim();
+    toast(status === 'selected' ? (send ? `${name} selected: their ticket is on its way` : `${name} selected`)
+      : status === 'declined' ? (send ? `${name} declined: the note is on its way` : `${name} declined`)
+      : status === 'cancelled' ? `${name}’s registration cancelled`
+      : `${name} moved to ${status === 'applied' ? 'Applied' : status === 'shortlisted' ? 'Shortlisted' : status === 'confirmed' ? 'Confirmed' : status}`);
+    void loadRegs();
+  };
+  const actions: RegActions = {
+    // Selecting, declining and cancelling ask first; the rest happen straight away.
+    setStatus: (reg, status) => {
+      if (status === 'selected' || status === 'declined' || status === 'cancelled') { setNotify(true); setChange({ reg, status }); return; }
+      void applyStatus(reg, status, false);
+    },
+    checkIn: (reg, on) => { void patchReg(reg.id, { checked_in_at: on ? new Date().toISOString() : null }); },
+    markPaid: (reg) => { void patchReg(reg.id, { payment_status: 'paid' }); },
+    send: async (reg) => {
+      const { error: err, to } = await sendTicket(reg.id);
+      if (err) toast(err, 'error'); else toast(`Sent to ${to ?? reg.email}`);
+      void loadRegs();
+    },
+    open: (reg) => setOpenId(reg.id),
+  };
+
   if (event === undefined && !error) return <div className="flex justify-center py-24"><LoadingSpinner className="h-10 w-10" /></div>;
   if (error || !event || (workspace && event.workspace_id !== workspace.id)) {
     return <div className="mx-auto max-w-lg py-16"><ErrorState message={error ?? 'Event not found.'} onRetry={() => { void load(); }} /></div>;
   }
 
-  const confirmed = (regs ?? []).filter((r) => r.status === 'confirmed');
+  // Everyone holding a place (confirmed attendees and selected performers) is expected at the door.
+  const confirmed = (regs ?? []).filter((r) => holdsPlace(r.status));
   const checkedIn = confirmed.filter((r) => r.checked_in_at).length;
+  const hasApproval = tickets.some((t) => t.requires_approval);
+  const toReview = (regs ?? []).filter((r) => r.status === 'applied' || r.status === 'shortlisted').length;
+  const allFields = forms.flatMap((f) => f.fields.filter((x) => !x.contact)).filter((f, i, a) => a.findIndex((g) => g.id === f.id) === i);
+  const openReg = (regs ?? []).find((r) => r.id === openId) ?? null;
   const capacity = tickets.length && tickets.every((t) => t.capacity) ? tickets.reduce((n, t) => n + (t.capacity ?? 0), 0) : null;
   const unpaid = confirmed.filter((r) => r.payment_status === 'unpaid');
   const currency = tickets[0]?.currency ?? 'NGN';
   const url = eventUrl(event.slug);
   const copy = async () => { try { await navigator.clipboard.writeText(url); toast('Link copied'); } catch { toast('Could not copy the link', 'error'); } };
-  const exportCsv = () => downloadFile(`${event.slug}-attendees.csv`, registrationsCsv(regs ?? [], tickets, event.questions ?? []), 'text/csv');
+  const exportCsv = (rows: Registration[] = regs ?? []) => downloadFile(`${event.slug}-registrations.csv`, registrationsCsv(rows, tickets, event.questions ?? [], allFields), 'text/csv');
 
   const changeStatus = async (status: HostEvent['status']) => {
     const { error: err } = await setEventStatus(event.id, status);
@@ -114,7 +162,7 @@ export function EventManagePage({ eventId }: { eventId: string }) {
             {(close) => (
               <>
                 <MenuItem icon={<Copy className="h-4 w-4" />} onClick={() => { close(); void copy(); }}>Copy event link</MenuItem>
-                <MenuItem icon={<Download className="h-4 w-4" />} onClick={() => { close(); exportCsv(); }}>Export attendees (CSV)</MenuItem>
+                <MenuItem icon={<Download className="h-4 w-4" />} onClick={() => { close(); exportCsv(); }}>Export registrations (CSV)</MenuItem>
                 {event.status === 'published' && <MenuItem icon={<Undo2 className="h-4 w-4" />} onClick={() => { close(); void changeStatus('draft'); }}>Unpublish</MenuItem>}
                 {event.status === 'cancelled' && <MenuItem icon={<RotateCcw className="h-4 w-4" />} onClick={() => { close(); void changeStatus('published'); }}>Reopen event</MenuItem>}
                 {event.status !== 'cancelled' && <MenuItem danger icon={<Ban className="h-4 w-4" />} onClick={() => { close(); setConfirm('cancel'); }}>Cancel event</MenuItem>}
@@ -129,22 +177,52 @@ export function EventManagePage({ eventId }: { eventId: string }) {
         <p className="mt-5 rounded-2xl border border-gold-200 bg-gold-50 px-4 py-3 text-sm text-gold-900">This event is a draft. Only your team can see it. Publish it to open registration at <span className="font-semibold">{url}</span>.</p>
       )}
 
-      <div className="mt-6 inline-flex rounded-full bg-white p-1 ring-1 ring-inset ring-navy-100" role="tablist" aria-label="Sections">
-        {([['overview', 'Overview'], ['attendees', `Attendees ${confirmed.length}`], ['checkin', 'Check-in']] as const).map(([id, label]) => (
-          <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={cn('rounded-md px-4 py-1.5 text-sm transition', tab === id ? 'bg-navy-800 font-semibold text-white' : 'font-medium text-navy-700 hover:bg-navy-50')}>{label}</button>
+      <div className="mt-6 inline-flex max-w-full overflow-x-auto rounded-full bg-white p-1 ring-1 ring-inset ring-navy-100" role="tablist" aria-label="Sections">
+        {([['overview', 'Overview'], ['registrations', `Registrations ${(regs ?? []).length}`], ...(hasApproval ? [['review', `Review board${toReview ? ` ${toReview}` : ''}`]] : []), ['checkin', 'Check-in']] as [Tab, string][]).map(([id, label]) => (
+          <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={cn('shrink-0 whitespace-nowrap rounded-md px-4 py-1.5 text-sm transition', tab === id ? 'bg-navy-800 font-semibold text-white' : 'font-medium text-navy-700 hover:bg-navy-50')}>{label}</button>
         ))}
       </div>
 
       <div className="mt-6">
         {regs === null ? <div className="flex justify-center py-16"><LoadingSpinner className="h-8 w-8" /></div>
           : tab === 'overview' ? (
-            <Overview tickets={tickets} regs={confirmed} capacity={capacity} checkedIn={checkedIn} unpaidTotal={unpaid.reduce((n, r) => n + r.amount_minor, 0)} unpaidCount={unpaid.length} currency={currency} onSeeAll={() => setTab('attendees')} />
-          ) : tab === 'attendees' ? (
-            <Attendees regs={regs} tickets={tickets} onPatch={patchReg} onExport={exportCsv} />
+            <Overview tickets={tickets} all={regs} regs={confirmed} capacity={capacity} checkedIn={checkedIn} unpaidTotal={unpaid.reduce((n, r) => n + r.amount_minor, 0)} unpaidCount={unpaid.length} currency={currency}
+              onSeeAll={() => setTab('registrations')} onReview={() => setTab('review')} onOpen={actions.open} />
+          ) : tab === 'registrations' ? (
+            <Registrations regs={regs} tickets={tickets} actions={actions} onAdd={() => setAdding(true)} onExport={(rows) => exportCsv(rows)} />
+          ) : tab === 'review' ? (
+            <ReviewBoard regs={regs} tickets={tickets} fieldsFor={fieldsFor} actions={actions} busyId={busyId} />
           ) : (
             <CheckInTab eventId={event.id} checkedIn={checkedIn} total={confirmed.length} />
           )}
       </div>
+
+      <RegistrationPanel reg={openReg} ticket={tickets.find((t) => t.id === openReg?.ticket_id)} fields={fieldsFor(openReg?.ticket_id ?? null)} onClose={() => setOpenId(null)} actions={actions} busy={busyId === openReg?.id} />
+      <AddRegistration open={adding} onClose={() => setAdding(false)} eventId={event.id} tickets={tickets}
+        onAdded={(r, emailed) => { setAdding(false); toast(`${r.first_name} added${emailed ? ': ticket emailed' : ''}`); void loadRegs(); }} />
+      <Modal open={!!change} onClose={() => setChange(null)} size="sm"
+        title={change ? `${change.status === 'selected' ? 'Select' : change.status === 'declined' ? 'Decline' : 'Cancel the registration of'} ${change.reg.first_name} ${change.reg.last_name}?`.replace(/\s+\?$/, '?') : ''}
+        footer={change && (
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setChange(null)} className="h-10 rounded-lg px-4 text-sm font-semibold text-navy-700 hover:bg-navy-50">Not now</button>
+            <button type="button" onClick={() => { const c = change; setChange(null); void applyStatus(c.reg, c.status, notify && c.status !== 'cancelled'); }}
+              className={cn('h-10 rounded-lg px-5 text-sm font-semibold text-white', change.status === 'selected' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700')}>
+              {change.status === 'selected' ? 'Select' : change.status === 'declined' ? 'Decline' : 'Cancel registration'}
+            </button>
+          </div>
+        )}>
+        {change && (
+          <div className="space-y-4 text-[15px] text-navy-800">
+            <p>{change.status === 'selected' ? 'They get a ticket code and a place at the event.' : change.status === 'declined' ? 'Their application is closed. You can reconsider later from the board.' : 'Their ticket stops working at the door. You can restore it later.'}</p>
+            {change.status !== 'cancelled' && (
+              <label className="flex items-start gap-3">
+                <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} className="mt-0.5 h-5 w-5 rounded border-navy-200 accent-navy-800" />
+                <span>{change.status === 'selected' ? 'Email them the “You’ve been selected” message with their ticket' : 'Email them the kind “not this time” note'}<span className="block text-sm text-ivory-700">You can change the wording in Edit → Emails.</span></span>
+              </label>
+            )}
+          </div>
+        )}
+      </Modal>
 
       <ConfirmDialog
         open={confirm === 'cancel'}
@@ -185,55 +263,90 @@ function MenuItem({ icon, danger, onClick, children }: { icon: React.ReactNode; 
 
 // ---------------------------------------------------------------- overview
 
-function Overview({ tickets, regs, capacity, checkedIn, unpaidTotal, unpaidCount, currency, onSeeAll }: {
-  tickets: EventTicket[]; regs: Registration[]; capacity: number | null; checkedIn: number; unpaidTotal: number; unpaidCount: number; currency: string; onSeeAll: () => void;
+function Overview({ tickets, all, regs, capacity, checkedIn, unpaidTotal, unpaidCount, currency, onSeeAll, onReview, onOpen }: {
+  tickets: EventTicket[]; all: Registration[]; regs: Registration[]; capacity: number | null; checkedIn: number; unpaidTotal: number; unpaidCount: number; currency: string;
+  onSeeAll: () => void; onReview: () => void; onOpen: (r: Registration) => void;
 }) {
+  const approval = tickets.filter((t) => t.requires_approval);
+  const apps = all.filter((r) => approval.some((t) => t.id === r.ticket_id));
+  const toReview = apps.filter((r) => r.status === 'applied' || r.status === 'shortlisted').length;
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-navy-100 bg-sand lg:grid-cols-4">
-        <Metric label="Registered" value={regs.length.toLocaleString()} />
+        <Metric label="Registered" value={regs.length.toLocaleString()} sub="holding a place" />
         <Metric label="Checked in" value={`${checkedIn.toLocaleString()}${regs.length ? ` (${Math.round((checkedIn / regs.length) * 100)}%)` : ''}`} />
-        <Metric label="Places left" value={capacity === null ? 'No limit' : Math.max(0, capacity - regs.length).toLocaleString()} />
+        {approval.length
+          ? <Metric label="Applications to review" value={toReview.toLocaleString()} sub={`${apps.length} received`} />
+          : <Metric label="Places left" value={capacity === null ? 'No limit' : Math.max(0, capacity - regs.length).toLocaleString()} />}
         <Metric label="To collect at the door" value={unpaidTotal ? formatPrice(unpaidTotal, currency) : '—'} sub={unpaidCount ? `${unpaidCount} unpaid` : undefined} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="card p-5 sm:p-6">
-          <h2 className="text-lg font-semibold text-navy-800">Tickets</h2>
-          <ul className="mt-4 space-y-4">
+          <h2 className="text-lg font-semibold text-navy-800">By registration type</h2>
+          <ul className="mt-4 space-y-5">
             {tickets.map((t) => {
-              const n = regs.filter((r) => r.ticket_id === t.id).length;
+              const mine = regs.filter((r) => r.ticket_id === t.id);
+              const n = mine.length;
+              const inN = mine.filter((r) => r.checked_in_at).length;
               const pct = t.capacity ? Math.min(100, Math.round((n / t.capacity) * 100)) : null;
               return (
                 <li key={t.id}>
                   <div className="flex items-baseline justify-between gap-3 text-sm">
-                    <span className="font-semibold text-navy-800">{t.name} <span className="font-normal text-ivory-700">· {formatPrice(t.price_minor, t.currency)}</span></span>
+                    <span className="font-semibold text-navy-800">{t.name} <span className="font-normal text-ivory-700">· {t.requires_approval ? 'applications' : formatPrice(t.price_minor, t.currency)}</span></span>
                     <span className="font-semibold text-navy-800">{n}{t.capacity ? ` / ${t.capacity}` : ''}</span>
                   </div>
                   <div className="mt-2 h-2 overflow-hidden rounded-full bg-navy-50"><div className="h-full rounded-full bg-gold-400" style={{ width: `${pct ?? (n ? 100 : 0)}%` }} /></div>
+                  <p className="mt-1.5 text-xs text-ivory-700">{t.requires_approval ? `${n} selected or confirmed` : `${n} registered`} · {inN} checked in{t.capacity ? ` · ${Math.max(0, t.capacity - n)} places left` : ''}</p>
                 </li>
               );
             })}
           </ul>
         </section>
-        <section className="card p-5 sm:p-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-navy-800">Latest registrations</h2>
-            {regs.length > 0 && <button type="button" onClick={onSeeAll} className="text-sm font-semibold text-gold-700 hover:text-gold-800">See all</button>}
-          </div>
-          {regs.length ? (
-            <ul className="mt-3 divide-y divide-navy-100">
-              {regs.slice(0, 6).map((r) => (
-                <li key={r.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
-                  <span className="min-w-0"><span className="block truncate font-semibold text-navy-800">{r.first_name} {r.last_name}</span><span className="block truncate text-ivory-700">{r.email}</span></span>
-                  <span className="shrink-0 text-xs text-ivory-700">{new Date(r.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</span>
+
+        {approval.length > 0 ? (
+          <section className="card p-5 sm:p-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-navy-800">Applications</h2>
+              <button type="button" onClick={onReview} className="text-sm font-semibold text-gold-700 hover:text-gold-800">Open the review board</button>
+            </div>
+            <ul className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
+              {REVIEW_COLUMNS.map((c) => (
+                <li key={c.status} className="rounded-xl bg-navy-50/70 px-3 py-3 text-center">
+                  <p className="font-display text-2xl font-semibold text-navy-800">{apps.filter((r) => r.status === c.status).length}</p>
+                  <p className="text-xs font-medium text-ivory-700">{c.label}</p>
                 </li>
               ))}
             </ul>
-          ) : <p className="mt-3 text-sm text-ivory-700">No registrations yet. Share your event link to get started.</p>}
-        </section>
+            <LatestList regs={all.slice(0, 4)} tickets={tickets} onOpen={onOpen} onSeeAll={onSeeAll} />
+          </section>
+        ) : (
+          <section className="card p-5 sm:p-6">
+            <h2 className="text-lg font-semibold text-navy-800">Latest registrations</h2>
+            <LatestList regs={all.slice(0, 6)} tickets={tickets} onOpen={onOpen} onSeeAll={onSeeAll} />
+          </section>
+        )}
       </div>
     </div>
+  );
+}
+
+function LatestList({ regs, tickets, onOpen, onSeeAll }: { regs: Registration[]; tickets: EventTicket[]; onOpen: (r: Registration) => void; onSeeAll: () => void }) {
+  if (!regs.length) return <p className="mt-3 text-sm text-ivory-700">No registrations yet. Share your event link to get started.</p>;
+  return (
+    <>
+      <ul className="mt-4 divide-y divide-navy-100 border-t border-navy-100">
+        {regs.map((r) => (
+          <li key={r.id}>
+            <button type="button" onClick={() => onOpen(r)} className="flex w-full items-center justify-between gap-3 py-2.5 text-left text-sm hover:bg-navy-50/50">
+              <span className="min-w-0"><span className="block truncate font-semibold text-navy-800">{r.first_name} {r.last_name}</span><span className="block truncate text-ivory-700">{tickets.find((t) => t.id === r.ticket_id)?.name ?? ''} · {r.email}</span></span>
+              <span className="shrink-0 text-xs text-ivory-700">{new Date(r.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <button type="button" onClick={onSeeAll} className="mt-3 text-sm font-semibold text-gold-700 hover:text-gold-800">See all registrations</button>
+    </>
   );
 }
 
@@ -244,74 +357,6 @@ function Metric({ label, value, sub }: { label: string; value: string; sub?: str
       <p className="mt-1 font-display text-[26px] font-semibold tracking-tight text-navy-800">{value}</p>
       {sub && <p className="text-xs text-ivory-700">{sub}</p>}
     </div>
-  );
-}
-
-// ---------------------------------------------------------------- attendees
-
-function Attendees({ regs, tickets, onPatch, onExport }: {
-  regs: Registration[]; tickets: EventTicket[]; onPatch: (id: string, p: Partial<Registration>) => void; onExport: () => void;
-}) {
-  const [q, setQ] = useState('');
-  const [filter, setFilter] = useState<'all' | 'in' | 'out' | 'unpaid' | 'cancelled'>('all');
-  const ticketName = (id: string | null) => tickets.find((t) => t.id === id)?.name ?? '—';
-  const shown = regs.filter((r) => {
-    if (filter === 'cancelled' ? r.status !== 'cancelled' : r.status === 'cancelled') return false;
-    if (filter === 'in' && !r.checked_in_at) return false;
-    if (filter === 'out' && r.checked_in_at) return false;
-    if (filter === 'unpaid' && r.payment_status !== 'unpaid') return false;
-    const s = q.trim().toLowerCase();
-    return !s || `${r.first_name} ${r.last_name} ${r.email} ${r.phone} ${r.pin}`.toLowerCase().includes(s);
-  });
-
-  return (
-    <section className="card overflow-hidden">
-      <div className="flex flex-col gap-3 border-b border-navy-100 p-4 sm:flex-row sm:items-center">
-        <label className="flex flex-1 items-center gap-2 rounded-lg px-4 ring-1 ring-inset ring-navy-100 focus-within:ring-gold-400">
-          <Search className="h-4 w-4 text-ivory-600" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, email, phone or PIN" aria-label="Search attendees" className="h-10 w-full bg-transparent text-sm outline-none" />
-        </label>
-        <select value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)} aria-label="Filter" className="h-[38px] rounded-lg bg-white px-4 text-sm font-medium text-navy-800 ring-1 ring-inset ring-navy-100">
-          <option value="all">Everyone</option><option value="in">Checked in</option><option value="out">Not checked in</option><option value="unpaid">Pay at door</option><option value="cancelled">Cancelled</option>
-        </select>
-        <button type="button" onClick={onExport} disabled={!regs.length} className="flex h-[38px] items-center justify-center gap-1.5 rounded-lg bg-navy-800 px-4 text-sm font-semibold text-white hover:bg-navy-700 disabled:opacity-50"><Download className="h-4 w-4" /> Export CSV</button>
-      </div>
-      {shown.length === 0 ? (
-        <p className="px-6 py-12 text-center text-sm text-ivory-700">{regs.length ? 'Nobody matches.' : 'No registrations yet.'}</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="text-xs font-semibold uppercase tracking-wider text-ivory-700">
-              <tr><th className="px-5 py-3">Name</th><th className="px-3 py-3">Ticket</th><th className="px-3 py-3">PIN</th><th className="px-3 py-3">Payment</th><th className="px-3 py-3">Check-in</th><th className="px-3 py-3" /></tr>
-            </thead>
-            <tbody className="divide-y divide-navy-100">
-              {shown.map((r) => (
-                <tr key={r.id}>
-                  <td className="px-5 py-3"><p className="font-semibold text-navy-800">{r.first_name} {r.last_name}</p><p className="text-ivory-700">{r.email}{r.phone ? ` · ${r.phone}` : ''}</p></td>
-                  <td className="px-3 py-3 text-navy-700">{ticketName(r.ticket_id)}</td>
-                  <td className="px-3 py-3 font-mono text-navy-700">{r.pin}</td>
-                  <td className="px-3 py-3">
-                    {r.payment_status === 'free' ? <span className="text-ivory-700">Free</span>
-                      : r.payment_status === 'paid' ? <span className="status-pill bg-green-50 text-green-700">Paid</span>
-                        : <button type="button" onClick={() => onPatch(r.id, { payment_status: 'paid' })} className="status-pill bg-gold-50 text-gold-800 hover:bg-gold-100">Unpaid · mark paid</button>}
-                  </td>
-                  <td className="px-3 py-3">
-                    {r.status === 'cancelled' ? <span className="text-ivory-700">Cancelled</span> : r.checked_in_at
-                      ? <button type="button" onClick={() => onPatch(r.id, { checked_in_at: null })} title="Undo check-in" className="status-pill bg-green-50 text-green-700 hover:bg-green-100"><CheckCircle2 className="h-3.5 w-3.5" /> {new Date(r.checked_in_at).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit' })}</button>
-                      : <button type="button" onClick={() => onPatch(r.id, { checked_in_at: new Date().toISOString() })} className="status-pill bg-white text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50">Check in</button>}
-                  </td>
-                  <td className="px-3 py-3 text-right">
-                    {r.status === 'confirmed'
-                      ? <button type="button" onClick={() => onPatch(r.id, { status: 'cancelled' })} className="text-xs font-semibold text-ivory-700 hover:text-burgundy-600">Cancel</button>
-                      : <button type="button" onClick={() => onPatch(r.id, { status: 'confirmed' })} className="text-xs font-semibold text-ivory-700 hover:text-navy-800">Restore</button>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
   );
 }
 

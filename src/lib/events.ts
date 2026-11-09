@@ -1,6 +1,8 @@
 import { supabase } from '@/lib/supabase';
 import { UPLOAD_CACHE } from '@/lib/cache/config';
 import { publicOrigin } from '@/lib/publicUrl';
+import { fieldElements } from '@/lib/form-engine';
+import type { FormDefinition } from '@/lib/form-builder-types';
 
 // ---------------------------------------------------------------- types
 
@@ -359,13 +361,14 @@ const csvCell = (v: unknown) => {
   return /[",\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 };
 
-export function registrationsCsv(regs: Registration[], tickets: EventTicket[], questions: EventQuestion[]): string {
+export function registrationsCsv(regs: Registration[], tickets: EventTicket[], questions: EventQuestion[], formFields: AnswerField[] = []): string {
   const ticketName = (id: string | null) => tickets.find((t) => t.id === id)?.name ?? '';
-  const head = ['First name', 'Last name', 'Email', 'Phone', 'Ticket', 'Status', 'Ticket code', 'Payment', 'PIN', 'Checked in', 'Registered', ...questions.map((q) => q.label)];
+  const head = ['First name', 'Last name', 'Email', 'Phone', 'Ticket', 'Status', 'Ticket code', 'Payment', 'PIN', 'Checked in', 'Registered', ...questions.map((q) => q.label), ...formFields.map((f) => f.label)];
   const rows = regs.map((r) => [
     r.first_name, r.last_name, r.email, r.phone, ticketName(r.ticket_id), r.status, r.ticket_code ?? '', r.payment_status, r.pin,
     r.checked_in_at ? new Date(r.checked_in_at).toISOString() : '', new Date(r.created_at).toISOString(),
     ...questions.map((q) => { const a = r.answers?.[q.id]; return typeof a === 'boolean' ? (a ? 'Yes' : 'No') : a ?? ''; }),
+    ...formFields.map((f) => answerText(r.answers?.[f.id])),
   ]);
   return [head, ...rows].map((row) => row.map(csvCell).join(',')).join('\n');
 }
@@ -626,3 +629,95 @@ export async function updateRegistration(id: string, patch: Partial<Pick<Registr
   const { error } = await supabase.from('event_registrations').update(patch).eq('id', id);
   return { error: error?.message ?? null };
 }
+
+
+// ---------------------------------------------------------------- organiser dashboard
+
+/** A question from a registration type's form, for labelling answers. */
+export interface AnswerField { id: string; label: string; type: string; contact: boolean }
+export interface TypeForm { ticket_id: string; fields: AnswerField[] }
+
+/** Each registration type's questions (organisers only). */
+export async function fetchRegistrationForms(eventId: string): Promise<{ data: TypeForm[]; error: string | null }> {
+  const { data, error } = await supabase.rpc('event_registration_forms', { p_event: eventId });
+  if (error) return { data: [], error: /not_allowed/.test(error.message) ? 'You need access to Events to see this.' : error.message };
+  const rows = (data ?? []) as { ticket_id: string; definition: FormDefinition | null }[];
+  return { data: rows.map((r) => ({ ticket_id: r.ticket_id, fields: r.definition ? formAnswerFields(r.definition) : [] })), error: null };
+}
+
+/** A form's questions in order (consent boxes left out): id, label, and whether it's name/email/phone. */
+export function formAnswerFields(def: FormDefinition): AnswerField[] {
+  const CONTACT = ['first_name', 'last_name', 'full_name', 'email', 'phone'];
+  try {
+    return fieldElements(def).filter((el) => el.type !== 'consent').map((el) => ({
+      id: el.field.fieldId, label: (el.field.label || el.type).trim(), type: el.type,
+      contact: CONTACT.includes(el.field.mappedContactField ?? '') || ['full_name', 'email', 'phone'].includes(el.type),
+    }));
+  } catch { return []; }
+}
+
+/** An answer as text (lists joined, yes/no for booleans). */
+export function answerText(v: unknown): string {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+  if (Array.isArray(v)) return v.map(answerText).join(', ');
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}
+
+/** Whether an answer is a web link people can open (http/https only). */
+export function answerLink(v: string): string | null {
+  const t = v.trim();
+  if (/^https?:\/\/[^\s]+$/i.test(t)) return t;
+  if (/^(www\.)[^\s]+\.[a-z]{2,}(\/[^\s]*)?$/i.test(t)) return `https://${t}`;
+  return null;
+}
+
+/** A registration's answers with their labels; questions they skipped are left out. */
+export function labelledAnswers(r: Pick<Registration, 'answers'>, fields: AnswerField[], { withContact = true } = {}) {
+  return fields.filter((f) => withContact || !f.contact)
+    .map((f) => ({ ...f, value: answerText(r.answers?.[f.id]).trim() }))
+    .filter((a) => a.value !== '');
+}
+
+export async function addRegistration(eventId: string, p: { ticketId: string; first: string; last: string; email: string; phone?: string; send: boolean; overCapacity?: boolean }) {
+  const { data, error } = await supabase.rpc('event_add_registration', {
+    p_event: eventId, p_ticket: p.ticketId, p_first: p.first, p_last: p.last, p_email: p.email, p_phone: p.phone ?? null, p_send: p.send, p_over_capacity: !!p.overCapacity,
+  });
+  if (!error) return { data: data as Registration & { emailed: boolean }, error: null, full: false };
+  const m = error.message;
+  return {
+    data: null, full: /full/.test(m),
+    error: /full/.test(m) ? 'Every place for this type is taken.'
+      : /duplicate/.test(m) ? 'Someone with this email is already registered for this type.'
+      : /email_invalid/.test(m) ? 'Enter a valid email address.'
+      : /name_required/.test(m) ? 'Enter their first name.'
+      : /not_allowed/.test(m) ? 'You need access to Events to do this.' : 'Something went wrong. Please try again.',
+  };
+}
+
+export async function sendTicket(id: string): Promise<{ error: string | null; to?: string }> {
+  const { data, error } = await supabase.rpc('event_send_ticket', { p_reg: id });
+  if (!error) return { error: null, to: (data as { to?: string })?.to };
+  const m = error.message;
+  return {
+    error: /too_soon/.test(m) ? 'It was just sent. Wait a minute before sending again.'
+      : /no_email_account/.test(m) ? 'Connect an email account in Settings → Email to send tickets.'
+      : /no_email_route/.test(m) ? 'This registration type has no form, so it can’t be emailed.'
+      : /no_ticket/.test(m) ? 'There’s no ticket to send: this registration was cancelled or declined.'
+      : /not_allowed/.test(m) ? 'You need access to Events to do this.' : 'Something went wrong. Please try again.',
+  };
+}
+
+/** Where each status sits on the performer review board, and what it's called. */
+export const REVIEW_COLUMNS: { status: RegistrationStatus; label: string; hint: string }[] = [
+  { status: 'applied', label: 'Applied', hint: 'New applications' },
+  { status: 'shortlisted', label: 'Shortlisted', hint: 'Worth a closer look' },
+  { status: 'selected', label: 'Selected', hint: 'Ticket sent' },
+  { status: 'confirmed', label: 'Confirmed', hint: 'They’ve confirmed' },
+  { status: 'declined', label: 'Declined', hint: 'Not this time' },
+];
+
+export const STATUS_LABEL: Record<RegistrationStatus, string> = {
+  confirmed: 'Confirmed', applied: 'Applied', shortlisted: 'Shortlisted', selected: 'Selected', declined: 'Declined', cancelled: 'Cancelled',
+};
