@@ -201,6 +201,75 @@ DO $$ DECLARE rid uuid; r jsonb; reg event_registrations; BEGIN
   PERFORM set_config('request.jwt.claim.sub', '', true);
 EXCEPTION WHEN OTHERS THEN PERFORM set_config('request.jwt.claim.sub', '', true); PERFORM tev.crashed('Selecting', SQLERRM); END $$;
 
+DO $$ DECLARE r jsonb; ada event_registrations; bo event_registrations; other uuid; staff uuid := 'f0000000-0000-4000-8000-0000000000b2'; outsider uuid := 'f0000000-0000-4000-8000-0000000000b3'; BEGIN
+  RAISE NOTICE 'Checking guests in at the door';
+  PERFORM tev.reset();
+  INSERT INTO auth.users(id, email) VALUES (staff, 'door@example.com'), (outsider, 'outsider@example.com') ON CONFLICT DO NOTHING;
+  INSERT INTO workspace_members(workspace_id, user_id, role) VALUES (tev.ws(), staff, 'member'), (tev.ws(), outsider, 'member') ON CONFLICT DO NOTHING;
+  PERFORM event_register('unscathed', 'register', tev.answers('Ada Obi', 'ada@example.com'));
+  PERFORM event_register('unscathed', 'apply', tev.answers('Bo Eze', 'bo@example.com', '+234 803 222 3333'));
+  SELECT * INTO ada FROM event_registrations WHERE email = 'ada@example.com';
+  SELECT * INTO bo FROM event_registrations WHERE email = 'bo@example.com';
+  INSERT INTO events(workspace_id, created_by, slug, title, status) VALUES (tev.ws(), tev.owner(), 'other-night', 'Other night', 'published') RETURNING id INTO other;
+
+  -- Staff only.
+  PERFORM tev.check(tev.raises(format('SELECT event_check_in(%L, %L)', ada.event_id, ticket_qr_url(ada.qr_token))) = 'not_allowed', 'signed out: the scanner refuses');
+  PERFORM set_config('request.jwt.claim.sub', outsider::text, true);
+  PERFORM tev.check(event_checkin_state(ada.event_id) = '{"allowed": false}'::jsonb
+    AND tev.raises(format('SELECT event_check_in(%L, %L)', ada.event_id, ticket_qr_url(ada.qr_token))) = 'not_allowed', 'a member who isn''t on the check-in team can''t open it or check anyone in');
+  PERFORM tev.check(tev.raises(format('SELECT event_staff_set(%L, %L, true)', ada.event_id, outsider)) = 'not_allowed', 'nor add themselves to the team');
+  PERFORM set_config('request.jwt.claim.sub', tev.owner()::text, true);
+  PERFORM event_staff_set(ada.event_id, staff, true);
+  PERFORM tev.check(EXISTS (SELECT 1 FROM jsonb_array_elements(event_staff_list(ada.event_id)) x WHERE x->>'email' = 'door@example.com' AND (x->>'on_team')::boolean),
+    'the organiser adds someone to the check-in team');
+
+  PERFORM set_config('request.jwt.claim.sub', staff::text, true);
+  r := event_checkin_state(ada.event_id);
+  PERFORM tev.check((r->>'allowed')::boolean AND NOT (r->>'organiser')::boolean AND (r->>'expected')::int = 1 AND (r->>'checked_in')::int = 0, 'the team member opens the scanner: 0 of 1 in');
+  r := event_check_in(ada.event_id, ticket_qr_url(ada.qr_token));
+  PERFORM tev.check(r->>'result' = 'success' AND r->'person'->>'name' = 'Ada Obi' AND r->'person'->>'type_name' = 'Attendee' AND r->'person'->>'ticket_code' = ada.ticket_code,
+    'scan the attendee: green, with name, type and code');
+  r := event_check_in(ada.event_id, ticket_qr_url(ada.qr_token));
+  PERFORM tev.check(r->>'result' = 'already_checked_in' AND r->'person'->>'checked_in_at' IS NOT NULL, 'scan again: amber, with the first check-in time');
+  PERFORM tev.check(event_check_in(bo.event_id, ticket_qr_url(bo.qr_token))->>'result' = 'not_eligible', 'an application not selected: red');
+  -- A real ticket for another event, scanned at this door.
+  INSERT INTO event_registrations(event_id, first_name, last_name, email, status, pin) VALUES (other, 'Cy', 'Ola', 'cy@example.com', 'confirmed', '999999') RETURNING * INTO bo;
+  r := event_check_in(ada.event_id, ticket_qr_url(bo.qr_token));
+  PERFORM tev.check(r->>'result' = 'invalid' AND r->>'reason' = 'other_event' AND r->'person' IS NULL, 'another event''s ticket: red, and nothing about the person');
+  PERFORM tev.check(event_check_in(ada.event_id, replace(ticket_qr_url(ada.qr_token), '?v=', '?v=0'))->>'result' = 'invalid'
+    AND event_check_in(ada.event_id, wf_app_url() || '/e/ticket/' || ada.qr_token)->>'result' = 'invalid', 'a tampered or unsigned code: red');
+  PERFORM tev.check(event_check_in(ada.event_id, 'hello')->>'result' = 'invalid', 'any other text: red');
+
+  -- Manual search, check-in by person or code, and undo.
+  PERFORM tev.check(jsonb_array_length(event_checkin_search(ada.event_id, 'ada')) = 1 AND jsonb_array_length(event_checkin_search(ada.event_id, lower(ada.ticket_code))) = 1
+    AND jsonb_array_length(event_checkin_search(ada.event_id, '08031234567')) = 1 AND jsonb_array_length(event_checkin_search(ada.event_id, 'cy')) = 0,
+    'search finds by name, ticket code and local phone number, only in this event');
+  r := event_undo_check_in(ada.event_id, ada.id);
+  PERFORM tev.check((r->>'ok')::boolean AND (SELECT checked_in_at IS NULL FROM event_registrations WHERE id = ada.id)
+    AND EXISTS (SELECT 1 FROM event_checkins WHERE registration_id = ada.id AND result = 'undone' AND user_id = staff), 'undo clears the check-in and is logged');
+  PERFORM tev.check(event_check_in(ada.event_id, ada.ticket_code)->>'result' = 'success', 'checked in again by typing the ticket code');
+  PERFORM event_undo_check_in(ada.event_id, ada.id);
+  r := event_check_in(ada.event_id, NULL, ada.id);
+  PERFORM tev.check(r->>'result' = 'success' AND (SELECT checked_in_by = staff FROM event_registrations WHERE id = ada.id),
+    'and from search with one tap, recording who');
+  UPDATE event_registrations SET payment_status = 'unpaid', checked_in_at = NULL WHERE id = ada.id;
+  r := event_check_in(ada.event_id, NULL, ada.id);
+  PERFORM tev.check(r->>'result' = 'not_eligible' AND r->>'reason' = 'unpaid', 'an unpaid ticket: collect the money first');
+  r := event_check_in(ada.event_id, NULL, ada.id, true);
+  PERFORM tev.check(r->>'result' = 'success' AND (SELECT payment_status = 'paid' FROM event_registrations WHERE id = ada.id),
+    'paid at the door: checked in and marked paid');
+  PERFORM tev.check((SELECT array_agg(DISTINCT result ORDER BY result) FROM event_checkins WHERE event_id = ada.event_id) = ARRAY['already_checked_in', 'invalid', 'not_eligible', 'success', 'undone'],
+    'every attempt is in the check-in log');
+  PERFORM tev.check((SELECT bool_and(x->>'by' IS NOT NULL OR x->>'by' IS NULL) FROM jsonb_array_elements(event_checkin_log(ada.event_id)) x) AND jsonb_array_length(event_checkin_log(ada.event_id)) > 5,
+    'the team can read the log');
+  PERFORM tev.check(NOT has_function_privilege('anon', 'event_check_in(uuid, text, uuid, boolean)', 'EXECUTE'), 'the check-in function is closed to visitors');
+  PERFORM set_config('request.jwt.claim.sub', tev.owner()::text, true);
+  PERFORM event_staff_set(ada.event_id, staff, false);
+  PERFORM set_config('request.jwt.claim.sub', staff::text, true);
+  PERFORM tev.check(tev.raises(format('SELECT event_checkin_search(%L, %L)', ada.event_id, 'ada')) = 'not_allowed', 'taken off the team: no more access');
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+EXCEPTION WHEN OTHERS THEN PERFORM set_config('request.jwt.claim.sub', '', true); PERFORM tev.crashed('Check-in', SQLERRM); END $$;
+
 DO $$ DECLARE f int; p int; r record; BEGIN
   SELECT count(*) INTO f FROM tev.failures; SELECT count(*) INTO p FROM tev.passes;
   IF f > 0 THEN

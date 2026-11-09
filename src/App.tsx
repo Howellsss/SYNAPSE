@@ -55,6 +55,7 @@ const TicketPage = lazy(() => import('@/pages/events/TicketPage').then((m) => ({
 const EventRegisterPage = lazy(() => import('@/pages/events/EventRegisterPage').then((m) => ({ default: m.EventRegisterPage })));
 const EventsPage = lazy(() => import('@/pages/events/EventsPage').then((m) => ({ default: m.EventsPage })));
 const EventBuilder = lazy(() => import('@/pages/events/EventBuilder').then((m) => ({ default: m.EventBuilder })));
+const CheckInPage = lazy(() => import('@/pages/events/CheckInPage').then((m) => ({ default: m.CheckInPage })));
 const EventManagePage = lazy(() => import('@/pages/events/EventManagePage').then((m) => ({ default: m.EventManagePage })));
 
 const pageSpinner = <div className="flex flex-1 items-center justify-center py-24"><LoadingSpinner className="w-8 h-8" /></div>;
@@ -127,8 +128,15 @@ function AppContent() {
   const meetingInvite = meetingCode ? inviteFromLocation(path) : null;
   useEffect(() => {
     if (loading) return;
-    if (user && authPath) { navigate('/dashboard'); return; }
+    if (user && authPath) {
+      // Door staff who opened a scanner link before signing in go straight back to it.
+      let back: string | null = null;
+      try { back = sessionStorage.getItem('synapse.after_signin'); sessionStorage.removeItem('synapse.after_signin'); } catch { /* private mode */ }
+      navigate(back && /^\/check-in\/[0-9a-f-]{36}$/i.test(back) ? back : '/dashboard');
+      return;
+    }
     if (!user && !authPath && path !== '/' && !path.startsWith('/book/') && !path.startsWith('/group/') && !path.startsWith('/reset-password') && !path.startsWith('/invite/') && !path.startsWith('/join/') && !path.startsWith('/live/') && !isPublicEvents && !meetingInvite && !publicFormId) {
+      if (/^\/check-in\/[0-9a-f-]{36}$/i.test(path)) { try { sessionStorage.setItem('synapse.after_signin', path); } catch { /* private mode */ } }
       navigate('/');
     }
   }, [user, loading, path, authPath, isPublicEvents, meetingInvite, publicFormId, navigate]);
@@ -200,6 +208,10 @@ function AppContent() {
 
   // A meeting room is full screen, without the sidebar and top bar
   if (meetingCode) return <MeetingRoomPage key={meetingCode} code={meetingCode} invite={meetingInvite} />;
+
+  // The door scanner for an event: full screen on a phone, for its organisers and check-in team.
+  const checkInMatch = user ? path.match(/^\/check-in\/([0-9a-f-]{36})(?:[/?]|$)/i) : null;
+  if (checkInMatch) return <CheckInPage key={checkInMatch[1]} eventId={checkInMatch[1].toLowerCase()} />;
 
   // The stream studio is full screen too
   const studioMatch = path.match(/^\/streams\/([A-Za-z]{4}-?\d{3})(?:[/?]|$)/);

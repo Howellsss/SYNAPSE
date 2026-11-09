@@ -1,15 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
-  ArrowLeft, Ban, CalendarDays, Camera, CameraOff, CheckCircle2, Copy, Download, ExternalLink, MapPin, MoreHorizontal, Pencil,
-  RotateCcw, Search, Trash2, Undo2, Users, XCircle,
+  ArrowLeft, Ban, CalendarDays, CheckCircle2, Copy, Download, ExternalLink, MapPin, MoreHorizontal, Pencil,
+  RotateCcw, ScanLine, Search, Trash2, Undo2, Users,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useRouter } from '@/lib/router';
 import {
   DEFAULT_COVER, deleteEvent, downloadFile, eventDateLine, eventUrl, formatPrice, getEvent, listRegistrations, placeLine,
-  registrationsCsv, setEventStatus, tokenFromScan, updateRegistration, type EventTicket, type HostEvent, type Registration,
+  registrationsCsv, setEventStatus, updateRegistration, type EventTicket, type HostEvent, type Registration,
 } from '@/lib/events';
+import { checkIn, checkInLog, checkInPath, invalidText, listCheckInStaff, setCheckInStaff, undoCheckIn, type CheckInLogEntry, type StaffMember } from '@/lib/checkin';
+import { publicOrigin } from '@/lib/publicUrl';
 import { useEventFonts } from '@/components/events/hooks';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ErrorState, LoadingSpinner } from '@/components/ui/States';
@@ -49,6 +51,20 @@ export function EventManagePage({ eventId }: { eventId: string }) {
 
   const patchReg = async (id: string, patch: Partial<Pick<Registration, 'checked_in_at' | 'payment_status' | 'status'>>) => {
     setRegs((rs) => rs?.map((r) => (r.id === id ? { ...r, ...patch } : r)) ?? rs);
+    // Check-ins and undos go through the door's check-in log, like a scan.
+    if ('checked_in_at' in patch) {
+      const { checked_in_at: at, ...rest } = patch;
+      try {
+        if (at) {
+          const a = await checkIn(eventId, { registration: id, paid: rest.payment_status === 'paid' });
+          if (a.result === 'not_eligible') toast(a.reason === 'unpaid' ? 'This ticket isn’t paid yet: mark it paid first.' : invalidText(a.reason), 'error');
+        }
+        else await undoCheckIn(eventId, id);
+      } catch (e) { toast((e as Error).message === 'offline' ? 'No connection. Try again.' : (e as Error).message, 'error'); }
+      void loadRegs();
+      if (Object.keys(rest).length === 0 || rest.payment_status === 'paid') return;
+      patch = rest;
+    }
     const { error: err } = await updateRegistration(id, patch);
     if (err) { toast(err, 'error'); void loadRegs(); }
   };
@@ -126,7 +142,7 @@ export function EventManagePage({ eventId }: { eventId: string }) {
           ) : tab === 'attendees' ? (
             <Attendees regs={regs} tickets={tickets} onPatch={patchReg} onExport={exportCsv} />
           ) : (
-            <CheckIn regs={regs} tickets={tickets} checkedIn={checkedIn} total={confirmed.length} onPatch={patchReg} />
+            <CheckInTab eventId={event.id} checkedIn={checkedIn} total={confirmed.length} />
           )}
       </div>
 
@@ -301,165 +317,104 @@ function Attendees({ regs, tickets, onPatch, onExport }: {
 
 // ---------------------------------------------------------------- check-in
 
-type BarcodeDetectorLike = { detect: (src: CanvasImageSource) => Promise<{ rawValue: string }[]> };
-type BarcodeDetectorCtor = new (opts: { formats: string[] }) => BarcodeDetectorLike;
+/** The Check-in tab: open the door scanner, choose the check-in team, and see the latest scans. */
+function CheckInTab({ eventId, checkedIn, total }: { eventId: string; checkedIn: number; total: number }) {
+  const { toast } = useToast();
+  const [, navigate] = useRouter();
+  const [staff, setStaff] = useState<StaffMember[] | null>(null);
+  const [log, setLog] = useState<CheckInLogEntry[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState<string | null>(null);
+  const link = `${publicOrigin()}${checkInPath(eventId)}`;
 
-function CheckIn({ regs, tickets, checkedIn, total, onPatch }: {
-  regs: Registration[]; tickets: EventTicket[]; checkedIn: number; total: number; onPatch: (id: string, p: Partial<Registration>) => void;
-}) {
-  const [pin, setPin] = useState('');
-  const [found, setFound] = useState<{ reg: Registration | null; how: string; already?: string | null } | null>(null);
-  const [scanning, setScanning] = useState(false);
-  const [scanError, setScanError] = useState<string | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const regsRef = useRef(regs);
-  regsRef.current = regs;
-  const Detector = (window as unknown as { BarcodeDetector?: BarcodeDetectorCtor }).BarcodeDetector;
-  const ticketName = (id: string | null) => tickets.find((t) => t.id === id)?.name ?? '';
-
-  // Look someone up and check them in straight away (unless already in, cancelled or unpaid).
-  const admit = useCallback((reg: Registration | undefined, how: string) => {
-    if (!reg) { setFound({ reg: null, how }); return; }
-    const already = reg.checked_in_at;
-    setFound({ reg, how, already });
-    if (!already && reg.status === 'confirmed' && reg.payment_status !== 'unpaid') onPatch(reg.id, { checked_in_at: new Date().toISOString() });
-  }, [onPatch]);
-
-  const byPin = (value: string) => {
-    const p = value.replace(/\D/g, '').slice(0, 6);
-    setPin(p);
-    if (p.length === 6) { admit(regsRef.current.find((r) => r.pin === p), `PIN ${p}`); setPin(''); }
-  };
-
-  const stop = useCallback(() => {
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-    setScanning(false);
-  }, []);
-  useEffect(() => stop, [stop]);
-
-  useEffect(() => {
-    if (!scanning || !Detector) return;
-    let alive = true;
-    let last = '';
-    const detector = new Detector({ formats: ['qr_code'] });
-    const tick = async () => {
-      if (!alive) return;
-      const v = videoRef.current;
-      if (v && v.readyState >= 2) {
-        try {
-          const codes = await detector.detect(v);
-          const raw = codes[0]?.rawValue;
-          if (raw && raw !== last) {
-            last = raw;
-            const token = tokenFromScan(raw);
-            admit(token ? regsRef.current.find((r) => r.qr_token === token) : undefined, 'QR code');
-            window.setTimeout(() => { last = ''; }, 3000);
-          }
-        } catch { /* keep scanning */ }
-      }
-      window.setTimeout(() => { void tick(); }, 350);
-    };
-    void tick();
-    return () => { alive = false; };
-  }, [scanning, Detector, admit]);
-
-  const start = async () => {
-    setScanError(null);
+  const load = useCallback(async () => {
     try {
-      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      streamRef.current = s;
-      setScanning(true);
-      requestAnimationFrame(() => { if (videoRef.current) { videoRef.current.srcObject = s; void videoRef.current.play().catch(() => {}); } });
-    } catch {
-      setScanError('Camera unavailable. Allow camera access, or use the PIN.');
-    }
+      const [s, l] = await Promise.all([listCheckInStaff(eventId), checkInLog(eventId, 20)]);
+      setStaff(s); setLog(l); setError(null);
+    } catch (e) { setError((e as Error).message === 'offline' ? 'No connection. Check your internet and try again.' : (e as Error).message); }
+  }, [eventId]);
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { const t = window.setInterval(() => { void checkInLog(eventId, 20).then(setLog).catch(() => {}); }, 15000); return () => window.clearInterval(t); }, [eventId]);
+
+  const toggle = async (m: StaffMember) => {
+    setSaving(m.user_id);
+    try {
+      await setCheckInStaff(eventId, m.user_id, !m.on_team);
+      setStaff((list) => list?.map((x) => (x.user_id === m.user_id ? { ...x, on_team: !m.on_team } : x)) ?? list);
+      toast(m.on_team ? `${m.name} removed from the check-in team` : `${m.name} can now check guests in`);
+    } catch (e) { toast((e as Error).message, 'error'); } finally { setSaving(null); }
+  };
+  const copy = async () => { try { await navigator.clipboard.writeText(link); toast('Scanner link copied'); } catch { toast('Could not copy the link', 'error'); } };
+
+  const team = (staff ?? []).filter((m) => !m.organiser);
+  const organisers = (staff ?? []).filter((m) => m.organiser);
+  const label: Record<CheckInLogEntry['result'], [string, string]> = {
+    success: ['Checked in', 'bg-green-50 text-green-800'],
+    already_checked_in: ['Already in', 'bg-amber-50 text-amber-800'],
+    invalid: ['Not valid', 'bg-red-50 text-red-700'],
+    not_eligible: ['Turned away', 'bg-red-50 text-red-700'],
+    undone: ['Undone', 'bg-navy-50 text-navy-700'],
   };
 
-  const r = found?.reg;
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
+      <div className="flex flex-col gap-6">
+        <section className="card p-5 sm:p-6">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-navy-800">Door scanner</h2>
+            <span className="inline-flex items-center gap-1.5 rounded-md bg-navy-50 px-3 py-1 text-sm font-semibold text-navy-800" aria-live="polite"><Users className="h-4 w-4" />{checkedIn} / {total} in</span>
+          </div>
+          <p className="mt-2 text-[15px] text-ivory-700">Open it on a phone at the door. It reads ticket QR codes (iPhone and Android), and you can search by name, email, phone, ticket code or PIN.</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button type="button" onClick={() => navigate(checkInPath(eventId))} className="flex h-11 items-center gap-2 rounded-lg bg-navy-800 px-5 text-sm font-semibold text-white hover:bg-navy-700"><ScanLine className="h-4 w-4" /> Open the scanner</button>
+            <button type="button" onClick={() => { void copy(); }} className="flex h-11 items-center gap-2 rounded-lg px-4 text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50"><Copy className="h-4 w-4" /> Copy link for your team</button>
+          </div>
+          <p className="mt-3 text-sm text-ivory-700">Your team signs in to SYNAPSE, then opens the link. Only people on the check-in team below (and organisers) can use it.</p>
+        </section>
+
+        <section className="card p-5 sm:p-6">
+          <h2 className="text-lg font-semibold text-navy-800">Check-in team</h2>
+          <p className="mt-1 text-[15px] text-ivory-700">People in your account who can check guests in for this event, even without access to Events.</p>
+          {error ? <p role="alert" className="mt-4 text-sm text-burgundy-700">{error}</p>
+            : staff === null ? <div className="flex justify-center py-6"><LoadingSpinner className="h-6 w-6" /></div>
+            : (
+              <ul className="mt-4 divide-y divide-navy-50">
+                {team.map((m) => (
+                  <li key={m.user_id} className="flex items-center gap-3 py-3">
+                    <div className="min-w-0 flex-1"><p className="truncate font-semibold text-navy-800">{m.name}</p><p className="truncate text-sm text-ivory-700">{m.email}</p></div>
+                    <button type="button" role="switch" aria-checked={m.on_team} aria-label={`${m.name} on the check-in team`} disabled={saving === m.user_id} onClick={() => { void toggle(m); }}
+                      className={cn('relative h-7 w-12 shrink-0 rounded-full transition disabled:opacity-50', m.on_team ? 'bg-green-600' : 'bg-navy-100')}>
+                      <span className={cn('absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all', m.on_team ? 'left-6' : 'left-1')} />
+                    </button>
+                  </li>
+                ))}
+                {team.length === 0 && <li className="py-3 text-sm text-ivory-700">Everyone in your account can already manage events. Invite people in Settings → Team to add door staff.</li>}
+              </ul>
+            )}
+          {organisers.length > 0 && <p className="mt-3 text-sm text-ivory-700">Organisers (always allowed): {organisers.map((m) => m.name).join(', ')}</p>}
+        </section>
+      </div>
+
       <section className="card p-5 sm:p-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-navy-800">Check guests in</h2>
-          <span className="inline-flex items-center gap-1.5 rounded-md bg-navy-50 px-3 py-1 text-sm font-semibold text-navy-800" aria-live="polite"><Users className="h-4 w-4" />{checkedIn} / {total} in</span>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-navy-800">Latest scans</h2>
+          <button type="button" onClick={() => { void load(); }} className="flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold text-navy-700 hover:bg-navy-50"><RotateCcw className="h-4 w-4" /> Refresh</button>
         </div>
-
-        <label className="mt-5 block">
-          <span className="text-sm font-semibold text-navy-800">Type the 6-digit PIN</span>
-          <input
-            value={pin}
-            onChange={(e) => byPin(e.target.value)}
-            inputMode="numeric"
-            autoComplete="off"
-            placeholder="••••••"
-            aria-label="Ticket PIN"
-            className="mt-2 h-16 w-full rounded-2xl border border-navy-100 text-center font-event-display text-3xl tracking-[0.4em] text-navy-900 outline-none focus:border-gold-400 focus:ring-4 focus:ring-gold-400/20"
-          />
-        </label>
-
-        <div className="mt-6 border-t border-navy-100 pt-6">
-          <p className="text-sm font-semibold text-navy-800">Or scan the ticket QR</p>
-          {Detector ? (
-            <>
-              <div className={cn('relative mt-3 overflow-hidden rounded-2xl bg-navy-900', scanning ? 'aspect-square sm:aspect-video' : 'hidden')}>
-                <video ref={videoRef} muted playsInline className="h-full w-full object-cover" />
-                <span className="pointer-events-none absolute inset-[18%] rounded-xl border-2 border-gold-400/90" aria-hidden="true" />
-              </div>
-              <button type="button" onClick={() => { if (scanning) stop(); else void start(); }} className={cn('mt-3 flex h-11 items-center gap-2 rounded-lg px-5 text-sm font-semibold', scanning ? 'text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50' : 'bg-navy-800 text-white hover:bg-navy-700')}>
-                {scanning ? <><CameraOff className="h-4 w-4" /> Stop camera</> : <><Camera className="h-4 w-4" /> Scan with camera</>}
-              </button>
-            </>
-          ) : (
-            <p className="mt-2 text-sm text-ivory-700">This browser can't read QR codes. Use Chrome on Android or a Mac, or type the PIN shown on the ticket.</p>
+        {log === null ? (error ? null : <div className="flex justify-center py-6"><LoadingSpinner className="h-6 w-6" /></div>)
+          : log.length === 0 ? <p className="mt-4 text-[15px] text-ivory-700">Nothing scanned yet. Every scan, search check-in and undo shows here, with who did it.</p>
+          : (
+            <ul className="mt-3 divide-y divide-navy-50">
+              {log.map((x) => (
+                <li key={x.id} className="flex items-center gap-3 py-2.5">
+                  <span className={cn('w-[92px] shrink-0 rounded-full px-2.5 py-1 text-center text-xs font-semibold', label[x.result][1])}>{label[x.result][0]}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-navy-800">{x.name ?? 'Unknown code'}</p>
+                    <p className="truncate text-xs text-ivory-700">{new Date(x.at).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit' })}{x.by ? ` · ${x.by}` : ''} · {x.via === 'scan' ? 'scanned' : x.via === 'undo' ? 'undo' : 'by search'}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
-          {scanError && <p role="alert" className="mt-2 text-sm text-burgundy-600">{scanError}</p>}
-        </div>
-      </section>
-
-      <section className="card flex min-h-[320px] flex-col items-center justify-center p-6 text-center" aria-live="assertive">
-        {!found ? (
-          <>
-            <CheckCircle2 className="h-12 w-12 text-navy-100" />
-            <p className="mt-3 text-ivory-700">Results appear here.</p>
-          </>
-        ) : !r ? (
-          <>
-            <XCircle className="h-14 w-14 text-burgundy-500" />
-            <p className="mt-3 text-xl font-semibold text-navy-800">No ticket found</p>
-            <p className="mt-1 text-sm text-ivory-700">{found.how} doesn't match anyone registered for this event.</p>
-          </>
-        ) : r.status === 'cancelled' ? (
-          <>
-            <XCircle className="h-14 w-14 text-burgundy-500" />
-            <p className="mt-3 text-xl font-semibold text-navy-800">{r.first_name} {r.last_name}</p>
-            <p className="mt-1 font-semibold text-burgundy-600">This registration was cancelled.</p>
-          </>
-        ) : found.already ? (
-          <>
-            <CheckCircle2 className="h-14 w-14 text-gold-500" />
-            <p className="mt-3 text-xl font-semibold text-navy-800">{r.first_name} {r.last_name}</p>
-            <p className="mt-1 font-semibold text-gold-700">Already checked in at {new Date(found.already).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit' })}</p>
-            <p className="mt-1 text-sm text-ivory-700">{ticketName(r.ticket_id)}</p>
-          </>
-        ) : r.payment_status === 'unpaid' ? (
-          <>
-            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-gold-50 font-event-display text-lg font-semibold text-gold-800">₦</span>
-            <p className="mt-3 text-xl font-semibold text-navy-800">{r.first_name} {r.last_name}</p>
-            <p className="mt-1 text-sm text-ivory-700">{ticketName(r.ticket_id)}</p>
-            <p className="mt-3 font-semibold text-gold-800">Collect {formatPrice(r.amount_minor, tickets.find((t) => t.id === r.ticket_id)?.currency)} before entry</p>
-            <button type="button" onClick={() => { onPatch(r.id, { payment_status: 'paid', checked_in_at: new Date().toISOString() }); setFound({ reg: { ...r, payment_status: 'paid' }, how: found.how, already: null }); }} className="mt-4 h-[38px] rounded-lg bg-gold-400 px-4 text-sm font-semibold text-navy-900 hover:bg-gold-300">Paid · check in</button>
-          </>
-        ) : (
-          <>
-            <CheckCircle2 className="h-14 w-14 text-green-600" />
-            <p className="mt-3 text-xl font-semibold text-navy-800">{r.first_name} {r.last_name}</p>
-            <p className="mt-1 font-semibold text-green-700">Checked in</p>
-            <p className="mt-1 text-sm text-ivory-700">{ticketName(r.ticket_id)} · via {found.how}</p>
-            <button type="button" onClick={() => { onPatch(r.id, { checked_in_at: null }); setFound(null); }} className="mt-4 text-sm font-semibold text-ivory-700 hover:text-navy-800">Undo</button>
-          </>
-        )}
       </section>
     </div>
   );
