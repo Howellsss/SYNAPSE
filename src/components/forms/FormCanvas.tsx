@@ -178,6 +178,9 @@ function CanvasSection({
   }
   const st = section.style;
   const line = <div className="h-[3px] rounded-full bg-[#0071E3] shadow-[0_0_0_2px_rgba(0,113,227,0.15)]" />;
+  // One column: half-width fields sit side by side, as on the form.
+  const pairs = cols === 1 && viewport !== 'mobile';
+  const halfOf = (id: string) => pairs && definition.elements[id]?.style?.width === 'half';
 
   return (
     <div
@@ -206,9 +209,16 @@ function CanvasSection({
         )}
       </div>
 
+      {section.title && (
+        <div className="sf-section-head relative" style={{ marginBottom: `${Math.max(theme.layout.fieldSpacing, 16)}px` }}>
+          <h2 style={{ margin: 0, fontFamily: theme.typography.headingFont, color: theme.colors.heading, fontSize: '18px', fontWeight: 700, letterSpacing: '-0.01em' }}>{section.title}</h2>
+          {section.description && <p style={{ margin: '4px 0 0', fontFamily: theme.typography.bodyFont, color: theme.colors.mutedText, fontSize: '14px', lineHeight: 1.55 }}>{section.description}</p>}
+        </div>
+      )}
       <div className="relative grid" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap: `${theme.layout.columnGap}px` }}>
         {columns.map((ids, colIdx) => (
-          <div key={colIdx} className="flex min-h-[56px] flex-col" style={{ gap: `${theme.layout.fieldSpacing}px` }}
+          <div key={colIdx} className={cn('flex min-h-[56px]', pairs ? 'flex-row flex-wrap content-start' : 'flex-col')}
+            style={pairs ? { columnGap: `${Math.max(theme.layout.columnGap, 16)}px`, rowGap: `${theme.layout.fieldSpacing}px` } : { gap: `${theme.layout.fieldSpacing}px` }}
             onDragOver={(e) => { e.preventDefault(); if (e.target === e.currentTarget) setOver({ sectionId: section.id, column: colIdx, index: ids.length }); }}
             onDrop={(e) => onDrop(e, section, colIdx, over?.sectionId === section.id && over.column === colIdx ? over.index : ids.length, ids)}>
             {ids.map((elId, i) => {
@@ -220,16 +230,17 @@ function CanvasSection({
               const notShown = el.field?.visible === false && !unseen;
               const mapped = el.field?.mappedContactField;
               return (
-                <div key={elId} id={`cv-${elId}`} className="relative scroll-my-24">
+                <div key={elId} id={`cv-${elId}`} className="relative scroll-my-24" style={pairs ? { width: halfOf(elId) ? `calc(50% - ${Math.max(theme.layout.columnGap, 16) / 2}px)` : '100%' } : undefined}>
                   {marker && <div className="absolute -top-[7px] left-0 right-0 z-10">{line}</div>}
                   <div draggable
                     onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData('application/x-synapse-element', elId); e.dataTransfer.effectAllowed = 'move'; onDragStart(elId); }}
                     onDragEnd={onDragEnd}
                     onDragOver={(e) => {
                       e.preventDefault(); e.stopPropagation();
-                      // Top half: before this element; bottom half: after it.
+                      // Before or after this element: by its halves, left and right for a half-width field.
                       const r = e.currentTarget.getBoundingClientRect();
-                      setOver({ sectionId: section.id, column: colIdx, index: e.clientY > r.top + r.height / 2 ? i + 1 : i });
+                      const after = halfOf(elId) ? e.clientX > r.left + r.width / 2 : e.clientY > r.top + r.height / 2;
+                      setOver({ sectionId: section.id, column: colIdx, index: after ? i + 1 : i });
                     }}
                     onClick={(e) => { e.stopPropagation(); onSelectElement(elId); onSelectSection(section.id); }}
                     className={cn('group/el relative -m-2 cursor-pointer rounded-[10px] p-2 transition-all',
@@ -248,7 +259,7 @@ function CanvasSection({
                         <span>· not shown on the form{el.field?.queryKey ? ` · filled from ?${el.field.queryKey}=` : ''}</span>
                       </div>
                     ) : (
-                      <div className="pointer-events-none"><BuilderElement element={el} definition={definition} /></div>
+                      <div className="pointer-events-none"><BuilderElement element={el} definition={definition} inGrid={pairs} /></div>
                     )}
                     {(mapped || notShown) && (
                       <div className="mt-1.5 flex flex-wrap gap-1.5">

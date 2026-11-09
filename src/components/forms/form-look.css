@@ -229,6 +229,36 @@ select.sf-input {
   animation: sf-in 0.25s ease-out both;
 }
 
+/* ---------------------------------------------------------------- phone with a country */
+
+.sf-phone { display: flex; gap: 8px; }
+.sf-phone .sf-input { flex: 1; min-width: 0; }
+.sf-phone-code {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.25s;
+}
+.sf-phone-code:hover { border-color: var(--sf-border-hover) !important; }
+.sf-phone-code:focus-within { border-color: var(--sf-focus) !important; box-shadow: 0 0 0 4px var(--sf-ring); }
+.sf-phone-show { padding: 0 34px 0 14px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sf-phone-code::after {
+  content: '';
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--sf-muted);
+  border-bottom: 2px solid var(--sf-muted);
+  transform: translateY(-70%) rotate(45deg);
+  pointer-events: none;
+}
+/* The real list sits on top, invisible, so tapping opens the phone's own picker. */
+.sf-phone-code select { position: absolute; inset: 0; opacity: 0; cursor: pointer; font-size: 16px; }
+
 /* ---------------------------------------------------------------- choice tiles */
 
 .sf-tiles {
