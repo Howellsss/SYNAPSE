@@ -7,7 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useRouter } from '@/lib/router';
 import {
-  DEFAULT_COVER, deleteEvent, downloadFile, eraseRegistration, eventDateLine, eventUrl, fetchRegistrationForms, formatPrice, getEvent, holdsPlace,
+  DEFAULT_COVER, deleteEvent, downloadFile, eventDateLine, eventUrl, fetchRegistrationForms, formatPrice, getEvent, holdsPlace,
   listRegistrations, placeLine, registrationsCsv, REVIEW_COLUMNS, sendTicket, setEventStatus, setRegistrationStatus, updateRegistration,
   type AnswerField, type EventTicket, type HostEvent, type Registration, type RegistrationStatus, type TypeForm,
 } from '@/lib/events';
@@ -45,8 +45,6 @@ export function EventManagePage({ eventId }: { eventId: string }) {
   const [change, setChange] = useState<{ reg: Registration; status: RegistrationStatus } | null>(null);
   const [notify, setNotify] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [erasing, setErasing] = useState<Registration | null>(null);
-  const [alsoContact, setAlsoContact] = useState(false);
 
   const loadRegs = useCallback(async () => {
     const { data, error: err } = await listRegistrations(eventId);
@@ -112,17 +110,6 @@ export function EventManagePage({ eventId }: { eventId: string }) {
       void loadRegs();
     },
     open: (reg) => setOpenId(reg.id),
-    erase: (reg) => { setAlsoContact(false); setErasing(reg); },
-  };
-  const erase = async (reg: Registration, contact: boolean) => {
-    setBusyId(reg.id);
-    const { error: err } = await eraseRegistration(reg.id, contact);
-    setBusyId(null);
-    if (err) { toast(err, 'error'); return; }
-    setOpenId(null);
-    setRegs((rs) => rs?.filter((r) => r.id !== reg.id) ?? rs);
-    toast(`${reg.first_name}’s data was deleted${contact ? ', including their contact' : ''}`);
-    void loadRegs();
   };
 
   if (event === undefined && !error) return <div className="flex justify-center py-24"><LoadingSpinner className="h-10 w-10" /></div>;
@@ -233,24 +220,6 @@ export function EventManagePage({ eventId }: { eventId: string }) {
                 <span>{change.status === 'selected' ? 'Email them the “You’ve been selected” message with their ticket' : 'Email them the kind “not this time” note'}<span className="block text-sm text-ivory-700">You can change the wording in Edit → Emails.</span></span>
               </label>
             )}
-          </div>
-        )}
-      </Modal>
-
-      <Modal open={!!erasing} onClose={() => setErasing(null)} size="sm" title={erasing ? `Delete ${erasing.first_name} ${erasing.last_name}’s data?`.replace(/\s+’s/, '’s') : ''}
-        footer={erasing && (
-          <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => setErasing(null)} className="h-10 rounded-lg px-4 text-sm font-semibold text-navy-700 hover:bg-navy-50">Keep it</button>
-            <button type="button" onClick={() => { const r = erasing; setErasing(null); void erase(r, alsoContact); }} className="h-10 rounded-lg bg-red-600 px-5 text-sm font-semibold text-white hover:bg-red-700">Delete for good</button>
-          </div>
-        )}>
-        {erasing && (
-          <div className="space-y-4 text-[15px] text-navy-800">
-            <p>Their registration, ticket, form answers and the emails sent to them for {event.title} are deleted. This can’t be undone. The check-in log keeps the times, without their name.</p>
-            <label className="flex items-start gap-3">
-              <input type="checkbox" checked={alsoContact} onChange={(e) => setAlsoContact(e.target.checked)} className="mt-0.5 h-5 w-5 rounded border-navy-200 accent-navy-800" />
-              <span>Also delete them from Contacts<span className="block text-sm text-ivory-700">With their notes and history there. Leave this off if you know them from elsewhere.</span></span>
-            </label>
           </div>
         )}
       </Modal>
