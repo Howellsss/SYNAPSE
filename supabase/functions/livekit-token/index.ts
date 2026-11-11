@@ -117,6 +117,21 @@ Deno.serve(async (req: Request) => {
         return row ? (row.status ?? "active") : null;
       },
 
+      async canUseWorkspaces(workspaceId, userId) {
+        // Same rule as member_can() in the database: owners and Admins always; Users by their list.
+        const { data, error } = await admin()
+          .from("workspace_members")
+          .select("role, access")
+          .eq("workspace_id", workspaceId)
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (error) return missingTable(error) ? true : fail(error);
+        const row = data as { role: string; access: string[] | null } | null;
+        if (!row) return false;
+        if (row.role === "owner" || row.role === "admin") return true;
+        return (row.access ?? ["conversations", "workspaces", "meetings", "calendars"]).includes("workspaces");
+      },
+
       async getProfileName(userId) {
         const { data } = await admin().from("profiles").select("first_name, last_name").eq("user_id", userId).maybeSingle();
         return (data as { first_name: string | null; last_name: string | null } | null) ?? null;

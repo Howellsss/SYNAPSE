@@ -264,6 +264,52 @@ DO $$ DECLARE cal uuid; n int; BEGIN
   PERFORM ts.as_user(NULL);
 EXCEPTION WHEN OTHERS THEN RESET ROLE; PERFORM ts.crashed('Hosts and recordings', SQLERRM); END $$;
 
+DO $$ DECLARE ch uuid; sp uuid; n int; ok boolean; BEGIN
+  RAISE NOTICE 'Conversations, Workspaces and Meetings follow each person''s sections';
+  SELECT id INTO ch FROM chat_channels WHERE name = 'general-sec';
+  INSERT INTO chat_messages(channel_id, workspace_id, user_id, body) VALUES (ch, ts.ws2(), ts.o2(), 'Board pay rises');
+  INSERT INTO spaces(workspace_id, name, slug, template_key, created_by) VALUES (ts.ws2(), 'HQ', 'hq-sec', 'office', ts.o2()) RETURNING id INTO sp;
+  INSERT INTO space_members(space_id, user_id) VALUES (sp, ts.o2());
+  INSERT INTO meetings(workspace_id, host_id, title, code) VALUES (ts.ws2(), ts.o2(), 'Standup', 'SECU-101');
+  -- m2 keeps only Contacts.
+  UPDATE workspace_members SET access = ARRAY['contacts'] WHERE workspace_id = ts.ws2() AND user_id = ts.m2();
+  PERFORM ts.as_user(ts.m2());
+  SET LOCAL ROLE authenticated;
+  SELECT count(*) INTO n FROM chat_messages WHERE channel_id = ch;
+  PERFORM ts.check(n = 0, 'without Conversations: messages can''t be read');
+  SELECT count(*) INTO n FROM chat_channels WHERE id = ch;
+  PERFORM ts.check(n = 1, 'channel names still can (for picking a channel in a workflow)');
+  BEGIN
+    INSERT INTO chat_messages(channel_id, workspace_id, user_id, body) VALUES (ch, ts.ws2(), ts.m2(), 'hi');
+    ok := false;
+  EXCEPTION WHEN OTHERS THEN ok := SQLSTATE = '42501';
+  END;
+  PERFORM ts.check(ok, 'without Conversations: messages can''t be sent');
+  SELECT count(*) INTO n FROM spaces WHERE id = sp;
+  PERFORM ts.check(n = 0, 'without Workspaces: the office can''t be seen');
+  SELECT count(*) INTO n FROM space_members WHERE space_id = sp;
+  PERFORM ts.check(n = 0, 'nor who is in it');
+  SELECT count(*) INTO n FROM meetings WHERE code = 'SECU-101';
+  PERFORM ts.check(n = 1, 'without Meetings: a meeting link still opens');
+  BEGIN
+    INSERT INTO meetings(workspace_id, host_id, title, code) VALUES (ts.ws2(), ts.m2(), 'Mine', 'SECU-102');
+    ok := false;
+  EXCEPTION WHEN OTHERS THEN ok := SQLSTATE = '42501';
+  END;
+  PERFORM ts.check(ok, 'without Meetings: meetings can''t be started');
+  RESET ROLE;
+  PERFORM ts.as_user(NULL);
+  UPDATE workspace_members SET access = NULL WHERE workspace_id = ts.ws2() AND user_id = ts.m2();
+  PERFORM ts.as_user(ts.m2());
+  SET LOCAL ROLE authenticated;
+  SELECT count(*) INTO n FROM chat_messages WHERE channel_id = ch;
+  PERFORM ts.check(n = 1, 'with the usual sections, messages are back');
+  SELECT count(*) INTO n FROM spaces WHERE id = sp;
+  PERFORM ts.check(n = 1, 'and the office');
+  RESET ROLE;
+  PERFORM ts.as_user(NULL);
+EXCEPTION WHEN OTHERS THEN RESET ROLE; PERFORM ts.crashed('Sections for people tools', SQLERRM); END $$;
+
 DO $$ DECLARE f int; p int; r record; BEGIN
   SELECT count(*) INTO f FROM ts.failures; SELECT count(*) INTO p FROM ts.passes;
   IF f > 0 THEN

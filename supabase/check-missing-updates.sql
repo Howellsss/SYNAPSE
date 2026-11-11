@@ -709,7 +709,8 @@ with expected(migration, kind, sch, a, b) as (values
   ('20261115090000_security_fixes.sql','policy','public','appointments','appts_public_insert'),
   ('20261115090000_security_fixes.sql','function','public','calendar_owner_or_admin','92845270a68c0d679ce22371067cd2fb'),
   ('20261115090000_security_fixes.sql','policy','storage','objects','meeting_recordings_read'),
-  ('20261115090000_security_fixes.sql','policy','storage','objects','meeting_recordings_delete')
+  ('20261115090000_security_fixes.sql','policy','storage','objects','meeting_recordings_delete'),
+  ('20261116090000_section_access_people_tools.sql','function','public','space_workspace','293a75d145c3f5c467ae1d714ae2248b')
 ), missing as (
   select e.*, case e.kind
       when 'function' then case when exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = e.a)
