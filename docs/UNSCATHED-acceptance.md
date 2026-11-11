@@ -13,9 +13,9 @@ read (e.g. a personal Gmail with `+guest1`, `+performer1`).
 
 - [ ] **0.1** Supabase → SQL Editor: run `supabase/check-missing-updates.sql`.
   **Expect:** nothing missing. If something is listed, run the paste files it names, in number
-  order (`database-updates-12.sql`, `-13.sql`, `-14.sql` are the newest).
+  order (`database-updates-12.sql` to `-15.sql` are the newest).
 - [ ] **0.2** Supabase → Edge Functions: `send-email`, `form-submit` and `livekit-token` are deployed
-  (redeploy `livekit-token` after `-14`).
+  (redeploy `livekit-token` and `send-email` after `-15`).
 - [ ] **0.3** Supabase → Database → Extensions: `pg_cron` and `pg_net` are on.
 - [ ] **0.4** SYNAPSE → Settings → Email: an email account is connected.
   **Expect:** it shows as connected. Without it, no tickets or reminders are sent.
