@@ -110,3 +110,13 @@ export function EventCard({ event, onOpen }: { event: Pick<PublicEvent, 'slug' |
     </a>
   );
 }
+
+/** The event's cover, whole: a portrait poster isn't cropped, a soft copy of it fills the sides. */
+export function CoverImage({ src, className }: { src: string; className?: string }) {
+  return (
+    <div className={`relative w-full overflow-hidden bg-navy-900 ${className ?? ''}`}>
+      <img src={src} alt="" aria-hidden className="absolute inset-0 h-full w-full scale-110 object-cover opacity-60 blur-2xl" />
+      <img src={src} alt="" className="relative h-full w-full object-contain" />
+    </div>
+  );
+}

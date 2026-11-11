@@ -1,0 +1,122 @@
+/**
+ * Writes supabase/paste/unscathed-setup.sql: one file that creates UNSCATHED in the live app
+ * (the attendee form, the performer application form, the event and its two registration
+ * types), built with the form builder's own code so the forms open in the builder as usual.
+ * Run: npx tsx scripts/build-unscathed-setup.ts
+ */
+import { writeFileSync } from 'node:fs';
+import { addElementToSection, createDefaultDefinition, createElement, updateTheme } from '../src/lib/form-definition';
+import type { FormDefinition, FormElement } from '../src/lib/form-builder-types';
+
+const PRIMARY = '#1C1C1C'; // the poster's black
+const ACCENT = '#F28C0A'; // the poster's orange
+const PRIVACY = 'I agree that the organisers of UNSCATHED can use my details to manage my registration and contact me about this event.';
+
+type Spec = { type: Parameters<typeof createElement>[0]; label: string; required?: boolean; placeholder?: string; help?: string; options?: string[]; text?: string; column?: number };
+
+function build(name: string, description: string, specs: Spec[], success: { heading: string; message: string }): FormDefinition {
+  let def = createDefaultDefinition(name, description);
+  // Start from an empty section, then add our fields in order.
+  const sid = def.pages[0].sectionIds[0];
+  def = { ...def, elements: {}, sections: { [sid]: { ...def.sections[sid], elementIds: [], columnCount: 1 } } };
+  specs.forEach((s, i) => {
+    const el: FormElement = createElement(s.type, i);
+    if (el.field) {
+      el.field = { ...el.field, label: s.label, required: s.required ?? el.field.required, placeholder: s.placeholder ?? el.field.placeholder,
+        helpText: s.help ?? el.field.helpText, options: s.options ?? el.field.options };
+      el.displayLabel = s.label;
+    }
+    if (s.text) el.content = { ...(el.content ?? {}), text: s.text };
+    def = addElementToSection(def, sid, el, 1);
+  });
+  def = updateTheme(def, { colors: { ...def.theme.colors, primary: PRIMARY, buttonBg: PRIMARY, buttonText: '#FFFFFF', focusRing: ACCENT } });
+  def.settings = { ...def.settings, successMessage: success.message, autoTags: ['UNSCATHED'] };
+  def.notifications.postSubmission.thankYouPage = { ...def.notifications.postSubmission.thankYouPage, heading: success.heading, message: success.message };
+  return def;
+}
+
+const attendee = build('UNSCATHED – Attendee', 'Register to attend UNSCATHED: The Art of Becoming. Saturday 5 December, 3pm, The Light Place, Port Harcourt.', [
+  { type: 'full_name', label: 'Full name', required: true, placeholder: 'Ada Obi' },
+  { type: 'email', label: 'Email address', required: true, placeholder: 'you@example.com', help: 'Your ticket is sent here.' },
+  { type: 'phone', label: 'Phone number', required: true, placeholder: '803 123 4567' },
+  { type: 'radio', label: 'How did you hear about UNSCATHED?', options: ['Instagram', 'WhatsApp', 'A friend', 'Church', 'Other'] },
+  { type: 'consent', label: 'Consent', required: true, text: PRIVACY },
+], { heading: 'You’re in!', message: 'Your ticket is on its way to your email. See you at UNSCATHED.' });
+
+const performer = build('UNSCATHED – Performer application', 'Apply to perform at UNSCATHED: music, spoken word, poetry, fashion or art works.', [
+  { type: 'full_name', label: 'Full name', required: true, placeholder: 'Ada Obi' },
+  { type: 'text_field', label: 'Stage name', placeholder: 'The name we announce (if different)' },
+  { type: 'email', label: 'Email address', required: true, placeholder: 'you@example.com' },
+  { type: 'phone', label: 'Phone number', required: true, placeholder: '803 123 4567' },
+  { type: 'radio', label: 'What will you perform?', required: true, options: ['Music', 'Spoken word', 'Poetry', 'Fashion', 'Art works', 'Other'] },
+  { type: 'website', label: 'Link to your work', required: true, placeholder: 'https://instagram.com/… or YouTube, Audiomack', help: 'A video or recording of you performing.' },
+  { type: 'long_text', label: 'Tell us about your piece', required: true, placeholder: 'What it’s about, and how long it runs' },
+  { type: 'consent', label: 'Consent', required: true, text: PRIVACY },
+], { heading: 'Application received', message: 'Thank you for applying. We’ll review every application and email you if you’re selected.' });
+
+const POSTER = 'https://synapse-dj3a.vercel.app/events/unscathed-poster.jpg';
+// Saturday 5 December 2026, 3pm to 9pm in Port Harcourt (UTC+1).
+const STARTS = '2026-12-05T15:00:00+01:00';
+const ENDS = '2026-12-05T21:00:00+01:00';
+
+const q = (s: string) => `'${s.replace(/'/g, "''")}'`;
+const j = (o: unknown) => `${q(JSON.stringify(o))}::jsonb`;
+
+const sql = `-- ONE FILE TO PASTE into Supabase → SQL Editor → Run.
+-- Creates UNSCATHED: the attendee form, the performer application form, the event (Saturday 5 December
+-- 2026, 3pm, The Light Place, Port Harcourt; published, with the poster) and its two registration types:
+-- /e/unscathed/register and /e/unscathed/apply.
+-- GENERATED by scripts/build-unscathed-setup.ts. Runs once; if UNSCATHED already exists it stops
+-- and changes nothing.
+
+DO $$
+DECLARE
+  ws uuid; owner uuid; ws_name text; n int; list text;
+  f_att uuid; f_perf uuid; ev uuid;
+BEGIN
+  -- The account: the only one, or the one whose name contains "UNSCATHED"/"Light Nation".
+  SELECT count(*) INTO n FROM workspaces;
+  IF n = 1 THEN
+    SELECT id, owner_id, name INTO ws, owner, ws_name FROM workspaces;
+  ELSE
+    SELECT id, owner_id, name INTO ws, owner, ws_name FROM workspaces
+      WHERE name ILIKE '%unscathed%' OR name ILIKE '%light nation%' ORDER BY created_at LIMIT 1;
+  END IF;
+  IF ws IS NULL THEN
+    SELECT string_agg(w.name || ' (' || coalesce(u.email, 'no owner') || ')', '; ' ORDER BY w.created_at) INTO list
+      FROM workspaces w LEFT JOIN auth.users u ON u.id = w.owner_id;
+    RAISE EXCEPTION 'More than one account. Tell Claude which one UNSCATHED belongs to: %', list;
+  END IF;
+  IF EXISTS (SELECT 1 FROM events WHERE slug = 'unscathed') THEN
+    RAISE EXCEPTION 'UNSCATHED already exists (web address /e/unscathed). Nothing was changed.';
+  END IF;
+
+  INSERT INTO forms (workspace_id, owner_id, name, description, type, status, success_message, definition)
+  VALUES (ws, owner, ${q('UNSCATHED – Attendee')}, ${q('Register to attend UNSCATHED.')}, 'form', 'published',
+          ${q(attendee.settings.successMessage)}, ${j(attendee)})
+  RETURNING id INTO f_att;
+  INSERT INTO forms (workspace_id, owner_id, name, description, type, status, success_message, definition)
+  VALUES (ws, owner, ${q('UNSCATHED – Performer application')}, ${q('Apply to perform at UNSCATHED.')}, 'form', 'published',
+          ${q(performer.settings.successMessage)}, ${j(performer)})
+  RETURNING id INTO f_perf;
+
+  INSERT INTO events (workspace_id, created_by, slug, title, tagline, summary, description, category, cover_url, starts_at, ends_at,
+                      timezone, mode, venue_name, address, city, organiser_name, status, visibility, programme, brand, footer_line)
+  VALUES (ws, owner, 'unscathed', 'UNSCATHED', 'The Art of Becoming',
+          ${q('An Ample Room experience with Deraspeaks: music, spoken word, fashion, art works and poetry.')},
+          ${q('UNSCATHED: The Art of Becoming. An afternoon of music, spoken word, fashion, art works and poetry, hosted by Deraspeaks.\n\nSaturday 5 December, from 3pm, at The Light Place, Port Harcourt.\n\nCome to listen, or apply to perform. Registration is free; your ticket and QR code are emailed to you, and we\u2019ll remind you the day before.')},
+          'arts', ${q(POSTER)}, ${q(STARTS)}::timestamptz, ${q(ENDS)}::timestamptz, 'Africa/Lagos', 'in_person', 'The Light Place',
+          ${q('Plot 91, Along Rumuokoro–Eliozu Road, Opposite Bori Camp Mammy Market Gate, East')}, 'Port Harcourt',
+          'Deraspeaks · Ample Room', 'published', 'public', ARRAY['Music', 'Spoken Word', 'Fashion', 'Art Works', 'Poetry'],
+          jsonb_build_object('primary', '${PRIMARY}', 'accent', '${ACCENT}'), ${q('Ample Room Experience · with Deraspeaks')})
+  RETURNING id INTO ev;
+
+  INSERT INTO event_tickets (event_id, name, description, slug, form_id, requires_approval, sort, status) VALUES
+    (ev, 'Attendee', 'Free entry. Your ticket is emailed to you.', 'register', f_att, false, 0, 'open'),
+    (ev, 'Performer application', 'Apply to perform. We review every application and email you if you''re selected.', 'apply', f_perf, true, 1, 'open');
+
+  RAISE NOTICE 'UNSCATHED created in "%": /e/unscathed, /e/unscathed/register, /e/unscathed/apply', ws_name;
+END $$;
+`;
+writeFileSync(new URL('../supabase/paste/unscathed-setup.sql', import.meta.url), sql);
+console.log('wrote supabase/paste/unscathed-setup.sql');

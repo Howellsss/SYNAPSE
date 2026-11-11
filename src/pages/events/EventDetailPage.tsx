@@ -8,7 +8,7 @@ import {
   DEFAULT_COVER, calendarLinks, categoryLabel, countdown, downloadFile, eventDateLine, eventUrl, fetchPublicEvent, fetchPublicEvents,
   formatPrice, placeLine, registerForEvent, ticketUrl, type EventTicket, type PublicEvent,
 } from '@/lib/events';
-import { EventCard, EventsShell, QrImage } from '@/components/events/EventKit';
+import { EventCard, EventsShell, QrImage, CoverImage } from '@/components/events/EventKit';
 import { ResendTicket } from '@/components/events/ResendTicket';
 import { useQrDataUrl } from '@/components/events/hooks';
 import { LoadingSpinner } from '@/components/ui/States';
@@ -76,7 +76,7 @@ export function EventDetailPage({ slug }: { slug: string }) {
         <div className="mt-5 grid gap-10 lg:grid-cols-[1fr_400px]">
           <article className="min-w-0">
             <div className="overflow-hidden rounded-[32px] bg-navy-50">
-              <img src={event.cover_url || DEFAULT_COVER} alt="" className="aspect-[16/10] w-full object-cover" />
+              <CoverImage src={event.cover_url || DEFAULT_COVER} className="aspect-[16/10]" />
             </div>
             <div className="mt-7 flex flex-wrap items-center gap-2">
               <span className="rounded-full bg-gold-50 px-3 py-1 text-xs font-semibold text-gold-800">{categoryLabel(event.category)}</span>
@@ -495,3 +495,4 @@ function Confirmation({ event, ticketName, price, name, result }: { event: Publi
     </div>
   );
 }
+
