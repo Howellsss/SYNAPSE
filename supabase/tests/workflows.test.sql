@@ -424,6 +424,7 @@ DO $$ DECLARE w uuid; c uuid; ch uuid; m record; BEGIN
   SELECT * INTO m FROM chat_messages WHERE channel_id = ch ORDER BY created_at DESC LIMIT 1;
   PERFORM t.check(m.body = 'New lead: Xia https://synapse-dj3a.vercel.app/contacts/' || c, 'posts the message, with the name and a link to the contact');
   PERFORM t.check(m.source = 'system' AND m.sender_name = 'Workflow: Post' AND m.user_id IS NULL, 'it comes from the workflow, not a person');
+  PERFORM t.check(m.meta->>'contact_id' = c::text AND m.meta->>'contact_name' = 'Xia', 'it carries the contact, for the Claim button');
   PERFORM t.check((t.log(w, 's2')).status = 'failed' AND (t.log(w, 's2')).detail LIKE '%Choose a channel%', 'no channel chosen: fails with a reason');
   UPDATE chat_channels SET archived_at = now() WHERE id = ch;
   DELETE FROM contact_tags ct USING tags tg WHERE ct.contact_id = c AND tg.id = ct.tag_id AND tg.name = 'post';

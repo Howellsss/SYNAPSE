@@ -61,9 +61,11 @@ describe('workflow model', () => {
 
   it('has the three ready-made alerts, built on the new actions', () => {
     const steps = (key: string) => RECIPES.find((r) => r.key === key)!.build().steps;
-    expect(steps('call_request').map((x) => x.type)).toEqual(['notify_department', 'add_task']);
+    expect(steps('call_request').map((x) => x.type)).toEqual(['notify_department', 'add_task', 'remove_tag']);
     const video = steps('video_call');
-    expect(video.map((x) => x.type)).toEqual(['create_meeting', 'notify_department', 'send_email']);
+    expect(video.map((x) => x.type)).toEqual(['create_meeting', 'notify_department', 'send_email', 'remove_tag']);
+    // The tag comes off at the end, so tagging them again alerts the team again.
+    expect(video[3].config.tags).toEqual(['Video call']);
     expect(String(video[1].config.body)).toContain('{{meeting.link}}');
     expect(String(video[2].config.body)).toContain('{{meeting.link}}');
     const form = steps('form_filled');

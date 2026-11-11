@@ -321,6 +321,37 @@ DO $$ DECLARE tok text; m messages; BEGIN
   PERFORM ts.check(m.body LIKE '%/invite/' || tok || '%' AND m.subject LIKE '%Second Co%' AND m.body LIKE '%an Admin (Producer)%', 'with the join link, the account and the role');
 EXCEPTION WHEN OTHERS THEN PERFORM ts.crashed('Invitation emails', SQLERRM); END $$;
 
+DO $$ DECLARE ch uuid; c uuid; msg uuid; meta jsonb; BEGIN
+  RAISE NOTICE 'Claiming a contact from a workflow post';
+  SELECT id INTO ch FROM chat_channels WHERE name = 'general-sec';
+  INSERT INTO contacts(workspace_id, first_name, last_name, email) VALUES (ts.ws2(), 'Lead', 'Person', 'lead@example.com') RETURNING id INTO c;
+  INSERT INTO chat_messages(channel_id, workspace_id, body, source, sender_name, meta)
+    VALUES (ch, ts.ws2(), 'Call request', 'system', 'Workflow: Call request', jsonb_build_object('contact_id', c, 'contact_name', 'Lead Person')) RETURNING id INTO msg;
+  PERFORM ts.as_user(ts.m2());
+  SET LOCAL ROLE authenticated;
+  meta := chat_claim_contact(msg);
+  RESET ROLE;
+  PERFORM ts.check(meta->>'claimed_by' = ts.m2()::text AND (SELECT owner_id FROM contacts WHERE id = c) = ts.m2(), 'the first to press Claim owns the contact');
+  PERFORM ts.as_user(ts.a2());
+  SET LOCAL ROLE authenticated;
+  BEGIN
+    PERFORM chat_claim_contact(msg);
+    PERFORM ts.check(false, 'a second claim says who has it');
+  EXCEPTION WHEN OTHERS THEN PERFORM ts.check(SQLERRM LIKE 'Already claimed by%', 'a second claim says who has it');
+  END;
+  RESET ROLE;
+  PERFORM ts.check((SELECT owner_id FROM contacts WHERE id = c) = ts.m2(), 'and the owner stays');
+  PERFORM ts.as_user(ts.owner());
+  SET LOCAL ROLE authenticated;
+  BEGIN
+    PERFORM chat_claim_contact(msg);
+    PERFORM ts.check(false, 'someone from another account can''t claim');
+  EXCEPTION WHEN OTHERS THEN PERFORM ts.check(SQLERRM LIKE '%not found%', 'someone from another account can''t claim');
+  END;
+  RESET ROLE;
+  PERFORM ts.as_user(NULL);
+EXCEPTION WHEN OTHERS THEN RESET ROLE; PERFORM ts.crashed('Claim', SQLERRM); END $$;
+
 DO $$ DECLARE f int; p int; r record; BEGIN
   SELECT count(*) INTO f FROM ts.failures; SELECT count(*) INTO p FROM ts.passes;
   IF f > 0 THEN

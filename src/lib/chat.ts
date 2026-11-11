@@ -233,14 +233,24 @@ export async function deleteMessage(id: string) {
   return { error: error ? friendly(error.message) : null };
 }
 
+let chatSubs = 0;
+
 /** New and changed messages in the account, as they happen. Returns the unsubscribe. */
 export function subscribeMessages(workspaceId: string, onChange: (m: ChatMessage, kind: 'INSERT' | 'UPDATE') => void): () => void {
   const ch = supabase
-    .channel(`chat:${workspaceId}`)
+    // Each subscriber gets its own channel: the list, an open channel and a thread listen at the
+    // same time, and one shared name made them clash (and closing one closed all).
+    .channel(`chat:${workspaceId}:${++chatSubs}`)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `workspace_id=eq.${workspaceId}` }, (p) => onChange(p.new as ChatMessage, 'INSERT'))
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_messages', filter: `workspace_id=eq.${workspaceId}` }, (p) => onChange(p.new as ChatMessage, 'UPDATE'))
     .subscribe();
   return () => { void supabase.removeChannel(ch); };
+}
+
+/** Claim the contact a workflow post is about: you become their owner. */
+export async function claimContact(messageId: string): Promise<{ meta: Record<string, unknown> | null; error: string | null }> {
+  const { data, error } = await supabase.rpc('chat_claim_contact', { p_message: messageId });
+  return { meta: (data as Record<string, unknown> | null) ?? null, error: error ? friendly(error.message.replace(/^.*?(Already claimed|There is nothing|That contact|Message not found)/, '$1')) : null };
 }
 
 export async function listWebhooks(channelId: string): Promise<Webhook[]> {

@@ -23,6 +23,8 @@ export const RECIPES: Recipe[] = [
       steps: [
         s('notify_department', 'Alert the team', { department_id: '', post: true, title: '📞 {{contact.name}} asked for a call', body: '{{contact.phone}} · {{contact.email}}\n{{contact.link}}' }),
         s('add_task', 'Call them today', { title: 'Call {{contact.name}}', body: '{{contact.phone}}', due_in_days: '0', assign: 'owner' }),
+        // Take the tag off again, so the next request (tagging them again) alerts the team again.
+        s('remove_tag', 'Ready for the next request', { tags: ['Call request'] }),
       ],
       settings: { allow_reentry: true },
     }),
@@ -36,6 +38,7 @@ export const RECIPES: Recipe[] = [
         s('create_meeting', 'Make a meeting link', { title: 'Video call with {{contact.name}}', duration_min: 30, host: 'owner' }),
         s('notify_department', 'Alert the team', { department_id: '', post: true, title: '🎥 {{contact.name}} wants a video call', body: 'Join: {{meeting.link}}\n{{contact.link}}' }),
         s('send_email', 'Send them the link', { subject: 'Your video call link', body: 'Hi {{contact.first_name}},\n\nJoin us here when you’re ready: {{meeting.link}}\nNo download or account needed.\n' }),
+        s('remove_tag', 'Ready for the next request', { tags: ['Video call'] }),
       ],
       settings: { allow_reentry: true },
     }),
