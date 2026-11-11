@@ -169,6 +169,8 @@ CREATE SCHEMA IF NOT EXISTS ev_private;
 CREATE TABLE IF NOT EXISTS ev_private.hits (ip text NOT NULL, kind text NOT NULL, at timestamptz NOT NULL DEFAULT now());
 CREATE INDEX IF NOT EXISTS ev_hits_ip ON ev_private.hits(ip, kind, at DESC);
 REVOKE ALL ON ev_private.hits FROM PUBLIC;
+-- Only the database's own functions use it (they bypass row level security as its owner).
+ALTER TABLE ev_private.hits ENABLE ROW LEVEL SECURITY;
 
 /** The visitor's address, as the API gateway passes it on (null outside a web request). */
 CREATE OR REPLACE FUNCTION event_visitor_ip() RETURNS text LANGUAGE sql STABLE SET search_path = public AS $$
