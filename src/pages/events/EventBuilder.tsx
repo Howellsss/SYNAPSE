@@ -249,7 +249,7 @@ export function EventBuilder({ eventId }: { eventId?: string }) {
                 <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={(e) => { void pickCover(e.target.files?.[0]); e.target.value = ''; }} />
                 <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading} className="btn-secondary">{uploading ? <LoadingSpinner className="h-4 w-4" /> : cover ? <Upload className="h-4 w-4" /> : <ImagePlus className="h-4 w-4" />}{cover ? 'Replace poster' : 'Upload poster'}</button>
                 {cover && <button type="button" onClick={() => setCover(null)} className="btn-ghost block">Use the default image</button>}
-                <p className="text-xs text-ivory-700">PNG, JPG or WebP, up to 8 MB. Landscape 4:3 looks best.</p>
+                <p className="text-xs text-ivory-700">PNG, JPG or WebP, up to 8 MB. Any shape: it shows in full, like your poster.</p>
               </div>
             </div>
           </Section>
