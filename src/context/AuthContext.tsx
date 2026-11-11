@@ -73,6 +73,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       );
 
       if (authUser.email) await acceptPendingInvitations(authUser.email);
+      // Joined a company by invitation: that's their account, no workspace of their own.
+      const { count: joined } = await supabase.from('workspace_members')
+        .select('workspace_id', { count: 'exact', head: true }).eq('user_id', authUser.id);
+      if ((joined ?? 0) > 0) return true;
 
       const workspaceSlug = slugifyWorkspace(`${firstName}-${lastName}-workspace`);
       const { data: ws } = await supabase
@@ -93,10 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: 'owner',
       });
 
-      await supabase.rpc('seed_workspace_demo_data', {
-        p_workspace_id: ws.id,
-        p_owner_id: authUser.id,
-      });
+      // New accounts start empty: no sample contacts, calendars or bookings mixed in with real ones.
       return true;
     })();
 

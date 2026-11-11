@@ -310,6 +310,17 @@ DO $$ DECLARE ch uuid; sp uuid; n int; ok boolean; BEGIN
   PERFORM ts.as_user(NULL);
 EXCEPTION WHEN OTHERS THEN RESET ROLE; PERFORM ts.crashed('Sections for people tools', SQLERRM); END $$;
 
+DO $$ DECLARE tok text; m messages; BEGIN
+  RAISE NOTICE 'Invitations are emailed';
+  INSERT INTO team_invitations(workspace_id, email, role, invited_by) VALUES (ts.ws2(), 'no-mail@example.com', 'member', ts.o2());
+  PERFORM ts.check(NOT EXISTS (SELECT 1 FROM messages WHERE to_address = 'no-mail@example.com'), 'without a connected email account nothing is queued (the link can still be copied)');
+  INSERT INTO email_accounts(workspace_id, user_id, email, display_name) VALUES (ts.ws2(), ts.o2(), 'team@second.example.com', 'Second Co');
+  INSERT INTO team_invitations(workspace_id, email, role, title, invited_by) VALUES (ts.ws2(), 'newhire@example.com', 'admin', 'Producer', ts.o2()) RETURNING token INTO tok;
+  SELECT * INTO m FROM messages WHERE to_address = 'newhire@example.com';
+  PERFORM ts.check(m.status = 'queued' AND m.team_invitation_id IS NOT NULL AND m.from_email = 'team@second.example.com', 'with one, the invitation email is queued from it');
+  PERFORM ts.check(m.body LIKE '%/invite/' || tok || '%' AND m.subject LIKE '%Second Co%' AND m.body LIKE '%an Admin (Producer)%', 'with the join link, the account and the role');
+EXCEPTION WHEN OTHERS THEN PERFORM ts.crashed('Invitation emails', SQLERRM); END $$;
+
 DO $$ DECLARE f int; p int; r record; BEGIN
   SELECT count(*) INTO f FROM ts.failures; SELECT count(*) INTO p FROM ts.passes;
   IF f > 0 THEN

@@ -133,16 +133,23 @@ export function CalendarsPage() {
           const calData = (calRes.data ?? []) as CalendarType[];
           const calIds = calData.map(c => c.id);
 
-          let apptQuery = supabase
-            .from('appointments')
-            .select('*, contacts(*), calendars(*)')
-            .order('start_time', { ascending: true });
-          if (calIds.length > 0) apptQuery = apptQuery.in('calendar_id', calIds);
-          else apptQuery = apptQuery.eq('calendar_id', '00000000-0000-0000-0000-000000000000');
-
-          const apptRes = await apptQuery;
-          if (apptRes.error) throw new Error(apptRes.error.message);
-          return { calendars: calData, appointments: (apptRes.data ?? []) as AppointmentWithRelations[] };
+          // The server returns at most 1,000 rows at a time, so read every page.
+          const appointments: AppointmentWithRelations[] = [];
+          const PAGE = 1000;
+          for (let from = 0; calIds.length > 0; from += PAGE) {
+            const apptRes = await supabase
+              .from('appointments')
+              .select('*, contacts(*), calendars(*)')
+              .in('calendar_id', calIds)
+              .order('start_time', { ascending: true })
+              .order('id', { ascending: true })
+              .range(from, from + PAGE - 1);
+            if (apptRes.error) throw new Error(apptRes.error.message);
+            const rows = (apptRes.data ?? []) as AppointmentWithRelations[];
+            appointments.push(...rows);
+            if (rows.length < PAGE || from >= 50 * PAGE) break;
+          }
+          return { calendars: calData, appointments };
         },
         show,
       ));

@@ -297,7 +297,7 @@ BEGIN
   DELETE FROM wf_events WHERE processed_at < now() - interval '30 days';
   DELETE FROM wf_logs WHERE at < now() - interval '30 days';
   -- Ask the mailer to send workflow emails and form emails (team alert, auto-reply).
-  SELECT count(*) INTO queued FROM messages WHERE status = 'queued' AND (wf_run_id IS NOT NULL OR form_submission_id IS NOT NULL);
+  SELECT count(*) INTO queued FROM messages WHERE status = 'queued' AND (wf_run_id IS NOT NULL OR form_submission_id IS NOT NULL OR team_invitation_id IS NOT NULL);
   -- Also every 5 minutes while there are recent sent emails, so replies come back even when
   -- nothing is waiting to be sent.
   IF (queued > 0 OR (

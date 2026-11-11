@@ -307,8 +307,9 @@ export function CreateCalendarWizard({ onClose, onCreated }: { onClose: () => vo
       color: form.color,
       status: 'active',
     };
+    // The creator owns it (a User can only create calendars they own).
+    insertData.owner_id = user.id;
     if (workspace) insertData.workspace_id = workspace.id;
-    else insertData.owner_id = user.id;
 
     if (form.calendar_type === 'round_robin') {
       insertData.round_robin_strategy = form.round_robin_strategy;

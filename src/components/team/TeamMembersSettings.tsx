@@ -261,7 +261,7 @@ export function TeamMembersSettings() {
               </button>
             </div>
             <p className="mb-2 text-xs text-ivory-600">
-              People join by opening their invite link, or by signing up or signing in with the invited email.
+              Invitations are emailed from your connected email account (Settings → Email). People join by opening the link, or by signing up or signing in with the invited email.
             </p>
             <div className="space-y-2">
               {invitations.slice(0, 100).map((inv) => (

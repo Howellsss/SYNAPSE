@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  User, Building2, Users, Mail, MessageSquare, Bell, Palette, Shield, Code, Webhook, CreditCard, Upload, Network, History,
+  User, Building2, Users, Mail, MessageSquare, Bell, Palette, Shield, Code, Webhook, BarChart3, Upload, Network, History,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -32,7 +32,7 @@ const SETTINGS_SECTIONS = [
   { id: 'audit', label: 'Audit log', icon: History },
   { id: 'api', label: 'API', icon: Code },
   { id: 'webhooks', label: 'Webhooks', icon: Webhook },
-  { id: 'billing', label: 'Billing', icon: CreditCard },
+  { id: 'billing', label: 'Usage', icon: BarChart3 },
 ];
 
 const COMMON_TIMEZONES = [
@@ -805,58 +805,57 @@ function BrandingSettings() {
 // Security Settings
 // ============================================================
 function SecuritySettings() {
-  const { settings, loading, save } = useWorkspaceSettings('security');
-  const [form, setForm] = useState({
-    require_2fa: false,
-    session_timeout: '30',
-    ip_allowlist: '',
-  });
+  const { toast } = useToast();
+  const [pw, setPw] = useState({ next: '', again: '' });
+  const [busy, setBusy] = useState<'pw' | 'out' | null>(null);
+  const tooShort = pw.next.length > 0 && pw.next.length < 8;
+  const mismatch = pw.again.length > 0 && pw.next !== pw.again;
 
-  useEffect(() => {
-    if (!loading && settings) {
-      setForm({
-        require_2fa: (settings.require_2fa as boolean) ?? false,
-        session_timeout: (settings.session_timeout as string) || '30',
-        ip_allowlist: (settings.ip_allowlist as string) || '',
-      });
-    }
-  }, [loading, settings]);
+  const changePassword = async () => {
+    if (pw.next.length < 8 || pw.next !== pw.again) return;
+    setBusy('pw');
+    const { error } = await supabase.auth.updateUser({ password: pw.next });
+    setBusy(null);
+    if (error) { toast(error.message, 'error'); return; }
+    setPw({ next: '', again: '' });
+    toast('Password changed');
+  };
+  const signOutEverywhere = async () => {
+    setBusy('out');
+    const { error } = await supabase.auth.signOut({ scope: 'global' });
+    setBusy(null);
+    if (error) toast(error.message, 'error');
+  };
 
   return (
-    <div className="card p-6">
-      <h3 className="text-lg font-semibold text-navy-800 mb-4">Security</h3>
-      <p className="text-sm text-ivory-600 mb-4">Manage authentication and access controls for your workspace.</p>
-      <div className="space-y-4">
-        <div className="flex items-center justify-between p-3 rounded-xl bg-ivory-50 border border-sand">
+    <div className="space-y-4">
+      <div className="card p-6">
+        <h3 className="text-lg font-semibold text-navy-800 mb-1">Password</h3>
+        <p className="text-sm text-ivory-600 mb-4">Choose a new password for your own sign-in. At least 8 characters.</p>
+        <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <p className="text-sm font-medium text-navy-700">Require Two-Factor Authentication</p>
-            <p className="text-xs text-ivory-600">All team members must enable 2FA to access the workspace</p>
+            <label htmlFor="pw-new" className="block text-sm font-medium text-navy-700 mb-1.5">New password</label>
+            <input id="pw-new" type="password" autoComplete="new-password" className="input-field" value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} />
+            {tooShort && <p className="mt-1 text-xs text-burgundy-700">At least 8 characters.</p>}
           </div>
-          <button
-            onClick={() => setForm({ ...form, require_2fa: !form.require_2fa })}
-            className={cn('relative w-11 h-6 rounded-full transition-colors', form.require_2fa ? 'bg-gold-400' : 'bg-navy-200')}
-          >
-            <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform" style={{ transform: form.require_2fa ? 'translateX(20px)' : 'translateX(0)' }} />
+          <div>
+            <label htmlFor="pw-again" className="block text-sm font-medium text-navy-700 mb-1.5">Type it again</label>
+            <input id="pw-again" type="password" autoComplete="new-password" className="input-field" value={pw.again} onChange={(e) => setPw({ ...pw, again: e.target.value })} />
+            {mismatch && <p className="mt-1 text-xs text-burgundy-700">The two don’t match.</p>}
+          </div>
+        </div>
+        <div className="flex justify-end mt-4">
+          <button onClick={() => { void changePassword(); }} disabled={busy !== null || pw.next.length < 8 || pw.next !== pw.again} className="btn-primary">
+            {busy === 'pw' ? 'Saving…' : 'Change password'}
           </button>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-navy-700 mb-1.5">Session Timeout</label>
-          <select className="input-field" value={form.session_timeout} onChange={(e) => setForm({ ...form, session_timeout: e.target.value })}>
-            <option value="15">15 minutes</option>
-            <option value="30">30 minutes</option>
-            <option value="60">1 hour</option>
-            <option value="240">4 hours</option>
-            <option value="480">8 hours</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-navy-700 mb-1.5">IP Allowlist</label>
-          <textarea className="input-field min-h-[80px]" value={form.ip_allowlist} onChange={(e) => setForm({ ...form, ip_allowlist: e.target.value })} placeholder="192.168.1.0/24&#10;10.0.0.1" />
-          <p className="text-xs text-ivory-500 mt-1">One IP or CIDR per line. Leave empty to allow all IPs.</p>
-        </div>
       </div>
-      <div className="flex justify-end mt-6">
-        <button onClick={() => save(form)} className="btn-primary">Save Changes</button>
+      <div className="card p-6">
+        <h3 className="text-lg font-semibold text-navy-800 mb-1">Signed-in devices</h3>
+        <p className="text-sm text-ivory-600 mb-4">Lost a phone or signed in on a shared computer? Sign out everywhere, including here.</p>
+        <button onClick={() => { void signOutEverywhere(); }} disabled={busy !== null} className="btn-secondary">
+          {busy === 'out' ? 'Signing out…' : 'Sign out of all devices'}
+        </button>
       </div>
     </div>
   );
@@ -868,7 +867,6 @@ function SecuritySettings() {
 function BillingSettings() {
   const { workspace, user } = useAuth();
   const [counts, setCounts] = useState({ contacts: 0, appointments: 0, forms: 0 });
-  const [plan, setPlan] = useState('free');
 
   const workspaceId = workspace?.id ?? null;
   const userId = user?.id ?? null;
@@ -893,20 +891,11 @@ function BillingSettings() {
     return () => { alive = false; };
   }, [workspaceId, userId]);
 
-  const plans = [
-    { id: 'free', name: 'Free', price: '$0', limits: '100 contacts, 1 calendar' },
-    { id: 'pro', name: 'Pro', price: '$29/mo', limits: '10,000 contacts, unlimited calendars' },
-    { id: 'enterprise', name: 'Enterprise', price: 'Custom', limits: 'Unlimited everything, SSO, priority support' },
-  ];
-
   return (
     <div className="card p-6">
-      <h3 className="text-lg font-semibold text-navy-800 mb-4">Billing</h3>
-      <div className="mb-6 p-4 rounded-xl bg-ivory-50 border border-sand">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-medium text-navy-700">Current Plan</span>
-          <span className="text-sm font-bold text-gold-700 capitalize">{plan}</span>
-        </div>
+      <h3 className="text-lg font-semibold text-navy-800 mb-1">Usage</h3>
+      <p className="text-sm text-ivory-600 mb-4">What this account holds today.</p>
+      <div className="p-4 rounded-xl bg-ivory-50 border border-sand">
         <div className="grid grid-cols-3 gap-3">
           <div className="text-center">
             <p className="text-2xl font-bold text-navy-800">{counts.contacts}</p>
@@ -922,24 +911,6 @@ function BillingSettings() {
           </div>
         </div>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {plans.map(p => (
-          <div key={p.id} className={cn('p-4 rounded-xl border-2 transition-all', plan === p.id ? 'border-gold-400 bg-gold-50/30' : 'border-navy-100')}>
-            <p className="text-sm font-bold text-navy-800">{p.name}</p>
-            <p className="text-lg font-bold text-navy-700 mt-1">{p.price}</p>
-            <p className="text-xs text-ivory-600 mt-1">{p.limits}</p>
-            {plan !== p.id && (
-              <button onClick={() => setPlan(p.id)} className="btn-secondary btn-sm w-full mt-3">
-                {p.id === 'free' ? 'Downgrade' : 'Upgrade'}
-              </button>
-            )}
-            {plan === p.id && (
-              <p className="text-xs text-gold-700 font-medium text-center mt-3">Current Plan</p>
-            )}
-          </div>
-        ))}
-      </div>
-      <p className="text-xs text-ivory-500 mt-4">Usage counts update in real time. Upgrade to unlock more contacts, calendars, and features.</p>
     </div>
   );
 }
