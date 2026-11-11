@@ -82,6 +82,8 @@ export interface Deps {
   getMembershipStatus(workspaceId: string, userId: string): Promise<string | null>;
   /** Whether they may use Workspaces (an Admin can switch the section off for a User). Left out: yes. */
   canUseWorkspaces?(workspaceId: string, userId: string): Promise<boolean>;
+  /** Invite-only offices: whether they're on its list (or made it, or are an Admin). Left out: yes. */
+  canEnterSpace?(spaceId: string, userId: string): Promise<boolean>;
   getProfileName(userId: string): Promise<{ first_name: string | null; last_name: string | null } | null>;
   /** Signs a LiveKit access token. */
   makeToken(grant: TokenGrant): Promise<string>;
@@ -246,7 +248,8 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
   // Same answer for "no such space" and "not yours", so ids can't be probed.
   const workspaceId = await deps.getSpaceWorkspace(spaceId);
   const status = workspaceId ? await deps.getMembershipStatus(workspaceId, user.id) : null;
-  if (!workspaceId || status !== "active" || (deps.canUseWorkspaces && !(await deps.canUseWorkspaces(workspaceId, user.id)))) {
+  if (!workspaceId || status !== "active" || (deps.canUseWorkspaces && !(await deps.canUseWorkspaces(workspaceId, user.id)))
+      || (deps.canEnterSpace && !(await deps.canEnterSpace(spaceId, user.id)))) {
     return json({ error: "You don't have access to this workspace." }, 403);
   }
   if (!deps.livekitUrl) throw new Error("Missing secret LIVEKIT_URL");

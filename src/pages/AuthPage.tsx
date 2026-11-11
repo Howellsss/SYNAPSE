@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { HowellsLogo } from '@/components/layout/Sidebar';
-import { Sparkles, Shield, Calendar, Users, ArrowLeft, CheckCircle2, ArrowRight, Play, Zap, Video, Globe2, Radio, ShieldCheck, UsersRound, MessageSquare, Activity, Search, Mic, MicOff, VideoOff, Phone, Hand, ScreenShare, MoreHorizontal, Lock, Eye, EyeOff } from 'lucide-react';
+import { Sparkles, Shield, Calendar, Users, ArrowLeft, CheckCircle2, ArrowRight, Play, Zap, Video, Globe2, Radio, ShieldCheck, UsersRound, MessageSquare, Activity, Search, Mic, MicOff, Phone, Hand, ScreenShare, MoreHorizontal, Lock, Eye, EyeOff } from 'lucide-react';
 
 type Mode = 'signin' | 'signup' | 'forgot' | 'reset';
 

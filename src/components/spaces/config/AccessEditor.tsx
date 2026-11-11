@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import { loadDirectory, memberName, type DirectoryMember } from '@/lib/team';
 import { Users, Mail, Link2, Copy, Check, RefreshCw, ShieldCheck } from 'lucide-react';
 import type { AccessMode, SpacePermissions, UserRole } from '@/types';
 import { PERMISSION_ROWS, ROLES, togglePermission, guestLinkUrl } from '@/spatial/access';
@@ -6,15 +8,15 @@ import { cn } from '@/lib/utils';
 
 const MODES: { mode: AccessMode; title: string; text: string; icon: typeof Users }[] = [
   { mode: 'members', title: 'Members of this account', text: 'Everyone on your SYNAPSE team can enter.', icon: Users },
-  // Invite only has no invite list yet, so it isn't offered (spaces already set to it work like
-  // "Members of this account" and still show the choice, so it can be changed).
-  { mode: 'invite_only', title: 'Invite only', text: 'Coming soon. For now, everyone on your team can enter.', icon: Mail },
+  { mode: 'invite_only', title: 'Invite only', text: 'Only the people you choose (and Admins).', icon: Mail },
   { mode: 'guest_link', title: 'Anyone with a guest link', text: 'People outside your team can join with a link.', icon: Link2 },
 ];
 
 /** Who can enter, plus the role permissions table. */
-export function AccessEditor({ mode, token, permissions, onMode, onNewToken, onPermissions }: {
+export function AccessEditor({ mode, token, permissions, onMode, onNewToken, onPermissions, space }: {
   mode: AccessMode;
+  /** The office being edited (its invite list is saved straight away). Left out while creating one. */
+  space?: { id: string; workspaceId: string };
   token: string | null;
   permissions: SpacePermissions;
   onMode: (mode: AccessMode) => void;
@@ -31,7 +33,7 @@ export function AccessEditor({ mode, token, permissions, onMode, onNewToken, onP
   return (
     <div className="space-y-5">
       <div role="radiogroup" aria-label="Who can enter" className="grid gap-2.5 md:grid-cols-3">
-        {MODES.filter((m) => m.mode !== 'invite_only' || mode === 'invite_only').map((m) => {
+        {MODES.map((m) => {
           const selected = mode === m.mode;
           return (
             <button
@@ -51,6 +53,10 @@ export function AccessEditor({ mode, token, permissions, onMode, onNewToken, onP
           );
         })}
       </div>
+
+      {mode === 'invite_only' && (space
+        ? <InviteList spaceId={space.id} workspaceId={space.workspaceId} />
+        : <p className="rounded-xl border border-navy-100 bg-ivory-200/20 p-3 text-sm text-ivory-700">Once the workspace is made, choose who's invited in its settings → Access. Until then only you and Admins can enter.</p>)}
 
       {mode === 'guest_link' && (
         <div className="rounded-xl border border-navy-100 bg-ivory-200/20 p-3">
@@ -105,6 +111,68 @@ export function AccessEditor({ mode, token, permissions, onMode, onNewToken, onP
         </div>
         <p className="mt-1.5 text-xs text-ivory-700">Owners can always do everything.</p>
       </div>
+    </div>
+  );
+}
+
+/** Who is invited to an invite-only office. Each switch saves at once. */
+function InviteList({ spaceId, workspaceId }: { spaceId: string; workspaceId: string }) {
+  const [people, setPeople] = useState<DirectoryMember[] | null>(null);
+  const [invited, setInvited] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const [dir, inv] = await Promise.all([
+        loadDirectory(workspaceId),
+        supabase.from('space_invitees').select('user_id').eq('space_id', spaceId),
+      ]);
+      if (!alive) return;
+      if (dir.error || inv.error) { setError(inv.error && /space_invitees/.test(inv.error.message) ? 'Run the latest database update to choose who is invited.' : (dir.error ?? inv.error?.message ?? 'Could not load the team.')); setPeople([]); return; }
+      setPeople(dir.data.filter((m) => m.status === 'active' && m.role !== 'owner' && m.role !== 'admin'));
+      setInvited(new Set((inv.data ?? []).map((r) => (r as { user_id: string }).user_id)));
+    })();
+    return () => { alive = false; };
+  }, [spaceId, workspaceId]);
+
+  const toggle = async (m: DirectoryMember) => {
+    const on = !invited.has(m.user_id);
+    setSaving(m.user_id);
+    const { data: auth } = await supabase.auth.getUser();
+    const { error: err } = on
+      ? await supabase.from('space_invitees').insert({ space_id: spaceId, user_id: m.user_id, added_by: auth.user?.id ?? null })
+      : await supabase.from('space_invitees').delete().eq('space_id', spaceId).eq('user_id', m.user_id);
+    setSaving(null);
+    if (err) { setError(err.message); return; }
+    setError(null);
+    setInvited((cur) => { const next = new Set(cur); if (on) next.add(m.user_id); else next.delete(m.user_id); return next; });
+  };
+
+  return (
+    <div className="rounded-xl border border-navy-100 bg-ivory-200/20 p-3">
+      <p className="text-sm font-semibold text-navy-800">Who's invited</p>
+      <p className="mt-0.5 text-xs text-ivory-700">Admins and the person who made it can always enter. Changes save straight away.</p>
+      {error && <p role="alert" className="mt-2 text-sm text-burgundy-700">{error}</p>}
+      {people === null ? <p className="mt-2 text-sm text-ivory-700">Loading the team…</p>
+        : people.length === 0 && !error ? <p className="mt-2 text-sm text-ivory-700">Everyone else in your account is an Admin, so they can already enter.</p>
+        : (
+          <ul className="mt-2 divide-y divide-sand">
+            {people.map((m) => {
+              const on = invited.has(m.user_id);
+              return (
+                <li key={m.user_id} className="flex items-center gap-3 py-2">
+                  <span className="min-w-0 flex-1 truncate text-sm text-navy-800">{memberName(m)}{m.title ? <span className="text-ivory-700"> · {m.title}</span> : null}</span>
+                  <button type="button" role="switch" aria-checked={on} aria-label={`${memberName(m)} invited`} disabled={saving === m.user_id} onClick={() => { void toggle(m); }}
+                    className={cn('relative h-6 w-11 shrink-0 rounded-full transition disabled:opacity-50', on ? 'bg-green-600' : 'bg-navy-100')}>
+                    <span className={cn('absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all', on ? 'left-[22px]' : 'left-0.5')} />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
     </div>
   );
 }

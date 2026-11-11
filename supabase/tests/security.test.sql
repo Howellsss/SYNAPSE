@@ -352,6 +352,47 @@ DO $$ DECLARE ch uuid; c uuid; msg uuid; meta jsonb; BEGIN
   PERFORM ts.as_user(NULL);
 EXCEPTION WHEN OTHERS THEN RESET ROLE; PERFORM ts.crashed('Claim', SQLERRM); END $$;
 
+DO $$ DECLARE sp uuid; n int; ok boolean; BEGIN
+  RAISE NOTICE 'Invite-only offices';
+  INSERT INTO spaces(workspace_id, name, slug, template_key, created_by, access_mode) VALUES (ts.ws2(), 'Board room', 'board-sec', 'office', ts.o2(), 'invite_only') RETURNING id INTO sp;
+  PERFORM ts.as_user(ts.m2());
+  SET LOCAL ROLE authenticated;
+  SELECT count(*) INTO n FROM spaces WHERE id = sp;
+  PERFORM ts.check(n = 0, 'someone not invited can''t see it');
+  BEGIN
+    INSERT INTO space_members(space_id, user_id) VALUES (sp, ts.m2()); ok := false;
+  EXCEPTION WHEN OTHERS THEN ok := SQLSTATE = '42501';
+  END;
+  PERFORM ts.check(ok, 'or walk in');
+  BEGIN
+    INSERT INTO space_invitees(space_id, user_id) VALUES (sp, ts.m2()); ok := false;
+  EXCEPTION WHEN OTHERS THEN ok := SQLSTATE = '42501';
+  END;
+  PERFORM ts.check(ok, 'or invite themselves');
+  RESET ROLE;
+  PERFORM ts.as_user(ts.a2());
+  SET LOCAL ROLE authenticated;
+  SELECT count(*) INTO n FROM spaces WHERE id = sp;
+  PERFORM ts.check(n = 1, 'an Admin can see it');
+  RESET ROLE;
+  PERFORM ts.as_user(ts.o2());
+  SET LOCAL ROLE authenticated;
+  INSERT INTO space_invitees(space_id, user_id, added_by) VALUES (sp, ts.m2(), ts.o2());
+  BEGIN
+    INSERT INTO space_invitees(space_id, user_id) VALUES (sp, ts.x()); ok := false;
+  EXCEPTION WHEN OTHERS THEN ok := SQLSTATE = '42501';
+  END;
+  PERFORM ts.check(ok, 'only people in the account can be invited');
+  RESET ROLE;
+  PERFORM ts.as_user(ts.m2());
+  SET LOCAL ROLE authenticated;
+  SELECT count(*) INTO n FROM spaces WHERE id = sp;
+  INSERT INTO space_members(space_id, user_id) VALUES (sp, ts.m2());
+  RESET ROLE;
+  PERFORM ts.check(n = 1, 'once invited, they see it and can walk in');
+  PERFORM ts.as_user(NULL);
+EXCEPTION WHEN OTHERS THEN RESET ROLE; PERFORM ts.crashed('Invite-only offices', SQLERRM); END $$;
+
 DO $$ DECLARE f int; p int; r record; BEGIN
   SELECT count(*) INTO f FROM ts.failures; SELECT count(*) INTO p FROM ts.passes;
   IF f > 0 THEN
