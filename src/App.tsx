@@ -52,6 +52,7 @@ const GuestJoinPage = lazy(() => import('@/pages/GuestJoinPage').then((m) => ({ 
 const EventsHomePage = lazy(() => import('@/pages/events/EventsHomePage').then((m) => ({ default: m.EventsHomePage })));
 const EventDetailPage = lazy(() => import('@/pages/events/EventDetailPage').then((m) => ({ default: m.EventDetailPage })));
 const TicketPage = lazy(() => import('@/pages/events/TicketPage').then((m) => ({ default: m.TicketPage })));
+const DoorPassPage = lazy(() => import('@/pages/events/DoorPassPage').then((m) => ({ default: m.DoorPassPage })));
 const EventRegisterPage = lazy(() => import('@/pages/events/EventRegisterPage').then((m) => ({ default: m.EventRegisterPage })));
 const EventsPage = lazy(() => import('@/pages/events/EventsPage').then((m) => ({ default: m.EventsPage })));
 const EventBuilder = lazy(() => import('@/pages/events/EventBuilder').then((m) => ({ default: m.EventBuilder })));
@@ -166,6 +167,8 @@ function AppContent() {
   if (isPublicEvents) {
     const [, , a, b] = path.split('?')[0].split('/');
     if (a === 'ticket' && b) return <TicketPage key={b} token={b} />;
+    // /e/door/<token>: a volunteer's door pass, which makes their phone a scanner for one event.
+    if (a === 'door' && b) return <DoorPassPage key={b} token={b} />;
     // /e/<event>/<type>: a registration type's own page (e.g. /e/unscathed/register, /apply).
     if (a && b) return <EventRegisterPage key={`${a}/${b}`} slug={decodeURIComponent(a)} type={decodeURIComponent(b)} />;
     if (a) return <EventDetailPage key={a} slug={decodeURIComponent(a)} />;

@@ -436,6 +436,61 @@ DO $$ DECLARE i int; r jsonb; n int; ev uuid; att uuid; BEGIN
     'the counts are private');
 EXCEPTION WHEN OTHERS THEN PERFORM set_config('request.headers', '', true); PERFORM set_config('request.jwt.claim.sub', '', true); PERFORM tev.crashed('Limits', SQLERRM); END $$;
 
+DO $$ DECLARE r jsonb; ada event_registrations; bo event_registrations; pass jsonb; tok uuid; other uuid; other_reg event_registrations; outsider uuid := 'f0000000-0000-4000-8000-0000000000b3'; BEGIN
+  RAISE NOTICE 'Door passes: volunteers check guests in with their phone camera, no account';
+  PERFORM tev.reset();
+  INSERT INTO auth.users(id, email) VALUES (outsider, 'outsider@example.com') ON CONFLICT DO NOTHING;
+  INSERT INTO workspace_members(workspace_id, user_id, role) VALUES (tev.ws(), outsider, 'member') ON CONFLICT DO NOTHING;
+  PERFORM event_register('unscathed', 'register', tev.answers('Ada Obi', 'ada@example.com'));
+  PERFORM event_register('unscathed', 'apply', tev.answers('Bo Eze', 'bo@example.com', '+234 803 222 3333'));
+  SELECT * INTO ada FROM event_registrations WHERE email = 'ada@example.com';
+  SELECT * INTO bo FROM event_registrations WHERE email = 'bo@example.com';
+  INSERT INTO email_accounts(workspace_id, user_id, email) VALUES (tev.ws(), tev.owner(), 'hello@derasperks.example') ON CONFLICT DO NOTHING;
+
+  -- Only organisers add passes.
+  PERFORM set_config('request.jwt.claim.sub', outsider::text, true);
+  PERFORM tev.check(tev.raises(format('SELECT event_door_pass_add(%L, %L, %L)', ada.event_id, 'Me', 'me@example.com')) = 'not_allowed', 'a member without Events can''t add a door scanner');
+  PERFORM set_config('request.jwt.claim.sub', tev.owner()::text, true);
+  pass := event_door_pass_add(ada.event_id, 'Chidi Okafor', 'Chidi@Example.com');
+  tok := (regexp_match(pass->>'link', '/door/([0-9a-f-]{36})$'))[1]::uuid;
+  PERFORM tev.check(tok IS NOT NULL AND (pass->>'emailed')::boolean, 'the organiser adds a door scanner: a pass link, emailed');
+  PERFORM tev.check(EXISTS (SELECT 1 FROM messages WHERE to_address = 'chidi@example.com' AND event_door_pass_id IS NOT NULL AND status = 'queued' AND body LIKE '%/door/' || tok || '%'),
+    'the email carries the pass link');
+  PERFORM tev.check(tev.raises(format('SELECT event_door_pass_add(%L, %L, %L)', ada.event_id, 'Chidi', 'chidi@example.com')) = 'already_added', 'the same email can''t be added twice');
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+
+  -- The phone, signed out.
+  r := event_door_pass_info(tok);
+  PERFORM tev.check((r->>'valid')::boolean AND r->>'title' = 'UNSCATHED' AND r->>'name' = 'Chidi Okafor', 'opening the pass shows the event and their name');
+  PERFORM tev.check((event_door_pass_info(gen_random_uuid())->>'valid')::boolean = false, 'a made-up pass is not valid');
+  r := event_door_check_in(tok, ticket_qr_url(ada.qr_token));
+  PERFORM tev.check(r->>'result' = 'success' AND r->'person'->>'name' = 'Ada Obi' AND r->'person'->>'checked_in_by' = 'Chidi Okafor', 'scanning a ticket with the pass: green, checked in by Chidi');
+  PERFORM tev.check(event_door_check_in(tok, ticket_qr_url(ada.qr_token))->>'result' = 'already_checked_in', 'again: amber');
+  PERFORM tev.check(event_door_check_in(tok, ticket_qr_url(bo.qr_token))->>'result' = 'not_eligible', 'an application not selected: red');
+  PERFORM tev.check(event_door_check_in(tok, '/e/ticket/' || ada.qr_token)->>'reason' = 'unsigned', 'a ticket link without its signature: red');
+  -- Another event's real ticket.
+  INSERT INTO events(workspace_id, created_by, slug, title, status) VALUES (tev.ws(), tev.owner(), 'other-door', 'Other', 'published') RETURNING id INTO other;
+  INSERT INTO event_registrations(event_id, first_name, last_name, email, status, pin) VALUES (other, 'Zee', 'Ola', 'zee@example.com', 'confirmed', '424242') RETURNING * INTO other_reg;
+  PERFORM tev.check(event_door_check_in(tok, ticket_qr_url(other_reg.qr_token))->>'reason' = 'other_event', 'another event''s ticket: red');
+  PERFORM tev.check((SELECT count(*) FROM event_checkins WHERE door_pass_id = (pass->>'id')::uuid) = 5, 'every scan is logged against the pass');
+  r := event_door_undo(tok, ada.id);
+  PERFORM tev.check((SELECT checked_in_at IS NULL AND checked_in_pass IS NULL FROM event_registrations WHERE id = ada.id), 'the pass can undo its own check-in');
+
+  -- Removed: the phone stops at once.
+  PERFORM set_config('request.jwt.claim.sub', tev.owner()::text, true);
+  PERFORM event_door_pass_revoke((pass->>'id')::uuid);
+  PERFORM tev.check(jsonb_array_length(event_door_pass_list(ada.event_id)) = 1 AND (event_door_pass_list(ada.event_id)->0->>'revoked_at') IS NOT NULL, 'the organiser sees it removed');
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM tev.check(tev.raises(format('SELECT event_door_check_in(%L, %L)', tok, ticket_qr_url(ada.qr_token))) = 'not_allowed', 'a removed pass can''t check anyone in');
+  PERFORM tev.check((event_door_pass_info(tok)->>'valid')::boolean = false, 'and its page says so');
+  -- After the event: passes stop.
+  PERFORM set_config('request.jwt.claim.sub', tev.owner()::text, true);
+  pass := event_door_pass_add(ada.event_id, 'Late', 'late@example.com');
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  UPDATE events SET starts_at = now() - interval '2 days', ends_at = now() - interval '1 day' WHERE id = ada.event_id;
+  PERFORM tev.check((event_door_pass_info((regexp_match(pass->>'link', '/door/([0-9a-f-]{36})$'))[1]::uuid)->>'valid')::boolean = false, 'a pass stops 12 hours after the event ends');
+EXCEPTION WHEN OTHERS THEN PERFORM set_config('request.jwt.claim.sub', '', true); PERFORM tev.crashed('Door passes', SQLERRM); END $$;
+
 DO $$ DECLARE f int; p int; r record; BEGIN
   SELECT count(*) INTO f FROM tev.failures; SELECT count(*) INTO p FROM tev.passes;
   IF f > 0 THEN
