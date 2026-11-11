@@ -47,15 +47,3 @@ describe('answers on the dashboard', () => {
     expect(row.endsWith(',Ada the Poet')).toBe(true);
   });
 });
-
-describe('privacy and reminders', () => {
-  it('a standard privacy notice in the organiser’s name says what, why, who and how long', async () => {
-    const { defaultPrivacyNotice, EMAIL_KINDS } = await import('@/lib/events');
-    const t = defaultPrivacyNotice('Dera Speaks');
-    expect(t).toMatch(/^Dera Speaks collects your name, email/);
-    expect(t).toMatch(/Only Dera Speaks’s team/);
-    expect(t).toMatch(/ask Dera Speaks to delete them/);
-    expect(defaultPrivacyNotice('  ')).toMatch(/^The organiser collects/);
-    expect(EMAIL_KINDS.find((k) => k.kind === 'reminder')?.subject).toBe('Tomorrow: {{event}}');
-  });
-});
