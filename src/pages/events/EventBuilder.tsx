@@ -5,7 +5,7 @@ import { useToast } from '@/context/ToastContext';
 import { useRouter } from '@/lib/router';
 import {
   CATEGORIES, DEFAULT_COVER, EMAIL_KINDS, getEvent, isoToZoned, listEmailAccounts, listWorkspaceForms, saveEvent, slugify, typeSlug, uploadCover, zonedToIso,
-  type EmailKind, type EventDraft, type EventMode, type EventQuestion, type QuestionType, type TicketDraft, type TypeStatus,
+  type EmailKind, type EmailTemplate, type EventDraft, type EventMode, type EventQuestion, type QuestionType, type TicketDraft, type TypeStatus,
 } from '@/lib/events';
 import { TimezoneSelect } from '@/components/ui/TimezoneSelect';
 import { LoadingSpinner } from '@/components/ui/States';
@@ -81,7 +81,7 @@ export function EventBuilder({ eventId }: { eventId?: string }) {
   const [brandAccent, setBrandAccent] = useState('');
   const [privacy, setPrivacy] = useState('');
   const [forms, setForms] = useState<{ id: string; name: string; status: string }[]>([]);
-  const [templates, setTemplates] = useState<Partial<Record<EmailKind, { subject?: string; message?: string }>>>({});
+  const [templates, setTemplates] = useState<Partial<Record<EmailKind, EmailTemplate>>>({});
   const [accountId, setAccountId] = useState('');
   const [footerLine, setFooterLine] = useState('');
   const [accounts, setAccounts] = useState<{ id: string; email: string; status: string }[] | null>(null);
@@ -184,7 +184,7 @@ export function EventBuilder({ eventId }: { eventId?: string }) {
       // Only wording that differs from the default is kept, so improvements to the defaults still reach the rest.
       email_templates: Object.fromEntries(EMAIL_KINDS.map(({ kind, subject, message }) => {
         const t = templates[kind] ?? {};
-        const own = { ...(t.subject?.trim() && t.subject.trim() !== subject ? { subject: t.subject.trim() } : {}), ...(t.message?.trim() && t.message.trim() !== message ? { message: t.message.trim() } : {}) };
+        const own = { ...(t.subject?.trim() && t.subject.trim() !== subject ? { subject: t.subject.trim() } : {}), ...(t.message?.trim() && t.message.trim() !== message ? { message: t.message.trim() } : {}), ...(t.off ? { off: true } : {}) };
         return [kind, own];
       }).filter(([, own]) => Object.keys(own as object).length)),
       email_account_id: accountId || null, footer_line: footerLine.trim(),
@@ -428,13 +428,13 @@ function TypeSettings({ t, eventSlug, forms, onChange }: { t: TicketRow; eventSl
 function EmailSettings({ accounts, accountId, onAccount, footerLine, onFooter, templates, onTemplate }: {
   accounts: { id: string; email: string; status: string }[] | null; accountId: string; onAccount: (v: string) => void;
   footerLine: string; onFooter: (v: string) => void;
-  templates: Partial<Record<EmailKind, { subject?: string; message?: string }>>; onTemplate: (kind: EmailKind, patch: { subject?: string; message?: string }) => void;
+  templates: Partial<Record<EmailKind, EmailTemplate>>; onTemplate: (kind: EmailKind, patch: EmailTemplate) => void;
 }) {
   const [open, setOpen] = useState<EmailKind | null>(null);
   const active = (accounts ?? []).filter((a) => a.status === 'active');
   return (
     <>
-      <p className="-mt-1 text-sm text-ivory-700">People get an email when they register, apply, are selected or aren’t. Tickets come with their QR code, in your event’s colours.</p>
+      <p className="-mt-1 text-sm text-ivory-700">People get an email when they register, apply, are selected or aren’t, and a reminder the day before. Tickets come with their QR code, in your event’s colours.</p>
       {accounts !== null && !active.length ? (
         <p className="rounded-2xl bg-gold-50 px-4 py-3 text-sm text-gold-900">
           No email account is connected, so no emails will go out (people still see their ticket on screen). Connect one in <a href="/#/settings?tab=email" className="font-semibold underline">Settings → Email</a>.
@@ -454,21 +454,28 @@ function EmailSettings({ accounts, accountId, onAccount, footerLine, onFooter, t
         {EMAIL_KINDS.map((k) => {
           const t = templates[k.kind] ?? {};
           const changed = !!(t.subject?.trim() || t.message?.trim());
+          const off = k.kind === 'reminder' && !!t.off;
           return (
             <div key={k.kind}>
               <button type="button" onClick={() => setOpen(open === k.kind ? null : k.kind)} aria-expanded={open === k.kind} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-navy-50/50">
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-navy-800">{k.label} {changed && <span className="ml-1 rounded-full bg-gold-50 px-2 py-0.5 text-[11px] font-semibold text-gold-800">Your wording</span>}</span>
-                  <span className="block text-xs text-ivory-700">Sent {k.when}</span>
+                  <span className="block text-sm font-semibold text-navy-800">{k.label} {changed && <span className="ml-1 rounded-full bg-gold-50 px-2 py-0.5 text-[11px] font-semibold text-gold-800">Your wording</span>}{off && <span className="ml-1 rounded-full bg-navy-50 px-2 py-0.5 text-[11px] font-semibold text-navy-700">Off</span>}</span>
+                  <span className="block text-xs text-ivory-700">{off ? 'Not sent for this event' : `Sent ${k.when}`}</span>
                 </span>
                 <ChevronDown className={cn('h-4 w-4 text-ivory-700 transition-transform', open === k.kind && 'rotate-180')} />
               </button>
               {open === k.kind && (
                 <div className="space-y-3 px-4 pb-4">
+                  {k.kind === 'reminder' && (
+                    <label className="flex items-start gap-3 rounded-xl bg-navy-50/60 px-3 py-2.5 text-sm text-navy-800">
+                      <input type="checkbox" checked={!off} onChange={(e) => onTemplate(k.kind, { off: !e.target.checked })} className="mt-0.5 h-4 w-4 accent-navy-800" />
+                      <span><span className="font-semibold">Send a reminder the day before</span><span className="block text-xs text-ivory-700">Only once the event has a date. People who registered in the last day, or are already checked in, don’t get one.</span></span>
+                    </label>
+                  )}
                   <Field label="Subject"><input value={t.subject ?? k.subject} onChange={(e) => onTemplate(k.kind, { subject: e.target.value.slice(0, 200) })} className="input-field" /></Field>
                   <Field label="Message"><textarea value={t.message ?? k.message} onChange={(e) => onTemplate(k.kind, { message: e.target.value.slice(0, 4000) })} rows={6} className="input-field" /></Field>
-                  <p className="text-xs text-ivory-700">You can use {'{{first_name}}'}, {'{{name}}'}, {'{{event}}'}, {'{{type}}'}, {'{{code}}'}, {'{{date}}'}, {'{{venue}}'} and {'{{ticket_link}}'}. {['confirmed', 'selected'].includes(k.kind) ? 'The ticket with its QR code is added under your message.' : ''}</p>
-                  {changed && <button type="button" onClick={() => onTemplate(k.kind, { subject: undefined, message: undefined })} className="btn-ghost btn-sm">Use the default wording</button>}
+                  <p className="text-xs text-ivory-700">You can use {'{{first_name}}'}, {'{{name}}'}, {'{{event}}'}, {'{{type}}'}, {'{{code}}'}, {'{{date}}'}, {'{{venue}}'} and {'{{ticket_link}}'}. {['confirmed', 'selected', 'reminder'].includes(k.kind) ? 'The ticket with its QR code is added under your message.' : ''}</p>
+                  {changed && <button type="button" onClick={() => onTemplate(k.kind, { subject: undefined, message: undefined, off: t.off })} className="btn-ghost btn-sm">Use the default wording</button>}
                 </div>
               )}
             </div>

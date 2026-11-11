@@ -7277,3 +7277,3396 @@ CREATE POLICY "form_files_read" ON storage.objects FOR SELECT TO authenticated
     )
   );
 
+
+-- ============ 20261022120000_roles_and_access.sql ============
+/*
+  # Roles: Owner, Admin, User, and what each User can see
+
+  - Three roles. Owner (the account holder) and Admins see and do everything; an Admin can make
+    other people Admins. Everyone else is a User ('member' in the database). There are no
+    Supervisors any more: they become Users, and department leads are cleared.
+  - What a User sees: `workspace_members.access`, a list of sections. Empty (NULL) means the
+    standard set: Conversations, Workspaces, Meetings (with the rooms assigned to them) and
+    Calendars (only the calendars they own or are a host of). Admins switch more on per person.
+  - Enforced in the database, not only in the menu: a restrictive policy on each section's tables
+    lets a User of the account reach them only when that section is on for them. People outside
+    the account (public booking pages, public forms) are untouched: their own policies decide.
+  - Company settings, connected email accounts, webhooks, integrations and the audit log can only
+    be changed by Admins. Only Admins change roles, status, titles or what someone can see.
+  - Rooms: only Admins create, change and assign them.
+
+  Safe to run more than once.
+*/
+
+-- ============================================================
+-- 1. No more Supervisors
+-- ============================================================
+
+UPDATE workspace_members SET role = 'member' WHERE role = 'supervisor';
+UPDATE team_invitations SET role = 'member' WHERE role = 'supervisor';
+UPDATE department_members SET is_lead = false WHERE is_lead;
+
+ALTER TABLE workspace_members DROP CONSTRAINT IF EXISTS workspace_members_role_check;
+ALTER TABLE workspace_members ADD CONSTRAINT workspace_members_role_check
+  CHECK (role IN ('owner', 'admin', 'member'));
+ALTER TABLE team_invitations DROP CONSTRAINT IF EXISTS team_invitations_role_check;
+ALTER TABLE team_invitations ADD CONSTRAINT team_invitations_role_check
+  CHECK (role IN ('admin', 'member')) NOT VALID;
+
+-- Nobody leads a department now (rooms and department changes are for Admins).
+CREATE OR REPLACE FUNCTION is_department_lead(check_department_id uuid)
+RETURNS boolean LANGUAGE sql STABLE SET search_path = public AS $$
+  SELECT false;
+$$;
+
+CREATE OR REPLACE FUNCTION can_create_rooms(p_workspace uuid)
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT is_workspace_admin(p_workspace);
+$$;
+
+CREATE OR REPLACE FUNCTION can_manage_room(p_room uuid)
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT EXISTS (SELECT 1 FROM company_rooms r WHERE r.id = p_room AND is_workspace_admin(r.workspace_id));
+$$;
+
+-- ============================================================
+-- 2. What each User can see
+-- ============================================================
+
+ALTER TABLE workspace_members ADD COLUMN IF NOT EXISTS access text[];
+
+/** The sections a User sees when nobody has chosen for them. Keep in step with src/lib/access.ts. */
+CREATE OR REPLACE FUNCTION default_member_access() RETURNS text[] LANGUAGE sql IMMUTABLE AS $$
+  SELECT ARRAY['conversations', 'workspaces', 'meetings', 'calendars'];
+$$;
+
+/**
+ * May the signed-in person use this section of this account? Owners and Admins: always. Users: when
+ * it is in their list. Someone who is not in the account at all (or a row with no account): yes,
+ * because this only narrows what the account's own people can do; their other policies still apply.
+ */
+CREATE OR REPLACE FUNCTION member_can(p_workspace uuid, p_feature text)
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT CASE WHEN p_workspace IS NULL OR auth.uid() IS NULL THEN true ELSE coalesce((
+    SELECT m.role IN ('owner', 'admin') OR p_feature = ANY(coalesce(m.access, default_member_access()))
+    FROM workspace_members m
+    WHERE m.workspace_id = p_workspace AND m.user_id = auth.uid() AND coalesce(m.status, 'active') = 'active'
+    LIMIT 1
+  ), true) END;
+$$;
+
+/** Admin-only parts of an account (same rule: people outside the account are not affected). */
+CREATE OR REPLACE FUNCTION member_is_admin_or_outside(p_workspace uuid)
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT CASE WHEN p_workspace IS NULL OR auth.uid() IS NULL THEN true ELSE coalesce((
+    SELECT m.role IN ('owner', 'admin')
+    FROM workspace_members m
+    WHERE m.workspace_id = p_workspace AND m.user_id = auth.uid() AND coalesce(m.status, 'active') = 'active'
+    LIMIT 1
+  ), true) END;
+$$;
+
+/** A User sees only the calendars they own or host; Admins (and outsiders' own rules) see the rest. */
+CREATE OR REPLACE FUNCTION member_sees_calendar(p_calendar uuid)
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT CASE WHEN p_calendar IS NULL THEN true ELSE coalesce((
+    SELECT member_is_admin_or_outside(c.workspace_id)
+      OR (member_can(c.workspace_id, 'calendars')
+          AND (c.owner_id = auth.uid() OR EXISTS (SELECT 1 FROM calendar_hosts h WHERE h.calendar_id = c.id AND h.user_id = auth.uid())))
+    FROM calendars c WHERE c.id = p_calendar
+  ), true) END;
+$$;
+
+-- Only Admins (or the owner) change roles, status, titles or what someone can see.
+CREATE OR REPLACE FUNCTION workspace_members_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE ws_owner uuid;
+BEGIN
+  SELECT owner_id INTO ws_owner FROM workspaces WHERE id = NEW.workspace_id;
+  IF NEW.role = 'owner' AND NEW.user_id IS DISTINCT FROM ws_owner THEN
+    RAISE EXCEPTION 'Only the workspace owner can have the owner role';
+  END IF;
+  IF TG_OP = 'UPDATE' AND auth.uid() IS NOT NULL THEN
+    IF OLD.role = 'owner' AND NEW.role <> 'owner' THEN
+      RAISE EXCEPTION 'The owner''s role cannot be changed';
+    END IF;
+    IF (NEW.role IS DISTINCT FROM OLD.role OR NEW.status IS DISTINCT FROM OLD.status
+        OR NEW.title IS DISTINCT FROM OLD.title OR NEW.access IS DISTINCT FROM OLD.access)
+       AND NOT is_workspace_admin(NEW.workspace_id) AND auth.uid() IS DISTINCT FROM ws_owner THEN
+      RAISE EXCEPTION 'Only admins can change roles, status, titles or what someone can see';
+    END IF;
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS workspace_members_guard ON workspace_members;
+CREATE TRIGGER workspace_members_guard BEFORE INSERT OR UPDATE ON workspace_members
+  FOR EACH ROW EXECUTE FUNCTION workspace_members_guard();
+
+-- ============================================================
+-- 3. Each section's tables follow it
+-- ============================================================
+
+DO $$
+DECLARE
+  pair text[];
+  sections text[][] := ARRAY[
+    ARRAY['contacts', 'contacts'], ARRAY['tags', 'contacts'], ARRAY['notes', 'contacts'],
+    ARRAY['smart_lists', 'contacts'], ARRAY['tasks', 'contacts'], ARRAY['messages', 'contacts'],
+    ARRAY['calendar_groups', 'calendars'], ARRAY['booking_links', 'calendars'],
+    ARRAY['host_availability_rules', 'calendars'], ARRAY['external_busy_periods', 'calendars'],
+    ARRAY['forms', 'forms'], ARRAY['form_submissions', 'forms'],
+    ARRAY['form_notification_logs', 'forms'], ARRAY['form_activity_timeline', 'forms'],
+    ARRAY['workflows', 'workflows'], ARRAY['wf_events', 'workflows'], ARRAY['wf_runs', 'workflows'],
+    ARRAY['events', 'events'], ARRAY['streams', 'streams'], ARRAY['recordings', 'recordings']
+  ];
+BEGIN
+  FOREACH pair SLICE 1 IN ARRAY sections LOOP
+    IF to_regclass('public.' || pair[1]) IS NOT NULL THEN
+      EXECUTE format('DROP POLICY IF EXISTS %I ON %I', pair[1] || '_section_access', pair[1]);
+      EXECUTE format('CREATE POLICY %I ON %I AS RESTRICTIVE FOR ALL TO authenticated USING (member_can(workspace_id, %L)) WITH CHECK (member_can(workspace_id, %L))',
+        pair[1] || '_section_access', pair[1], pair[2], pair[2]);
+    END IF;
+  END LOOP;
+
+  -- Admin-only to read and change.
+  FOREACH pair SLICE 1 IN ARRAY ARRAY[ARRAY['webhooks', ''], ARRAY['integrations', ''], ARRAY['audit_logs', '']] LOOP
+    IF to_regclass('public.' || pair[1]) IS NOT NULL THEN
+      EXECUTE format('DROP POLICY IF EXISTS %I ON %I', pair[1] || '_admins_only', pair[1]);
+      EXECUTE format('CREATE POLICY %I ON %I AS RESTRICTIVE FOR ALL TO authenticated USING (member_is_admin_or_outside(workspace_id)) WITH CHECK (member_is_admin_or_outside(workspace_id))',
+        pair[1] || '_admins_only', pair[1]);
+    END IF;
+  END LOOP;
+END $$;
+
+-- Calendars and their bookings: a User sees only their own calendars.
+DROP POLICY IF EXISTS calendars_section_access ON calendars;
+CREATE POLICY calendars_section_access ON calendars AS RESTRICTIVE FOR ALL TO authenticated
+  USING (member_sees_calendar(id))
+  WITH CHECK (member_is_admin_or_outside(workspace_id) OR (member_can(workspace_id, 'calendars') AND owner_id = auth.uid()));
+DROP POLICY IF EXISTS appointments_section_access ON appointments;
+CREATE POLICY appointments_section_access ON appointments AS RESTRICTIVE FOR ALL TO authenticated
+  USING (member_is_admin_or_outside(workspace_id) OR (member_can(workspace_id, 'calendars') AND member_sees_calendar(calendar_id)))
+  WITH CHECK (member_is_admin_or_outside(workspace_id) OR (member_can(workspace_id, 'calendars') AND member_sees_calendar(calendar_id)));
+
+-- Company settings and connected email accounts: everyone in the account may read (sending email
+-- from a contact needs the account), only Admins change them.
+DROP POLICY IF EXISTS workspace_settings_admin_insert ON workspace_settings;
+CREATE POLICY workspace_settings_admin_insert ON workspace_settings AS RESTRICTIVE FOR INSERT TO authenticated
+  WITH CHECK (member_is_admin_or_outside(workspace_id));
+DROP POLICY IF EXISTS workspace_settings_admin_update ON workspace_settings;
+CREATE POLICY workspace_settings_admin_update ON workspace_settings AS RESTRICTIVE FOR UPDATE TO authenticated
+  USING (member_is_admin_or_outside(workspace_id)) WITH CHECK (member_is_admin_or_outside(workspace_id));
+DROP POLICY IF EXISTS workspace_settings_admin_delete ON workspace_settings;
+CREATE POLICY workspace_settings_admin_delete ON workspace_settings AS RESTRICTIVE FOR DELETE TO authenticated
+  USING (member_is_admin_or_outside(workspace_id));
+
+DROP POLICY IF EXISTS email_accounts_admin_insert ON email_accounts;
+CREATE POLICY email_accounts_admin_insert ON email_accounts AS RESTRICTIVE FOR INSERT TO authenticated
+  WITH CHECK (member_is_admin_or_outside(workspace_id));
+DROP POLICY IF EXISTS email_accounts_admin_update ON email_accounts;
+CREATE POLICY email_accounts_admin_update ON email_accounts AS RESTRICTIVE FOR UPDATE TO authenticated
+  USING (member_is_admin_or_outside(workspace_id)) WITH CHECK (member_is_admin_or_outside(workspace_id));
+DROP POLICY IF EXISTS email_accounts_admin_delete ON email_accounts;
+CREATE POLICY email_accounts_admin_delete ON email_accounts AS RESTRICTIVE FOR DELETE TO authenticated
+  USING (member_is_admin_or_outside(workspace_id));
+
+
+-- ============ 20261028090000_close_public_contacts.sql ============
+/*
+  # Close the public doors on contacts and appointments
+
+  Until now, three rules made for the public booking pages let anyone with the site's public key,
+  signed in or not, read every contact of every account, change any contact, and change any
+  appointment. They go. The booking pages do the two things they need through two narrow
+  functions instead:
+
+  - public_booking_contact(): finds the visitor's contact by email in the account the calendar
+    or form belongs to, or adds them. It returns only the contact's id, never anyone's details,
+    and on an existing contact it only fills in what's empty (a stranger who knows someone's
+    email can't overwrite their name or phone).
+  - public_cancel_booking(): the visitor cancels the booking they just made, by its id (which
+    only they have), and only one still to come.
+
+  Staff keep their usual access through the account's own rules. Safe to run more than once.
+*/
+
+DROP POLICY IF EXISTS "contacts_public_select" ON contacts;
+DROP POLICY IF EXISTS "contacts_public_update" ON contacts;
+DROP POLICY IF EXISTS "contacts_public_insert" ON contacts;
+DROP POLICY IF EXISTS "appts_public_update" ON appointments;
+
+CREATE OR REPLACE FUNCTION public_booking_contact(
+  p_workspace uuid, p_owner uuid, p_first text, p_last text, p_email text, p_phone text, p_source text DEFAULT 'booking_page'
+) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  em text := nullif(lower(trim(coalesce(p_email, ''))), '');
+  first_name_in text := nullif(left(trim(coalesce(p_first, '')), 100), '');
+  last_name_in text := nullif(left(trim(coalesce(p_last, '')), 100), '');
+  phone_in text := nullif(left(trim(coalesce(p_phone, '')), 40), '');
+  cid uuid;
+BEGIN
+  -- Only a real account (or a calendar owner, for calendars outside any account).
+  IF p_workspace IS NOT NULL THEN
+    IF NOT EXISTS (SELECT 1 FROM workspaces WHERE id = p_workspace) THEN RAISE EXCEPTION 'Unknown account'; END IF;
+  ELSIF p_owner IS NULL OR NOT EXISTS (SELECT 1 FROM auth.users WHERE id = p_owner) THEN
+    RAISE EXCEPTION 'Unknown account';
+  END IF;
+  IF em IS NOT NULL AND em !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' THEN em := NULL; END IF;
+  IF em IS NULL AND first_name_in IS NULL AND phone_in IS NULL THEN RETURN NULL; END IF;
+
+  IF em IS NOT NULL THEN
+    SELECT id INTO cid FROM contacts
+    WHERE lower(email) = em
+      AND (CASE WHEN p_workspace IS NOT NULL THEN workspace_id = p_workspace ELSE workspace_id IS NULL AND owner_id = p_owner END)
+    ORDER BY created_at LIMIT 1;
+  END IF;
+
+  IF cid IS NOT NULL THEN
+    UPDATE contacts SET
+      first_name = coalesce(nullif(first_name, ''), first_name_in),
+      last_name = coalesce(nullif(last_name, ''), last_name_in),
+      phone = coalesce(nullif(phone, ''), phone_in),
+      last_activity_at = now()
+    WHERE id = cid;
+    RETURN cid;
+  END IF;
+
+  INSERT INTO contacts (workspace_id, owner_id, first_name, last_name, email, phone, source)
+  VALUES (p_workspace, CASE WHEN p_workspace IS NULL THEN p_owner END, first_name_in, last_name_in, em, phone_in,
+          left(coalesce(nullif(p_source, ''), 'booking_page'), 40))
+  RETURNING id INTO cid;
+  RETURN cid;
+END $$;
+REVOKE ALL ON FUNCTION public_booking_contact(uuid, uuid, text, text, text, text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public_booking_contact(uuid, uuid, text, text, text, text, text) TO anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public_cancel_booking(p_appointment uuid, p_reason text DEFAULT NULL)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE n int;
+BEGIN
+  UPDATE appointments
+  SET status = 'cancelled', cancellation_reason = nullif(left(coalesce(p_reason, ''), 300), ''), updated_at = now()
+  WHERE id = p_appointment AND status IN ('confirmed', 'pending') AND start_time > now();
+  GET DIAGNOSTICS n = ROW_COUNT;
+  RETURN n > 0;
+END $$;
+REVOKE ALL ON FUNCTION public_cancel_booking(uuid, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public_cancel_booking(uuid, text) TO anon, authenticated;
+
+
+-- ============ 20261029090000_remove_person.sql ============
+/*
+  # Suspending and removing a person, with hand-over
+
+  - A suspended person is locked out of the account everywhere, not only in the menu: the
+    membership checks now count active people only. (Until now a suspended person kept full
+    access to the database.) The account owner is never locked out.
+  - offboard_member(): an Admin suspends or removes someone in one step and hands their work to
+    another active person in the account:
+      contacts they own, their open tasks, the calendars they own or host (and the bookings still
+      to come on them), their booking links and calendar groups, forms, events, meetings not yet
+      ended, and the rooms assigned to them. Channels they own get the new person as an owner.
+    Removing also takes them out of the account's channels, departments, rooms and spaces, then
+    deletes their membership. Suspending keeps all of that, so they can be brought back.
+    Each step is written to the audit log.
+  - Their sign-ins are ended (when they belong to no other account), so they are signed out on
+    every device. The app also checks every minute and on returning to the tab.
+  - my_membership_status(): what the app asks to know whether the signed-in person still belongs.
+
+  Safe to run more than once.
+*/
+
+-- ============================================================
+-- 1. Only active people count as members
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.is_workspace_member(check_workspace_id uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $function$
+SELECT EXISTS (
+  SELECT 1 FROM workspace_members
+  WHERE workspace_id = check_workspace_id AND user_id = auth.uid() AND coalesce(status, 'active') = 'active'
+) OR EXISTS (
+  SELECT 1 FROM workspaces
+  WHERE id = check_workspace_id AND owner_id = auth.uid()
+);
+$function$;
+
+-- A suspended person is not "outside" the account: they get nothing.
+CREATE OR REPLACE FUNCTION member_can(p_workspace uuid, p_feature text)
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT CASE WHEN p_workspace IS NULL OR auth.uid() IS NULL THEN true ELSE coalesce((
+    SELECT coalesce(m.status, 'active') = 'active'
+       AND (m.role IN ('owner', 'admin') OR p_feature = ANY(coalesce(m.access, default_member_access())))
+    FROM workspace_members m
+    WHERE m.workspace_id = p_workspace AND m.user_id = auth.uid()
+    LIMIT 1
+  ), true) END;
+$$;
+
+CREATE OR REPLACE FUNCTION member_is_admin_or_outside(p_workspace uuid)
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT CASE WHEN p_workspace IS NULL OR auth.uid() IS NULL THEN true ELSE coalesce((
+    SELECT coalesce(m.status, 'active') = 'active' AND m.role IN ('owner', 'admin')
+    FROM workspace_members m
+    WHERE m.workspace_id = p_workspace AND m.user_id = auth.uid()
+    LIMIT 1
+  ), true) END;
+$$;
+
+-- ============================================================
+-- 2. Am I still in this account?
+-- ============================================================
+
+/** 'active', 'suspended', or 'removed' (no longer in the account) for the signed-in person. */
+CREATE OR REPLACE FUNCTION my_membership_status(p_workspace uuid)
+RETURNS text LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT CASE
+    WHEN auth.uid() IS NULL THEN 'removed'
+    WHEN EXISTS (SELECT 1 FROM workspaces w WHERE w.id = p_workspace AND w.owner_id = auth.uid()) THEN 'active'
+    ELSE coalesce((
+      SELECT CASE WHEN coalesce(m.status, 'active') = 'suspended' THEN 'suspended' ELSE 'active' END
+      FROM workspace_members m WHERE m.workspace_id = p_workspace AND m.user_id = auth.uid() LIMIT 1
+    ), 'removed')
+  END;
+$$;
+REVOKE ALL ON FUNCTION my_membership_status(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION my_membership_status(uuid) TO authenticated;
+
+-- ============================================================
+-- 3. What someone has, for the hand-over screen
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION member_work(p_member uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public AS $$
+DECLARE ws uuid; uid uuid;
+BEGIN
+  SELECT workspace_id, user_id INTO ws, uid FROM workspace_members WHERE id = p_member;
+  IF ws IS NULL THEN RAISE EXCEPTION 'That person is not in this account'; END IF;
+  IF NOT is_workspace_admin(ws) THEN RAISE EXCEPTION 'Only admins can do this'; END IF;
+  RETURN jsonb_build_object(
+    'contacts', (SELECT count(*) FROM contacts WHERE workspace_id = ws AND owner_id = uid),
+    'tasks', (SELECT count(*) FROM tasks WHERE workspace_id = ws AND assigned_to = uid AND completed_at IS NULL),
+    'calendars', (SELECT count(*) FROM calendars c WHERE c.workspace_id = ws AND (c.owner_id = uid
+                   OR EXISTS (SELECT 1 FROM calendar_hosts h WHERE h.calendar_id = c.id AND h.user_id = uid))),
+    'bookings', (SELECT count(*) FROM appointments WHERE workspace_id = ws AND (host_id = uid OR owner_id = uid)
+                  AND start_time > now() AND status IN ('confirmed', 'pending')),
+    'forms', (SELECT count(*) FROM forms WHERE workspace_id = ws AND owner_id = uid),
+    'events', (SELECT count(*) FROM events WHERE workspace_id = ws AND created_by = uid),
+    'meetings', (SELECT count(*) FROM meetings WHERE workspace_id = ws AND host_id = uid AND ended_at IS NULL),
+    'rooms', (SELECT count(*) FROM company_room_assignees WHERE workspace_id = ws AND user_id = uid)
+  );
+END $$;
+REVOKE ALL ON FUNCTION member_work(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION member_work(uuid) TO authenticated;
+
+-- ============================================================
+-- 4. Suspend or remove, with hand-over
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION offboard_member(p_member uuid, p_action text, p_hand_to uuid DEFAULT NULL)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  ws uuid; uid uuid; who_role text; ws_owner uuid;
+  moved jsonb := '{}'::jsonb; n int;
+BEGIN
+  IF p_action NOT IN ('suspend', 'remove') THEN RAISE EXCEPTION 'Unknown action'; END IF;
+  SELECT workspace_id, user_id, role INTO ws, uid, who_role FROM workspace_members WHERE id = p_member;
+  IF ws IS NULL THEN RAISE EXCEPTION 'That person is not in this account'; END IF;
+  IF NOT is_workspace_admin(ws) THEN RAISE EXCEPTION 'Only admins can suspend or remove people'; END IF;
+  SELECT owner_id INTO ws_owner FROM workspaces WHERE id = ws;
+  IF uid = ws_owner OR who_role = 'owner' THEN RAISE EXCEPTION 'The account owner cannot be suspended or removed'; END IF;
+  IF uid = auth.uid() THEN RAISE EXCEPTION 'You cannot suspend or remove yourself'; END IF;
+  IF p_action = 'remove' AND p_hand_to IS NULL THEN RAISE EXCEPTION 'Choose who takes over their work'; END IF;
+  IF p_hand_to IS NOT NULL AND (p_hand_to = uid OR NOT (p_hand_to = ws_owner OR EXISTS (
+       SELECT 1 FROM workspace_members m WHERE m.workspace_id = ws AND m.user_id = p_hand_to AND coalesce(m.status, 'active') = 'active'))) THEN
+    RAISE EXCEPTION 'The person taking over must be active in this account';
+  END IF;
+
+  -- Hand-over
+  IF p_hand_to IS NOT NULL THEN
+    UPDATE contacts SET owner_id = p_hand_to WHERE workspace_id = ws AND owner_id = uid;
+    GET DIAGNOSTICS n = ROW_COUNT; moved := moved || jsonb_build_object('contacts', n);
+
+    UPDATE tasks SET assigned_to = p_hand_to, updated_at = now() WHERE workspace_id = ws AND assigned_to = uid AND completed_at IS NULL;
+    GET DIAGNOSTICS n = ROW_COUNT; moved := moved || jsonb_build_object('tasks', n);
+
+    UPDATE calendars SET owner_id = p_hand_to WHERE workspace_id = ws AND owner_id = uid;
+    GET DIAGNOSTICS n = ROW_COUNT; moved := moved || jsonb_build_object('calendars', n);
+    INSERT INTO calendar_hosts (calendar_id, user_id, priority, weight, is_primary)
+      SELECT h.calendar_id, p_hand_to, h.priority, h.weight, h.is_primary
+      FROM calendar_hosts h JOIN calendars c ON c.id = h.calendar_id
+      WHERE c.workspace_id = ws AND h.user_id = uid
+      ON CONFLICT (calendar_id, user_id) DO NOTHING;
+    DELETE FROM calendar_hosts h USING calendars c WHERE c.id = h.calendar_id AND c.workspace_id = ws AND h.user_id = uid;
+
+    UPDATE appointments SET host_id = CASE WHEN host_id = uid THEN p_hand_to ELSE host_id END,
+                            owner_id = CASE WHEN owner_id = uid THEN p_hand_to ELSE owner_id END
+      WHERE workspace_id = ws AND (host_id = uid OR owner_id = uid) AND start_time > now() AND status IN ('confirmed', 'pending');
+    GET DIAGNOSTICS n = ROW_COUNT; moved := moved || jsonb_build_object('bookings', n);
+
+    UPDATE booking_links SET owner_id = p_hand_to WHERE workspace_id = ws AND owner_id = uid;
+    UPDATE calendar_groups SET owner_id = p_hand_to WHERE workspace_id = ws AND owner_id = uid;
+
+    UPDATE forms SET owner_id = p_hand_to WHERE workspace_id = ws AND owner_id = uid;
+    GET DIAGNOSTICS n = ROW_COUNT; moved := moved || jsonb_build_object('forms', n);
+    UPDATE form_submissions SET owner_id = p_hand_to WHERE workspace_id = ws AND owner_id = uid;
+
+    UPDATE events SET created_by = p_hand_to WHERE workspace_id = ws AND created_by = uid;
+    GET DIAGNOSTICS n = ROW_COUNT; moved := moved || jsonb_build_object('events', n);
+
+    UPDATE meetings SET host_id = p_hand_to WHERE workspace_id = ws AND host_id = uid AND ended_at IS NULL;
+    GET DIAGNOSTICS n = ROW_COUNT; moved := moved || jsonb_build_object('meetings', n);
+
+    INSERT INTO company_room_assignees (room_id, workspace_id, user_id, assigned_by)
+      SELECT a.room_id, ws, p_hand_to, auth.uid() FROM company_room_assignees a WHERE a.workspace_id = ws AND a.user_id = uid
+      ON CONFLICT (room_id, user_id) DO NOTHING;
+    GET DIAGNOSTICS n = ROW_COUNT; moved := moved || jsonb_build_object('rooms', n);
+
+    INSERT INTO chat_members (channel_id, workspace_id, user_id, role)
+      SELECT cm.channel_id, ws, p_hand_to, 'owner' FROM chat_members cm WHERE cm.workspace_id = ws AND cm.user_id = uid AND cm.role = 'owner'
+      ON CONFLICT (channel_id, user_id) DO UPDATE SET role = 'owner';
+  END IF;
+
+  IF p_action = 'suspend' THEN
+    UPDATE workspace_members SET status = 'suspended' WHERE id = p_member;
+  ELSE
+    DELETE FROM chat_members WHERE workspace_id = ws AND user_id = uid;
+    DELETE FROM department_members WHERE workspace_id = ws AND user_id = uid;
+    DELETE FROM company_room_assignees WHERE workspace_id = ws AND user_id = uid;
+    DELETE FROM space_members sm USING spaces s WHERE s.id = sm.space_id AND s.workspace_id = ws AND sm.user_id = uid;
+    DELETE FROM member_status WHERE workspace_id = ws AND user_id = uid;
+    DELETE FROM workspace_members WHERE id = p_member;
+  END IF;
+
+  INSERT INTO audit_logs (workspace_id, user_id, action, entity_type, entity_id, details)
+  VALUES (ws, auth.uid(), CASE p_action WHEN 'suspend' THEN 'member_suspended' ELSE 'member_removed' END, 'member', uid,
+          jsonb_build_object('handed_to', p_hand_to, 'moved', moved));
+
+  -- Sign them out everywhere, unless they still belong to another account.
+  IF NOT EXISTS (SELECT 1 FROM workspace_members m WHERE m.user_id = uid AND m.workspace_id <> ws AND coalesce(m.status, 'active') = 'active')
+     AND NOT EXISTS (SELECT 1 FROM workspaces w WHERE w.owner_id = uid AND w.id <> ws)
+     AND to_regclass('auth.sessions') IS NOT NULL THEN
+    BEGIN
+      EXECUTE 'DELETE FROM auth.sessions WHERE user_id = $1' USING uid;
+    EXCEPTION WHEN insufficient_privilege THEN NULL;  -- the app and the checks above still lock them out
+    END;
+  END IF;
+
+  RETURN moved;
+END $$;
+REVOKE ALL ON FUNCTION offboard_member(uuid, text, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION offboard_member(uuid, text, uuid) TO authenticated;
+
+
+-- ============ 20261029120000_audit_log.sql ============
+/*
+  # Audit log: the database writes down who changed what
+
+  Every important change is recorded by the database itself, with the person who made it (they
+  can't be left out or faked from the app):
+    - People: someone joins, is invited, an invite is cancelled, a role / what someone can see /
+      suspended or active changes, someone is removed.
+    - Deletions: contacts, forms, workflows, calendars, events, rooms, departments, channels.
+    - Publishing: a workflow switched on or off, a form published or taken down.
+    - Settings: company details and settings pages, connected email accounts, webhooks,
+      integrations, departments and rooms created or renamed, room assignments.
+  Only changes made by a signed-in person are written (not the system's own), and only Admins can
+  read the log (as before). Entries can't be edited or deleted.
+
+  Safe to run more than once.
+*/
+
+-- A person's name for the log (kept in the entry, so it still reads after they leave).
+CREATE OR REPLACE FUNCTION audit_person(p_user uuid) RETURNS text
+LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT coalesce(
+    nullif(trim(coalesce(p.first_name, '') || ' ' || coalesce(p.last_name, '')), ''),
+    (SELECT u.email::text FROM auth.users u WHERE u.id = p_user),
+    'Someone')
+  FROM (SELECT 1) one LEFT JOIN profiles p ON p.user_id = p_user;
+$$;
+
+-- Write one entry, for changes a signed-in person makes.
+CREATE OR REPLACE FUNCTION audit_write(p_workspace uuid, p_action text, p_type text, p_id uuid, p_details jsonb)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF auth.uid() IS NULL OR p_workspace IS NULL OR current_setting('synapse.offboarding', true) = 'on' THEN RETURN; END IF;
+  INSERT INTO audit_logs (workspace_id, user_id, action, entity_type, entity_id, details)
+  VALUES (p_workspace, auth.uid(), p_action, p_type, p_id, coalesce(p_details, '{}'::jsonb));
+END $$;
+REVOKE ALL ON FUNCTION audit_write(uuid, text, text, uuid, jsonb) FROM PUBLIC, anon, authenticated;
+
+-- Entries name the person who really made them, and stay as written.
+CREATE OR REPLACE FUNCTION audit_logs_stamp() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF auth.uid() IS NOT NULL THEN NEW.user_id := auth.uid(); END IF;
+  NEW.details := coalesce(NEW.details, '{}'::jsonb) || jsonb_build_object('actor', CASE WHEN NEW.user_id IS NOT NULL THEN audit_person(NEW.user_id) END);
+  NEW.created_at := now();
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS audit_logs_stamp ON audit_logs;
+CREATE TRIGGER audit_logs_stamp BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION audit_logs_stamp();
+DROP POLICY IF EXISTS "audit_logs_update" ON audit_logs;
+DROP POLICY IF EXISTS "audit_logs_delete" ON audit_logs;
+
+-- ============================================================
+-- People
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION audit_members() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE r workspace_members%ROWTYPE;
+BEGIN
+  r := CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+  IF TG_OP = 'INSERT' THEN
+    PERFORM audit_write(r.workspace_id, 'member_joined', 'member', r.user_id, jsonb_build_object('name', audit_person(r.user_id), 'role', r.role));
+  ELSIF TG_OP = 'DELETE' THEN
+    PERFORM audit_write(r.workspace_id, 'member_removed', 'member', r.user_id, jsonb_build_object('name', audit_person(r.user_id)));
+  ELSE
+    IF NEW.role IS DISTINCT FROM OLD.role THEN
+      PERFORM audit_write(r.workspace_id, 'role_changed', 'member', r.user_id, jsonb_build_object('name', audit_person(r.user_id), 'from', OLD.role, 'to', NEW.role));
+    END IF;
+    IF NEW.access IS DISTINCT FROM OLD.access THEN
+      PERFORM audit_write(r.workspace_id, 'access_changed', 'member', r.user_id, jsonb_build_object('name', audit_person(r.user_id),
+        'from', to_jsonb(coalesce(OLD.access, default_member_access())), 'to', to_jsonb(coalesce(NEW.access, default_member_access()))));
+    END IF;
+    IF coalesce(NEW.status, 'active') IS DISTINCT FROM coalesce(OLD.status, 'active') THEN
+      PERFORM audit_write(r.workspace_id, CASE WHEN NEW.status = 'suspended' THEN 'member_suspended' ELSE 'member_reactivated' END, 'member', r.user_id,
+        jsonb_build_object('name', audit_person(r.user_id)));
+    END IF;
+  END IF;
+  RETURN NULL;
+END $$;
+DROP TRIGGER IF EXISTS audit_members ON workspace_members;
+CREATE TRIGGER audit_members AFTER INSERT OR UPDATE OR DELETE ON workspace_members FOR EACH ROW EXECUTE FUNCTION audit_members();
+
+CREATE OR REPLACE FUNCTION audit_invitations() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    PERFORM audit_write(NEW.workspace_id, 'member_invited', 'invitation', NEW.id, jsonb_build_object('email', NEW.email, 'role', NEW.role));
+  ELSIF NEW.status = 'revoked' AND OLD.status IS DISTINCT FROM 'revoked' THEN
+    PERFORM audit_write(NEW.workspace_id, 'invite_cancelled', 'invitation', NEW.id, jsonb_build_object('email', NEW.email));
+  END IF;
+  RETURN NULL;
+END $$;
+DROP TRIGGER IF EXISTS audit_invitations ON team_invitations;
+CREATE TRIGGER audit_invitations AFTER INSERT OR UPDATE ON team_invitations FOR EACH ROW EXECUTE FUNCTION audit_invitations();
+
+-- ============================================================
+-- Deletions, publishing, renames
+-- ============================================================
+
+/** The name a row goes by, for each audited table. */
+CREATE OR REPLACE FUNCTION audit_label(p_table text, p_row jsonb) RETURNS text LANGUAGE sql IMMUTABLE AS $$
+  SELECT CASE p_table
+    WHEN 'contacts' THEN coalesce(nullif(trim(coalesce(p_row->>'first_name', '') || ' ' || coalesce(p_row->>'last_name', '')), ''), p_row->>'email', 'a contact')
+    WHEN 'events' THEN p_row->>'title'
+    WHEN 'webhooks' THEN p_row->>'url'
+    WHEN 'integrations' THEN p_row->>'provider'
+    WHEN 'email_accounts' THEN p_row->>'email'
+    ELSE p_row->>'name'
+  END;
+$$;
+
+CREATE OR REPLACE FUNCTION audit_things() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  kind text := CASE TG_TABLE_NAME
+    WHEN 'contacts' THEN 'contact' WHEN 'forms' THEN 'form' WHEN 'workflows' THEN 'workflow' WHEN 'calendars' THEN 'calendar'
+    WHEN 'events' THEN 'event' WHEN 'company_rooms' THEN 'room' WHEN 'departments' THEN 'department' WHEN 'chat_channels' THEN 'channel'
+    WHEN 'webhooks' THEN 'webhook' WHEN 'integrations' THEN 'integration' WHEN 'email_accounts' THEN 'email_account' ELSE TG_TABLE_NAME END;
+  o jsonb := CASE WHEN TG_OP <> 'INSERT' THEN to_jsonb(OLD) END;
+  n jsonb := CASE WHEN TG_OP <> 'DELETE' THEN to_jsonb(NEW) END;
+  r jsonb := coalesce(n, o);
+  ws uuid := (r->>'workspace_id')::uuid;
+  id uuid := (r->>'id')::uuid;
+  label text := audit_label(TG_TABLE_NAME, r);
+BEGIN
+  -- Direct messages aren't the company's business.
+  IF TG_TABLE_NAME = 'chat_channels' AND r->>'kind' = 'dm' THEN RETURN NULL; END IF;
+
+  IF TG_OP = 'DELETE' THEN
+    PERFORM audit_write(ws, CASE kind
+      WHEN 'webhook' THEN 'webhook_removed' WHEN 'integration' THEN 'integration_disconnected'
+      WHEN 'email_account' THEN 'email_disconnected' ELSE kind || '_deleted' END, kind, id, jsonb_build_object('name', label));
+  ELSIF TG_OP = 'INSERT' THEN
+    IF kind IN ('department', 'room', 'webhook') THEN
+      PERFORM audit_write(ws, CASE kind WHEN 'webhook' THEN 'webhook_added' ELSE kind || '_created' END, kind, id, jsonb_build_object('name', label));
+    ELSIF kind = 'integration' THEN
+      PERFORM audit_write(ws, 'integration_connected', kind, id, jsonb_build_object('name', label));
+    ELSIF kind = 'email_account' THEN
+      PERFORM audit_write(ws, 'email_connected', kind, id, jsonb_build_object('name', label));
+    END IF;
+  ELSE
+    IF kind = 'workflow' AND (o->>'status') IS DISTINCT FROM (n->>'status') THEN
+      IF n->>'status' = 'active' THEN PERFORM audit_write(ws, 'workflow_published', kind, id, jsonb_build_object('name', label));
+      ELSIF o->>'status' = 'active' THEN PERFORM audit_write(ws, 'workflow_paused', kind, id, jsonb_build_object('name', label, 'to', n->>'status'));
+      END IF;
+    ELSIF kind = 'form' AND (o->>'status') IS DISTINCT FROM (n->>'status') THEN
+      IF n->>'status' = 'published' THEN PERFORM audit_write(ws, 'form_published', kind, id, jsonb_build_object('name', label));
+      ELSIF o->>'status' = 'published' THEN PERFORM audit_write(ws, 'form_unpublished', kind, id, jsonb_build_object('name', label, 'to', n->>'status'));
+      END IF;
+    ELSIF kind IN ('department', 'room', 'channel', 'calendar', 'form', 'workflow') AND (o->>'name') IS DISTINCT FROM (n->>'name') THEN
+      PERFORM audit_write(ws, kind || '_renamed', kind, id, jsonb_build_object('name', n->>'name', 'from', o->>'name'));
+    ELSIF kind = 'webhook' AND (o->'url' IS DISTINCT FROM n->'url' OR o->'events' IS DISTINCT FROM n->'events' OR o->'is_active' IS DISTINCT FROM n->'is_active' OR o->'secret' IS DISTINCT FROM n->'secret') THEN
+      PERFORM audit_write(ws, 'webhook_changed', kind, id, jsonb_build_object('name', label));
+    END IF;
+  END IF;
+  RETURN NULL;
+END $$;
+
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['contacts', 'forms', 'workflows', 'calendars', 'events', 'company_rooms', 'departments', 'chat_channels',
+                           'webhooks', 'integrations', 'email_accounts'] LOOP
+    IF to_regclass('public.' || t) IS NOT NULL THEN
+      EXECUTE format('DROP TRIGGER IF EXISTS audit_things ON %I', t);
+      IF t IN ('contacts', 'events') THEN
+        EXECUTE format('CREATE TRIGGER audit_things AFTER DELETE ON %I FOR EACH ROW EXECUTE FUNCTION audit_things()', t);
+      ELSE
+        EXECUTE format('CREATE TRIGGER audit_things AFTER INSERT OR UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION audit_things()', t);
+      END IF;
+    END IF;
+  END LOOP;
+END $$;
+
+-- ============================================================
+-- Settings and room assignments
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION audit_settings() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE changed text[];
+BEGIN
+  IF TG_TABLE_NAME = 'workspaces' THEN
+    SELECT array_agg(k ORDER BY k) INTO changed FROM jsonb_each(to_jsonb(NEW)) e(k, v)
+    WHERE k IN ('name', 'slug', 'logo_url', 'timezone', 'default_booking_settings') AND v IS DISTINCT FROM to_jsonb(OLD)->k;
+    IF changed IS NOT NULL THEN
+      PERFORM audit_write(NEW.id, 'settings_changed', 'settings', NEW.id, jsonb_build_object('area', 'company', 'fields', to_jsonb(changed)));
+    END IF;
+  ELSIF TG_OP = 'INSERT' OR NEW.settings IS DISTINCT FROM OLD.settings THEN
+    PERFORM audit_write(NEW.workspace_id, 'settings_changed', 'settings', NEW.id, jsonb_build_object('area', NEW.category));
+  END IF;
+  RETURN NULL;
+END $$;
+DROP TRIGGER IF EXISTS audit_settings ON workspaces;
+CREATE TRIGGER audit_settings AFTER UPDATE ON workspaces FOR EACH ROW EXECUTE FUNCTION audit_settings();
+DROP TRIGGER IF EXISTS audit_settings ON workspace_settings;
+CREATE TRIGGER audit_settings AFTER INSERT OR UPDATE ON workspace_settings FOR EACH ROW EXECUTE FUNCTION audit_settings();
+
+CREATE OR REPLACE FUNCTION audit_room_assignees() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE r company_room_assignees%ROWTYPE;
+BEGIN
+  r := CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+  PERFORM audit_write(r.workspace_id, CASE TG_OP WHEN 'DELETE' THEN 'room_unassigned' ELSE 'room_assigned' END, 'room', r.room_id,
+    jsonb_build_object('name', (SELECT name FROM company_rooms WHERE id = r.room_id), 'person', audit_person(r.user_id)));
+  RETURN NULL;
+END $$;
+DROP TRIGGER IF EXISTS audit_room_assignees ON company_room_assignees;
+CREATE TRIGGER audit_room_assignees AFTER INSERT OR DELETE ON company_room_assignees FOR EACH ROW EXECUTE FUNCTION audit_room_assignees();
+
+-- ============================================================
+-- Suspend / remove writes one entry of its own (with what was handed over)
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION offboard_member(p_member uuid, p_action text, p_hand_to uuid DEFAULT NULL)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  ws uuid; uid uuid; who_role text; ws_owner uuid;
+  moved jsonb := '{}'::jsonb; n int;
+BEGIN
+  IF p_action NOT IN ('suspend', 'remove') THEN RAISE EXCEPTION 'Unknown action'; END IF;
+  SELECT workspace_id, user_id, role INTO ws, uid, who_role FROM workspace_members WHERE id = p_member;
+  IF ws IS NULL THEN RAISE EXCEPTION 'That person is not in this account'; END IF;
+  IF NOT is_workspace_admin(ws) THEN RAISE EXCEPTION 'Only admins can suspend or remove people'; END IF;
+  SELECT owner_id INTO ws_owner FROM workspaces WHERE id = ws;
+  IF uid = ws_owner OR who_role = 'owner' THEN RAISE EXCEPTION 'The account owner cannot be suspended or removed'; END IF;
+  IF uid = auth.uid() THEN RAISE EXCEPTION 'You cannot suspend or remove yourself'; END IF;
+  IF p_action = 'remove' AND p_hand_to IS NULL THEN RAISE EXCEPTION 'Choose who takes over their work'; END IF;
+  -- This writes one audit entry of its own (below); the step-by-step changes aren't logged again.
+  PERFORM set_config('synapse.offboarding', 'on', true);
+  IF p_hand_to IS NOT NULL AND (p_hand_to = uid OR NOT (p_hand_to = ws_owner OR EXISTS (
+       SELECT 1 FROM workspace_members m WHERE m.workspace_id = ws AND m.user_id = p_hand_to AND coalesce(m.status, 'active') = 'active'))) THEN
+    RAISE EXCEPTION 'The person taking over must be active in this account';
+  END IF;
+
+  -- Hand-over
+  IF p_hand_to IS NOT NULL THEN
+    UPDATE contacts SET owner_id = p_hand_to WHERE workspace_id = ws AND owner_id = uid;
+    GET DIAGNOSTICS n = ROW_COUNT; moved := moved || jsonb_build_object('contacts', n);
+
+    UPDATE tasks SET assigned_to = p_hand_to, updated_at = now() WHERE workspace_id = ws AND assigned_to = uid AND completed_at IS NULL;
+    GET DIAGNOSTICS n = ROW_COUNT; moved := moved || jsonb_build_object('tasks', n);
+
+    UPDATE calendars SET owner_id = p_hand_to WHERE workspace_id = ws AND owner_id = uid;
+    GET DIAGNOSTICS n = ROW_COUNT; moved := moved || jsonb_build_object('calendars', n);
+    INSERT INTO calendar_hosts (calendar_id, user_id, priority, weight, is_primary)
+      SELECT h.calendar_id, p_hand_to, h.priority, h.weight, h.is_primary
+      FROM calendar_hosts h JOIN calendars c ON c.id = h.calendar_id
+      WHERE c.workspace_id = ws AND h.user_id = uid
+      ON CONFLICT (calendar_id, user_id) DO NOTHING;
+    DELETE FROM calendar_hosts h USING calendars c WHERE c.id = h.calendar_id AND c.workspace_id = ws AND h.user_id = uid;
+
+    UPDATE appointments SET host_id = CASE WHEN host_id = uid THEN p_hand_to ELSE host_id END,
+                            owner_id = CASE WHEN owner_id = uid THEN p_hand_to ELSE owner_id END
+      WHERE workspace_id = ws AND (host_id = uid OR owner_id = uid) AND start_time > now() AND status IN ('confirmed', 'pending');
+    GET DIAGNOSTICS n = ROW_COUNT; moved := moved || jsonb_build_object('bookings', n);
+
+    UPDATE booking_links SET owner_id = p_hand_to WHERE workspace_id = ws AND owner_id = uid;
+    UPDATE calendar_groups SET owner_id = p_hand_to WHERE workspace_id = ws AND owner_id = uid;
+
+    UPDATE forms SET owner_id = p_hand_to WHERE workspace_id = ws AND owner_id = uid;
+    GET DIAGNOSTICS n = ROW_COUNT; moved := moved || jsonb_build_object('forms', n);
+    UPDATE form_submissions SET owner_id = p_hand_to WHERE workspace_id = ws AND owner_id = uid;
+
+    UPDATE events SET created_by = p_hand_to WHERE workspace_id = ws AND created_by = uid;
+    GET DIAGNOSTICS n = ROW_COUNT; moved := moved || jsonb_build_object('events', n);
+
+    UPDATE meetings SET host_id = p_hand_to WHERE workspace_id = ws AND host_id = uid AND ended_at IS NULL;
+    GET DIAGNOSTICS n = ROW_COUNT; moved := moved || jsonb_build_object('meetings', n);
+
+    INSERT INTO company_room_assignees (room_id, workspace_id, user_id, assigned_by)
+      SELECT a.room_id, ws, p_hand_to, auth.uid() FROM company_room_assignees a WHERE a.workspace_id = ws AND a.user_id = uid
+      ON CONFLICT (room_id, user_id) DO NOTHING;
+    GET DIAGNOSTICS n = ROW_COUNT; moved := moved || jsonb_build_object('rooms', n);
+
+    INSERT INTO chat_members (channel_id, workspace_id, user_id, role)
+      SELECT cm.channel_id, ws, p_hand_to, 'owner' FROM chat_members cm WHERE cm.workspace_id = ws AND cm.user_id = uid AND cm.role = 'owner'
+      ON CONFLICT (channel_id, user_id) DO UPDATE SET role = 'owner';
+  END IF;
+
+  IF p_action = 'suspend' THEN
+    UPDATE workspace_members SET status = 'suspended' WHERE id = p_member;
+  ELSE
+    DELETE FROM chat_members WHERE workspace_id = ws AND user_id = uid;
+    DELETE FROM department_members WHERE workspace_id = ws AND user_id = uid;
+    DELETE FROM company_room_assignees WHERE workspace_id = ws AND user_id = uid;
+    DELETE FROM space_members sm USING spaces s WHERE s.id = sm.space_id AND s.workspace_id = ws AND sm.user_id = uid;
+    DELETE FROM member_status WHERE workspace_id = ws AND user_id = uid;
+    DELETE FROM workspace_members WHERE id = p_member;
+  END IF;
+
+  INSERT INTO audit_logs (workspace_id, user_id, action, entity_type, entity_id, details)
+  VALUES (ws, auth.uid(), CASE p_action WHEN 'suspend' THEN 'member_suspended' ELSE 'member_removed' END, 'member', uid,
+          jsonb_build_object('handed_to', p_hand_to, 'moved', moved, 'name', audit_person(uid),
+                             'handed_to_name', CASE WHEN p_hand_to IS NOT NULL THEN audit_person(p_hand_to) END));
+  PERFORM set_config('synapse.offboarding', 'off', true);
+
+  -- Sign them out everywhere, unless they still belong to another account.
+  IF NOT EXISTS (SELECT 1 FROM workspace_members m WHERE m.user_id = uid AND m.workspace_id <> ws AND coalesce(m.status, 'active') = 'active')
+     AND NOT EXISTS (SELECT 1 FROM workspaces w WHERE w.owner_id = uid AND w.id <> ws)
+     AND to_regclass('auth.sessions') IS NOT NULL THEN
+    BEGIN
+      EXECUTE 'DELETE FROM auth.sessions WHERE user_id = $1' USING uid;
+    EXCEPTION WHEN insufficient_privilege THEN NULL;  -- the app and the checks above still lock them out
+    END;
+  END IF;
+
+  RETURN moved;
+END $$;
+REVOKE ALL ON FUNCTION offboard_member(uuid, text, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION offboard_member(uuid, text, uuid) TO authenticated;
+
+
+-- ============ 20261029150000_department_channels.sql ============
+/*
+  # A channel for every department, kept in step
+
+  - Each department has its own private channel (#sales, #customer-success…), made the moment the
+    department is, and for every department that already exists.
+  - Its members are the department's people: added to the department, they're in the channel;
+    taken out, they leave it. (Suspended people are added back when they're reactivated.)
+  - Renaming the department renames the channel. Deleting the department archives the channel, so
+    its history is kept.
+  - chat_channels.is_department marks these channels (one per department).
+
+  Needs 20261016090000_conversations.sql and 20261029120000_audit_log.sql. Safe to run more than once.
+*/
+
+ALTER TABLE chat_channels ADD COLUMN IF NOT EXISTS is_department boolean NOT NULL DEFAULT false;
+
+-- Changes the system makes to follow another change aren't logged a second time.
+CREATE OR REPLACE FUNCTION audit_write(p_workspace uuid, p_action text, p_type text, p_id uuid, p_details jsonb)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF auth.uid() IS NULL OR p_workspace IS NULL OR current_setting('synapse.offboarding', true) = 'on'
+     OR current_setting('synapse.audit_quiet', true) = 'on' THEN RETURN; END IF;
+  INSERT INTO audit_logs (workspace_id, user_id, action, entity_type, entity_id, details)
+  VALUES (p_workspace, auth.uid(), p_action, p_type, p_id, coalesce(p_details, '{}'::jsonb));
+END $$;
+REVOKE ALL ON FUNCTION audit_write(uuid, text, text, uuid, jsonb) FROM PUBLIC, anon, authenticated;
+CREATE UNIQUE INDEX IF NOT EXISTS chat_channels_department_key ON chat_channels(department_id) WHERE is_department AND archived_at IS NULL;
+
+/** A free channel name from a department name: "Customer Success" -> customer-success (or -2, -3…). */
+CREATE OR REPLACE FUNCTION department_channel_name(p_workspace uuid, p_name text, p_except uuid DEFAULT NULL)
+RETURNS text LANGUAGE plpgsql STABLE SET search_path = public AS $$
+DECLARE base text; candidate text; n int := 1;
+BEGIN
+  base := left(trim(both '-' FROM regexp_replace(lower(coalesce(p_name, '')), '[^a-z0-9_]+', '-', 'g')), 70);
+  IF base = '' THEN base := 'department'; END IF;
+  candidate := base;
+  WHILE EXISTS (SELECT 1 FROM chat_channels WHERE workspace_id = p_workspace AND kind = 'channel' AND name = candidate
+                  AND id IS DISTINCT FROM p_except) LOOP
+    n := n + 1;
+    candidate := base || '-' || n;
+  END LOOP;
+  RETURN candidate;
+END $$;
+
+/** The department's channel, made if it has none, with its people in it. Returns the channel. */
+CREATE OR REPLACE FUNCTION ensure_department_channel(p_department uuid)
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE d departments%ROWTYPE; cid uuid;
+BEGIN
+  SELECT * INTO d FROM departments WHERE id = p_department;
+  IF d.id IS NULL THEN RETURN NULL; END IF;
+  SELECT id INTO cid FROM chat_channels WHERE department_id = d.id AND is_department AND archived_at IS NULL;
+  IF cid IS NULL THEN
+    INSERT INTO chat_channels (workspace_id, kind, name, description, is_private, department_id, is_department, created_by)
+    VALUES (d.workspace_id, 'channel', department_channel_name(d.workspace_id, d.name),
+            left('Everyone in ' || d.name || '. People join and leave as they join and leave the department.', 500),
+            true, d.id, true, d.created_by)
+    RETURNING id INTO cid;
+  END IF;
+  INSERT INTO chat_members (channel_id, workspace_id, user_id, role)
+    SELECT cid, d.workspace_id, dm.user_id, 'member'
+    FROM department_members dm
+    JOIN workspace_members m ON m.workspace_id = d.workspace_id AND m.user_id = dm.user_id AND coalesce(m.status, 'active') = 'active'
+    WHERE dm.department_id = d.id
+  ON CONFLICT (channel_id, user_id) DO NOTHING;
+  RETURN cid;
+END $$;
+REVOKE ALL ON FUNCTION ensure_department_channel(uuid) FROM PUBLIC, anon, authenticated;
+
+-- Department made, renamed or deleted.
+CREATE OR REPLACE FUNCTION department_channel_sync() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE cid uuid;
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    PERFORM ensure_department_channel(NEW.id);
+  ELSIF TG_OP = 'UPDATE' THEN
+    IF NEW.name IS DISTINCT FROM OLD.name THEN
+      SELECT id INTO cid FROM chat_channels WHERE department_id = NEW.id AND is_department AND archived_at IS NULL;
+      IF cid IS NULL THEN
+        PERFORM ensure_department_channel(NEW.id);
+      ELSE
+        -- The department's rename is in the audit log already; the channel follows quietly.
+        PERFORM set_config('synapse.audit_quiet', 'on', true);
+        UPDATE chat_channels SET name = department_channel_name(NEW.workspace_id, NEW.name, cid),
+          description = left('Everyone in ' || NEW.name || '. People join and leave as they join and leave the department.', 500)
+        WHERE id = cid;
+        PERFORM set_config('synapse.audit_quiet', 'off', true);
+      END IF;
+    END IF;
+  ELSE
+    UPDATE chat_channels SET archived_at = now() WHERE department_id = OLD.id AND is_department AND archived_at IS NULL;
+    RETURN OLD;  -- let the delete go ahead
+  END IF;
+  RETURN NULL;
+END $$;
+DROP TRIGGER IF EXISTS department_channel_sync ON departments;
+CREATE TRIGGER department_channel_sync AFTER INSERT OR UPDATE ON departments FOR EACH ROW EXECUTE FUNCTION department_channel_sync();
+-- Before the delete, while the channel still points at the department.
+DROP TRIGGER IF EXISTS department_channel_archive ON departments;
+CREATE TRIGGER department_channel_archive BEFORE DELETE ON departments FOR EACH ROW EXECUTE FUNCTION department_channel_sync();
+
+-- Someone joins or leaves a department.
+CREATE OR REPLACE FUNCTION department_member_channel_sync() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE cid uuid;
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    cid := ensure_department_channel(NEW.department_id);
+  ELSE
+    SELECT id INTO cid FROM chat_channels WHERE department_id = OLD.department_id AND is_department AND archived_at IS NULL;
+    IF cid IS NOT NULL THEN
+      DELETE FROM chat_members WHERE channel_id = cid AND user_id = OLD.user_id;
+    END IF;
+  END IF;
+  RETURN NULL;
+END $$;
+DROP TRIGGER IF EXISTS department_member_channel_sync ON department_members;
+CREATE TRIGGER department_member_channel_sync AFTER INSERT OR DELETE ON department_members FOR EACH ROW EXECUTE FUNCTION department_member_channel_sync();
+
+-- Reactivated: back into their departments' channels.
+CREATE OR REPLACE FUNCTION member_department_channels_sync() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE dep uuid;
+BEGIN
+  IF coalesce(NEW.status, 'active') = 'active' AND coalesce(OLD.status, 'active') <> 'active' THEN
+    FOR dep IN SELECT department_id FROM department_members WHERE workspace_id = NEW.workspace_id AND user_id = NEW.user_id LOOP
+      PERFORM ensure_department_channel(dep);
+    END LOOP;
+  END IF;
+  RETURN NULL;
+END $$;
+DROP TRIGGER IF EXISTS member_department_channels_sync ON workspace_members;
+CREATE TRIGGER member_department_channels_sync AFTER UPDATE ON workspace_members FOR EACH ROW EXECUTE FUNCTION member_department_channels_sync();
+
+-- Every department that already exists gets its channel now.
+DO $$
+DECLARE dep uuid;
+BEGIN
+  FOR dep IN SELECT id FROM departments LOOP
+    PERFORM ensure_department_channel(dep);
+  END LOOP;
+END $$;
+
+
+-- ============ 20261030090000_workflow_new_actions.sql ============
+/*
+  # Workflows: three new actions
+
+  - Post to a channel: a message in a Conversations channel, from "Workflow: <name>".
+  - Create a meeting link: a real SYNAPSE meeting that anyone with the link can join; later steps
+    use it as {{meeting.link}} (in an email, a channel post or a notification).
+  - Notify a department: a notification under the bell for everyone in the department, and a post
+    in the department's channel.
+
+  New merge fields for any step: {{contact.link}} (the contact in SYNAPSE), {{meeting.link}} and
+  {{meeting.code}}, {{form.name}} and {{form.answers}} (when a form or survey started it).
+
+  Needs 20261010090000_workflow_engine.sql, 20261016090000_conversations.sql and
+  20261029150000_department_channels.sql. Safe to run more than once.
+*/
+
+-- The address links point to (the public app, not a Vercel preview).
+INSERT INTO wf_private.settings(key, value) VALUES ('app_url', 'https://synapse-dj3a.vercel.app') ON CONFLICT (key) DO NOTHING;
+CREATE OR REPLACE FUNCTION wf_app_url() RETURNS text LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT rtrim(coalesce((SELECT value FROM wf_private.settings WHERE key = 'app_url'), 'https://synapse-dj3a.vercel.app'), '/');
+$$;
+
+-- A form submission's answers as "Label: answer" lines, in the form's order.
+CREATE OR REPLACE FUNCTION wf_form_answers(p_submission uuid) RETURNS text LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE s form_submissions; def jsonb; out text;
+BEGIN
+  SELECT * INTO s FROM form_submissions WHERE id = p_submission;
+  IF NOT FOUND THEN RETURN ''; END IF;
+  SELECT CASE WHEN jsonb_typeof(f.definition) = 'string' THEN (f.definition #>> '{}')::jsonb ELSE f.definition END INTO def FROM forms f WHERE f.id = s.form_id;
+  SELECT string_agg(coalesce(nullif(el->'field'->>'label', ''), a.key) || ': ' || a.value, E'\n'
+                    ORDER BY coalesce((el->>'sortOrder')::int, 999), a.key)
+    INTO out
+  FROM jsonb_each_text(coalesce(s.answers, '{}'::jsonb)) a
+  LEFT JOIN LATERAL (SELECT e.value AS el FROM jsonb_each(coalesce(def->'elements', '{}'::jsonb)) e WHERE e.value->'field'->>'fieldId' = a.key LIMIT 1) x ON true;
+  RETURN coalesce(out, '');
+EXCEPTION WHEN OTHERS THEN RETURN '';
+END $$;
+
+-- A message from a workflow in a channel.
+CREATE OR REPLACE FUNCTION wf_post(p_channel uuid, p_wf workflows, p_run wf_runs, p_body text) RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  INSERT INTO chat_messages(channel_id, workspace_id, user_id, body, source, sender_name, meta)
+  VALUES (p_channel, p_wf.workspace_id, NULL, left(coalesce(nullif(btrim(p_body), ''), p_wf.name), 8000), 'system', left('Workflow: ' || p_wf.name, 80),
+          jsonb_build_object('workflow_id', p_wf.id, 'run_id', p_run.id, 'contact_id', p_run.contact_id));
+$$;
+
+-- A new meeting with a fresh join code (like FOCU-358) and an invite link anyone can use.
+CREATE OR REPLACE FUNCTION wf_new_meeting(p_workspace uuid, p_host uuid, p_title text, p_minutes int) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE letters text; code text; mid uuid; i int;
+BEGIN
+  FOR i IN 1..10 LOOP
+    letters := left(regexp_replace(upper(p_title), '[^A-Z]', '', 'g'), 4);
+    WHILE length(letters) < 4 LOOP letters := letters || substr('ABCDEFGHJKLMNPQRSTUVWXYZ', 1 + floor(random() * 24)::int, 1); END LOOP;
+    code := letters || '-' || lpad(floor(random() * 1000)::int::text, 3, '0');
+    BEGIN
+      INSERT INTO meetings(workspace_id, host_id, title, code, kind, duration_min) VALUES (p_workspace, p_host, p_title, code, 'instant', p_minutes) RETURNING id INTO mid;
+      RETURN mid;
+    EXCEPTION WHEN unique_violation THEN
+      letters := ''; -- that code is taken: try random letters
+      p_title := '';
+    END;
+  END LOOP;
+  RAISE EXCEPTION 'Could not make a meeting code';
+END $$;
+
+-- {{contact.first_name}} etc., and the new {{contact.link}}, {{meeting.*}} and {{form.*}}.
+CREATE OR REPLACE FUNCTION wf_merge(p_text text, p_contact uuid, p_ctx jsonb DEFAULT '{}'::jsonb) RETURNS text LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE c record; s text := coalesce(p_text, ''); full_name text;
+BEGIN
+  SELECT * INTO c FROM contacts WHERE id = p_contact;
+  IF FOUND THEN
+    full_name := btrim(concat_ws(' ', c.first_name, c.last_name));
+    s := replace(s, '{{contact.first_name}}', coalesce(c.first_name, ''));
+    s := replace(s, '{{contact.last_name}}', coalesce(c.last_name, ''));
+    s := replace(s, '{{contact.name}}', full_name);
+    s := replace(s, '{{contact.email}}', coalesce(c.email, ''));
+    s := replace(s, '{{contact.phone}}', coalesce(c.phone, ''));
+    s := replace(s, '{{contact.company}}', coalesce(c.company, ''));
+    s := replace(s, '{{contact.link}}', wf_app_url() || '/contacts/' || c.id);
+    s := replace(s, '{{first_name}}', coalesce(c.first_name, ''));
+    s := replace(s, '{{last_name}}', coalesce(c.last_name, ''));
+    s := replace(s, '{{email}}', coalesce(c.email, ''));
+    s := replace(s, '{{phone}}', coalesce(c.phone, ''));
+    s := replace(s, '{{company}}', coalesce(c.company, ''));
+  END IF;
+  s := replace(s, '{{appointment.title}}', coalesce(p_ctx->>'title', ''));
+  s := replace(s, '{{appointment.start_time}}', coalesce(p_ctx->>'start_time', ''));
+  -- From a "Create meeting link" step earlier in the workflow.
+  s := replace(s, '{{meeting.link}}', coalesce(p_ctx->>'meeting_link', ''));
+  s := replace(s, '{{meeting.code}}', coalesce(p_ctx->>'meeting_code', ''));
+  -- When a form or survey started the workflow.
+  IF position('{{form.' IN s) > 0 THEN
+    s := replace(s, '{{form.name}}', coalesce((SELECT f.name FROM forms f WHERE f.id = nullif(p_ctx->>'form_id', '')::uuid), ''));
+    s := replace(s, '{{form.answers}}', wf_form_answers(nullif(p_ctx->>'submission_id', '')::uuid));
+  END IF;
+  RETURN s;
+END $$;
+
+-- Runs one step. Returns the branch to follow: 'next', 'yes', 'no', 'wait' (paused), 'end' or 'fail'.
+CREATE OR REPLACE FUNCTION wf_exec_step(p_run wf_runs, p_wf workflows, p_id text, p_step jsonb) RETURNS text
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  cfg jsonb := coalesce(p_step->'config', '{}'::jsonb);
+  c record; t text; n int; secs bigint; until timestamptz; tz text; acct record; uids uuid[]; uid uuid;
+  subj text; body text; ok boolean; other workflows; target uuid; dnd text[]; fld text;
+  ch chat_channels; mt meetings; dep departments;
+BEGIN
+  SELECT * INTO c FROM contacts WHERE id = p_run.contact_id;
+  IF NOT FOUND THEN PERFORM wf_log(p_run, p_step, p_id, 'failed', 'The contact no longer exists.'); RETURN 'fail'; END IF;
+  PERFORM set_config('synapse.wf_depth', (p_run.depth + 1)::text, true);
+
+  CASE p_step->>'type'
+  WHEN 'add_tag' THEN
+    FOR t IN SELECT jsonb_array_elements_text(coalesce(cfg->'tags', '[]')) LOOP
+      INSERT INTO contact_tags(contact_id, tag_id) VALUES (c.id, wf_tag_id(c.workspace_id, t)) ON CONFLICT DO NOTHING;
+    END LOOP;
+    PERFORM wf_log(p_run, p_step, p_id, 'success', 'Added: ' || coalesce((SELECT string_agg(x, ', ') FROM jsonb_array_elements_text(coalesce(cfg->'tags', '[]')) x), ''));
+  WHEN 'remove_tag' THEN
+    DELETE FROM contact_tags ct USING tags tg WHERE ct.contact_id = c.id AND tg.id = ct.tag_id AND lower(tg.name) = ANY(wf_lower_list(cfg->'tags'));
+    PERFORM wf_log(p_run, p_step, p_id, 'success', 'Removed: ' || coalesce((SELECT string_agg(x, ', ') FROM jsonb_array_elements_text(coalesce(cfg->'tags', '[]')) x), ''));
+  WHEN 'update_field' THEN
+    fld := cfg->>'field';
+    IF fld NOT IN ('first_name','last_name','email','phone','company','job_title','contact_type','timezone','date_of_birth','source') THEN
+      PERFORM wf_log(p_run, p_step, p_id, 'failed', 'That field can''t be changed by a workflow.'); RETURN 'fail';
+    END IF;
+    BEGIN
+      IF fld = 'date_of_birth' THEN
+        UPDATE contacts SET date_of_birth = nullif(cfg->>'value', '')::date, updated_at = now() WHERE id = c.id;
+      ELSE
+        EXECUTE format('UPDATE contacts SET %I = $1, updated_at = now() WHERE id = $2', fld)
+        USING nullif(wf_merge(cfg->>'value', c.id, p_run.context), ''), c.id;
+      END IF;
+    EXCEPTION WHEN OTHERS THEN
+      PERFORM wf_log(p_run, p_step, p_id, 'failed', SQLERRM); RETURN 'fail';
+    END;
+    PERFORM wf_log(p_run, p_step, p_id, 'success', fld || ' set to "' || coalesce(cfg->>'value', '') || '"');
+  WHEN 'assign_user' THEN
+    UPDATE contacts SET owner_id = nullif(cfg->>'user_id', '')::uuid, updated_at = now() WHERE id = c.id;
+    PERFORM wf_log(p_run, p_step, p_id, 'success', 'Assigned');
+  WHEN 'remove_assigned_user' THEN
+    UPDATE contacts SET owner_id = NULL, updated_at = now() WHERE id = c.id;
+    PERFORM wf_log(p_run, p_step, p_id, 'success', 'Unassigned');
+  WHEN 'set_dnd' THEN
+    IF coalesce(cfg->>'scope', 'all') = 'all' THEN
+      UPDATE contacts SET dnd_all = (cfg->>'mode' = 'enable'), updated_at = now() WHERE id = c.id;
+    ELSE
+      dnd := ARRAY(SELECT x FROM jsonb_array_elements_text(coalesce(cfg->'channels', '[]')) x WHERE x IN ('email','sms','calls'));
+      IF cfg->>'mode' = 'enable' THEN
+        UPDATE contacts SET dnd_channels = ARRAY(SELECT DISTINCT unnest(dnd_channels || dnd)), updated_at = now() WHERE id = c.id;
+      ELSE
+        UPDATE contacts SET dnd_channels = ARRAY(SELECT x FROM unnest(dnd_channels) x WHERE NOT x = ANY(dnd)), updated_at = now() WHERE id = c.id;
+      END IF;
+    END IF;
+    PERFORM wf_log(p_run, p_step, p_id, 'success', CASE WHEN cfg->>'mode' = 'enable' THEN 'Do Not Disturb on' ELSE 'Do Not Disturb off' END);
+  WHEN 'add_note' THEN
+    INSERT INTO notes(workspace_id, contact_id, content) VALUES (c.workspace_id, c.id, coalesce(nullif(wf_merge(cfg->>'text', c.id, p_run.context), ''), '(empty note)'));
+    PERFORM wf_log(p_run, p_step, p_id, 'success', 'Note added');
+  WHEN 'add_task' THEN
+    INSERT INTO tasks(workspace_id, contact_id, title, body, due_at, assigned_to)
+    VALUES (c.workspace_id, c.id, left(coalesce(nullif(wf_merge(cfg->>'title', c.id, p_run.context), ''), 'Follow up'), 200), wf_merge(cfg->>'body', c.id, p_run.context),
+      CASE WHEN cfg->>'due_in_days' ~ '^\d+$' THEN now() + make_interval(days => (cfg->>'due_in_days')::int) END,
+      CASE WHEN cfg->>'assign' = 'owner' THEN c.owner_id ELSE nullif(cfg->>'assign', '')::uuid END);
+    PERFORM wf_log(p_run, p_step, p_id, 'success', 'Task added');
+  WHEN 'notify' THEN
+    IF cfg->>'to' = 'users' THEN uids := ARRAY(SELECT x::uuid FROM jsonb_array_elements_text(coalesce(cfg->'users', '[]')) x);
+    ELSIF cfg->>'to' = 'everyone' THEN uids := ARRAY(SELECT user_id FROM workspace_members WHERE workspace_id = c.workspace_id AND coalesce(status, 'active') = 'active');
+    ELSE uids := ARRAY[c.owner_id]; END IF;
+    uids := ARRAY(SELECT DISTINCT x FROM unnest(uids) x WHERE x IS NOT NULL);
+    IF cardinality(uids) = 0 THEN PERFORM wf_log(p_run, p_step, p_id, 'skipped', 'Nobody to notify (the contact has no assigned user).'); RETURN 'next'; END IF;
+    FOREACH uid IN ARRAY uids LOOP
+      INSERT INTO team_notifications(workspace_id, user_id, title, body, link)
+      VALUES (c.workspace_id, uid, left(coalesce(nullif(wf_merge(cfg->>'title', c.id, p_run.context), ''), p_wf.name), 200), wf_merge(cfg->>'body', c.id, p_run.context), '/contacts/' || c.id);
+    END LOOP;
+    PERFORM wf_log(p_run, p_step, p_id, 'success', 'Notified ' || cardinality(uids) || ' ' || CASE WHEN cardinality(uids) = 1 THEN 'person' ELSE 'people' END);
+  WHEN 'send_email' THEN
+    IF coalesce(c.email, '') = '' THEN PERFORM wf_log(p_run, p_step, p_id, 'skipped', 'The contact has no email address.'); RETURN 'next'; END IF;
+    IF c.dnd_all OR 'email' = ANY(c.dnd_channels) OR NOT coalesce(c.email_opt_in, true) THEN
+      PERFORM wf_log(p_run, p_step, p_id, 'skipped', 'The contact has Do Not Disturb on for email.'); RETURN 'next';
+    END IF;
+    tz := CASE WHEN p_wf.settings->>'timezone' = 'contact' AND coalesce(c.timezone, '') <> '' THEN c.timezone ELSE (SELECT timezone FROM workspaces WHERE id = c.workspace_id) END;
+    until := wf_window_next(p_wf.settings, tz);
+    IF until > now() + interval '30 seconds' THEN
+      UPDATE wf_runs SET status = 'waiting', resume_at = until, current_step = p_id WHERE id = p_run.id;
+      PERFORM wf_log(p_run, p_step, p_id, 'waiting', 'Outside the sending window. Sends at ' || to_char(until AT TIME ZONE coalesce(tz, 'UTC'), 'Dy DD Mon HH24:MI'));
+      RETURN 'wait';
+    END IF;
+    SELECT * INTO acct FROM email_accounts WHERE id = coalesce(nullif(cfg->>'account_id', ''), nullif(p_wf.settings->'sender'->>'account_id', ''))::uuid AND workspace_id = c.workspace_id;
+    IF NOT FOUND THEN PERFORM wf_log(p_run, p_step, p_id, 'failed', 'No sending email account chosen. Pick one in this workflow''s Settings → Sender.'); RETURN 'fail'; END IF;
+    subj := wf_merge(cfg->>'subject', c.id, p_run.context); body := wf_merge(cfg->>'body', c.id, p_run.context);
+    INSERT INTO messages(workspace_id, contact_id, channel, direction, subject, body, status, from_email, from_name, to_address, email_account_id, wf_run_id)
+    VALUES (c.workspace_id, c.id, 'email', 'outbound', subj, body, 'queued', acct.email, coalesce(nullif(p_wf.settings->'sender'->>'from_name', ''), acct.display_name), c.email, acct.id, p_run.id);
+    UPDATE wf_runs SET context = context || '{"messaged": true}'::jsonb WHERE id = p_run.id;
+    PERFORM wf_log(p_run, p_step, p_id, 'success', 'Email queued to ' || c.email || ': "' || subj || '"');
+  WHEN 'wait' THEN
+    n := greatest(coalesce(nullif(cfg->>'amount', '')::int, 1), 0);
+    secs := n * CASE coalesce(cfg->>'unit', 'hours') WHEN 'minutes' THEN 60 WHEN 'days' THEN 86400 ELSE 3600 END;
+    UPDATE wf_runs SET status = 'waiting', resume_at = now() + make_interval(secs => secs), current_step = coalesce(p_step->>'next', '') WHERE id = p_run.id;
+    PERFORM wf_log(p_run, p_step, p_id, 'waiting', 'Waiting ' || n || ' ' || coalesce(cfg->>'unit', 'hours'));
+    RETURN 'wait';
+  WHEN 'if_else' THEN
+    ok := wf_conditions_ok(cfg, c.id);
+    PERFORM wf_log(p_run, p_step, p_id, 'success', CASE WHEN ok THEN 'Yes branch' ELSE 'No branch' END);
+    RETURN CASE WHEN ok THEN 'yes' ELSE 'no' END;
+  WHEN 'webhook' THEN
+    IF coalesce(cfg->>'url', '') !~ '^https://' THEN PERFORM wf_log(p_run, p_step, p_id, 'failed', 'The webhook needs an https:// address.'); RETURN 'fail'; END IF;
+    BEGIN
+      EXECUTE 'SELECT net.http_post(url := $1, body := $2, headers := ''{"Content-Type": "application/json"}''::jsonb)'
+      USING cfg->>'url', jsonb_build_object('event', 'synapse.workflow', 'workflow', jsonb_build_object('id', p_wf.id, 'name', p_wf.name),
+        'contact', (SELECT to_jsonb(x) - 'workspace_id' FROM contacts x WHERE x.id = c.id), 'tags', to_jsonb(wf_contact_tags(c.id)), 'trigger', p_run.trigger_name, 'context', p_run.context);
+      PERFORM wf_log(p_run, p_step, p_id, 'success', 'Sent to ' || (cfg->>'url'));
+    EXCEPTION WHEN OTHERS THEN
+      PERFORM wf_log(p_run, p_step, p_id, 'failed', 'Couldn''t send the webhook: ' || SQLERRM); RETURN 'fail';
+    END;
+  WHEN 'add_to_workflow' THEN
+    SELECT * INTO other FROM workflows WHERE id = nullif(cfg->>'workflow_id', '')::uuid AND workspace_id = c.workspace_id;
+    IF NOT FOUND THEN PERFORM wf_log(p_run, p_step, p_id, 'failed', 'Choose a workflow.'); RETURN 'fail'; END IF;
+    target := wf_enroll(other, jsonb_build_object('id', 'added', 'name', 'Added by ' || p_wf.name), c.id, 'Added by workflow "' || p_wf.name || '"', '{}'::jsonb, p_run.depth + 1, false, true);
+    PERFORM wf_log(p_run, p_step, p_id, CASE WHEN target IS NULL THEN 'skipped' ELSE 'success' END, CASE WHEN target IS NULL THEN 'Already in "' || other.name || '" (or it is a draft)' ELSE 'Added to "' || other.name || '"' END);
+  WHEN 'remove_from_workflow' THEN
+    IF coalesce(cfg->>'workflow_id', 'current') = 'current' THEN
+      PERFORM wf_log(p_run, p_step, p_id, 'success', 'Removed from this workflow');
+      PERFORM wf_finish(p_run.id, 'removed', 'Removed by a step in this workflow');
+      RETURN 'end';
+    END IF;
+    UPDATE wf_runs SET status = 'removed', exit_reason = 'Removed by workflow "' || p_wf.name || '"', finished_at = now(), resume_at = NULL
+    WHERE workflow_id = (cfg->>'workflow_id')::uuid AND contact_id = c.id AND status IN ('active', 'waiting');
+    PERFORM wf_log(p_run, p_step, p_id, 'success', 'Removed from the other workflow');
+  WHEN 'end' THEN
+    PERFORM wf_log(p_run, p_step, p_id, 'success', 'End');
+    RETURN 'end';
+  WHEN 'post_to_channel' THEN
+    SELECT * INTO ch FROM chat_channels WHERE id = nullif(cfg->>'channel_id', '')::uuid AND workspace_id = c.workspace_id AND kind = 'channel';
+    IF NOT FOUND THEN PERFORM wf_log(p_run, p_step, p_id, 'failed', 'Choose a channel to post in.'); RETURN 'fail'; END IF;
+    IF ch.archived_at IS NOT NULL THEN PERFORM wf_log(p_run, p_step, p_id, 'failed', 'The channel #' || ch.name || ' is archived.'); RETURN 'fail'; END IF;
+    body := wf_merge(coalesce(nullif(cfg->>'text', ''), '{{contact.name}} · {{contact.link}}'), c.id, p_run.context);
+    PERFORM wf_post(ch.id, p_wf, p_run, body);
+    PERFORM wf_log(p_run, p_step, p_id, 'success', 'Posted in #' || ch.name);
+  WHEN 'create_meeting' THEN
+    uid := CASE WHEN coalesce(cfg->>'host', 'owner') = 'owner' THEN c.owner_id ELSE nullif(cfg->>'host', '')::uuid END;
+    IF uid IS NULL OR NOT EXISTS (SELECT 1 FROM workspace_members m WHERE m.workspace_id = c.workspace_id AND m.user_id = uid AND coalesce(m.status, 'active') = 'active') THEN
+      uid := (SELECT owner_id FROM workspaces WHERE id = c.workspace_id);
+    END IF;
+    subj := left(coalesce(nullif(btrim(wf_merge(cfg->>'title', c.id, p_run.context)), ''), 'Call with ' || coalesce(nullif(btrim(concat_ws(' ', c.first_name, c.last_name)), ''), 'a contact')), 120);
+    target := wf_new_meeting(c.workspace_id, uid, subj, greatest(5, least(600, coalesce(nullif(cfg->>'duration_min', '')::int, 30))));
+    SELECT * INTO mt FROM meetings WHERE id = target;
+    t := wf_app_url() || '/meetings/' || mt.code || '?invite=' || mt.invite_token;
+    UPDATE wf_runs SET context = context || jsonb_build_object('meeting_id', mt.id, 'meeting_code', mt.code, 'meeting_link', t) WHERE id = p_run.id;
+    PERFORM wf_log(p_run, p_step, p_id, 'success', 'Meeting ' || mt.code || ' created: ' || t);
+  WHEN 'notify_department' THEN
+    SELECT * INTO dep FROM departments WHERE id = nullif(cfg->>'department_id', '')::uuid AND workspace_id = c.workspace_id;
+    IF NOT FOUND THEN PERFORM wf_log(p_run, p_step, p_id, 'failed', 'Choose a department.'); RETURN 'fail'; END IF;
+    uids := ARRAY(SELECT dm.user_id FROM department_members dm
+                  JOIN workspace_members m ON m.workspace_id = dm.workspace_id AND m.user_id = dm.user_id AND coalesce(m.status, 'active') = 'active'
+                  WHERE dm.department_id = dep.id);
+    subj := left(coalesce(nullif(wf_merge(cfg->>'title', c.id, p_run.context), ''), p_wf.name), 200);
+    body := wf_merge(cfg->>'body', c.id, p_run.context);
+    FOREACH uid IN ARRAY uids LOOP
+      INSERT INTO team_notifications(workspace_id, user_id, title, body, link) VALUES (c.workspace_id, uid, subj, body, '/contacts/' || c.id);
+    END LOOP;
+    t := 'Notified ' || cardinality(uids) || ' ' || CASE WHEN cardinality(uids) = 1 THEN 'person' ELSE 'people' END || ' in ' || dep.name;
+    IF coalesce((cfg->>'post')::boolean, true) THEN
+      SELECT * INTO ch FROM chat_channels WHERE department_id = dep.id AND is_department AND archived_at IS NULL;
+      IF FOUND THEN
+        PERFORM wf_post(ch.id, p_wf, p_run, subj || CASE WHEN coalesce(body, '') <> '' THEN E'\n' || body ELSE '' END);
+        t := t || ' and posted in #' || ch.name;
+      END IF;
+    END IF;
+    IF cardinality(uids) = 0 AND t NOT LIKE '%posted%' THEN PERFORM wf_log(p_run, p_step, p_id, 'skipped', 'Nobody is in ' || dep.name || ' yet.'); RETURN 'next'; END IF;
+    PERFORM wf_log(p_run, p_step, p_id, 'success', t);
+  ELSE
+    PERFORM wf_log(p_run, p_step, p_id, 'failed', 'This step type isn''t supported: ' || coalesce(p_step->>'type', '?'));
+    RETURN 'fail';
+  END CASE;
+  RETURN 'next';
+END $$;
+
+
+
+-- ============ 20261031090000_outgoing_webhooks.sql ============
+/*
+  # Outgoing webhooks that really send: signed, retried, and logged
+
+  Settings → Webhooks saved addresses but nothing was ever sent. Now:
+  - When something happens (the same events workflows react to), every active webhook listening
+    for it gets a delivery, with a snapshot of the contact and what happened:
+      contact.created, contact.updated, contact.tag_added, contact.tag_removed, form.submitted,
+      appointment.created, appointment.cancelled, appointment.rescheduled, appointment.completed,
+      appointment.no_show, message.received, workflow.completed (and webhook.test from "Send test").
+  - Each delivery is POSTed as JSON, signed so the receiver can check it came from SYNAPSE:
+      X-Synapse-Signature: t=<unix time>,v1=<hex HMAC-SHA256 of "<t>.<body>" with the webhook's secret>
+    plus X-Synapse-Event, X-Synapse-Delivery and X-Synapse-Timestamp.
+  - A 2xx answer means delivered. Anything else (or no answer) is retried after 1, 5, 30 minutes,
+    2 and 6 hours: 6 tries in all, then it's marked failed. Admins can retry it by hand.
+  - webhook_deliveries is the delivery log (kept 30 days). Only Admins can see it.
+  - Every minute (pg_cron) webhook_dispatch() sends what's due and reads the answers (pg_net).
+
+  Needs 20261010090000_workflow_engine.sql. Safe to run more than once.
+*/
+
+-- Every webhook gets a signing secret.
+ALTER TABLE webhooks ALTER COLUMN secret SET DEFAULT replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '');
+UPDATE webhooks SET secret = replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '') WHERE secret IS NULL OR secret = '';
+ALTER TABLE webhooks ADD COLUMN IF NOT EXISTS name text;
+
+CREATE TABLE IF NOT EXISTS webhook_deliveries (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  webhook_id uuid NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  event text NOT NULL,
+  payload jsonb NOT NULL,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'sending', 'retrying', 'delivered', 'failed')),
+  attempts int NOT NULL DEFAULT 0,
+  next_attempt_at timestamptz NOT NULL DEFAULT now(),
+  request_id bigint,
+  sent_at timestamptz,
+  response_status int,
+  response_body text,
+  error text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  delivered_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_due ON webhook_deliveries(next_attempt_at) WHERE status IN ('pending', 'retrying');
+CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_sending ON webhook_deliveries(sent_at) WHERE status = 'sending';
+CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_webhook ON webhook_deliveries(webhook_id, created_at DESC);
+ALTER TABLE webhook_deliveries ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "webhook_deliveries_admins" ON webhook_deliveries;
+CREATE POLICY "webhook_deliveries_admins" ON webhook_deliveries FOR SELECT TO authenticated USING (is_workspace_admin(workspace_id));
+
+-- ---------------------------------------------------------------- what is sent
+
+/** A form submission's answers as { "Question": "answer" }. */
+CREATE OR REPLACE FUNCTION webhook_form_answers(p_submission uuid) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE s form_submissions; def jsonb; out jsonb;
+BEGIN
+  SELECT * INTO s FROM form_submissions WHERE id = p_submission;
+  IF NOT FOUND THEN RETURN '{}'::jsonb; END IF;
+  SELECT CASE WHEN jsonb_typeof(f.definition) = 'string' THEN (f.definition #>> '{}')::jsonb ELSE f.definition END INTO def FROM forms f WHERE f.id = s.form_id;
+  SELECT coalesce(jsonb_object_agg(coalesce(nullif(x.el->'field'->>'label', ''), a.key), a.value), '{}'::jsonb) INTO out
+  FROM jsonb_each(coalesce(s.answers, '{}'::jsonb)) a
+  LEFT JOIN LATERAL (SELECT e.value AS el FROM jsonb_each(coalesce(def->'elements', '{}'::jsonb)) e WHERE e.value->'field'->>'fieldId' = a.key LIMIT 1) x ON true;
+  RETURN out;
+EXCEPTION WHEN OTHERS THEN RETURN coalesce((SELECT answers FROM form_submissions WHERE id = p_submission), '{}'::jsonb);
+END $$;
+
+/** The contact as sent in every event. */
+CREATE OR REPLACE FUNCTION webhook_contact(p_contact uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT jsonb_build_object('id', c.id, 'first_name', c.first_name, 'last_name', c.last_name, 'email', c.email, 'phone', c.phone,
+    'company', c.company, 'job_title', c.job_title, 'source', c.source, 'tags', to_jsonb(wf_contact_tags(c.id)),
+    'created_at', c.created_at, 'link', wf_app_url() || '/contacts/' || c.id)
+  FROM contacts c WHERE c.id = p_contact;
+$$;
+
+/** Queue one event for every active webhook in the account that listens for it. */
+CREATE OR REPLACE FUNCTION webhook_queue(p_workspace uuid, p_event text, p_data jsonb) RETURNS int LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE w webhooks; n int := 0; did uuid;
+BEGIN
+  FOR w IN SELECT * FROM webhooks WHERE workspace_id = p_workspace AND coalesce(is_active, true)
+             AND (events ? p_event OR p_event = 'webhook.test') LOOP
+    did := gen_random_uuid();
+    INSERT INTO webhook_deliveries(id, webhook_id, workspace_id, event, payload)
+    VALUES (did, w.id, p_workspace, p_event,
+            jsonb_build_object('id', did, 'event', p_event, 'created_at', now(), 'workspace_id', p_workspace, 'data', coalesce(p_data, '{}'::jsonb)));
+    n := n + 1;
+  END LOOP;
+  RETURN n;
+END $$;
+REVOKE ALL ON FUNCTION webhook_queue(uuid, text, jsonb) FROM PUBLIC, anon, authenticated;
+
+-- Events the workflow engine already records, as webhook events.
+CREATE OR REPLACE FUNCTION webhook_on_wf_event() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE ev text; data jsonb; appt jsonb;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM webhooks WHERE workspace_id = NEW.workspace_id AND coalesce(is_active, true)) THEN RETURN NULL; END IF;
+  ev := CASE NEW.type
+    WHEN 'contact_created' THEN 'contact.created'
+    WHEN 'contact_changed' THEN 'contact.updated'
+    WHEN 'contact_tag' THEN CASE NEW.data->>'event' WHEN 'removed' THEN 'contact.tag_removed' ELSE 'contact.tag_added' END
+    WHEN 'form_submitted' THEN 'form.submitted'
+    WHEN 'appointment_booked' THEN 'appointment.created'
+    WHEN 'appointment_status' THEN CASE NEW.data->>'status'
+      WHEN 'cancelled' THEN 'appointment.cancelled' WHEN 'rescheduled' THEN 'appointment.rescheduled'
+      WHEN 'showed' THEN 'appointment.completed' WHEN 'no_show' THEN 'appointment.no_show' END
+    WHEN 'customer_replied' THEN 'message.received'
+  END;
+  IF ev IS NULL THEN RETURN NULL; END IF;
+  data := jsonb_build_object('contact', webhook_contact(NEW.contact_id));
+  IF ev = 'contact.updated' THEN data := data || jsonb_build_object('changed', NEW.data->'changed'); END IF;
+  IF ev LIKE 'contact.tag%' THEN data := data || jsonb_build_object('tag', NEW.data->>'tag'); END IF;
+  IF ev = 'form.submitted' THEN
+    data := data || jsonb_build_object(
+      'form', (SELECT jsonb_build_object('id', f.id, 'name', f.name, 'type', f.type) FROM forms f WHERE f.id = (NEW.data->>'form_id')::uuid),
+      'submission_id', NEW.data->>'submission_id',
+      'answers', webhook_form_answers((NEW.data->>'submission_id')::uuid));
+  END IF;
+  IF ev LIKE 'appointment.%' THEN
+    SELECT jsonb_build_object('id', a.id, 'title', a.title, 'status', a.status, 'start_time', a.start_time, 'end_time', a.end_time,
+             'calendar', jsonb_build_object('id', cal.id, 'name', cal.name))
+      INTO appt FROM appointments a LEFT JOIN calendars cal ON cal.id = a.calendar_id WHERE a.id = (NEW.data->>'appointment_id')::uuid;
+    data := data || jsonb_build_object('appointment', appt);
+  END IF;
+  IF ev = 'message.received' THEN data := data || jsonb_build_object('channel', NEW.data->>'channel'); END IF;
+  PERFORM webhook_queue(NEW.workspace_id, ev, data);
+  RETURN NULL;
+END $$;
+DROP TRIGGER IF EXISTS webhook_on_wf_event ON wf_events;
+CREATE TRIGGER webhook_on_wf_event AFTER INSERT ON wf_events FOR EACH ROW EXECUTE FUNCTION webhook_on_wf_event();
+
+CREATE OR REPLACE FUNCTION webhook_on_run_done() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NEW.status = 'completed' AND OLD.status IS DISTINCT FROM 'completed' AND NOT NEW.is_test
+     AND EXISTS (SELECT 1 FROM webhooks WHERE workspace_id = NEW.workspace_id AND coalesce(is_active, true) AND events ? 'workflow.completed') THEN
+    PERFORM webhook_queue(NEW.workspace_id, 'workflow.completed', jsonb_build_object(
+      'workflow', (SELECT jsonb_build_object('id', w.id, 'name', w.name) FROM workflows w WHERE w.id = NEW.workflow_id),
+      'contact', webhook_contact(NEW.contact_id), 'started_at', NEW.started_at, 'finished_at', NEW.finished_at));
+  END IF;
+  RETURN NULL;
+END $$;
+DROP TRIGGER IF EXISTS webhook_on_run_done ON wf_runs;
+CREATE TRIGGER webhook_on_run_done AFTER UPDATE OF status ON wf_runs FOR EACH ROW EXECUTE FUNCTION webhook_on_run_done();
+
+-- ---------------------------------------------------------------- sending
+
+/** Minutes to wait before try number n+1, after n tries failed. */
+CREATE OR REPLACE FUNCTION webhook_backoff(p_attempts int) RETURNS interval LANGUAGE sql IMMUTABLE AS $$
+  SELECT make_interval(mins => (ARRAY[1, 5, 30, 120, 360])[least(greatest(p_attempts, 1), 5)]);
+$$;
+
+/** The signature header for a body sent at unix time p_ts. */
+CREATE OR REPLACE FUNCTION webhook_signature(p_secret text, p_ts bigint, p_body jsonb) RETURNS text LANGUAGE sql IMMUTABLE SET search_path = public, extensions AS $$
+  SELECT 't=' || p_ts || ',v1=' || encode(hmac(p_ts::text || '.' || p_body::text, p_secret, 'sha256'), 'hex');
+$$;
+
+/** Every minute: read the answers to what was sent, then send what's due. */
+CREATE OR REPLACE FUNCTION webhook_dispatch(p_only uuid DEFAULT NULL) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions AS $$
+DECLARE
+  d webhook_deliveries; w webhooks; code int; body text; err text; ts bigint; req bigint;
+  n_sent int := 0; n_ok int := 0; n_retry int := 0; n_failed int := 0;
+BEGIN
+  IF p_only IS NULL AND NOT pg_try_advisory_xact_lock(hashtext('synapse_webhooks')) THEN RETURN jsonb_build_object('skipped', true); END IF;
+
+  -- 1. Answers to earlier sends (pg_net writes them to net._http_response).
+  IF to_regclass('net._http_response') IS NOT NULL THEN
+    FOR d IN SELECT * FROM webhook_deliveries WHERE status = 'sending' ORDER BY sent_at LIMIT 500 LOOP
+      code := NULL; body := NULL; err := NULL;
+      EXECUTE 'SELECT status_code, left(content::text, 500), coalesce(error_msg, CASE WHEN timed_out THEN ''Timed out'' END) FROM net._http_response WHERE id = $1'
+        INTO code, body, err USING d.request_id;
+      IF code IS NULL AND err IS NULL THEN
+        IF d.sent_at > now() - interval '10 minutes' THEN CONTINUE; END IF;
+        err := 'No answer within 10 minutes';
+      END IF;
+      IF code BETWEEN 200 AND 299 THEN
+        UPDATE webhook_deliveries SET status = 'delivered', response_status = code, response_body = body, error = NULL, delivered_at = now() WHERE id = d.id;
+        n_ok := n_ok + 1;
+      ELSIF d.attempts >= 6 THEN
+        UPDATE webhook_deliveries SET status = 'failed', response_status = code, response_body = body,
+          error = coalesce(err, 'The address answered ' || code) WHERE id = d.id;
+        n_failed := n_failed + 1;
+      ELSE
+        UPDATE webhook_deliveries SET status = 'retrying', response_status = code, response_body = body,
+          error = coalesce(err, 'The address answered ' || code), next_attempt_at = now() + webhook_backoff(d.attempts) WHERE id = d.id;
+        n_retry := n_retry + 1;
+      END IF;
+    END LOOP;
+  END IF;
+
+  -- 2. Send what's due.
+  FOR d IN SELECT * FROM webhook_deliveries
+           WHERE status IN ('pending', 'retrying') AND next_attempt_at <= now() AND (p_only IS NULL OR id = p_only)
+           ORDER BY next_attempt_at LIMIT 200 LOOP
+    SELECT * INTO w FROM webhooks WHERE id = d.webhook_id;
+    IF NOT coalesce(w.is_active, true) THEN
+      UPDATE webhook_deliveries SET status = 'failed', error = 'The webhook is switched off' WHERE id = d.id;
+      CONTINUE;
+    END IF;
+    IF coalesce(w.url, '') !~ '^https://' THEN
+      UPDATE webhook_deliveries SET status = 'failed', error = 'The address must start with https://' WHERE id = d.id;
+      CONTINUE;
+    END IF;
+    ts := extract(epoch FROM now())::bigint;
+    BEGIN
+      EXECUTE 'SELECT net.http_post(url := $1, body := $2, headers := $3, timeout_milliseconds := 10000)' INTO req
+      USING w.url, d.payload, jsonb_build_object(
+        'Content-Type', 'application/json', 'User-Agent', 'SYNAPSE-Webhooks/1',
+        'X-Synapse-Event', d.event, 'X-Synapse-Delivery', d.id::text, 'X-Synapse-Timestamp', ts::text,
+        'X-Synapse-Signature', webhook_signature(coalesce(w.secret, ''), ts, d.payload));
+      UPDATE webhook_deliveries SET status = 'sending', request_id = req, attempts = attempts + 1, sent_at = now() WHERE id = d.id;
+      UPDATE webhooks SET last_triggered_at = now() WHERE id = w.id;
+      n_sent := n_sent + 1;
+    EXCEPTION WHEN OTHERS THEN
+      UPDATE webhook_deliveries SET attempts = attempts + 1, error = 'Couldn''t send: ' || SQLERRM,
+        status = CASE WHEN attempts + 1 >= 6 THEN 'failed' ELSE 'retrying' END,
+        next_attempt_at = now() + webhook_backoff(attempts + 1) WHERE id = d.id;
+    END;
+  END LOOP;
+
+  IF p_only IS NULL THEN DELETE FROM webhook_deliveries WHERE created_at < now() - interval '30 days'; END IF;
+  RETURN jsonb_build_object('sent', n_sent, 'delivered', n_ok, 'retrying', n_retry, 'failed', n_failed);
+END $$;
+REVOKE ALL ON FUNCTION webhook_dispatch(uuid) FROM PUBLIC, anon, authenticated;
+
+-- ---------------------------------------------------------------- for Settings → Webhooks (Admins)
+
+/** "Send test": a webhook.test delivery to this webhook, sent straight away. */
+CREATE OR REPLACE FUNCTION webhook_send_test(p_webhook uuid) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE w webhooks; did uuid := gen_random_uuid();
+BEGIN
+  SELECT * INTO w FROM webhooks WHERE id = p_webhook;
+  IF NOT FOUND OR NOT is_workspace_admin(w.workspace_id) THEN RAISE EXCEPTION 'Only admins can test webhooks'; END IF;
+  INSERT INTO webhook_deliveries(id, webhook_id, workspace_id, event, payload)
+  VALUES (did, w.id, w.workspace_id, 'webhook.test', jsonb_build_object('id', did, 'event', 'webhook.test', 'created_at', now(), 'workspace_id', w.workspace_id,
+          'data', jsonb_build_object('message', 'This is a test from SYNAPSE. If you can read it, your webhook works.')));
+  PERFORM webhook_dispatch(did);
+  RETURN did;
+END $$;
+REVOKE ALL ON FUNCTION webhook_send_test(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION webhook_send_test(uuid) TO authenticated;
+
+/** Try a failed delivery again now. */
+CREATE OR REPLACE FUNCTION webhook_retry(p_delivery uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE d webhook_deliveries;
+BEGIN
+  SELECT * INTO d FROM webhook_deliveries WHERE id = p_delivery;
+  IF NOT FOUND OR NOT is_workspace_admin(d.workspace_id) THEN RAISE EXCEPTION 'Only admins can retry deliveries'; END IF;
+  UPDATE webhook_deliveries SET status = 'retrying', next_attempt_at = now(), attempts = least(attempts, 5) WHERE id = d.id;
+  PERFORM webhook_dispatch(d.id);
+END $$;
+REVOKE ALL ON FUNCTION webhook_retry(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION webhook_retry(uuid) TO authenticated;
+
+/** A new signing secret (the old one stops working at once). */
+CREATE OR REPLACE FUNCTION webhook_new_secret(p_webhook uuid) RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE s text := replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '');
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM webhooks WHERE id = p_webhook AND is_workspace_admin(workspace_id)) THEN RAISE EXCEPTION 'Only admins can change webhooks'; END IF;
+  UPDATE webhooks SET secret = s WHERE id = p_webhook;
+  RETURN s;
+END $$;
+REVOKE ALL ON FUNCTION webhook_new_secret(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION webhook_new_secret(uuid) TO authenticated;
+
+-- Every minute.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+    PERFORM cron.unschedule(jobid) FROM cron.job WHERE jobname = 'synapse-webhooks';
+    PERFORM cron.schedule('synapse-webhooks', '* * * * *', 'SELECT public.webhook_dispatch()');
+  END IF;
+EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'Could not schedule webhooks: %', SQLERRM;
+END $$;
+
+
+-- ============ 20261101090000_incoming_contacts.sql ============
+/*
+  # Incoming contact links: other apps add or update contacts in SYNAPSE
+
+  An Admin makes an "incoming link" in Settings → API: a secret address another app (Zapier,
+  Make, a website form, a live chat) POSTs a contact to. The `api` edge function hands the
+  request to inbound_contact() below, which:
+    - finds the contact by email (then phone) in the account, or adds them;
+    - fills in the fields it was sent (first/last or full name, email, phone, company, job title,
+      date of birth, source), adds the link's tags and any tags sent, and writes a message as a
+      note;
+    - so workflows start exactly as if someone had typed it in (contact created, tag added…);
+    - logs every call (kept 30 days) and allows at most 120 a minute per link.
+  Field names are forgiving: first_name / firstName / first, name / full_name, phone / phone_number,
+  tags as a list or "a, b", and so on.
+
+  Needs 20261010090000_workflow_engine.sql. Safe to run more than once.
+*/
+
+CREATE TABLE IF NOT EXISTS inbound_links (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  name text NOT NULL CHECK (char_length(btrim(name)) BETWEEN 1 AND 80),
+  token text NOT NULL UNIQUE DEFAULT replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''),
+  tags text[] NOT NULL DEFAULT '{}',
+  source text,
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  last_used_at timestamptz,
+  revoked_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS idx_inbound_links_workspace ON inbound_links(workspace_id);
+ALTER TABLE inbound_links ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "inbound_links_admins" ON inbound_links;
+CREATE POLICY "inbound_links_admins" ON inbound_links FOR ALL TO authenticated
+  USING (is_workspace_admin(workspace_id)) WITH CHECK (is_workspace_admin(workspace_id));
+
+CREATE TABLE IF NOT EXISTS inbound_log (
+  id bigserial PRIMARY KEY,
+  link_id uuid NOT NULL REFERENCES inbound_links(id) ON DELETE CASCADE,
+  workspace_id uuid NOT NULL,
+  ok boolean NOT NULL,
+  created boolean,
+  contact_id uuid REFERENCES contacts(id) ON DELETE SET NULL,
+  error text,
+  payload jsonb,
+  at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_inbound_log_link ON inbound_log(link_id, at DESC);
+ALTER TABLE inbound_log ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "inbound_log_admins" ON inbound_log;
+CREATE POLICY "inbound_log_admins" ON inbound_log FOR SELECT TO authenticated USING (is_workspace_admin(workspace_id));
+
+-- First non-empty value among these keys (checked as sent and lower-case).
+CREATE OR REPLACE FUNCTION inbound_pick(p jsonb, VARIADIC keys text[]) RETURNS text LANGUAGE plpgsql IMMUTABLE AS $$
+DECLARE k text; v text;
+BEGIN
+  FOREACH k IN ARRAY keys LOOP
+    v := nullif(btrim(coalesce(p->>k, p->>lower(k), '')), '');
+    IF v IS NOT NULL THEN RETURN v; END IF;
+  END LOOP;
+  RETURN NULL;
+END $$;
+
+-- What gets kept in the log: the payload as sent, unless it's large.
+CREATE OR REPLACE FUNCTION inbound_trim(p jsonb) RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
+  SELECT CASE WHEN p IS NULL OR length(p::text) <= 4000 THEN p ELSE jsonb_build_object('too_large_to_keep', true) END
+$$;
+
+/**
+ * Add or update a contact from another app. Called by the `api` edge function (service role)
+ * with the link's token and what was sent. Returns { ok, contact_id, created } or { ok:false, error }.
+ */
+CREATE OR REPLACE FUNCTION inbound_contact(p_token text, p_payload jsonb) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  l inbound_links; p jsonb := coalesce(p_payload, '{}'::jsonb);
+  em text; ph text; fn text; ln text; full_name text; co text; jt text; src text; dob date; msg text;
+  tags text[]; t text; cid uuid; is_new boolean := false; err text;
+BEGIN
+  SELECT * INTO l FROM inbound_links WHERE token = btrim(coalesce(p_token, ''));
+  IF NOT FOUND OR l.revoked_at IS NOT NULL THEN
+    RETURN jsonb_build_object('ok', false, 'status', 404, 'error', 'This link is not valid or was switched off.');
+  END IF;
+  IF (SELECT count(*) FROM inbound_log WHERE link_id = l.id AND at > now() - interval '1 minute') >= 120 THEN
+    RETURN jsonb_build_object('ok', false, 'status', 429, 'error', 'Too many requests: at most 120 a minute. Try again shortly.');
+  END IF;
+
+  -- Some apps wrap the fields: { "contact": {...} } or { "data": {...} }.
+  IF jsonb_typeof(p->'contact') = 'object' THEN p := p || (p->'contact'); END IF;
+  IF jsonb_typeof(p->'data') = 'object' THEN p := p || (p->'data'); END IF;
+
+  em := lower(inbound_pick(p, 'email', 'email_address', 'emailAddress', 'Email'));
+  IF em IS NOT NULL AND em !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' THEN em := NULL; END IF;
+  ph := left(inbound_pick(p, 'phone', 'phone_number', 'phoneNumber', 'mobile', 'Phone'), 40);
+  fn := left(inbound_pick(p, 'first_name', 'firstName', 'first', 'given_name', 'First Name'), 100);
+  ln := left(inbound_pick(p, 'last_name', 'lastName', 'last', 'family_name', 'surname', 'Last Name'), 100);
+  full_name := inbound_pick(p, 'name', 'full_name', 'fullName', 'Name');
+  IF fn IS NULL AND full_name IS NOT NULL THEN
+    fn := left(split_part(full_name, ' ', 1), 100);
+    ln := coalesce(ln, nullif(left(btrim(substr(full_name, length(split_part(full_name, ' ', 1)) + 1)), 100), ''));
+  END IF;
+  co := left(inbound_pick(p, 'company', 'company_name', 'companyName', 'organization', 'organisation'), 200);
+  jt := left(inbound_pick(p, 'job_title', 'jobTitle', 'title', 'position'), 200);
+  src := left(coalesce(inbound_pick(p, 'source', 'utm_source'), l.source, l.name), 60);
+  BEGIN dob := inbound_pick(p, 'date_of_birth', 'dateOfBirth', 'birthday', 'dob')::date; EXCEPTION WHEN OTHERS THEN dob := NULL; END;
+  msg := left(inbound_pick(p, 'message', 'note', 'notes', 'comment', 'comments'), 5000);
+
+  IF em IS NULL AND ph IS NULL THEN
+    err := 'Send an email or a phone number so SYNAPSE knows who it is.';
+    INSERT INTO inbound_log(link_id, workspace_id, ok, error, payload) VALUES (l.id, l.workspace_id, false, err, inbound_trim(p_payload));
+    RETURN jsonb_build_object('ok', false, 'status', 422, 'error', err);
+  END IF;
+
+  IF em IS NOT NULL THEN SELECT id INTO cid FROM contacts WHERE workspace_id = l.workspace_id AND lower(email) = em ORDER BY created_at LIMIT 1; END IF;
+  IF cid IS NULL AND ph IS NOT NULL THEN
+    SELECT id INTO cid FROM contacts WHERE workspace_id = l.workspace_id AND regexp_replace(phone, '\D', '', 'g') = regexp_replace(ph, '\D', '', 'g') ORDER BY created_at LIMIT 1;
+  END IF;
+
+  IF cid IS NULL THEN
+    INSERT INTO contacts(workspace_id, first_name, last_name, email, phone, company, job_title, date_of_birth, source)
+    VALUES (l.workspace_id, fn, ln, em, ph, co, jt, dob, src) RETURNING id INTO cid;
+    is_new := true;
+  ELSE
+    -- What was sent replaces what's there; what wasn't sent stays.
+    UPDATE contacts SET
+      first_name = coalesce(fn, first_name), last_name = coalesce(ln, last_name), email = coalesce(em, email), phone = coalesce(ph, phone),
+      company = coalesce(co, company), job_title = coalesce(jt, job_title), date_of_birth = coalesce(dob, date_of_birth),
+      last_activity_at = now(), updated_at = now()
+    WHERE id = cid;
+  END IF;
+
+  tags := l.tags;
+  IF jsonb_typeof(p->'tags') = 'array' THEN
+    tags := tags || ARRAY(SELECT btrim(x) FROM jsonb_array_elements_text(p->'tags') x WHERE btrim(x) <> '');
+  ELSIF coalesce(p->>'tags', p->>'tag', '') <> '' THEN
+    tags := tags || ARRAY(SELECT btrim(x) FROM unnest(string_to_array(coalesce(p->>'tags', p->>'tag'), ',')) x WHERE btrim(x) <> '');
+  END IF;
+  FOREACH t IN ARRAY tags LOOP
+    INSERT INTO contact_tags(contact_id, tag_id) VALUES (cid, wf_tag_id(l.workspace_id, left(t, 60))) ON CONFLICT DO NOTHING;
+  END LOOP;
+  IF msg IS NOT NULL THEN
+    INSERT INTO notes(workspace_id, contact_id, content) VALUES (l.workspace_id, cid, 'From ' || l.name || E':\n' || msg);
+  END IF;
+
+  UPDATE inbound_links SET last_used_at = now() WHERE id = l.id;
+  INSERT INTO inbound_log(link_id, workspace_id, ok, created, contact_id, payload) VALUES (l.id, l.workspace_id, true, is_new, cid, inbound_trim(p_payload));
+  DELETE FROM inbound_log WHERE link_id = l.id AND at < now() - interval '30 days';
+  RETURN jsonb_build_object('ok', true, 'status', CASE WHEN is_new THEN 201 ELSE 200 END, 'contact_id', cid, 'created', is_new);
+EXCEPTION WHEN OTHERS THEN
+  err := 'Could not save the contact: ' || SQLERRM;
+  IF l.id IS NOT NULL THEN
+    INSERT INTO inbound_log(link_id, workspace_id, ok, error) VALUES (l.id, l.workspace_id, false, err);
+  END IF;
+  RETURN jsonb_build_object('ok', false, 'status', 400, 'error', err);
+END $$;
+REVOKE ALL ON FUNCTION inbound_contact(text, jsonb) FROM PUBLIC, anon, authenticated;
+DO $$ BEGIN GRANT EXECUTE ON FUNCTION inbound_contact(text, jsonb) TO service_role; EXCEPTION WHEN undefined_object THEN NULL; END $$;
+
+
+-- ============ 20261102090000_api_keys.sql ============
+/*
+  # API keys: other apps read and change contacts with a key
+
+  An Admin makes a key in Settings → API (read only, or read and write). It is shown once; only
+  its SHA-256 is kept. Apps send it as "Authorization: Bearer syn_…" to the `api` edge function,
+  which hands each request to api_request() below:
+
+    GET    /v1/me                          the account and key
+    GET    /v1/contacts                    newest first; ?email= ?phone= ?tag= ?q= ?created_after=
+                                           ?updated_after= ?limit= (1-100, 25) ?offset=
+    POST   /v1/contacts                    add, or update the one with that email/phone
+    GET    /v1/contacts/{id}
+    PATCH  /v1/contacts/{id}               change the fields sent
+    DELETE /v1/contacts/{id}
+    POST   /v1/contacts/{id}/tags          { "tags": ["VIP"] }
+    DELETE /v1/contacts/{id}/tags/{tag}
+    GET    /v1/contacts/{id}/notes
+    POST   /v1/contacts/{id}/notes         { "content": "…" }
+    GET    /v1/tags
+
+  Contacts come back in the same shape outgoing webhooks send. Changes start workflows as usual.
+  Every request is logged (kept 7 days); at most 300 a minute per key.
+
+  Needs 20261031090000_outgoing_webhooks.sql and 20261101090000_incoming_contacts.sql.
+  Safe to run more than once.
+*/
+
+CREATE TABLE IF NOT EXISTS api_keys (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  name text NOT NULL CHECK (char_length(btrim(name)) BETWEEN 1 AND 80),
+  prefix text NOT NULL,
+  key_hash text NOT NULL UNIQUE,
+  can_write boolean NOT NULL DEFAULT true,
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  last_used_at timestamptz,
+  revoked_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS idx_api_keys_workspace ON api_keys(workspace_id);
+ALTER TABLE api_keys ENABLE ROW LEVEL SECURITY;
+-- Admins see their keys (never the hash) and can delete revoked ones; making and revoking go through the functions below.
+DROP POLICY IF EXISTS "api_keys_admins_read" ON api_keys;
+CREATE POLICY "api_keys_admins_read" ON api_keys FOR SELECT TO authenticated USING (is_workspace_admin(workspace_id));
+DROP POLICY IF EXISTS "api_keys_admins_delete_revoked" ON api_keys;
+CREATE POLICY "api_keys_admins_delete_revoked" ON api_keys FOR DELETE TO authenticated USING (is_workspace_admin(workspace_id) AND revoked_at IS NOT NULL);
+REVOKE ALL ON api_keys FROM anon, authenticated;
+GRANT SELECT (id, workspace_id, name, prefix, can_write, created_by, created_at, last_used_at, revoked_at) ON api_keys TO authenticated;
+GRANT DELETE ON api_keys TO authenticated;
+
+CREATE TABLE IF NOT EXISTS api_log (
+  id bigserial PRIMARY KEY,
+  key_id uuid NOT NULL REFERENCES api_keys(id) ON DELETE CASCADE,
+  workspace_id uuid NOT NULL,
+  method text NOT NULL,
+  path text NOT NULL,
+  status int NOT NULL,
+  error text,
+  at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_api_log_key ON api_log(key_id, at DESC);
+ALTER TABLE api_log ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "api_log_admins" ON api_log;
+CREATE POLICY "api_log_admins" ON api_log FOR SELECT TO authenticated USING (is_workspace_admin(workspace_id));
+
+/** Make a key. Returns { id, key }: the only time the key itself is shown. Admins only. */
+CREATE OR REPLACE FUNCTION api_key_create(p_workspace uuid, p_name text, p_can_write boolean DEFAULT true) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions AS $$
+DECLARE k text; v_id uuid;
+BEGIN
+  IF NOT is_workspace_admin(p_workspace) THEN RAISE EXCEPTION 'Only admins can make API keys.'; END IF;
+  k := 'syn_' || encode(gen_random_bytes(24), 'hex');
+  INSERT INTO api_keys(workspace_id, name, prefix, key_hash, can_write, created_by)
+  VALUES (p_workspace, btrim(coalesce(p_name, '')), left(k, 12), encode(digest(k, 'sha256'), 'hex'), coalesce(p_can_write, true), auth.uid())
+  RETURNING id INTO v_id;
+  PERFORM audit_write(p_workspace, 'api_key_created', 'api_key', v_id, jsonb_build_object('name', btrim(p_name), 'access', CASE WHEN coalesce(p_can_write, true) THEN 'read and write' ELSE 'read only' END));
+  RETURN jsonb_build_object('id', v_id, 'key', k);
+END $$;
+REVOKE ALL ON FUNCTION api_key_create(uuid, text, boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION api_key_create(uuid, text, boolean) TO authenticated;
+
+/** Revoke a key: it stops working at once. Admins only. */
+CREATE OR REPLACE FUNCTION api_key_revoke(p_key uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE k api_keys;
+BEGIN
+  SELECT * INTO k FROM api_keys WHERE id = p_key;
+  IF NOT FOUND OR NOT is_workspace_admin(k.workspace_id) THEN RAISE EXCEPTION 'Only admins can revoke API keys.'; END IF;
+  IF k.revoked_at IS NULL THEN
+    UPDATE api_keys SET revoked_at = now() WHERE id = p_key;
+    PERFORM audit_write(k.workspace_id, 'api_key_revoked', 'api_key', k.id, jsonb_build_object('name', k.name));
+  END IF;
+END $$;
+REVOKE ALL ON FUNCTION api_key_revoke(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION api_key_revoke(uuid) TO authenticated;
+
+-- ---------- helpers ----------
+
+CREATE OR REPLACE FUNCTION api_out(p_status int, p_body jsonb) RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
+  SELECT jsonb_build_object('status', p_status, 'body', p_body)
+$$;
+CREATE OR REPLACE FUNCTION api_err(p_status int, p_message text) RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
+  SELECT jsonb_build_object('status', p_status, 'body', jsonb_build_object('error', p_message))
+$$;
+
+-- A refusal the caller can fix (answered 422 with this message).
+CREATE OR REPLACE FUNCTION api_invalid(p_message text) RETURNS void LANGUAGE plpgsql AS $$
+BEGIN RAISE EXCEPTION USING ERRCODE = 'SY422', MESSAGE = p_message; END $$;
+
+/** A contact as the API returns it: the webhook shape with tags as written, plus birthday and last change. */
+CREATE OR REPLACE FUNCTION api_contact(p_contact uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT webhook_contact(c.id) || jsonb_build_object('date_of_birth', c.date_of_birth, 'updated_at', c.updated_at,
+    'tags', (SELECT coalesce(jsonb_agg(t.name ORDER BY lower(t.name)), '[]'::jsonb) FROM contact_tags ct JOIN tags t ON t.id = ct.tag_id WHERE ct.contact_id = c.id))
+  FROM contacts c WHERE c.id = p_contact;
+$$;
+REVOKE ALL ON FUNCTION api_contact(uuid) FROM PUBLIC, anon, authenticated;
+
+/** The contact fields sent, under their proper names (same forgiving names as incoming links). */
+CREATE OR REPLACE FUNCTION api_fields(p jsonb) RETURNS jsonb LANGUAGE plpgsql AS $$
+DECLARE o jsonb := '{}'::jsonb; v text; full_name text;
+BEGIN
+  IF jsonb_typeof(p->'contact') = 'object' THEN p := p || (p->'contact'); END IF;
+  v := lower(inbound_pick(p, 'email', 'email_address', 'emailAddress'));
+  IF v IS NOT NULL THEN
+    IF v !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' THEN PERFORM api_invalid('"email" isn''t a valid email address.'); END IF;
+    o := o || jsonb_build_object('email', v);
+  END IF;
+  v := left(inbound_pick(p, 'phone', 'phone_number', 'phoneNumber', 'mobile'), 40);
+  IF v IS NOT NULL THEN o := o || jsonb_build_object('phone', v); END IF;
+  v := left(inbound_pick(p, 'first_name', 'firstName', 'first', 'given_name'), 100);
+  IF v IS NOT NULL THEN o := o || jsonb_build_object('first_name', v); END IF;
+  v := left(inbound_pick(p, 'last_name', 'lastName', 'last', 'family_name', 'surname'), 100);
+  IF v IS NOT NULL THEN o := o || jsonb_build_object('last_name', v); END IF;
+  full_name := inbound_pick(p, 'name', 'full_name', 'fullName');
+  IF full_name IS NOT NULL AND NOT o ? 'first_name' THEN
+    o := o || jsonb_build_object('first_name', left(split_part(full_name, ' ', 1), 100));
+    v := nullif(left(btrim(substr(full_name, length(split_part(full_name, ' ', 1)) + 1)), 100), '');
+    IF v IS NOT NULL AND NOT o ? 'last_name' THEN o := o || jsonb_build_object('last_name', v); END IF;
+  END IF;
+  v := left(inbound_pick(p, 'company', 'company_name', 'companyName', 'organization', 'organisation'), 200);
+  IF v IS NOT NULL THEN o := o || jsonb_build_object('company', v); END IF;
+  v := left(inbound_pick(p, 'job_title', 'jobTitle', 'title', 'position'), 200);
+  IF v IS NOT NULL THEN o := o || jsonb_build_object('job_title', v); END IF;
+  v := left(inbound_pick(p, 'source', 'utm_source'), 60);
+  IF v IS NOT NULL THEN o := o || jsonb_build_object('source', v); END IF;
+  v := inbound_pick(p, 'date_of_birth', 'dateOfBirth', 'birthday', 'dob');
+  IF v IS NOT NULL THEN
+    BEGIN o := o || jsonb_build_object('date_of_birth', v::date);
+    EXCEPTION WHEN OTHERS THEN PERFORM api_invalid('"date_of_birth" must be a date like 1990-12-31.'); END;
+  END IF;
+  RETURN o;
+END $$;
+
+/** Tags sent as a list or as "a, b". */
+CREATE OR REPLACE FUNCTION api_tag_list(p jsonb) RETURNS text[] LANGUAGE sql IMMUTABLE AS $$
+  SELECT CASE
+    WHEN jsonb_typeof(p->'tags') = 'array' THEN ARRAY(SELECT left(btrim(x), 60) FROM jsonb_array_elements_text(p->'tags') x WHERE btrim(x) <> '')
+    WHEN coalesce(p->>'tags', p->>'tag', '') <> '' THEN ARRAY(SELECT left(btrim(x), 60) FROM unnest(string_to_array(coalesce(p->>'tags', p->>'tag'), ',')) x WHERE btrim(x) <> '')
+    ELSE '{}'::text[] END
+$$;
+
+CREATE OR REPLACE FUNCTION api_add_tags(p_workspace uuid, p_contact uuid, p_tags text[]) RETURNS void LANGUAGE plpgsql AS $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY coalesce(p_tags, '{}') LOOP
+    INSERT INTO contact_tags(contact_id, tag_id) VALUES (p_contact, wf_tag_id(p_workspace, t)) ON CONFLICT DO NOTHING;
+  END LOOP;
+END $$;
+
+CREATE OR REPLACE FUNCTION api_set_fields(p_contact uuid, f jsonb) RETURNS void LANGUAGE sql AS $$
+  UPDATE contacts SET
+    first_name = coalesce(f->>'first_name', first_name), last_name = coalesce(f->>'last_name', last_name),
+    email = coalesce(f->>'email', email), phone = coalesce(f->>'phone', phone),
+    company = coalesce(f->>'company', company), job_title = coalesce(f->>'job_title', job_title),
+    source = coalesce(f->>'source', source), date_of_birth = coalesce((f->>'date_of_birth')::date, date_of_birth),
+    last_activity_at = now(), updated_at = now()
+  WHERE id = p_contact;
+$$;
+
+CREATE OR REPLACE FUNCTION api_q_int(q jsonb, k text, p_default int, p_min int, p_max int) RETURNS int LANGUAGE plpgsql AS $$
+DECLARE n int;
+BEGIN
+  IF coalesce(q->>k, '') = '' THEN RETURN p_default; END IF;
+  BEGIN n := (q->>k)::int; EXCEPTION WHEN OTHERS THEN PERFORM api_invalid('"' || k || '" must be a whole number.'); END;
+  RETURN least(greatest(n, p_min), p_max);
+END $$;
+
+CREATE OR REPLACE FUNCTION api_q_time(q jsonb, k text) RETURNS timestamptz LANGUAGE plpgsql AS $$
+BEGIN
+  IF coalesce(q->>k, '') = '' THEN RETURN NULL; END IF;
+  RETURN (q->>k)::timestamptz;
+EXCEPTION WHEN OTHERS THEN PERFORM api_invalid('"' || k || '" must be a date and time like 2026-11-01T09:00:00Z.'); RETURN NULL;
+END $$;
+
+-- ---------- the routes ----------
+
+CREATE OR REPLACE FUNCTION api_route(k api_keys, m text, seg text[], q jsonb, b jsonb) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  ws uuid := k.workspace_id; n int := coalesce(array_length(seg, 1), 0);
+  cid uuid; f jsonb; tags text[]; is_new boolean := false; lim int; off int; ids uuid[]; more boolean; v_note notes; content text;
+BEGIN
+  IF m NOT IN ('GET', 'POST', 'PATCH', 'DELETE') THEN RETURN api_err(405, 'Use GET, POST, PATCH or DELETE.'); END IF;
+  IF m <> 'GET' AND NOT k.can_write THEN RETURN api_err(403, 'This key can only read. Make a key with write access to change things.'); END IF;
+
+  IF n = 1 AND seg[1] = 'me' THEN
+    IF m <> 'GET' THEN RETURN api_err(405, 'Use GET.'); END IF;
+    RETURN api_out(200, jsonb_build_object(
+      'workspace', (SELECT jsonb_build_object('id', w.id, 'name', w.name) FROM workspaces w WHERE w.id = ws),
+      'key', jsonb_build_object('name', k.name, 'access', CASE WHEN k.can_write THEN 'read_write' ELSE 'read' END)));
+  END IF;
+
+  IF n = 1 AND seg[1] = 'tags' THEN
+    IF m <> 'GET' THEN RETURN api_err(405, 'Use GET.'); END IF;
+    RETURN api_out(200, jsonb_build_object('data', coalesce((SELECT jsonb_agg(jsonb_build_object('name', t.name, 'color', t.color) ORDER BY lower(t.name)) FROM tags t WHERE t.workspace_id = ws), '[]'::jsonb)));
+  END IF;
+
+  IF n = 0 OR seg[1] <> 'contacts' OR n > 4 THEN
+    RETURN api_err(404, 'Unknown address. See Settings → API for what you can call.');
+  END IF;
+
+  IF n = 1 THEN
+    IF m = 'GET' THEN
+      lim := api_q_int(q, 'limit', 25, 1, 100);
+      off := api_q_int(q, 'offset', 0, 0, 1000000);
+      SELECT array_agg(id ORDER BY created_at DESC, id) INTO ids FROM (
+        SELECT c.id, c.created_at FROM contacts c
+        WHERE c.workspace_id = ws
+          AND (coalesce(q->>'email', '') = '' OR lower(c.email) = lower(btrim(q->>'email')))
+          AND (coalesce(q->>'phone', '') = '' OR regexp_replace(coalesce(c.phone, ''), '\D', '', 'g') = regexp_replace(q->>'phone', '\D', '', 'g'))
+          AND (coalesce(q->>'tag', '') = '' OR EXISTS (SELECT 1 FROM contact_tags ct JOIN tags t ON t.id = ct.tag_id WHERE ct.contact_id = c.id AND lower(t.name) = lower(btrim(q->>'tag'))))
+          AND (coalesce(q->>'q', '') = '' OR concat_ws(' ', c.first_name, c.last_name, c.email, c.phone, c.company) ILIKE '%' || btrim(q->>'q') || '%')
+          AND (api_q_time(q, 'created_after') IS NULL OR c.created_at > api_q_time(q, 'created_after'))
+          AND (api_q_time(q, 'updated_after') IS NULL OR c.updated_at > api_q_time(q, 'updated_after'))
+        ORDER BY c.created_at DESC, c.id LIMIT lim + 1 OFFSET off) s;
+      more := coalesce(array_length(ids, 1), 0) > lim;
+      ids := coalesce(ids[1:lim], '{}');
+      RETURN api_out(200, jsonb_build_object(
+        'data', coalesce((SELECT jsonb_agg(api_contact(x) ORDER BY o) FROM unnest(ids) WITH ORDINALITY u(x, o)), '[]'::jsonb),
+        'has_more', more, 'next_offset', CASE WHEN more THEN off + lim END));
+    ELSIF m = 'POST' THEN
+      f := api_fields(b);
+      IF NOT (f ? 'email' OR f ? 'phone') THEN PERFORM api_invalid('Send an "email" or a "phone".'); END IF;
+      IF f ? 'email' THEN SELECT id INTO cid FROM contacts WHERE workspace_id = ws AND lower(email) = f->>'email' ORDER BY created_at LIMIT 1; END IF;
+      IF cid IS NULL AND f ? 'phone' THEN
+        SELECT id INTO cid FROM contacts WHERE workspace_id = ws AND regexp_replace(coalesce(phone, ''), '\D', '', 'g') = regexp_replace(f->>'phone', '\D', '', 'g')
+          AND regexp_replace(f->>'phone', '\D', '', 'g') <> '' ORDER BY created_at LIMIT 1;
+      END IF;
+      IF cid IS NULL THEN
+        INSERT INTO contacts(workspace_id, first_name, last_name, email, phone, company, job_title, date_of_birth, source)
+        VALUES (ws, f->>'first_name', f->>'last_name', f->>'email', f->>'phone', f->>'company', f->>'job_title', (f->>'date_of_birth')::date, coalesce(f->>'source', 'API'))
+        RETURNING id INTO cid;
+        is_new := true;
+      ELSE
+        PERFORM api_set_fields(cid, f - 'source');
+      END IF;
+      PERFORM api_add_tags(ws, cid, api_tag_list(b));
+      content := left(inbound_pick(b, 'note', 'message'), 10000);
+      IF content IS NOT NULL THEN INSERT INTO notes(workspace_id, contact_id, content) VALUES (ws, cid, 'From ' || k.name || E' (API):\n' || content); END IF;
+      RETURN api_out(CASE WHEN is_new THEN 201 ELSE 200 END, jsonb_build_object('data', api_contact(cid), 'created', is_new));
+    END IF;
+    RETURN api_err(405, 'Use GET or POST.');
+  END IF;
+
+  -- /contacts/{id}…
+  BEGIN cid := seg[2]::uuid; EXCEPTION WHEN OTHERS THEN cid := NULL; END;
+  IF cid IS NULL OR NOT EXISTS (SELECT 1 FROM contacts WHERE id = cid AND workspace_id = ws) THEN
+    RETURN api_err(404, 'No contact with that id.');
+  END IF;
+
+  IF n = 2 THEN
+    IF m = 'GET' THEN RETURN api_out(200, jsonb_build_object('data', api_contact(cid))); END IF;
+    IF m = 'PATCH' THEN
+      f := api_fields(b); tags := api_tag_list(b);
+      IF f = '{}'::jsonb AND cardinality(tags) = 0 THEN PERFORM api_invalid('Nothing to change: send the fields to change, like { "company": "Acme" }.'); END IF;
+      IF f <> '{}'::jsonb THEN PERFORM api_set_fields(cid, f); END IF;
+      PERFORM api_add_tags(ws, cid, tags);
+      RETURN api_out(200, jsonb_build_object('data', api_contact(cid)));
+    END IF;
+    IF m = 'DELETE' THEN
+      DELETE FROM contacts WHERE id = cid;
+      RETURN api_out(200, jsonb_build_object('deleted', true, 'id', cid));
+    END IF;
+    RETURN api_err(405, 'Use GET, PATCH or DELETE.');
+  END IF;
+
+  IF seg[3] = 'tags' THEN
+    IF n = 3 AND m = 'POST' THEN
+      tags := api_tag_list(b);
+      IF cardinality(tags) = 0 THEN PERFORM api_invalid('Send { "tags": ["VIP"] }.'); END IF;
+      PERFORM api_add_tags(ws, cid, tags);
+      RETURN api_out(200, jsonb_build_object('data', api_contact(cid)));
+    END IF;
+    IF n = 4 AND m = 'DELETE' THEN
+      DELETE FROM contact_tags ct USING tags t WHERE ct.contact_id = cid AND t.id = ct.tag_id AND t.workspace_id = ws AND lower(t.name) = lower(btrim(seg[4]));
+      RETURN api_out(200, jsonb_build_object('data', api_contact(cid)));
+    END IF;
+    RETURN api_err(405, 'Add tags with POST /contacts/{id}/tags; remove one with DELETE /contacts/{id}/tags/{tag}.');
+  END IF;
+
+  IF seg[3] = 'notes' AND n = 3 THEN
+    IF m = 'GET' THEN
+      RETURN api_out(200, jsonb_build_object('data', coalesce((SELECT jsonb_agg(jsonb_build_object('id', x.id, 'content', x.content, 'created_at', x.created_at) ORDER BY x.created_at DESC)
+        FROM (SELECT * FROM notes WHERE contact_id = cid ORDER BY created_at DESC LIMIT 50) x), '[]'::jsonb)));
+    END IF;
+    IF m = 'POST' THEN
+      content := left(inbound_pick(b, 'content', 'note', 'text', 'body'), 10000);
+      IF content IS NULL THEN PERFORM api_invalid('Send { "content": "…" }.'); END IF;
+      INSERT INTO notes(workspace_id, contact_id, content) VALUES (ws, cid, content) RETURNING * INTO v_note;
+      RETURN api_out(201, jsonb_build_object('data', jsonb_build_object('id', v_note.id, 'content', v_note.content, 'created_at', v_note.created_at)));
+    END IF;
+    RETURN api_err(405, 'Use GET or POST.');
+  END IF;
+
+  RETURN api_err(404, 'Unknown address. See Settings → API for what you can call.');
+END $$;
+REVOKE ALL ON FUNCTION api_route(api_keys, text, text[], jsonb, jsonb) FROM PUBLIC, anon, authenticated;
+
+/**
+ * One API request, from the `api` edge function (service role). p_path is what follows /v1/,
+ * e.g. "contacts/<id>/tags". Returns { status, body }.
+ */
+CREATE OR REPLACE FUNCTION api_request(p_key text, p_method text, p_path text, p_query jsonb DEFAULT '{}'::jsonb, p_body jsonb DEFAULT '{}'::jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions AS $$
+DECLARE k api_keys; m text := upper(coalesce(p_method, 'GET')); res jsonb; seg text[];
+BEGIN
+  SELECT * INTO k FROM api_keys WHERE key_hash = encode(digest(btrim(coalesce(p_key, '')), 'sha256'), 'hex');
+  IF NOT FOUND OR k.revoked_at IS NOT NULL THEN RETURN api_err(401, 'This API key is not valid or was revoked.'); END IF;
+  IF (SELECT count(*) FROM api_log WHERE key_id = k.id AND at > now() - interval '1 minute') >= 300 THEN
+    RETURN api_err(429, 'Too many requests: at most 300 a minute per key. Try again shortly.');
+  END IF;
+
+  seg := ARRAY(SELECT s FROM unnest(string_to_array(btrim(coalesce(p_path, ''), '/'), '/')) s WHERE s <> '');
+  BEGIN
+    res := api_route(k, m, seg, coalesce(p_query, '{}'::jsonb), CASE WHEN jsonb_typeof(p_body) = 'object' THEN p_body ELSE '{}'::jsonb END);
+  EXCEPTION
+    WHEN SQLSTATE 'SY422' THEN res := api_err(422, SQLERRM);
+    WHEN OTHERS THEN res := api_err(400, 'Could not do that: ' || SQLERRM);
+  END;
+
+  INSERT INTO api_log(key_id, workspace_id, method, path, status, error)
+  VALUES (k.id, k.workspace_id, m, left('/' || array_to_string(seg, '/'), 300), (res->>'status')::int, res->'body'->>'error');
+  UPDATE api_keys SET last_used_at = now() WHERE id = k.id;
+  DELETE FROM api_log WHERE key_id = k.id AND at < now() - interval '7 days';
+  RETURN res;
+END $$;
+REVOKE ALL ON FUNCTION api_request(text, text, text, jsonb, jsonb) FROM PUBLIC, anon, authenticated;
+DO $$ BEGIN GRANT EXECUTE ON FUNCTION api_request(text, text, text, jsonb, jsonb) TO service_role; EXCEPTION WHEN undefined_object THEN NULL; END $$;
+
+
+-- ============ 20261109090000_lock_internal_helpers.sql ============
+/*
+  # Lock the database's internal helpers
+
+  Supabase lets the app's public key call any database function, and by default it may. These
+  functions are only ever used inside the database (by triggers, the minute scheduler and other
+  functions), never by the app, so outside callers are now refused. Before this, someone with the
+  public key could, for example, post into a chat channel, create tags or start workflow runs.
+
+  Also tightened, among functions the app does call:
+    - seed_workspace_demo_data: only the new account's owner, for their own account.
+    - wf_set_client_key: set once; only a platform admin can change it afterwards.
+    - increment_workflow_runs and get_form_submission_counts now run with the caller's own
+      permissions, so they only touch workflows and forms the caller can already see.
+
+  Nothing the app does changes. Safe to run more than once.
+*/
+
+-- 1. Internal helpers: no outside callers. (The database itself, the scheduler and the
+--    service role used by edge functions keep using them.)
+DO $$
+DECLARE s text; f regprocedure;
+BEGIN
+  FOREACH s IN ARRAY ARRAY[
+    'api_contact(uuid)',
+    'api_route(api_keys, text, text[], jsonb, jsonb)',
+    'audit_person(uuid)',
+    'audit_write(uuid, text, text, uuid, jsonb)',
+    'can_use_room(uuid)',
+    'ensure_department_channel(uuid)',
+    'event_public_json(events)',
+    'event_ticket_list(uuid)',
+    'webhook_contact(uuid)',
+    'webhook_dispatch(uuid)',
+    'webhook_form_answers(uuid)',
+    'webhook_queue(uuid, text, jsonb)',
+    'wf_app_url()',
+    'wf_conditions_ok(jsonb, uuid)',
+    'wf_contact_tags(uuid)',
+    'wf_daily_scan()',
+    'wf_emit(uuid, text, uuid, jsonb)',
+    'wf_enroll(workflows, jsonb, uuid, text, jsonb, integer, boolean, boolean)',
+    'wf_exec_step(wf_runs, workflows, text, jsonb)',
+    'wf_finish(uuid, text, text)',
+    'wf_form_answers(uuid)',
+    'wf_handle_event(wf_events)',
+    'wf_log(wf_runs, jsonb, text, text, text)',
+    'wf_merge(text, uuid, jsonb)',
+    'wf_new_meeting(uuid, uuid, text, integer)',
+    'wf_post(uuid, workflows, wf_runs, text)',
+    'wf_run(uuid)',
+    'wf_tag_id(uuid, text)',
+    'wf_tick()',
+    'wf_trigger_matches(jsonb, wf_events)'
+  ] LOOP
+    f := to_regprocedure('public.' || s);
+    CONTINUE WHEN f IS NULL;
+    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon, authenticated', f);
+    BEGIN EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role', f); EXCEPTION WHEN undefined_object THEN NULL; END;
+  END LOOP;
+END $$;
+
+-- 2. Demo data: only the owner, for their own new account. The original keeps its body under
+--    another name that only the database can call.
+DO $$
+BEGIN
+  IF to_regprocedure('public.seed_workspace_demo_data_unchecked(uuid, uuid)') IS NULL
+     AND to_regprocedure('public.seed_workspace_demo_data(uuid, uuid)') IS NOT NULL THEN
+    ALTER FUNCTION public.seed_workspace_demo_data(uuid, uuid) RENAME TO seed_workspace_demo_data_unchecked;
+  END IF;
+END $$;
+DO $$
+BEGIN
+  IF to_regprocedure('public.seed_workspace_demo_data_unchecked(uuid, uuid)') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION public.seed_workspace_demo_data_unchecked(uuid, uuid) FROM PUBLIC, anon, authenticated;
+    EXECUTE $f$
+      CREATE OR REPLACE FUNCTION public.seed_workspace_demo_data(p_workspace_id uuid, p_owner_id uuid) RETURNS void
+      LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $b$
+      BEGIN
+        IF auth.uid() IS NULL OR auth.uid() <> p_owner_id OR NOT has_workspace_role(p_workspace_id, ARRAY['owner']) THEN
+          RAISE EXCEPTION 'Only the account owner can do this.';
+        END IF;
+        PERFORM seed_workspace_demo_data_unchecked(p_workspace_id, p_owner_id);
+      END $b$;
+    $f$;
+    REVOKE ALL ON FUNCTION public.seed_workspace_demo_data(uuid, uuid) FROM PUBLIC, anon;
+    GRANT EXECUTE ON FUNCTION public.seed_workspace_demo_data(uuid, uuid) TO authenticated;
+  END IF;
+END $$;
+
+-- 3. The scheduler's gateway key: the first value sticks; later changes only by a platform admin.
+CREATE OR REPLACE FUNCTION wf_set_client_key(p_key text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF auth.uid() IS NULL OR NOT EXISTS (SELECT 1 FROM workspace_members WHERE user_id = auth.uid()) THEN RETURN; END IF;
+  IF p_key IS NULL OR char_length(p_key) NOT BETWEEN 20 AND 2000 OR p_key !~ '^[A-Za-z0-9._-]+$' THEN RETURN; END IF;
+  IF is_platform_admin() THEN
+    INSERT INTO wf_private.settings(key, value) VALUES ('client_key', p_key) ON CONFLICT (key) DO UPDATE SET value = excluded.value;
+  ELSE
+    INSERT INTO wf_private.settings(key, value) VALUES ('client_key', p_key) ON CONFLICT (key) DO NOTHING;
+  END IF;
+END $$;
+REVOKE ALL ON FUNCTION wf_set_client_key(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION wf_set_client_key(text) TO authenticated;
+
+-- 4. Run with the caller's own permissions (row-level security decides what they touch).
+DO $$
+BEGIN
+  IF to_regprocedure('public.increment_workflow_runs(uuid)') IS NOT NULL THEN
+    ALTER FUNCTION public.increment_workflow_runs(uuid) SECURITY INVOKER;
+    REVOKE ALL ON FUNCTION public.increment_workflow_runs(uuid) FROM PUBLIC, anon;
+    GRANT EXECUTE ON FUNCTION public.increment_workflow_runs(uuid) TO authenticated;
+  END IF;
+  IF to_regprocedure('public.get_form_submission_counts(uuid[])') IS NOT NULL THEN
+    ALTER FUNCTION public.get_form_submission_counts(uuid[]) SECURITY INVOKER;
+    REVOKE ALL ON FUNCTION public.get_form_submission_counts(uuid[]) FROM PUBLIC, anon;
+    GRANT EXECUTE ON FUNCTION public.get_form_submission_counts(uuid[]) TO authenticated;
+  END IF;
+END $$;
+
+
+-- ============ 20261110090000_event_registration_types.sql ============
+/*
+  # Event registration: types with their own form, approval, dates to be announced
+
+  An event's tickets become registration types. Each can now have:
+    - a web address of its own (/e/<event>/<slug>, e.g. /register or /apply),
+    - a form from Forms that people fill in to register,
+    - approval: people apply and wait to be selected (no ticket until then),
+    - opening and closing times, and a status (draft, open, closed).
+  Tickets made before this keep working exactly as they did.
+
+  Also:
+    - events may have no date yet ("to be announced"): starts_at and ends_at are both empty;
+    - events gain a tagline, programme tags, the organiser's logo, brand colours and a privacy notice;
+    - registrations gain the new statuses (applied → shortlisted → selected / declined → confirmed),
+      a short ticket code (e.g. UNS-7K4Q), when consent was given, who checked them in, and the form
+      answers they came from;
+    - check-in staff per event, and a log of every check-in attempt (used by the scanner);
+    - public_event_registration(slug, type): what the registration page shows;
+    - event_register(slug, type, answers): registers or applies, through the type's form.
+
+  Nothing is deleted. Safe to run more than once.
+*/
+
+-- 1. Events ------------------------------------------------------------------------------
+ALTER TABLE events ALTER COLUMN starts_at DROP NOT NULL;
+ALTER TABLE events ALTER COLUMN ends_at DROP NOT NULL;
+DO $$ BEGIN
+  ALTER TABLE events ADD CONSTRAINT events_dates_together CHECK ((starts_at IS NULL) = (ends_at IS NULL));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS tagline text NOT NULL DEFAULT '' CHECK (char_length(tagline) <= 140);
+ALTER TABLE events ADD COLUMN IF NOT EXISTS programme text[] NOT NULL DEFAULT '{}';
+ALTER TABLE events ADD COLUMN IF NOT EXISTS organiser_logo_url text;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS brand jsonb NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS privacy_notice text NOT NULL DEFAULT '' CHECK (char_length(privacy_notice) <= 8000);
+
+-- 2. Tickets become registration types ---------------------------------------------------
+ALTER TABLE event_tickets ADD COLUMN IF NOT EXISTS slug text CHECK (slug IS NULL OR slug ~ '^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$');
+ALTER TABLE event_tickets ADD COLUMN IF NOT EXISTS form_id uuid REFERENCES forms(id) ON DELETE SET NULL;
+ALTER TABLE event_tickets ADD COLUMN IF NOT EXISTS requires_approval boolean NOT NULL DEFAULT false;
+ALTER TABLE event_tickets ADD COLUMN IF NOT EXISTS opens_at timestamptz;
+ALTER TABLE event_tickets ADD COLUMN IF NOT EXISTS closes_at timestamptz;
+ALTER TABLE event_tickets ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'open' CHECK (status IN ('draft', 'open', 'closed'));
+CREATE UNIQUE INDEX IF NOT EXISTS event_tickets_slug_key ON event_tickets(event_id, slug) WHERE slug IS NOT NULL;
+
+-- 3. Registrations -----------------------------------------------------------------------
+DO $$
+DECLARE c text;
+BEGIN
+  SELECT conname INTO c FROM pg_constraint
+  WHERE conrelid = 'event_registrations'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) LIKE '%status%confirmed%cancelled%'
+    AND pg_get_constraintdef(oid) NOT LIKE '%applied%';
+  IF c IS NOT NULL THEN EXECUTE format('ALTER TABLE event_registrations DROP CONSTRAINT %I', c); END IF;
+  ALTER TABLE event_registrations ADD CONSTRAINT event_registrations_status_types
+    CHECK (status IN ('confirmed', 'applied', 'shortlisted', 'selected', 'declined', 'cancelled'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+ALTER TABLE event_registrations ADD COLUMN IF NOT EXISTS ticket_code text;
+CREATE UNIQUE INDEX IF NOT EXISTS event_registrations_code_key ON event_registrations(ticket_code) WHERE ticket_code IS NOT NULL;
+ALTER TABLE event_registrations ADD COLUMN IF NOT EXISTS consent_at timestamptz;
+ALTER TABLE event_registrations ADD COLUMN IF NOT EXISTS checked_in_by uuid REFERENCES auth.users(id) ON DELETE SET NULL;
+ALTER TABLE event_registrations ADD COLUMN IF NOT EXISTS form_submission_id uuid REFERENCES form_submissions(id) ON DELETE SET NULL;
+ALTER TABLE event_registrations ADD COLUMN IF NOT EXISTS status_changed_at timestamptz;
+-- One live registration per person per registration type (they may hold one of each type).
+DROP INDEX IF EXISTS event_registrations_email_key;
+CREATE UNIQUE INDEX IF NOT EXISTS event_registrations_email_type_key
+  ON event_registrations(event_id, coalesce(ticket_id, '00000000-0000-0000-0000-000000000000'::uuid), lower(email))
+  WHERE status NOT IN ('cancelled', 'declined');
+
+-- 4. Check-in staff and the check-in log --------------------------------------------------
+CREATE TABLE IF NOT EXISTS event_staff (
+  event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  role text NOT NULL DEFAULT 'checkin' CHECK (role IN ('checkin')),
+  added_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (event_id, user_id)
+);
+ALTER TABLE event_staff ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "event_staff_read" ON event_staff;
+CREATE POLICY "event_staff_read" ON event_staff FOR SELECT TO authenticated
+  USING (user_id = auth.uid() OR EXISTS (SELECT 1 FROM events e WHERE e.id = event_id AND is_workspace_member(e.workspace_id)));
+DROP POLICY IF EXISTS "event_staff_manage" ON event_staff;
+CREATE POLICY "event_staff_manage" ON event_staff FOR ALL TO authenticated
+  USING (EXISTS (SELECT 1 FROM events e WHERE e.id = event_id AND (e.created_by = auth.uid() OR is_workspace_admin(e.workspace_id))))
+  WITH CHECK (EXISTS (SELECT 1 FROM events e WHERE e.id = event_id AND (e.created_by = auth.uid() OR is_workspace_admin(e.workspace_id))));
+
+CREATE TABLE IF NOT EXISTS event_checkins (
+  id bigserial PRIMARY KEY,
+  event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  registration_id uuid REFERENCES event_registrations(id) ON DELETE SET NULL,
+  user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  result text NOT NULL CHECK (result IN ('success', 'already_checked_in', 'invalid', 'not_eligible', 'undone')),
+  via text NOT NULL DEFAULT 'scan' CHECK (via IN ('scan', 'manual', 'undo')),
+  at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_event_checkins_event ON event_checkins(event_id, at DESC);
+ALTER TABLE event_checkins ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "event_checkins_read" ON event_checkins;
+CREATE POLICY "event_checkins_read" ON event_checkins FOR SELECT TO authenticated
+  USING (EXISTS (SELECT 1 FROM events e WHERE e.id = event_id AND is_workspace_member(e.workspace_id)));
+
+-- 5. Helpers -----------------------------------------------------------------------------
+
+-- Statuses that hold a place (count against capacity) and carry a ticket.
+CREATE OR REPLACE FUNCTION event_holds_place(p_status text) RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
+  SELECT p_status IN ('confirmed', 'selected')
+$$;
+
+-- A short, readable ticket code: the event's first letters and four characters people can't
+-- misread (no 0/O, 1/I/L), e.g. UNS-7K4Q. Unique across all events.
+CREATE OR REPLACE FUNCTION event_ticket_code(p_slug text) RETURNS text LANGUAGE plpgsql VOLATILE AS $$
+DECLARE
+  abc constant text := 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  prefix text := upper(left(regexp_replace(coalesce(p_slug, ''), '[^a-zA-Z0-9]', '', 'g'), 3));
+  code text;
+BEGIN
+  IF char_length(prefix) < 2 THEN prefix := 'TKT'; END IF;
+  LOOP
+    code := prefix || '-' || (SELECT string_agg(substr(abc, 1 + floor(random() * length(abc))::int, 1), '') FROM generate_series(1, 4));
+    EXIT WHEN NOT EXISTS (SELECT 1 FROM event_registrations WHERE ticket_code = code);
+  END LOOP;
+  RETURN code;
+END $$;
+
+-- A form's definition as JSON (it is kept as a JSON string inside the column).
+CREATE OR REPLACE FUNCTION form_definition_json(p_def jsonb) RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
+  SELECT CASE WHEN jsonb_typeof(p_def) = 'string' THEN (p_def #>> '{}')::jsonb ELSE coalesce(p_def, '{}'::jsonb) END
+$$;
+
+-- Whether a registration type takes people now, and if not why.
+CREATE OR REPLACE FUNCTION event_type_state(e events, t event_tickets) RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT CASE
+    WHEN e.status = 'cancelled' THEN 'cancelled'
+    WHEN e.status <> 'published' OR t.status = 'draft' THEN 'unavailable'
+    WHEN e.ends_at IS NOT NULL AND e.ends_at < now() THEN 'ended'
+    WHEN t.status = 'closed' OR (t.closes_at IS NOT NULL AND t.closes_at <= now()) THEN 'closed'
+    WHEN t.opens_at IS NOT NULL AND t.opens_at > now() THEN 'not_open_yet'
+    WHEN NOT t.requires_approval AND t.capacity IS NOT NULL
+      AND (SELECT count(*) FROM event_registrations r WHERE r.ticket_id = t.id AND event_holds_place(r.status)) >= t.capacity THEN 'full'
+    ELSE 'open' END
+$$;
+REVOKE ALL ON FUNCTION event_type_state(events, event_tickets) FROM PUBLIC, anon, authenticated;
+
+-- 6. What the public sees (same functions as before, now with types, TBA dates and branding) --
+
+CREATE OR REPLACE FUNCTION event_ticket_list(p_event uuid)
+RETURNS jsonb LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT coalesce(jsonb_agg(jsonb_build_object(
+    'id', t.id, 'name', t.name, 'description', t.description,
+    'price_minor', t.price_minor, 'currency', t.currency, 'capacity', t.capacity,
+    'remaining', CASE WHEN t.capacity IS NULL THEN NULL ELSE greatest(t.capacity - (
+      SELECT count(*) FROM event_registrations r WHERE r.ticket_id = t.id AND event_holds_place(r.status)), 0) END,
+    'slug', t.slug, 'requires_approval', t.requires_approval, 'has_form', t.form_id IS NOT NULL,
+    'opens_at', t.opens_at, 'closes_at', t.closes_at,
+    'state', (SELECT event_type_state(e, t) FROM events e WHERE e.id = t.event_id)
+  ) ORDER BY t.sort, t.created_at), '[]'::jsonb)
+  FROM event_tickets t WHERE t.event_id = p_event AND t.status <> 'draft';
+$$;
+
+CREATE OR REPLACE FUNCTION event_public_json(e events)
+RETURNS jsonb LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT jsonb_build_object(
+    'id', e.id, 'organiser_id', e.workspace_id, 'slug', e.slug, 'title', e.title,
+    'summary', e.summary, 'description', e.description, 'category', e.category,
+    'cover_url', e.cover_url, 'starts_at', e.starts_at, 'ends_at', e.ends_at,
+    'timezone', e.timezone, 'mode', e.mode, 'venue_name', e.venue_name,
+    'address', e.address, 'city', e.city, 'status', e.status, 'visibility', e.visibility,
+    'organiser_name', coalesce(nullif(e.organiser_name, ''), (SELECT w.name FROM workspaces w WHERE w.id = e.workspace_id), ''),
+    'organiser_logo_url', e.organiser_logo_url, 'tagline', e.tagline, 'programme', to_jsonb(e.programme), 'brand', e.brand,
+    'questions', e.questions,
+    'registered', (SELECT count(*) FROM event_registrations r WHERE r.event_id = e.id AND event_holds_place(r.status)),
+    'tickets', event_ticket_list(e.id)
+  );
+$$;
+
+-- Upcoming events; ones with a date to be announced come last.
+CREATE OR REPLACE FUNCTION public_events()
+RETURNS jsonb LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT coalesce(jsonb_agg(event_public_json(e) - 'description' - 'questions' ORDER BY e.starts_at NULLS LAST, e.created_at), '[]'::jsonb)
+  FROM (SELECT * FROM events
+        WHERE status = 'published' AND visibility = 'public' AND (ends_at IS NULL OR ends_at > now())
+        ORDER BY starts_at NULLS LAST LIMIT 200) e;
+$$;
+
+CREATE OR REPLACE FUNCTION public_event_stats()
+RETURNS jsonb LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT jsonb_build_object(
+    'upcoming', (SELECT count(*) FROM events WHERE status = 'published' AND visibility = 'public' AND (ends_at IS NULL OR ends_at > now())),
+    'registrations', (SELECT count(*) FROM event_registrations r JOIN events e ON e.id = r.event_id
+                      WHERE event_holds_place(r.status) AND e.status = 'published' AND e.visibility = 'public'),
+    'cities', (SELECT count(DISTINCT lower(city)) FROM events WHERE status = 'published' AND visibility = 'public' AND city <> ''),
+    'organisers', (SELECT count(DISTINCT workspace_id) FROM events WHERE status = 'published' AND visibility = 'public')
+  );
+$$;
+
+-- The ticket page also shows the registration type and the short code.
+CREATE OR REPLACE FUNCTION public_ticket(p_token uuid)
+RETURNS jsonb LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT jsonb_build_object(
+    'qr_token', r.qr_token, 'pin', r.pin, 'ticket_code', r.ticket_code, 'first_name', r.first_name, 'last_name', r.last_name,
+    'email', r.email, 'status', r.status, 'payment_status', r.payment_status, 'amount_minor', r.amount_minor,
+    'checked_in_at', r.checked_in_at, 'created_at', r.created_at,
+    'ticket_name', t.name, 'requires_approval', coalesce(t.requires_approval, false), 'currency', coalesce(t.currency, 'NGN'),
+    'online_url', CASE WHEN event_holds_place(r.status) THEN e.online_url ELSE '' END,
+    'event', event_public_json(e) - 'questions' - 'tickets'
+  )
+  FROM event_registrations r
+  JOIN events e ON e.id = r.event_id
+  LEFT JOIN event_tickets t ON t.id = r.ticket_id
+  WHERE r.qr_token = p_token LIMIT 1;
+$$;
+
+/** The registration page: the event, the type and whether it's open, and the form to fill in. */
+CREATE OR REPLACE FUNCTION public_event_registration(p_slug text, p_type text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public AS $$
+DECLARE e events; t event_tickets; f forms;
+BEGIN
+  SELECT * INTO e FROM events WHERE slug = lower(btrim(p_slug)) AND status IN ('published', 'cancelled');
+  IF NOT FOUND THEN RETURN NULL; END IF;
+  SELECT * INTO t FROM event_tickets WHERE event_id = e.id AND slug = lower(btrim(p_type)) AND status <> 'draft';
+  IF NOT FOUND OR t.form_id IS NULL THEN RETURN jsonb_build_object('event', event_public_json(e) - 'questions', 'type', NULL); END IF;
+  SELECT * INTO f FROM forms WHERE id = t.form_id;
+  RETURN jsonb_build_object(
+    'event', event_public_json(e) - 'questions',
+    'privacy_notice', e.privacy_notice,
+    'type', jsonb_build_object('id', t.id, 'slug', t.slug, 'name', t.name, 'description', t.description,
+      'requires_approval', t.requires_approval, 'price_minor', t.price_minor, 'currency', t.currency,
+      'opens_at', t.opens_at, 'closes_at', t.closes_at, 'state', event_type_state(e, t)),
+    'form', CASE WHEN f.id IS NULL THEN NULL ELSE jsonb_build_object('id', f.id, 'name', f.name, 'description', f.description,
+      'definition', form_definition_json(f.definition)) END
+  );
+END $$;
+REVOKE ALL ON FUNCTION public_event_registration(text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public_event_registration(text, text) TO anon, authenticated;
+
+/**
+ * Register (or apply) through a registration type's form. The answers are by form field id;
+ * name, email and phone come from the fields saved to the contact (or by field type).
+ * Returns { status: 'confirmed' | 'applied', qr_token?, ticket_code?, first_name, type_name }
+ * or { status: 'duplicate' } when this email (or phone) already holds a live registration
+ * of this type. Raises closed / full / not_open_yet / consent_required / email_invalid /
+ * name_required / busy / not_found.
+ */
+CREATE OR REPLACE FUNCTION event_register(p_slug text, p_type text, p_answers jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  e events; t event_tickets; f forms; def jsonb; el jsonb; a jsonb := coalesce(p_answers, '{}'::jsonb);
+  k text; v text; first text; last text; full_name text; em text; ph text;
+  consent_needed boolean := false; consent_given boolean := false;
+  state text; cid uuid; sid uuid; reg event_registrations; new_pin text; st text;
+BEGIN
+  SELECT * INTO e FROM events WHERE slug = lower(btrim(coalesce(p_slug, ''))) AND status = 'published';
+  IF NOT FOUND THEN RAISE EXCEPTION 'not_found'; END IF;
+  -- Lock the type so two people can't take the last place at once.
+  SELECT * INTO t FROM event_tickets WHERE event_id = e.id AND slug = lower(btrim(coalesce(p_type, ''))) FOR UPDATE;
+  IF NOT FOUND OR t.form_id IS NULL THEN RAISE EXCEPTION 'not_found'; END IF;
+  state := event_type_state(e, t);
+  IF state <> 'open' THEN RAISE EXCEPTION '%', CASE WHEN state IN ('full', 'not_open_yet') THEN state ELSE 'closed' END; END IF;
+  IF (SELECT count(*) FROM event_registrations WHERE ticket_id = t.id AND created_at > now() - interval '1 minute') >= 60 THEN
+    RAISE EXCEPTION 'busy';
+  END IF;
+
+  SELECT * INTO f FROM forms WHERE id = t.form_id;
+  def := form_definition_json(f.definition);
+  FOR el IN SELECT value FROM jsonb_each(coalesce(def->'elements', '{}'::jsonb)) LOOP
+    CONTINUE WHEN el->'field' IS NULL;
+    k := coalesce(el->'field'->>'mappedContactField', el->>'type');
+    v := btrim(coalesce(a->>(el->'field'->>'fieldId'), ''));
+    IF el->>'type' = 'consent' THEN
+      IF coalesce((el->'field'->>'required')::boolean, false) AND v <> 'true' THEN consent_needed := true; END IF;
+      IF v = 'true' THEN consent_given := true; END IF;
+      CONTINUE;
+    END IF;
+    CONTINUE WHEN v = '';
+    IF k = 'first_name' AND first IS NULL THEN first := v;
+    ELSIF k = 'last_name' AND last IS NULL THEN last := v;
+    ELSIF k = 'full_name' AND full_name IS NULL THEN full_name := v;
+    ELSIF k = 'email' AND em IS NULL THEN em := lower(v);
+    ELSIF k = 'phone' AND ph IS NULL THEN ph := v;
+    END IF;
+  END LOOP;
+  IF consent_needed THEN RAISE EXCEPTION 'consent_required'; END IF;
+  IF first IS NULL AND full_name IS NOT NULL THEN
+    first := split_part(full_name, ' ', 1);
+    last := coalesce(last, nullif(btrim(substr(full_name, length(split_part(full_name, ' ', 1)) + 1)), ''));
+  END IF;
+  IF coalesce(first, '') = '' THEN RAISE EXCEPTION 'name_required'; END IF;
+  IF coalesce(em, '') !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' THEN RAISE EXCEPTION 'email_invalid'; END IF;
+
+  -- Already registered for this type (by email, or by phone when given)? Nothing new is made.
+  IF EXISTS (SELECT 1 FROM event_registrations r WHERE r.event_id = e.id AND r.ticket_id = t.id AND r.status NOT IN ('cancelled', 'declined')
+             AND (lower(r.email) = em OR (ph IS NOT NULL AND length(regexp_replace(ph, '\D', '', 'g')) >= 9
+                  -- The same number with or without its country code: the last nine digits match.
+                  AND right(regexp_replace(r.phone, '\D', '', 'g'), 9) = right(regexp_replace(ph, '\D', '', 'g'), 9)))) THEN
+    RETURN jsonb_build_object('status', 'duplicate', 'type_name', t.name);
+  END IF;
+
+  -- Every registrant becomes (or updates) a contact in the host's CRM.
+  SELECT id INTO cid FROM contacts WHERE workspace_id = e.workspace_id AND lower(email) = em ORDER BY created_at LIMIT 1;
+  IF cid IS NULL THEN
+    INSERT INTO contacts (workspace_id, first_name, last_name, email, phone, source)
+    VALUES (e.workspace_id, left(first, 80), left(coalesce(last, ''), 80), em, left(coalesce(ph, ''), 40), 'event')
+    RETURNING id INTO cid;
+  ELSE
+    UPDATE contacts SET phone = coalesce(nullif(phone, ''), left(ph, 40)), last_activity_at = now() WHERE id = cid;
+  END IF;
+
+  -- The answers also land in the form's responses (and start "form submitted" workflows).
+  INSERT INTO form_submissions (workspace_id, form_id, contact_id, answers, source, meta)
+  VALUES (e.workspace_id, f.id, cid, a, 'event', jsonb_build_object('event_id', e.id, 'event', e.title, 'registration_type', t.name))
+  RETURNING id INTO sid;
+
+  LOOP
+    new_pin := lpad((floor(random() * 1000000))::int::text, 6, '0');
+    EXIT WHEN NOT EXISTS (SELECT 1 FROM event_registrations WHERE event_id = e.id AND pin = new_pin);
+  END LOOP;
+  st := CASE WHEN t.requires_approval THEN 'applied' ELSE 'confirmed' END;
+
+  INSERT INTO event_registrations (event_id, ticket_id, contact_id, first_name, last_name, email, phone, answers, pin,
+    status, payment_status, amount_minor, ticket_code, consent_at, form_submission_id, status_changed_at)
+  VALUES (e.id, t.id, cid, left(first, 80), left(coalesce(last, ''), 80), em, left(coalesce(ph, ''), 40), a, new_pin,
+    st, CASE WHEN t.price_minor > 0 THEN 'unpaid' ELSE 'free' END, t.price_minor,
+    CASE WHEN st = 'confirmed' THEN event_ticket_code(e.slug) END,
+    CASE WHEN consent_given THEN now() END, sid, now())
+  RETURNING * INTO reg;
+
+  RETURN jsonb_build_object('status', reg.status, 'first_name', reg.first_name, 'type_name', t.name,
+    'qr_token', CASE WHEN event_holds_place(reg.status) THEN reg.qr_token END, 'ticket_code', reg.ticket_code);
+END $$;
+REVOKE ALL ON FUNCTION event_register(text, text, jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION event_register(text, text, jsonb) TO anon, authenticated;
+
+-- Older registrations made before ticket codes: give the ones holding a place a code.
+UPDATE event_registrations r SET ticket_code = event_ticket_code(e.slug)
+FROM events e WHERE e.id = r.event_id AND r.ticket_code IS NULL AND event_holds_place(r.status);
+
+
+-- ============ 20261111090000_event_tickets_emails.sql ============
+/*
+  # Event tickets you can trust, and the emails that carry them
+
+  1. Signed tickets. Every ticket's QR holds a link with a signature: /e/ticket/<token>?v=<sig>,
+     where sig is an HMAC of the token made with a secret that never leaves the database. The door
+     scanner (next phase) checks the signature before looking anything up, so a made-up or altered
+     code is refused at once.
+  2. Emails, sent from the account's connected Gmail by the mailer that already sends form emails:
+       confirmed  an attendee is registered: their ticket
+       applied    an application arrived
+       selected   an applicant was selected: their ticket
+       declined   an applicant wasn't selected, kindly
+     Each is branded with the event's colours and logo and can be reworded per event
+     (events.email_templates). The QR in the email is a picture served by the `api` function.
+  3. event_resend_ticket(event, email): emails the ticket again. It answers the same whether or not
+     the email has a ticket, so nobody can use it to find out who registered.
+  4. event_set_registration_status(registration, status): for the organiser's review board.
+     Selecting issues the ticket and sends it; declining sends the kind note.
+
+  Needs 20261110090000_event_registration_types.sql. Safe to run more than once.
+*/
+
+-- 1. Signed tickets ----------------------------------------------------------------------
+
+CREATE SCHEMA IF NOT EXISTS ev_private;
+REVOKE ALL ON SCHEMA ev_private FROM PUBLIC;
+CREATE TABLE IF NOT EXISTS ev_private.settings (key text PRIMARY KEY, value text NOT NULL);
+REVOKE ALL ON ev_private.settings FROM PUBLIC;
+INSERT INTO ev_private.settings(key, value) VALUES ('ticket_secret', replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''))
+ON CONFLICT (key) DO NOTHING;
+
+-- The signature on a ticket: 16 hex characters of HMAC-SHA256(token, secret).
+CREATE OR REPLACE FUNCTION ticket_sig(p_token uuid) RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, extensions AS $$
+  SELECT left(encode(hmac(p_token::text, (SELECT value FROM ev_private.settings WHERE key = 'ticket_secret'), 'sha256'), 'hex'), 16)
+$$;
+REVOKE ALL ON FUNCTION ticket_sig(uuid) FROM PUBLIC, anon, authenticated;
+
+-- Whether a scanned signature belongs to this token (compared in full, never partly).
+CREATE OR REPLACE FUNCTION ticket_sig_ok(p_token uuid, p_sig text) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT p_token IS NOT NULL AND p_sig IS NOT NULL AND lower(p_sig) = ticket_sig(p_token)
+$$;
+REVOKE ALL ON FUNCTION ticket_sig_ok(uuid, text) FROM PUBLIC, anon, authenticated;
+
+-- What the QR holds: the ticket's link with its signature.
+CREATE OR REPLACE FUNCTION ticket_qr_url(p_token uuid) RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT wf_app_url() || '/e/ticket/' || p_token || '?v=' || ticket_sig(p_token)
+$$;
+REVOKE ALL ON FUNCTION ticket_qr_url(uuid) FROM PUBLIC, anon, authenticated;
+
+-- For the `api` function's QR pictures (service role): the QR text, only for a correctly signed ticket.
+CREATE OR REPLACE FUNCTION ticket_qr_text(p_token uuid, p_sig text) RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT CASE WHEN ticket_sig_ok(p_token, p_sig) AND EXISTS (SELECT 1 FROM event_registrations WHERE qr_token = p_token) THEN ticket_qr_url(p_token) END
+$$;
+REVOKE ALL ON FUNCTION ticket_qr_text(uuid, text) FROM PUBLIC, anon, authenticated;
+DO $$ BEGIN GRANT EXECUTE ON FUNCTION ticket_qr_text(uuid, text) TO service_role; EXCEPTION WHEN undefined_object THEN NULL; END $$;
+
+-- 2. Emails --------------------------------------------------------------------------------
+
+ALTER TABLE events ADD COLUMN IF NOT EXISTS email_templates jsonb NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS email_account_id uuid REFERENCES email_accounts(id) ON DELETE SET NULL;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS footer_line text NOT NULL DEFAULT '' CHECK (char_length(footer_line) <= 300);
+ALTER TABLE event_registrations ADD COLUMN IF NOT EXISTS last_email_at timestamptz;
+
+-- The wording each email starts with; the organiser can change any of it per event.
+CREATE OR REPLACE FUNCTION event_email_default(p_kind text) RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
+  SELECT CASE p_kind
+    WHEN 'confirmed' THEN jsonb_build_object('subject', 'You''re in: {{event}}',
+      'message', E'Hi {{first_name}},\n\nYou''re registered for {{event}}. Your ticket is below: show the QR code at the door, or give your ticket code {{code}}.\n\nSee you there!')
+    WHEN 'applied' THEN jsonb_build_object('subject', 'We''ve got your application: {{event}}',
+      'message', E'Hi {{first_name}},\n\nThank you for applying ({{type}}) for {{event}}. We read every application and we''ll be in touch once we''ve decided.')
+    WHEN 'selected' THEN jsonb_build_object('subject', 'You''ve been selected: {{event}}',
+      'message', E'Hi {{first_name}},\n\nGreat news: you''ve been selected for {{event}}! Your ticket is below. Show the QR code at the door, or give your ticket code {{code}}.\n\nWe can''t wait to see you.')
+    WHEN 'declined' THEN jsonb_build_object('subject', 'About your application: {{event}}',
+      'message', E'Hi {{first_name}},\n\nThank you so much for applying to {{event}}. We had more applications than places this time, so we can''t offer you a spot, but we''d love to see you there, and we hope you''ll apply again.')
+  END
+$$;
+
+CREATE OR REPLACE FUNCTION html_esc(p text) RETURNS text LANGUAGE sql IMMUTABLE AS $$
+  SELECT replace(replace(replace(replace(coalesce(p, ''), '&', '&amp;'), '<', '&lt;'), '>', '&gt;'), '"', '&quot;')
+$$;
+
+-- "Sat 6 Dec 2026, 6:00 PM", or "Date to be announced".
+CREATE OR REPLACE FUNCTION event_date_text(e events) RETURNS text LANGUAGE sql STABLE AS $$
+  SELECT CASE WHEN e.starts_at IS NULL THEN 'Date to be announced'
+    ELSE trim(to_char(e.starts_at AT TIME ZONE coalesce(nullif(e.timezone, ''), 'UTC'), 'Dy FMDD Mon YYYY, FMHH12:MI AM')) END
+$$;
+
+/**
+ * Queue one of the event emails for a registration. Returns false (and sends nothing) when there's
+ * no connected email account, no email address, or the registration didn't come through a form
+ * (the mailer sends the messages linked to a form response).
+ */
+CREATE OR REPLACE FUNCTION event_email(p_reg uuid, p_kind text) RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  r event_registrations; e events; t event_tickets; acc email_accounts; tpl jsonb; subj text; msg text;
+  primary_c text; accent_c text; place text; ticket boolean; link text; qr_img text; base text; html text; txt text; k text; v text;
+BEGIN
+  SELECT * INTO r FROM event_registrations WHERE id = p_reg;
+  IF NOT FOUND OR r.form_submission_id IS NULL OR coalesce(r.email, '') = '' THEN RETURN false; END IF;
+  SELECT * INTO e FROM events WHERE id = r.event_id;
+  SELECT * INTO t FROM event_tickets WHERE id = r.ticket_id;
+  SELECT * INTO acc FROM email_accounts WHERE id = e.email_account_id AND status = 'active';
+  IF NOT FOUND THEN SELECT * INTO acc FROM email_accounts WHERE workspace_id = e.workspace_id AND status = 'active' ORDER BY created_at LIMIT 1; END IF;
+  IF acc.id IS NULL THEN RETURN false; END IF;
+
+  tpl := event_email_default(p_kind) || coalesce(e.email_templates->p_kind, '{}'::jsonb);
+  IF tpl IS NULL THEN RETURN false; END IF;
+  ticket := p_kind IN ('confirmed', 'selected') AND event_holds_place(r.status);
+  link := CASE WHEN ticket THEN wf_app_url() || '/e/ticket/' || r.qr_token END;
+  place := concat_ws(', ', nullif(e.venue_name, ''), nullif(e.city, ''));
+  subj := coalesce(nullif(btrim(tpl->>'subject'), ''), event_email_default(p_kind)->>'subject');
+  msg := coalesce(nullif(btrim(tpl->>'message'), ''), event_email_default(p_kind)->>'message');
+  FOR k, v IN SELECT * FROM (VALUES
+    ('first_name', r.first_name), ('name', btrim(r.first_name || ' ' || r.last_name)), ('event', e.title), ('type', coalesce(t.name, '')),
+    ('code', coalesce(r.ticket_code, '')), ('date', event_date_text(e)), ('venue', coalesce(nullif(place, ''), 'To be announced')),
+    ('ticket_link', coalesce(link, ''))) x(k, v) LOOP
+    subj := replace(subj, '{{' || k || '}}', coalesce(v, ''));
+    msg := replace(msg, '{{' || k || '}}', coalesce(v, ''));
+  END LOOP;
+
+  primary_c := CASE WHEN coalesce(e.brand->>'primary', '') ~ '^#[0-9a-fA-F]{6}$' THEN e.brand->>'primary' ELSE '#0A1628' END;
+  accent_c := CASE WHEN coalesce(e.brand->>'accent', '') ~ '^#[0-9a-fA-F]{6}$' THEN e.brand->>'accent' ELSE '#C8A96A' END;
+  base := regexp_replace(coalesce((SELECT value FROM wf_private.settings WHERE key = 'mailer_url'), ''), '/send-email$', '');
+  qr_img := CASE WHEN ticket AND base <> '' THEN base || '/api/qr/' || r.qr_token || '.png?v=' || ticket_sig(r.qr_token) END;
+
+  txt := msg
+    || CASE WHEN ticket THEN E'\n\n' || e.title || E'\n' || event_date_text(e) || CASE WHEN place <> '' THEN E'\n' || place ELSE '' END
+         || E'\nTicket: ' || coalesce(t.name, 'Ticket') || ' · ' || coalesce(r.ticket_code, '') || E'\nYour ticket: ' || link ELSE '' END
+    || CASE WHEN e.footer_line <> '' THEN E'\n\n' || e.footer_line ELSE '' END;
+
+  html := '<!doctype html><html><body style="margin:0;padding:0;background:#ffffff;">'
+    || '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;"><tr><td align="center" style="padding:24px 12px;">'
+    || '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;border:1px solid #E6E8EE;border-radius:16px;overflow:hidden;font-family:Helvetica,Arial,sans-serif;color:#1F2937;">'
+    || '<tr><td style="height:6px;background:' || primary_c || ';background-image:linear-gradient(90deg,' || primary_c || ',' || accent_c || ');"></td></tr>'
+    || '<tr><td style="padding:28px 32px 8px;">'
+    || CASE WHEN coalesce(e.organiser_logo_url, '') ~ '^https://' THEN '<img src="' || html_esc(e.organiser_logo_url) || '" alt="" height="40" style="height:40px;margin-bottom:16px;">' ELSE '' END
+    || '<p style="margin:0;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:' || primary_c || ';">' || html_esc(e.title) || '</p>'
+    || '<div style="margin-top:14px;font-size:16px;line-height:1.6;">' || replace(html_esc(msg), E'\n', '<br>') || '</div></td></tr>'
+    || CASE WHEN ticket THEN
+         '<tr><td style="padding:16px 32px 8px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px dashed #CBD2DE;border-radius:14px;"><tr><td align="center" style="padding:22px;">'
+         || CASE WHEN qr_img IS NOT NULL THEN '<img src="' || html_esc(qr_img) || '" width="200" height="200" alt="Your ticket QR code" style="display:block;width:200px;height:200px;">' ELSE '' END
+         || '<p style="margin:14px 0 0;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#6B7280;">Ticket code</p>'
+         || '<p style="margin:2px 0 0;font-size:26px;font-weight:800;letter-spacing:3px;color:#0A1628;">' || html_esc(r.ticket_code) || '</p>'
+         || '<p style="margin:12px 0 0;font-size:14px;color:#374151;"><b>' || html_esc(btrim(r.first_name || ' ' || r.last_name)) || '</b> · ' || html_esc(coalesce(t.name, 'Ticket')) || '</p>'
+         || '<p style="margin:4px 0 0;font-size:14px;color:#374151;">' || html_esc(event_date_text(e)) || CASE WHEN place <> '' THEN ' · ' || html_esc(place) ELSE '' END || '</p>'
+         || '<p style="margin:18px 0 0;"><a href="' || html_esc(link) || '" style="display:inline-block;background:' || primary_c || ';color:#ffffff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:999px;">View my ticket</a></p>'
+         || '</td></tr></table></td></tr>'
+       ELSE '' END
+    || '<tr><td style="padding:20px 32px 28px;font-size:12px;color:#6B7280;line-height:1.6;">'
+    || CASE WHEN e.footer_line <> '' THEN '<p style="margin:0 0 8px;font-style:italic;color:#374151;">' || html_esc(e.footer_line) || '</p>' ELSE '' END
+    || html_esc(coalesce(nullif(e.organiser_name, ''), 'The organiser')) || ' · sent with SYNAPSE Events</td></tr>'
+    || '</table></td></tr></table></body></html>';
+
+  INSERT INTO messages (workspace_id, contact_id, channel, direction, subject, body, body_html, status, from_email, from_name, to_address, email_account_id, form_submission_id)
+  VALUES (e.workspace_id, r.contact_id, 'email', 'outbound', left(subj, 300), txt, html, 'queued', acc.email,
+          coalesce(nullif(e.organiser_name, ''), acc.display_name), r.email, acc.id, r.form_submission_id);
+  UPDATE event_registrations SET last_email_at = now() WHERE id = r.id;
+  RETURN true;
+END $$;
+REVOKE ALL ON FUNCTION event_email(uuid, text) FROM PUBLIC, anon, authenticated;
+
+-- 3. Registering sends the email; the result says whether it went out, and carries the signed QR.
+CREATE OR REPLACE FUNCTION event_register_and_email() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NEW.form_submission_id IS NOT NULL AND NEW.status IN ('confirmed', 'applied') THEN
+    PERFORM event_email(NEW.id, NEW.status);
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS event_registration_email ON event_registrations;
+CREATE TRIGGER event_registration_email AFTER INSERT ON event_registrations FOR EACH ROW EXECUTE FUNCTION event_register_and_email();
+
+-- The ticket page also gets the signed QR link and the footer line.
+CREATE OR REPLACE FUNCTION public_ticket(p_token uuid)
+RETURNS jsonb LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT jsonb_build_object(
+    'qr_token', r.qr_token, 'qr_url', CASE WHEN event_holds_place(r.status) THEN ticket_qr_url(r.qr_token) END,
+    'pin', r.pin, 'ticket_code', r.ticket_code, 'first_name', r.first_name, 'last_name', r.last_name,
+    'email', r.email, 'status', r.status, 'payment_status', r.payment_status, 'amount_minor', r.amount_minor,
+    'checked_in_at', r.checked_in_at, 'created_at', r.created_at,
+    'ticket_name', t.name, 'requires_approval', coalesce(t.requires_approval, false), 'currency', coalesce(t.currency, 'NGN'),
+    'online_url', CASE WHEN event_holds_place(r.status) THEN e.online_url ELSE '' END,
+    'footer_line', e.footer_line,
+    'event', event_public_json(e) - 'questions' - 'tickets'
+  )
+  FROM event_registrations r
+  JOIN events e ON e.id = r.event_id
+  LEFT JOIN event_tickets t ON t.id = r.ticket_id
+  WHERE r.qr_token = p_token LIMIT 1;
+$$;
+
+-- event_register's answer also carries the signed QR link and whether the email went.
+/**
+ * Register (or apply) through a registration type's form. The answers are by form field id;
+ * name, email and phone come from the fields saved to the contact (or by field type).
+ * Returns { status: 'confirmed' | 'applied', qr_token?, ticket_code?, first_name, type_name }
+ * or { status: 'duplicate' } when this email (or phone) already holds a live registration
+ * of this type. Also: qr_url (the signed link the QR holds) and emailed. Raises closed / full / not_open_yet / consent_required / email_invalid /
+ * name_required / busy / not_found.
+ */
+CREATE OR REPLACE FUNCTION event_register(p_slug text, p_type text, p_answers jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  e events; t event_tickets; f forms; def jsonb; el jsonb; a jsonb := coalesce(p_answers, '{}'::jsonb);
+  k text; v text; first text; last text; full_name text; em text; ph text;
+  consent_needed boolean := false; consent_given boolean := false;
+  state text; cid uuid; sid uuid; reg event_registrations; new_pin text; st text;
+BEGIN
+  SELECT * INTO e FROM events WHERE slug = lower(btrim(coalesce(p_slug, ''))) AND status = 'published';
+  IF NOT FOUND THEN RAISE EXCEPTION 'not_found'; END IF;
+  -- Lock the type so two people can't take the last place at once.
+  SELECT * INTO t FROM event_tickets WHERE event_id = e.id AND slug = lower(btrim(coalesce(p_type, ''))) FOR UPDATE;
+  IF NOT FOUND OR t.form_id IS NULL THEN RAISE EXCEPTION 'not_found'; END IF;
+  state := event_type_state(e, t);
+  IF state <> 'open' THEN RAISE EXCEPTION '%', CASE WHEN state IN ('full', 'not_open_yet') THEN state ELSE 'closed' END; END IF;
+  IF (SELECT count(*) FROM event_registrations WHERE ticket_id = t.id AND created_at > now() - interval '1 minute') >= 60 THEN
+    RAISE EXCEPTION 'busy';
+  END IF;
+
+  SELECT * INTO f FROM forms WHERE id = t.form_id;
+  def := form_definition_json(f.definition);
+  FOR el IN SELECT value FROM jsonb_each(coalesce(def->'elements', '{}'::jsonb)) LOOP
+    CONTINUE WHEN el->'field' IS NULL;
+    k := coalesce(el->'field'->>'mappedContactField', el->>'type');
+    v := btrim(coalesce(a->>(el->'field'->>'fieldId'), ''));
+    IF el->>'type' = 'consent' THEN
+      IF coalesce((el->'field'->>'required')::boolean, false) AND v <> 'true' THEN consent_needed := true; END IF;
+      IF v = 'true' THEN consent_given := true; END IF;
+      CONTINUE;
+    END IF;
+    CONTINUE WHEN v = '';
+    IF k = 'first_name' AND first IS NULL THEN first := v;
+    ELSIF k = 'last_name' AND last IS NULL THEN last := v;
+    ELSIF k = 'full_name' AND full_name IS NULL THEN full_name := v;
+    ELSIF k = 'email' AND em IS NULL THEN em := lower(v);
+    ELSIF k = 'phone' AND ph IS NULL THEN ph := v;
+    END IF;
+  END LOOP;
+  IF consent_needed THEN RAISE EXCEPTION 'consent_required'; END IF;
+  IF first IS NULL AND full_name IS NOT NULL THEN
+    first := split_part(full_name, ' ', 1);
+    last := coalesce(last, nullif(btrim(substr(full_name, length(split_part(full_name, ' ', 1)) + 1)), ''));
+  END IF;
+  IF coalesce(first, '') = '' THEN RAISE EXCEPTION 'name_required'; END IF;
+  IF coalesce(em, '') !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' THEN RAISE EXCEPTION 'email_invalid'; END IF;
+
+  -- Already registered for this type (by email, or by phone when given)? Nothing new is made.
+  IF EXISTS (SELECT 1 FROM event_registrations r WHERE r.event_id = e.id AND r.ticket_id = t.id AND r.status NOT IN ('cancelled', 'declined')
+             AND (lower(r.email) = em OR (ph IS NOT NULL AND length(regexp_replace(ph, '\D', '', 'g')) >= 9
+                  -- The same number with or without its country code: the last nine digits match.
+                  AND right(regexp_replace(r.phone, '\D', '', 'g'), 9) = right(regexp_replace(ph, '\D', '', 'g'), 9)))) THEN
+    RETURN jsonb_build_object('status', 'duplicate', 'type_name', t.name);
+  END IF;
+
+  -- Every registrant becomes (or updates) a contact in the host's CRM.
+  SELECT id INTO cid FROM contacts WHERE workspace_id = e.workspace_id AND lower(email) = em ORDER BY created_at LIMIT 1;
+  IF cid IS NULL THEN
+    INSERT INTO contacts (workspace_id, first_name, last_name, email, phone, source)
+    VALUES (e.workspace_id, left(first, 80), left(coalesce(last, ''), 80), em, left(coalesce(ph, ''), 40), 'event')
+    RETURNING id INTO cid;
+  ELSE
+    UPDATE contacts SET phone = coalesce(nullif(phone, ''), left(ph, 40)), last_activity_at = now() WHERE id = cid;
+  END IF;
+
+  -- The answers also land in the form's responses (and start "form submitted" workflows).
+  INSERT INTO form_submissions (workspace_id, form_id, contact_id, answers, source, meta)
+  VALUES (e.workspace_id, f.id, cid, a, 'event', jsonb_build_object('event_id', e.id, 'event', e.title, 'registration_type', t.name))
+  RETURNING id INTO sid;
+
+  LOOP
+    new_pin := lpad((floor(random() * 1000000))::int::text, 6, '0');
+    EXIT WHEN NOT EXISTS (SELECT 1 FROM event_registrations WHERE event_id = e.id AND pin = new_pin);
+  END LOOP;
+  st := CASE WHEN t.requires_approval THEN 'applied' ELSE 'confirmed' END;
+
+  INSERT INTO event_registrations (event_id, ticket_id, contact_id, first_name, last_name, email, phone, answers, pin,
+    status, payment_status, amount_minor, ticket_code, consent_at, form_submission_id, status_changed_at)
+  VALUES (e.id, t.id, cid, left(first, 80), left(coalesce(last, ''), 80), em, left(coalesce(ph, ''), 40), a, new_pin,
+    st, CASE WHEN t.price_minor > 0 THEN 'unpaid' ELSE 'free' END, t.price_minor,
+    CASE WHEN st = 'confirmed' THEN event_ticket_code(e.slug) END,
+    CASE WHEN consent_given THEN now() END, sid, now())
+  RETURNING * INTO reg;
+
+  -- The email trigger has run by now: say whether it went, and give the signed QR link.
+  SELECT * INTO reg FROM event_registrations WHERE id = reg.id;
+  RETURN jsonb_build_object('status', reg.status, 'first_name', reg.first_name, 'type_name', t.name,
+    'qr_token', CASE WHEN event_holds_place(reg.status) THEN reg.qr_token END, 'ticket_code', reg.ticket_code,
+    'qr_url', CASE WHEN event_holds_place(reg.status) THEN ticket_qr_url(reg.qr_token) END,
+    'emailed', reg.last_email_at IS NOT NULL);
+END $$;
+
+-- 4. Resend my ticket ------------------------------------------------------------------------
+/**
+ * Email the ticket again to whoever registered for this event with this address. Always answers
+ * the same way, so it never reveals who registered. At most once every ten minutes per ticket.
+ */
+CREATE OR REPLACE FUNCTION event_resend_ticket(p_slug text, p_email text) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE r event_registrations; em text := lower(btrim(coalesce(p_email, '')));
+BEGIN
+  IF em ~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' THEN
+    FOR r IN SELECT x.* FROM event_registrations x JOIN events e ON e.id = x.event_id
+             WHERE e.slug = lower(btrim(coalesce(p_slug, ''))) AND lower(x.email) = em AND event_holds_place(x.status)
+               AND (x.last_email_at IS NULL OR x.last_email_at < now() - interval '10 minutes') LOOP
+      PERFORM event_email(r.id, CASE WHEN r.status = 'selected' THEN 'selected' ELSE 'confirmed' END);
+    END LOOP;
+  END IF;
+  RETURN jsonb_build_object('ok', true);
+END $$;
+REVOKE ALL ON FUNCTION event_resend_ticket(text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION event_resend_ticket(text, text) TO anon, authenticated;
+
+-- 5. The organiser moves an application along ------------------------------------------------
+/**
+ * Change a registration's status (applied → shortlisted → selected / declined → confirmed, or
+ * cancelled). Selecting gives a ticket code and emails the ticket; declining sends the kind note.
+ * Account members with Events access only. Returns the registration as it now is.
+ */
+CREATE OR REPLACE FUNCTION event_set_registration_status(p_reg uuid, p_status text, p_notify boolean DEFAULT true)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE r event_registrations; e events; t event_tickets; taken int;
+BEGIN
+  SELECT * INTO r FROM event_registrations WHERE id = p_reg FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'not_found'; END IF;
+  SELECT * INTO e FROM events WHERE id = r.event_id;
+  IF NOT (is_workspace_member(e.workspace_id) AND member_can(e.workspace_id, 'events')) THEN RAISE EXCEPTION 'not_allowed'; END IF;
+  IF p_status NOT IN ('confirmed', 'applied', 'shortlisted', 'selected', 'declined', 'cancelled') THEN RAISE EXCEPTION 'bad_status'; END IF;
+  IF r.status = p_status THEN RETURN to_jsonb(r); END IF;
+
+  -- Selecting takes a place: respect the type's capacity.
+  IF event_holds_place(p_status) AND NOT event_holds_place(r.status) THEN
+    SELECT * INTO t FROM event_tickets WHERE id = r.ticket_id FOR UPDATE;
+    IF t.capacity IS NOT NULL THEN
+      SELECT count(*) INTO taken FROM event_registrations WHERE ticket_id = t.id AND event_holds_place(status);
+      IF taken >= t.capacity THEN RAISE EXCEPTION 'full'; END IF;
+    END IF;
+  END IF;
+
+  UPDATE event_registrations SET status = p_status, status_changed_at = now(),
+    ticket_code = CASE WHEN event_holds_place(p_status) THEN coalesce(ticket_code, event_ticket_code(e.slug)) ELSE ticket_code END
+  WHERE id = r.id RETURNING * INTO r;
+
+  IF p_notify AND p_status = 'selected' THEN PERFORM event_email(r.id, 'selected');
+  ELSIF p_notify AND p_status = 'declined' THEN PERFORM event_email(r.id, 'declined');
+  END IF;
+  PERFORM audit_write(e.workspace_id, 'registration_' || p_status, 'event_registration', r.id,
+    jsonb_build_object('name', btrim(r.first_name || ' ' || r.last_name), 'event', e.title));
+  RETURN to_jsonb(r);
+END $$;
+REVOKE ALL ON FUNCTION event_set_registration_status(uuid, text, boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION event_set_registration_status(uuid, text, boolean) TO authenticated;
+
+
+-- ============ 20261112090000_event_checkin.sql ============
+/*
+  # Event check-in at the door
+
+  Everything the door scanner needs, done on the server so a phone can never show a false green:
+    - event_can_check_in(event): the event's organisers (account members with Events access) and the
+      people on its check-in team (event_staff, members of the account) may check guests in.
+    - event_checkin_state(event): title, colours and the live count (checked in / expected).
+    - event_check_in(event, scan, registration, paid): checks someone in from a scanned QR (its
+      signature is verified and it must belong to THIS event), a ticket code, or a person picked from
+      search. Every attempt is written to event_checkins: success, already_checked_in, invalid, not_eligible.
+    - event_undo_check_in(event, registration): undoes a check-in; logged and audited.
+    - event_checkin_search(event, query): name, email, phone, ticket code or 6-digit PIN.
+    - event_checkin_log(event): the latest attempts, with who scanned.
+    - event_staff_list / event_staff_set: the check-in team, managed by the event's organisers.
+  At most 120 check-in calls a minute per person.
+*/
+
+-- 1. Who may check people in ------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION event_is_organiser(p_event uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT EXISTS (SELECT 1 FROM events e WHERE e.id = p_event AND is_workspace_member(e.workspace_id) AND member_can(e.workspace_id, 'events'))
+$$;
+REVOKE ALL ON FUNCTION event_is_organiser(uuid) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION event_can_check_in(p_event uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT event_is_organiser(p_event) OR EXISTS (
+    SELECT 1 FROM event_staff s JOIN events e ON e.id = s.event_id
+    WHERE s.event_id = p_event AND s.user_id = auth.uid() AND is_workspace_member(e.workspace_id))
+$$;
+REVOKE ALL ON FUNCTION event_can_check_in(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION event_can_check_in(uuid) TO authenticated;
+
+-- A person's name for "checked in by".
+CREATE OR REPLACE FUNCTION event_person_name(p_user uuid) RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT nullif(btrim(concat_ws(' ', p.first_name, p.last_name)), '') FROM profiles p WHERE p.user_id = p_user
+$$;
+REVOKE ALL ON FUNCTION event_person_name(uuid) FROM PUBLIC, anon, authenticated;
+
+-- 2. The scanner's header ----------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION event_checkin_state(p_event uuid) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE e events;
+BEGIN
+  IF auth.uid() IS NULL OR NOT event_can_check_in(p_event) THEN RETURN jsonb_build_object('allowed', false); END IF;
+  SELECT * INTO e FROM events WHERE id = p_event;
+  RETURN jsonb_build_object(
+    'allowed', true,
+    'organiser', event_is_organiser(p_event),
+    'id', e.id, 'title', e.title, 'slug', e.slug, 'starts_at', e.starts_at, 'ends_at', e.ends_at, 'timezone', e.timezone,
+    'cover_url', e.cover_url, 'brand', e.brand,
+    'expected', (SELECT count(*) FROM event_registrations r WHERE r.event_id = e.id AND event_holds_place(r.status)),
+    'checked_in', (SELECT count(*) FROM event_registrations r WHERE r.event_id = e.id AND event_holds_place(r.status) AND r.checked_in_at IS NOT NULL));
+END $$;
+REVOKE ALL ON FUNCTION event_checkin_state(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION event_checkin_state(uuid) TO authenticated;
+
+-- 3. Checking someone in -----------------------------------------------------------------------
+
+-- What the scanner shows about a registration.
+CREATE OR REPLACE FUNCTION event_checkin_person(r event_registrations) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT jsonb_build_object(
+    'registration_id', r.id, 'name', btrim(r.first_name || ' ' || r.last_name), 'status', r.status,
+    'type_name', (SELECT t.name FROM event_tickets t WHERE t.id = r.ticket_id),
+    'ticket_code', r.ticket_code, 'checked_in_at', r.checked_in_at, 'checked_in_by', event_person_name(r.checked_in_by),
+    'payment_status', r.payment_status, 'amount_minor', r.amount_minor,
+    'currency', (SELECT t.currency FROM event_tickets t WHERE t.id = r.ticket_id))
+$$;
+REVOKE ALL ON FUNCTION event_checkin_person(event_registrations) FROM PUBLIC, anon, authenticated;
+
+/*
+  p_scan: what the camera read (the ticket link with its signature) or a typed ticket code / PIN.
+  p_registration: someone picked from search. p_paid: the door collected an unpaid ticket's price.
+  Returns { result, reason?, person? }:
+    success            green: checked in now
+    already_checked_in amber: with when and by whom
+    invalid            red: unrecognised, forged or another event's code
+    not_eligible       red: cancelled, declined, an application not selected, or (reason 'unpaid') to pay first
+*/
+CREATE OR REPLACE FUNCTION event_check_in(p_event uuid, p_scan text DEFAULT NULL, p_registration uuid DEFAULT NULL, p_paid boolean DEFAULT false)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  r event_registrations; e events;
+  scan text := btrim(coalesce(p_scan, ''));
+  tok uuid; sig text; m text[];
+  via text := CASE WHEN p_registration IS NOT NULL THEN 'manual' WHEN p_scan ~* '^[a-z0-9]+-[a-z0-9]{4}$' OR p_scan ~ '^\s*\d{6}\s*$' THEN 'manual' ELSE 'scan' END;
+  res text; reason text;
+BEGIN
+  IF auth.uid() IS NULL OR NOT event_can_check_in(p_event) THEN RAISE EXCEPTION 'not_allowed'; END IF;
+  IF (SELECT count(*) FROM event_checkins WHERE user_id = auth.uid() AND at > now() - interval '1 minute') >= 120 THEN RAISE EXCEPTION 'busy'; END IF;
+  SELECT * INTO e FROM events WHERE id = p_event;
+
+  -- Find the registration, only ever inside this event.
+  IF p_registration IS NOT NULL THEN
+    SELECT * INTO r FROM event_registrations WHERE id = p_registration AND event_id = p_event FOR UPDATE;
+  ELSIF scan ~* '^[a-z0-9]+-[a-z0-9]{4}$' THEN
+    SELECT * INTO r FROM event_registrations WHERE upper(ticket_code) = upper(scan) AND event_id = p_event FOR UPDATE;
+  ELSIF scan ~ '^\d{6}$' THEN
+    SELECT * INTO r FROM event_registrations WHERE pin = scan AND event_id = p_event FOR UPDATE;
+  ELSE
+    -- A ticket link: /e/ticket/<token>?v=<signature>. Without a valid signature it is refused.
+    m := regexp_match(scan, '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})');
+    IF m IS NOT NULL THEN tok := lower(m[1])::uuid; END IF;
+    sig := (regexp_match(scan, '[?&]v=([0-9a-fA-F]{16})'))[1];
+    IF tok IS NOT NULL AND ticket_sig_ok(tok, sig) THEN
+      SELECT * INTO r FROM event_registrations WHERE qr_token = tok AND event_id = p_event FOR UPDATE;
+    END IF;
+  END IF;
+
+  IF r.id IS NULL THEN
+    INSERT INTO event_checkins (event_id, registration_id, user_id, result, via) VALUES (p_event, NULL, auth.uid(), 'invalid', via);
+    RETURN jsonb_build_object('result', 'invalid', 'reason',
+      CASE WHEN tok IS NOT NULL AND ticket_sig_ok(tok, sig) THEN 'other_event' WHEN tok IS NOT NULL THEN 'unsigned' ELSE 'unknown' END);
+  END IF;
+
+  IF NOT event_holds_place(r.status) THEN
+    res := 'not_eligible'; reason := r.status;
+  ELSIF r.checked_in_at IS NOT NULL THEN
+    res := 'already_checked_in';
+  ELSIF r.payment_status = 'unpaid' AND NOT p_paid THEN
+    res := 'not_eligible'; reason := 'unpaid';
+  ELSE
+    UPDATE event_registrations SET checked_in_at = now(), checked_in_by = auth.uid(),
+      payment_status = CASE WHEN p_paid AND payment_status = 'unpaid' THEN 'paid' ELSE payment_status END
+    WHERE id = r.id RETURNING * INTO r;
+    res := 'success';
+  END IF;
+
+  INSERT INTO event_checkins (event_id, registration_id, user_id, result, via) VALUES (p_event, r.id, auth.uid(), res, via);
+  RETURN jsonb_build_object('result', res, 'reason', reason, 'person', event_checkin_person(r));
+END $$;
+REVOKE ALL ON FUNCTION event_check_in(uuid, text, uuid, boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION event_check_in(uuid, text, uuid, boolean) TO authenticated;
+
+CREATE OR REPLACE FUNCTION event_undo_check_in(p_event uuid, p_registration uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE r event_registrations; e events;
+BEGIN
+  IF auth.uid() IS NULL OR NOT event_can_check_in(p_event) THEN RAISE EXCEPTION 'not_allowed'; END IF;
+  SELECT * INTO r FROM event_registrations WHERE id = p_registration AND event_id = p_event FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'not_found'; END IF;
+  IF r.checked_in_at IS NULL THEN RETURN jsonb_build_object('ok', true, 'person', event_checkin_person(r)); END IF;
+  UPDATE event_registrations SET checked_in_at = NULL, checked_in_by = NULL WHERE id = r.id RETURNING * INTO r;
+  INSERT INTO event_checkins (event_id, registration_id, user_id, result, via) VALUES (p_event, r.id, auth.uid(), 'undone', 'undo');
+  SELECT * INTO e FROM events WHERE id = p_event;
+  PERFORM audit_write(e.workspace_id, 'checkin_undone', 'event_registration', r.id,
+    jsonb_build_object('name', btrim(r.first_name || ' ' || r.last_name), 'event', e.title));
+  RETURN jsonb_build_object('ok', true, 'person', event_checkin_person(r));
+END $$;
+REVOKE ALL ON FUNCTION event_undo_check_in(uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION event_undo_check_in(uuid, uuid) TO authenticated;
+
+-- 4. Looking someone up -----------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION event_checkin_search(p_event uuid, p_query text) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE q text := lower(btrim(coalesce(p_query, ''))); digits text := regexp_replace(coalesce(p_query, ''), '\D', '', 'g');
+BEGIN
+  IF auth.uid() IS NULL OR NOT event_can_check_in(p_event) THEN RAISE EXCEPTION 'not_allowed'; END IF;
+  IF length(q) < 2 THEN RETURN '[]'::jsonb; END IF;
+  RETURN coalesce((
+    SELECT jsonb_agg(event_checkin_person(x) ORDER BY x.first_name, x.last_name)
+    FROM (
+      SELECT r.* FROM event_registrations r
+      WHERE r.event_id = p_event AND r.status NOT IN ('declined')
+        AND (lower(r.first_name || ' ' || r.last_name) LIKE '%' || q || '%'
+          OR lower(r.email) LIKE '%' || q || '%'
+          OR lower(coalesce(r.ticket_code, '')) = q
+          OR (length(digits) = 6 AND r.pin = digits)
+          OR (length(digits) >= 7 AND right(regexp_replace(coalesce(r.phone, ''), '\D', '', 'g'), 9) = right(digits, 9)))
+      ORDER BY r.first_name, r.last_name LIMIT 25
+    ) x), '[]'::jsonb);
+END $$;
+REVOKE ALL ON FUNCTION event_checkin_search(uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION event_checkin_search(uuid, text) TO authenticated;
+
+CREATE OR REPLACE FUNCTION event_checkin_log(p_event uuid, p_limit int DEFAULT 30) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF auth.uid() IS NULL OR NOT event_can_check_in(p_event) THEN RAISE EXCEPTION 'not_allowed'; END IF;
+  RETURN coalesce((
+    SELECT jsonb_agg(jsonb_build_object('id', c.id, 'at', c.at, 'result', c.result, 'via', c.via,
+      'name', btrim(r.first_name || ' ' || r.last_name), 'registration_id', c.registration_id, 'by', event_person_name(c.user_id)) ORDER BY c.at DESC, c.id DESC)
+    FROM (SELECT * FROM event_checkins WHERE event_id = p_event ORDER BY at DESC, id DESC LIMIT least(greatest(p_limit, 1), 200)) c
+    LEFT JOIN event_registrations r ON r.id = c.registration_id), '[]'::jsonb);
+END $$;
+REVOKE ALL ON FUNCTION event_checkin_log(uuid, int) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION event_checkin_log(uuid, int) TO authenticated;
+
+-- 5. The check-in team ------------------------------------------------------------------------
+
+-- The account's members, each marked if they're on this event's check-in team.
+CREATE OR REPLACE FUNCTION event_staff_list(p_event uuid) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE e events;
+BEGIN
+  IF auth.uid() IS NULL OR NOT event_is_organiser(p_event) THEN RAISE EXCEPTION 'not_allowed'; END IF;
+  SELECT * INTO e FROM events WHERE id = p_event;
+  RETURN coalesce((
+    SELECT jsonb_agg(jsonb_build_object('user_id', m.user_id, 'name', coalesce(event_person_name(m.user_id), u.email), 'email', u.email,
+      'on_team', s.user_id IS NOT NULL, 'organiser', m.role IN ('owner', 'admin') OR 'events' = ANY(coalesce(m.access, default_member_access()))) ORDER BY coalesce(event_person_name(m.user_id), u.email))
+    FROM workspace_members m JOIN auth.users u ON u.id = m.user_id
+    LEFT JOIN event_staff s ON s.event_id = p_event AND s.user_id = m.user_id
+    WHERE m.workspace_id = e.workspace_id AND coalesce(m.status, 'active') = 'active'), '[]'::jsonb);
+END $$;
+REVOKE ALL ON FUNCTION event_staff_list(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION event_staff_list(uuid) TO authenticated;
+
+CREATE OR REPLACE FUNCTION event_staff_set(p_event uuid, p_user uuid, p_on boolean) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE e events;
+BEGIN
+  IF auth.uid() IS NULL OR NOT event_is_organiser(p_event) THEN RAISE EXCEPTION 'not_allowed'; END IF;
+  SELECT * INTO e FROM events WHERE id = p_event;
+  IF p_on THEN
+    IF NOT EXISTS (SELECT 1 FROM workspace_members WHERE workspace_id = e.workspace_id AND user_id = p_user) THEN RAISE EXCEPTION 'not_member'; END IF;
+    INSERT INTO event_staff (event_id, user_id, added_by) VALUES (p_event, p_user, auth.uid()) ON CONFLICT DO NOTHING;
+  ELSE
+    DELETE FROM event_staff WHERE event_id = p_event AND user_id = p_user;
+  END IF;
+  PERFORM audit_write(e.workspace_id, CASE WHEN p_on THEN 'checkin_staff_added' ELSE 'checkin_staff_removed' END, 'event', e.id,
+    jsonb_build_object('event', e.title, 'person', event_person_name(p_user)));
+END $$;
+REVOKE ALL ON FUNCTION event_staff_set(uuid, uuid, boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION event_staff_set(uuid, uuid, boolean) TO authenticated;
+
+
+-- ============ 20261113090000_event_dashboard.sql ============
+/*
+  # Event dashboard: what organisers need beyond the door
+
+    - event_registration_forms(event): each registration type's form questions, so the dashboard
+      and the performer review board can show answers with their labels (organisers only, even
+      without access to Forms).
+    - event_add_registration(...): add someone by hand (a walk-in, a guest, a performer you invited).
+      They get a ticket code at once; their ticket is emailed when you ask and an email account is
+      connected. A full type is refused unless you say to add them anyway.
+    - event_send_ticket(registration): email someone their ticket (or "application received") again.
+      At most once a minute per person.
+  Organisers are account members with access to Events (event_is_organiser, from the check-in update).
+*/
+
+-- 1. Each type's form, for labelling answers -------------------------------------------------
+
+CREATE OR REPLACE FUNCTION event_registration_forms(p_event uuid) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF auth.uid() IS NULL OR NOT event_is_organiser(p_event) THEN RAISE EXCEPTION 'not_allowed'; END IF;
+  RETURN coalesce((
+    SELECT jsonb_agg(jsonb_build_object('ticket_id', t.id, 'form_id', f.id, 'form_name', f.name, 'definition', form_definition_json(f.definition)) ORDER BY t.sort)
+    FROM event_tickets t JOIN forms f ON f.id = t.form_id
+    WHERE t.event_id = p_event), '[]'::jsonb);
+END $$;
+REVOKE ALL ON FUNCTION event_registration_forms(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION event_registration_forms(uuid) TO authenticated;
+
+-- 2. Adding someone by hand -----------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION event_add_registration(
+  p_event uuid, p_ticket uuid, p_first text, p_last text, p_email text, p_phone text DEFAULT NULL,
+  p_send boolean DEFAULT true, p_over_capacity boolean DEFAULT false)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  e events; t event_tickets; reg event_registrations;
+  first text := left(btrim(coalesce(p_first, '')), 80); last text := left(btrim(coalesce(p_last, '')), 80);
+  em text := lower(btrim(coalesce(p_email, ''))); ph text := nullif(left(btrim(coalesce(p_phone, '')), 40), '');
+  cid uuid; sid uuid; new_pin text; st text; taken int;
+BEGIN
+  IF auth.uid() IS NULL OR NOT event_is_organiser(p_event) THEN RAISE EXCEPTION 'not_allowed'; END IF;
+  SELECT * INTO e FROM events WHERE id = p_event;
+  SELECT * INTO t FROM event_tickets WHERE id = p_ticket AND event_id = p_event FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'ticket_not_found'; END IF;
+  IF first = '' THEN RAISE EXCEPTION 'name_required'; END IF;
+  IF em !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' THEN RAISE EXCEPTION 'email_invalid'; END IF;
+  IF EXISTS (SELECT 1 FROM event_registrations r WHERE r.event_id = e.id AND r.ticket_id = t.id AND r.status NOT IN ('cancelled', 'declined') AND lower(r.email) = em) THEN
+    RAISE EXCEPTION 'duplicate';
+  END IF;
+  IF t.capacity IS NOT NULL AND NOT p_over_capacity THEN
+    SELECT count(*) INTO taken FROM event_registrations WHERE ticket_id = t.id AND event_holds_place(status);
+    IF taken >= t.capacity THEN RAISE EXCEPTION 'full'; END IF;
+  END IF;
+
+  -- They join the host's contacts, like anyone who registers.
+  SELECT id INTO cid FROM contacts WHERE workspace_id = e.workspace_id AND lower(email) = em ORDER BY created_at LIMIT 1;
+  IF cid IS NULL THEN
+    INSERT INTO contacts (workspace_id, first_name, last_name, email, phone, source)
+    VALUES (e.workspace_id, first, last, em, coalesce(ph, ''), 'event') RETURNING id INTO cid;
+  END IF;
+
+  -- Emails go through the form-response mailer, so a ticket to send needs a response to hang on.
+  IF p_send AND t.form_id IS NOT NULL THEN
+    INSERT INTO form_submissions (workspace_id, form_id, contact_id, answers, source, meta)
+    VALUES (e.workspace_id, t.form_id, cid, jsonb_build_object('name', btrim(first || ' ' || last), 'email', em, 'phone', coalesce(ph, '')), 'event_manual',
+      jsonb_build_object('event_id', e.id, 'event', e.title, 'registration_type', t.name, 'added_by', auth.uid()))
+    RETURNING id INTO sid;
+  END IF;
+
+  LOOP
+    new_pin := lpad((floor(random() * 1000000))::int::text, 6, '0');
+    EXIT WHEN NOT EXISTS (SELECT 1 FROM event_registrations WHERE event_id = e.id AND pin = new_pin);
+  END LOOP;
+  -- Added by the organiser: an approval type means they're already chosen.
+  st := CASE WHEN t.requires_approval THEN 'selected' ELSE 'confirmed' END;
+
+  INSERT INTO event_registrations (event_id, ticket_id, contact_id, first_name, last_name, email, phone, answers, pin,
+    status, payment_status, amount_minor, ticket_code, form_submission_id, status_changed_at)
+  VALUES (e.id, t.id, cid, first, last, em, coalesce(ph, ''), jsonb_build_object('added_by_organiser', true), new_pin,
+    st, CASE WHEN t.price_minor > 0 THEN 'unpaid' ELSE 'free' END, t.price_minor, event_ticket_code(e.slug), sid, now())
+  RETURNING * INTO reg;
+  -- 'selected' isn't emailed by the insert trigger (only confirmed/applied are): send it here.
+  IF st = 'selected' AND sid IS NOT NULL THEN PERFORM event_email(reg.id, 'selected'); END IF;
+
+  PERFORM audit_write(e.workspace_id, 'registration_added', 'event_registration', reg.id,
+    jsonb_build_object('name', btrim(first || ' ' || last), 'event', e.title, 'type', t.name));
+  SELECT * INTO reg FROM event_registrations WHERE id = reg.id;
+  RETURN to_jsonb(reg) || jsonb_build_object('emailed', reg.last_email_at IS NOT NULL);
+END $$;
+REVOKE ALL ON FUNCTION event_add_registration(uuid, uuid, text, text, text, text, boolean, boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION event_add_registration(uuid, uuid, text, text, text, text, boolean, boolean) TO authenticated;
+
+-- 3. Send a ticket again (organiser) --------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION event_send_ticket(p_reg uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE r event_registrations; e events; kind text; ok boolean; fid uuid; sid uuid;
+BEGIN
+  SELECT * INTO r FROM event_registrations WHERE id = p_reg FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'not_found'; END IF;
+  IF auth.uid() IS NULL OR NOT event_is_organiser(r.event_id) THEN RAISE EXCEPTION 'not_allowed'; END IF;
+  IF r.last_email_at IS NOT NULL AND r.last_email_at > now() - interval '1 minute' THEN RAISE EXCEPTION 'too_soon'; END IF;
+  kind := CASE WHEN r.status = 'confirmed' THEN 'confirmed' WHEN r.status = 'selected' THEN 'selected'
+               WHEN r.status IN ('applied', 'shortlisted') THEN 'applied' END;
+  IF kind IS NULL THEN RAISE EXCEPTION 'no_ticket'; END IF;
+  -- Added by hand without an email: give them a form response now so the mailer can send it.
+  IF r.form_submission_id IS NULL THEN
+    SELECT * INTO e FROM events WHERE id = r.event_id;
+    SELECT form_id INTO fid FROM event_tickets WHERE id = r.ticket_id;
+    IF fid IS NULL THEN RAISE EXCEPTION 'no_email_route'; END IF;
+    INSERT INTO form_submissions (workspace_id, form_id, contact_id, answers, source, meta)
+    VALUES (e.workspace_id, fid, r.contact_id, jsonb_build_object('name', btrim(r.first_name || ' ' || r.last_name), 'email', r.email, 'phone', r.phone), 'event_manual',
+      jsonb_build_object('event_id', e.id, 'event', e.title))
+    RETURNING id INTO sid;
+    UPDATE event_registrations SET form_submission_id = sid WHERE id = r.id;
+  END IF;
+  ok := event_email(r.id, kind);
+  IF NOT ok THEN RAISE EXCEPTION 'no_email_account'; END IF;
+  RETURN jsonb_build_object('sent', true, 'to', r.email);
+END $$;
+REVOKE ALL ON FUNCTION event_send_ticket(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION event_send_ticket(uuid) TO authenticated;
+
+
+-- ============ 20261114090000_event_reminders_privacy_limits.sql ============
+/*
+  # Events: the 24-hour reminder, private registrations, and limits per visitor
+
+  1. The reminder (the fourth email). About a day before an event starts, everyone who holds a
+     place (registered, or a selected applicant) and hasn't been checked in gets one branded email
+     with their ticket. Only for events with a date (never while the date is to be announced), only
+     once per start time (if the event moves, they're reminded of the new time), not for people
+     who registered in the last day (their confirmation is fresh), and only when the account has a
+     connected email account. The organiser can reword it, or turn it off for an event
+     (events.email_templates.reminder.off). A job runs every 15 minutes (pg_cron); the mailer sends
+     what it queues on its next run.
+  2. Registrations, registration types and the check-in log follow the Events section: a member
+     without Events access no longer sees or changes them (names, emails, answers). The door team
+     still checks people in through the scanner's functions, which check their place on the team.
+  3. Limits per visitor, on top of the limit per registration type: one address (IP) can register
+     at most 20 times in 10 minutes, and ask for its ticket again at most 10 times in 10 minutes
+     (it gets the same answer either way). Organisers adding people from the dashboard aren't limited.
+
+  Needs 20261111090000_event_tickets_emails.sql. Safe to run more than once.
+*/
+
+-- 1. The reminder ------------------------------------------------------------------------
+
+-- The start time each person was last reminded of (none yet: null).
+ALTER TABLE event_registrations ADD COLUMN IF NOT EXISTS reminder_for timestamptz;
+
+CREATE OR REPLACE FUNCTION event_email_default(p_kind text) RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
+  SELECT CASE p_kind
+    WHEN 'confirmed' THEN jsonb_build_object('subject', 'You''re in: {{event}}',
+      'message', E'Hi {{first_name}},\n\nYou''re registered for {{event}}. Your ticket is below: show the QR code at the door, or give your ticket code {{code}}.\n\nSee you there!')
+    WHEN 'applied' THEN jsonb_build_object('subject', 'We''ve got your application: {{event}}',
+      'message', E'Hi {{first_name}},\n\nThank you for applying ({{type}}) for {{event}}. We read every application and we''ll be in touch once we''ve decided.')
+    WHEN 'selected' THEN jsonb_build_object('subject', 'You''ve been selected: {{event}}',
+      'message', E'Hi {{first_name}},\n\nGreat news: you''ve been selected for {{event}}! Your ticket is below. Show the QR code at the door, or give your ticket code {{code}}.\n\nWe can''t wait to see you.')
+    WHEN 'reminder' THEN jsonb_build_object('subject', 'Tomorrow: {{event}}',
+      'message', E'Hi {{first_name}},\n\nA quick reminder: {{event}} is on {{date}}. Your ticket is below: show the QR code at the door, or give your ticket code {{code}}.\n\nSee you there!')
+    WHEN 'declined' THEN jsonb_build_object('subject', 'About your application: {{event}}',
+      'message', E'Hi {{first_name}},\n\nThank you so much for applying to {{event}}. We had more applications than places this time, so we can''t offer you a spot, but we''d love to see you there, and we hope you''ll apply again.')
+  END
+$$;
+
+/**
+ * Queue one of the event emails for a registration. Returns false (and sends nothing) when there's
+ * no connected email account, no email address, or the registration didn't come through a form
+ * (the mailer sends the messages linked to a form response).
+ */
+CREATE OR REPLACE FUNCTION event_email(p_reg uuid, p_kind text) RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  r event_registrations; e events; t event_tickets; acc email_accounts; tpl jsonb; subj text; msg text;
+  primary_c text; accent_c text; place text; ticket boolean; link text; qr_img text; base text; html text; txt text; k text; v text;
+BEGIN
+  SELECT * INTO r FROM event_registrations WHERE id = p_reg;
+  IF NOT FOUND OR r.form_submission_id IS NULL OR coalesce(r.email, '') = '' THEN RETURN false; END IF;
+  SELECT * INTO e FROM events WHERE id = r.event_id;
+  SELECT * INTO t FROM event_tickets WHERE id = r.ticket_id;
+  SELECT * INTO acc FROM email_accounts WHERE id = e.email_account_id AND status = 'active';
+  IF NOT FOUND THEN SELECT * INTO acc FROM email_accounts WHERE workspace_id = e.workspace_id AND status = 'active' ORDER BY created_at LIMIT 1; END IF;
+  IF acc.id IS NULL THEN RETURN false; END IF;
+
+  tpl := event_email_default(p_kind) || coalesce(e.email_templates->p_kind, '{}'::jsonb);
+  IF tpl IS NULL THEN RETURN false; END IF;
+  ticket := p_kind IN ('confirmed', 'selected', 'reminder') AND event_holds_place(r.status);
+  link := CASE WHEN ticket THEN wf_app_url() || '/e/ticket/' || r.qr_token END;
+  place := concat_ws(', ', nullif(e.venue_name, ''), nullif(e.city, ''));
+  subj := coalesce(nullif(btrim(tpl->>'subject'), ''), event_email_default(p_kind)->>'subject');
+  msg := coalesce(nullif(btrim(tpl->>'message'), ''), event_email_default(p_kind)->>'message');
+  FOR k, v IN SELECT * FROM (VALUES
+    ('first_name', r.first_name), ('name', btrim(r.first_name || ' ' || r.last_name)), ('event', e.title), ('type', coalesce(t.name, '')),
+    ('code', coalesce(r.ticket_code, '')), ('date', event_date_text(e)), ('venue', coalesce(nullif(place, ''), 'To be announced')),
+    ('ticket_link', coalesce(link, ''))) x(k, v) LOOP
+    subj := replace(subj, '{{' || k || '}}', coalesce(v, ''));
+    msg := replace(msg, '{{' || k || '}}', coalesce(v, ''));
+  END LOOP;
+
+  primary_c := CASE WHEN coalesce(e.brand->>'primary', '') ~ '^#[0-9a-fA-F]{6}$' THEN e.brand->>'primary' ELSE '#0A1628' END;
+  accent_c := CASE WHEN coalesce(e.brand->>'accent', '') ~ '^#[0-9a-fA-F]{6}$' THEN e.brand->>'accent' ELSE '#C8A96A' END;
+  base := regexp_replace(coalesce((SELECT value FROM wf_private.settings WHERE key = 'mailer_url'), ''), '/send-email$', '');
+  qr_img := CASE WHEN ticket AND base <> '' THEN base || '/api/qr/' || r.qr_token || '.png?v=' || ticket_sig(r.qr_token) END;
+
+  txt := msg
+    || CASE WHEN ticket THEN E'\n\n' || e.title || E'\n' || event_date_text(e) || CASE WHEN place <> '' THEN E'\n' || place ELSE '' END
+         || E'\nTicket: ' || coalesce(t.name, 'Ticket') || ' · ' || coalesce(r.ticket_code, '') || E'\nYour ticket: ' || link ELSE '' END
+    || CASE WHEN e.footer_line <> '' THEN E'\n\n' || e.footer_line ELSE '' END;
+
+  html := '<!doctype html><html><body style="margin:0;padding:0;background:#ffffff;">'
+    || '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;"><tr><td align="center" style="padding:24px 12px;">'
+    || '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;border:1px solid #E6E8EE;border-radius:16px;overflow:hidden;font-family:Helvetica,Arial,sans-serif;color:#1F2937;">'
+    || '<tr><td style="height:6px;background:' || primary_c || ';background-image:linear-gradient(90deg,' || primary_c || ',' || accent_c || ');"></td></tr>'
+    || '<tr><td style="padding:28px 32px 8px;">'
+    || CASE WHEN coalesce(e.organiser_logo_url, '') ~ '^https://' THEN '<img src="' || html_esc(e.organiser_logo_url) || '" alt="" height="40" style="height:40px;margin-bottom:16px;">' ELSE '' END
+    || '<p style="margin:0;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:' || primary_c || ';">' || html_esc(e.title) || '</p>'
+    || '<div style="margin-top:14px;font-size:16px;line-height:1.6;">' || replace(html_esc(msg), E'\n', '<br>') || '</div></td></tr>'
+    || CASE WHEN ticket THEN
+         '<tr><td style="padding:16px 32px 8px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px dashed #CBD2DE;border-radius:14px;"><tr><td align="center" style="padding:22px;">'
+         || CASE WHEN qr_img IS NOT NULL THEN '<img src="' || html_esc(qr_img) || '" width="200" height="200" alt="Your ticket QR code" style="display:block;width:200px;height:200px;">' ELSE '' END
+         || '<p style="margin:14px 0 0;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#6B7280;">Ticket code</p>'
+         || '<p style="margin:2px 0 0;font-size:26px;font-weight:800;letter-spacing:3px;color:#0A1628;">' || html_esc(r.ticket_code) || '</p>'
+         || '<p style="margin:12px 0 0;font-size:14px;color:#374151;"><b>' || html_esc(btrim(r.first_name || ' ' || r.last_name)) || '</b> · ' || html_esc(coalesce(t.name, 'Ticket')) || '</p>'
+         || '<p style="margin:4px 0 0;font-size:14px;color:#374151;">' || html_esc(event_date_text(e)) || CASE WHEN place <> '' THEN ' · ' || html_esc(place) ELSE '' END || '</p>'
+         || '<p style="margin:18px 0 0;"><a href="' || html_esc(link) || '" style="display:inline-block;background:' || primary_c || ';color:#ffffff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:999px;">View my ticket</a></p>'
+         || '</td></tr></table></td></tr>'
+       ELSE '' END
+    || '<tr><td style="padding:20px 32px 28px;font-size:12px;color:#6B7280;line-height:1.6;">'
+    || CASE WHEN e.footer_line <> '' THEN '<p style="margin:0 0 8px;font-style:italic;color:#374151;">' || html_esc(e.footer_line) || '</p>' ELSE '' END
+    || html_esc(coalesce(nullif(e.organiser_name, ''), 'The organiser')) || ' · sent with SYNAPSE Events</td></tr>'
+    || '</table></td></tr></table></body></html>';
+
+  INSERT INTO messages (workspace_id, contact_id, channel, direction, subject, body, body_html, status, from_email, from_name, to_address, email_account_id, form_submission_id)
+  VALUES (e.workspace_id, r.contact_id, 'email', 'outbound', left(subj, 300), txt, html, 'queued', acc.email,
+          coalesce(nullif(e.organiser_name, ''), acc.display_name), r.email, acc.id, r.form_submission_id);
+  UPDATE event_registrations SET last_email_at = now() WHERE id = r.id;
+  RETURN true;
+END $$;
+REVOKE ALL ON FUNCTION event_email(uuid, text) FROM PUBLIC, anon, authenticated;
+
+/** Queue the reminders that are due. Returns how many were queued. */
+CREATE OR REPLACE FUNCTION event_send_reminders() RETURNS int LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE r record; n int := 0;
+BEGIN
+  IF NOT pg_try_advisory_xact_lock(hashtext('synapse_event_reminders')) THEN RETURN 0; END IF;
+  FOR r IN
+    SELECT reg.id, e.starts_at
+    FROM event_registrations reg
+    JOIN events e ON e.id = reg.event_id
+    WHERE e.status = 'published' AND e.starts_at IS NOT NULL
+      AND e.starts_at > now() + interval '1 hour' AND e.starts_at <= now() + interval '24 hours'
+      AND coalesce(e.email_templates->'reminder'->>'off', 'false') <> 'true'
+      AND event_holds_place(reg.status) AND reg.checked_in_at IS NULL
+      AND reg.form_submission_id IS NOT NULL AND coalesce(reg.email, '') <> ''
+      AND reg.reminder_for IS DISTINCT FROM e.starts_at
+      AND reg.created_at < e.starts_at - interval '24 hours'
+      AND EXISTS (SELECT 1 FROM email_accounts a WHERE a.workspace_id = e.workspace_id AND a.status = 'active')
+    ORDER BY e.starts_at, reg.created_at
+    LIMIT 500
+  LOOP
+    IF event_email(r.id, 'reminder') THEN
+      UPDATE event_registrations SET reminder_for = r.starts_at WHERE id = r.id;
+      n := n + 1;
+    END IF;
+  END LOOP;
+  -- Housekeeping for the limits below: a day of history is plenty.
+  DELETE FROM ev_private.hits WHERE at < now() - interval '1 day';
+  RETURN n;
+END $$;
+REVOKE ALL ON FUNCTION event_send_reminders() FROM PUBLIC, anon, authenticated;
+
+-- 2. Registrations follow the Events section ----------------------------------------------
+
+/** Whether the person signed in may see this event's people (they have Events access in its account). */
+CREATE OR REPLACE FUNCTION event_member_can(p_event uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT EXISTS (SELECT 1 FROM events e WHERE e.id = p_event AND member_can(e.workspace_id, 'events'))
+$$;
+REVOKE ALL ON FUNCTION event_member_can(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION event_member_can(uuid) TO authenticated;
+
+DROP POLICY IF EXISTS event_registrations_section_access ON event_registrations;
+CREATE POLICY event_registrations_section_access ON event_registrations AS RESTRICTIVE FOR ALL TO authenticated
+  USING (event_member_can(event_id)) WITH CHECK (event_member_can(event_id));
+DROP POLICY IF EXISTS event_tickets_section_access ON event_tickets;
+CREATE POLICY event_tickets_section_access ON event_tickets AS RESTRICTIVE FOR ALL TO authenticated
+  USING (event_member_can(event_id)) WITH CHECK (event_member_can(event_id));
+DROP POLICY IF EXISTS event_checkins_section_access ON event_checkins;
+CREATE POLICY event_checkins_section_access ON event_checkins AS RESTRICTIVE FOR ALL TO authenticated
+  USING (event_member_can(event_id)) WITH CHECK (event_member_can(event_id));
+
+-- 3. Limits per visitor ----------------------------------------------------------------------
+
+CREATE SCHEMA IF NOT EXISTS ev_private;
+CREATE TABLE IF NOT EXISTS ev_private.hits (ip text NOT NULL, kind text NOT NULL, at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS ev_hits_ip ON ev_private.hits(ip, kind, at DESC);
+REVOKE ALL ON ev_private.hits FROM PUBLIC;
+
+/** The visitor's address, as the API gateway passes it on (null outside a web request). */
+CREATE OR REPLACE FUNCTION event_visitor_ip() RETURNS text LANGUAGE sql STABLE SET search_path = public AS $$
+  SELECT nullif(btrim(split_part(coalesce(
+    nullif(current_setting('request.headers', true), '')::json->>'cf-connecting-ip',
+    nullif(current_setting('request.headers', true), '')::json->>'x-real-ip',
+    nullif(current_setting('request.headers', true), '')::json->>'x-forwarded-for', ''), ',', 1)), '')
+$$;
+REVOKE ALL ON FUNCTION event_visitor_ip() FROM PUBLIC, anon, authenticated;
+
+/**
+ * Note one more go for this visitor; false once they've had `p_max` in the last `p_within`.
+ * Always true outside a web request (the database itself, tests, the scheduler).
+ */
+CREATE OR REPLACE FUNCTION event_visitor_allowed(p_kind text, p_max int, p_within interval) RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_ip text := event_visitor_ip();
+BEGIN
+  IF v_ip IS NULL THEN RETURN true; END IF;
+  IF (SELECT count(*) FROM ev_private.hits h WHERE h.ip = v_ip AND h.kind = p_kind AND h.at > now() - p_within) >= p_max THEN
+    RETURN false;
+  END IF;
+  INSERT INTO ev_private.hits(ip, kind) VALUES (v_ip, p_kind);
+  RETURN true;
+END $$;
+REVOKE ALL ON FUNCTION event_visitor_allowed(text, int, interval) FROM PUBLIC, anon, authenticated;
+
+-- Registering (and applying): at most 20 in 10 minutes from one address. The organiser's own
+-- additions from the dashboard don't count.
+CREATE OR REPLACE FUNCTION event_registration_limit() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF event_visitor_ip() IS NOT NULL AND NOT event_is_organiser(NEW.event_id)
+     AND NOT event_visitor_allowed('register', 20, interval '10 minutes') THEN
+    RAISE EXCEPTION 'busy';
+  END IF;
+  RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION event_registration_limit() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS event_registration_limit ON event_registrations;
+CREATE TRIGGER event_registration_limit BEFORE INSERT ON event_registrations FOR EACH ROW EXECUTE FUNCTION event_registration_limit();
+
+-- "Email me my ticket again": at most 10 asks in 10 minutes from one address, and the answer is
+-- the same either way, so it still never reveals who registered.
+CREATE OR REPLACE FUNCTION event_resend_ticket(p_slug text, p_email text) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE r event_registrations; em text := lower(btrim(coalesce(p_email, '')));
+BEGIN
+  IF em ~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' AND event_visitor_allowed('resend', 10, interval '10 minutes') THEN
+    FOR r IN SELECT x.* FROM event_registrations x JOIN events e ON e.id = x.event_id
+             WHERE e.slug = lower(btrim(coalesce(p_slug, ''))) AND lower(x.email) = em AND event_holds_place(x.status)
+               AND (x.last_email_at IS NULL OR x.last_email_at < now() - interval '10 minutes') LOOP
+      PERFORM event_email(r.id, CASE WHEN r.status = 'selected' THEN 'selected' ELSE 'confirmed' END);
+    END LOOP;
+  END IF;
+  RETURN jsonb_build_object('ok', true);
+END $$;
+REVOKE ALL ON FUNCTION event_resend_ticket(text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION event_resend_ticket(text, text) TO anon, authenticated;
+
+-- 4. Every 15 minutes ------------------------------------------------------------------------
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+    PERFORM cron.unschedule(jobid) FROM cron.job WHERE jobname = 'synapse-event-reminders';
+    PERFORM cron.schedule('synapse-event-reminders', '*/15 * * * *', 'SELECT public.event_send_reminders()');
+  END IF;
+EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'Could not schedule event reminders: %', SQLERRM;
+END $$;
+
