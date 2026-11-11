@@ -95,6 +95,10 @@ read (e.g. a personal Gmail with `+guest1`, `+performer1`).
   **Expect:** the door scanner opens (and nothing else of Events).
 - [ ] **6.3** **Start scanning** and point at guest 1's QR code.
   **Expect:** green, "checked in", with their name.
+- [ ] **6.3b** Or with the phone's own camera: on that phone, sign in to SYNAPSE once in its normal
+  browser (Safari or Chrome) as the team member. Then point the camera at a ticket's QR and tap the link.
+  **Expect:** the screen turns green with the guest's name: they're checked in. Not signed in, or not
+  on the team, the same link just shows the ticket.
 - [ ] **6.4** Scan the same QR again.
   **Expect:** "Already checked in", with the time (not a second check-in).
 - [ ] **6.5** **Can't scan? Find them**: search for the selected performer by name. **Check in**.

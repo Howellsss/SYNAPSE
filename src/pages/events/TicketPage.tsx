@@ -6,6 +6,8 @@ import { EventsShell, QrImage } from '@/components/events/EventKit';
 import { useQrDataUrl } from '@/components/events/hooks';
 import { LoadingSpinner } from '@/components/ui/States';
 import { downloadTicketImage } from '@/lib/ticketImage';
+import { DoorCheckScreen } from '@/components/events/DoorCheck';
+import { useDoorCheck } from '@/components/events/useDoorCheck';
 
 /** /e/ticket/<token>: the attendee's pass, with QR and PIN. Only someone with the link can open it. */
 export function TicketPage({ token }: { token: string }) {
@@ -15,6 +17,9 @@ export function TicketPage({ token }: { token: string }) {
   const link = t?.qr_url || ticketUrl(token);
   const qr = useQrDataUrl(t ? link : null, 800);
   const [saving, setSaving] = useState(false);
+  // Door staff who scan this QR with their phone camera check the guest in here (see DoorCheck).
+  const door = useDoorCheck(t?.event.id ?? null, ticketUrl(token) + (typeof window !== 'undefined' ? window.location.search : ''));
+  const [showTicket, setShowTicket] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -35,6 +40,10 @@ export function TicketPage({ token }: { token: string }) {
       </EventsShell>
     );
   }
+
+  // Signed in: wait to learn whether they're door staff, so the ticket doesn't flash first.
+  if (door.staff === null) return <EventsShell><div className="flex min-h-[60vh] items-center justify-center"><LoadingSpinner className="h-10 w-10" /></div></EventsShell>;
+  if (door.staff && !showTicket) return <DoorCheckScreen door={door} onShowTicket={() => setShowTicket(true)} />;
 
   const e = t.event;
   const cal = calendarLinks(e);
