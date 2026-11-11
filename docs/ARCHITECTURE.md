@@ -238,7 +238,7 @@ Migrations `20261110…` to `20261114…` (paste files `supabase/paste/database-
 | --- | --- |
 | Workspace & team | `workspaces`, `workspace_members` (+ `title`), `profiles`, `team_invitations` (+ `title`, `department_id`), `departments`, `department_members` (`is_lead`), `workspace_settings` (per-category JSON settings), `audit_logs` |
 | Contacts (CRM) | `contacts`, `tags`, `contact_tags`, `smart_lists`, `notes` |
-| Calendars & booking | `calendars`, `calendar_hosts`, `calendar_groups`, `calendar_group_members`, `calendar_group_analytics`, `availability_rules`, `availability_overrides`, `host_availability_rules`, `external_busy_periods`, `booking_links`, `booking_locks`, `appointments`, `appointment_participants`, `notification_rules` |
+| Calendars & booking | `calendars`, `calendar_hosts`, `calendar_groups`, `calendar_group_members`, `calendar_group_analytics`, `availability_rules`, `availability_overrides`, `host_availability_rules`, `external_busy_periods`, `booking_links`, `booking_locks`, `appointments` (public booking pages read only the `appointment_busy` view: busy times, no names or notes), `appointment_participants`, `notification_rules` |
 | Forms | `forms`, `form_fields`, `form_field_conditions`, `form_submissions`, `form_notification_logs`, `form_activity_timeline` |
 | Workflows | `workflows`, `workflow_nodes`, `workflow_edges`, `workflow_versions`, `workflow_enrollments`, `workflow_executions`, `workflow_execution_logs`, `workflow_goals`, `workflow_templates` |
 | Meetings | `meetings` (owned by a workspace; join code like FOCU-358, optional nickname, instant/later/scheduled, ended_at) |

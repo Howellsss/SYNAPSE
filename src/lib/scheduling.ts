@@ -210,7 +210,7 @@ export class SchedulingEngine {
 
     // 4. Existing SYNAPSE appointments
     const { data: existing } = await supabase
-      .from('appointments')
+      .from('appointment_busy')
       .select('id, start_time, end_time, status, host_id')
       .eq('calendar_id', calendarId)
       .in('status', ['confirmed', 'pending'])
@@ -441,15 +441,13 @@ export class SchedulingEngine {
       };
       if (workspaceId) apptInsert.workspace_id = workspaceId;
       else if (ownerId) apptInsert.owner_id = ownerId;
-      const { data: appt, error: apptErr } = await supabase
-        .from('appointments')
-        .insert(apptInsert)
-        .select('*')
-        .maybeSingle();
-
-      if (apptErr || !appt) {
-        return { success: false, error: apptErr?.message ?? 'Could not create appointment.' };
+      // Visitors can't read bookings back, so the id is made here and nothing is returned.
+      apptInsert.id = crypto.randomUUID();
+      const { error: apptErr } = await supabase.from('appointments').insert(apptInsert);
+      if (apptErr) {
+        return { success: false, error: apptErr.message ?? 'Could not create appointment.' };
       }
+      const appt = { ...apptInsert, meeting_link: null } as unknown as Appointment;
 
       // 5. Form submission
       if (req.formSubmission && calendar.connected_form_id) {
@@ -467,7 +465,7 @@ export class SchedulingEngine {
 
       return {
         success: true,
-        appointment: appt as Appointment,
+        appointment: appt,
         contact: contactId ? { id: contactId } : undefined,
       };
     } finally {
@@ -620,7 +618,7 @@ export class SchedulingEngine {
     const rangeEnd = new Date(dayEnd.getTime() + bufferMs + MS_PER_HOUR);
 
     const { data: existingAppts } = await supabase
-      .from('appointments')
+      .from('appointment_busy')
       .select('id, start_time, end_time, status, host_id')
       .eq('calendar_id', calendar.id)
       .in('status', ['confirmed', 'pending'])
@@ -818,7 +816,7 @@ export class SchedulingEngine {
 
     // Find available hosts
     const { data: existingAppts } = await supabase
-      .from('appointments')
+      .from('appointment_busy')
       .select('id, start_time, end_time, status, host_id')
       .in('host_id', hostIds)
       .in('status', ['confirmed', 'pending'])
@@ -874,7 +872,7 @@ export class SchedulingEngine {
     const counts: Record<string, number> = {};
     for (const host of hosts) {
       const { count } = await supabase
-        .from('appointments')
+        .from('appointment_busy')
         .select('*', { count: 'exact', head: true })
         .eq('host_id', host.user_id)
         .in('status', ['confirmed', 'pending']);
@@ -887,7 +885,7 @@ export class SchedulingEngine {
     const lastBooked: Record<string, number> = {};
     for (const host of hosts) {
       const { data } = await supabase
-        .from('appointments')
+        .from('appointment_busy')
         .select('created_at')
         .eq('host_id', host.user_id)
         .order('created_at', { ascending: false })
@@ -921,7 +919,7 @@ export class SchedulingEngine {
     if (hostIds.length === 0) return false;
 
     const { data: appts } = await supabase
-      .from('appointments')
+      .from('appointment_busy')
       .select('id, start_time, end_time, status, host_id')
       .in('host_id', hostIds)
       .in('status', ['confirmed', 'pending'])
@@ -966,7 +964,7 @@ export class SchedulingEngine {
     // Daily
     if (calendar.max_bookings_per_day) {
       const { count } = await supabase
-        .from('appointments')
+        .from('appointment_busy')
         .select('*', { count: 'exact', head: true })
         .eq('calendar_id', calendar.id)
         .in('status', ['confirmed', 'pending'])
@@ -986,7 +984,7 @@ export class SchedulingEngine {
       weekEnd.setDate(weekEnd.getDate() + 7);
 
       const { count } = await supabase
-        .from('appointments')
+        .from('appointment_busy')
         .select('*', { count: 'exact', head: true })
         .eq('calendar_id', calendar.id)
         .in('status', ['confirmed', 'pending'])
@@ -1003,7 +1001,7 @@ export class SchedulingEngine {
       const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59);
 
       const { count } = await supabase
-        .from('appointments')
+        .from('appointment_busy')
         .select('*', { count: 'exact', head: true })
         .eq('calendar_id', calendar.id)
         .in('status', ['confirmed', 'pending'])

@@ -396,7 +396,10 @@ export function PastorToluBookingPage() {
         location_type: counselingCalendar.location_type,
         workspace_id: WORKSPACE_ID,
       };
-      const { data: appt, error: apptError } = await supabase.from('appointments').insert(apptInsert).select().single();
+      // Visitors can't read bookings back, so the id is made here and nothing is returned.
+      apptInsert.id = crypto.randomUUID();
+      const { error: apptError } = await supabase.from('appointments').insert(apptInsert);
+      const appt = apptError ? null : { ...apptInsert, meeting_link: null } as unknown as Appointment;
 
       if (apptError || !appt) {
         setSubmitError('Could not create appointment. The time may have been booked.');

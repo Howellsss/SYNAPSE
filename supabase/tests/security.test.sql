@@ -94,6 +94,176 @@ DO $$ DECLARE cid uuid; did uuid; ok boolean; BEGIN
   PERFORM set_config('request.jwt.claim.sub', '', true);
 EXCEPTION WHEN OTHERS THEN RESET ROLE; PERFORM ts.crashed('Everyday actions', SQLERRM); END $$;
 
+-- A second account for the checks below: o2 owns it, a2 is an Admin, m2 a User, x is invited.
+CREATE OR REPLACE FUNCTION ts.ws2() RETURNS uuid LANGUAGE sql IMMUTABLE AS $$ SELECT 'e0000000-0000-4000-8000-000000000002'::uuid $$;
+CREATE OR REPLACE FUNCTION ts.o2() RETURNS uuid LANGUAGE sql IMMUTABLE AS $$ SELECT 'e0000000-0000-4000-8000-0000000000b1'::uuid $$;
+CREATE OR REPLACE FUNCTION ts.a2() RETURNS uuid LANGUAGE sql IMMUTABLE AS $$ SELECT 'e0000000-0000-4000-8000-0000000000b2'::uuid $$;
+CREATE OR REPLACE FUNCTION ts.m2() RETURNS uuid LANGUAGE sql IMMUTABLE AS $$ SELECT 'e0000000-0000-4000-8000-0000000000b3'::uuid $$;
+CREATE OR REPLACE FUNCTION ts.x() RETURNS uuid LANGUAGE sql IMMUTABLE AS $$ SELECT 'e0000000-0000-4000-8000-0000000000b4'::uuid $$;
+CREATE OR REPLACE FUNCTION ts.as_user(p_user uuid, p_email text DEFAULT NULL) RETURNS void LANGUAGE sql AS $$
+  SELECT set_config('request.jwt.claim.sub', coalesce(p_user::text, ''), true),
+         set_config('request.jwt.claims', CASE WHEN p_email IS NULL THEN '' ELSE jsonb_build_object('email', p_email)::text END, true);
+$$;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA ts TO anon, authenticated;
+GRANT SELECT, INSERT, DELETE ON storage.objects TO authenticated;  -- as on Supabase
+INSERT INTO auth.users(id, email) VALUES (ts.o2(), 'o2@example.com'), (ts.a2(), 'a2@example.com'), (ts.m2(), 'm2@example.com'), (ts.x(), 'x@example.com') ON CONFLICT DO NOTHING;
+INSERT INTO workspaces(id, name, slug, owner_id) VALUES (ts.ws2(), 'Second Co', 'second-co', ts.o2()) ON CONFLICT DO NOTHING;
+INSERT INTO workspace_members(workspace_id, user_id, role) VALUES (ts.ws2(), ts.o2(), 'owner'), (ts.ws2(), ts.a2(), 'admin'), (ts.ws2(), ts.m2(), 'member') ON CONFLICT DO NOTHING;
+-- m2 is also an Admin of the first account: they must not be able to carry that over.
+INSERT INTO workspace_members(workspace_id, user_id, role) VALUES (ts.ws(), ts.m2(), 'member') ON CONFLICT DO NOTHING;
+
+DO $$ DECLARE n int; BEGIN
+  RAISE NOTICE 'Memberships and the account owner';
+  PERFORM ts.as_user(ts.m2());
+  SET LOCAL ROLE authenticated;
+  BEGIN
+    UPDATE workspace_members SET workspace_id = ts.ws2(), role = 'member' WHERE workspace_id = ts.ws() AND user_id = ts.m2();
+    PERFORM ts.check(false, 'a membership can''t be moved to another account');
+  EXCEPTION WHEN OTHERS THEN PERFORM ts.check(SQLERRM LIKE '%can''t be moved%', 'a membership can''t be moved to another account');
+  END;
+  RESET ROLE;
+  PERFORM ts.as_user(ts.a2());
+  SET LOCAL ROLE authenticated;
+  BEGIN
+    UPDATE workspaces SET owner_id = ts.a2() WHERE id = ts.ws2();
+    PERFORM ts.check(false, 'an Admin can''t make themselves the account''s owner');
+  EXCEPTION WHEN OTHERS THEN PERFORM ts.check(SQLERRM LIKE '%owner%', 'an Admin can''t make themselves the account''s owner');
+  END;
+  DELETE FROM workspace_members WHERE workspace_id = ts.ws2() AND user_id = ts.o2();
+  GET DIAGNOSTICS n = ROW_COUNT;
+  RESET ROLE;
+  PERFORM ts.check(n = 0 AND EXISTS (SELECT 1 FROM workspace_members WHERE workspace_id = ts.ws2() AND user_id = ts.o2()), 'an Admin can''t remove the owner');
+  PERFORM ts.as_user(NULL);
+EXCEPTION WHEN OTHERS THEN RESET ROLE; PERFORM ts.crashed('Memberships', SQLERRM); END $$;
+
+DO $$ DECLARE tok text; n int; BEGIN
+  RAISE NOTICE 'Invitations are used once';
+  INSERT INTO team_invitations(workspace_id, email, role, invited_by) VALUES (ts.ws2(), 'x@example.com', 'member', ts.o2()) RETURNING token INTO tok;
+  PERFORM ts.as_user(ts.x(), 'x@example.com');
+  SET LOCAL ROLE authenticated;
+  BEGIN
+    INSERT INTO workspace_members(workspace_id, user_id, role, access) VALUES (ts.ws2(), ts.x(), 'member', ARRAY['contacts', 'forms', 'workflows']);
+    PERFORM ts.check(false, 'an invited person can''t add themselves with what they choose to see');
+  EXCEPTION WHEN OTHERS THEN PERFORM ts.check(SQLSTATE = '42501', 'an invited person can''t add themselves with what they choose to see');
+  END;
+  PERFORM ts.check(accept_invitation(tok) = ts.ws2(), 'accepting the invitation joins the account');
+  PERFORM ts.check(accept_invitation(tok) = ts.ws2(), 'opening the link again while in the account is fine');
+  RESET ROLE;
+  PERFORM ts.check((SELECT access IS NULL AND role = 'member' FROM workspace_members WHERE workspace_id = ts.ws2() AND user_id = ts.x()), 'they join with the invited role and the usual access');
+  PERFORM ts.as_user(ts.a2());
+  SET LOCAL ROLE authenticated;
+  DELETE FROM workspace_members WHERE workspace_id = ts.ws2() AND user_id = ts.x();
+  RESET ROLE;
+  PERFORM ts.check((SELECT status FROM team_invitations WHERE token = tok) = 'revoked', 'removing someone cancels their invitation');
+  PERFORM ts.as_user(ts.x(), 'x@example.com');
+  SET LOCAL ROLE authenticated;
+  BEGIN
+    PERFORM accept_invitation(tok);
+    PERFORM ts.check(false, 'a removed person can''t use the old link to come back');
+  EXCEPTION WHEN OTHERS THEN PERFORM ts.check(SQLERRM LIKE '%cancelled%', 'a removed person can''t use the old link to come back');
+  END;
+  RESET ROLE;
+  UPDATE team_invitations SET status = 'accepted' WHERE token = tok;
+  SET LOCAL ROLE authenticated;
+  BEGIN
+    PERFORM accept_invitation(tok);
+    PERFORM ts.check(false, 'a used invitation doesn''t let someone outside the account back in');
+  EXCEPTION WHEN OTHERS THEN PERFORM ts.check(SQLERRM LIKE '%already been used%', 'a used invitation doesn''t let someone outside the account back in');
+  END;
+  RESET ROLE;
+  PERFORM ts.check(NOT EXISTS (SELECT 1 FROM workspace_members WHERE workspace_id = ts.ws2() AND user_id = ts.x()), 'and they stay out');
+  PERFORM ts.as_user(NULL);
+EXCEPTION WHEN OTHERS THEN RESET ROLE; PERFORM ts.crashed('Invitations', SQLERRM); END $$;
+
+DO $$ DECLARE ch uuid; BEGIN
+  RAISE NOTICE 'Chat: members can''t make themselves a channel''s owner';
+  INSERT INTO chat_channels(workspace_id, kind, name, created_by) VALUES (ts.ws2(), 'channel', 'general-sec', ts.o2()) RETURNING id INTO ch;
+  INSERT INTO chat_members(channel_id, workspace_id, user_id, role) VALUES (ch, ts.ws2(), ts.o2(), 'owner'), (ch, ts.ws2(), ts.m2(), 'member');
+  PERFORM ts.as_user(ts.m2());
+  SET LOCAL ROLE authenticated;
+  BEGIN
+    UPDATE chat_members SET role = 'owner' WHERE channel_id = ch AND user_id = ts.m2();
+    PERFORM ts.check(false, 'a member can''t promote themselves');
+  EXCEPTION WHEN OTHERS THEN PERFORM ts.check(SQLERRM LIKE '%owner or an admin%', 'a member can''t promote themselves');
+  END;
+  RESET ROLE;
+  PERFORM ts.as_user(ts.o2());
+  SET LOCAL ROLE authenticated;
+  UPDATE chat_members SET role = 'owner' WHERE channel_id = ch AND user_id = ts.m2();
+  RESET ROLE;
+  PERFORM ts.check((SELECT role FROM chat_members WHERE channel_id = ch AND user_id = ts.m2()) = 'owner', 'the channel''s owner still can');
+  PERFORM ts.as_user(NULL);
+EXCEPTION WHEN OTHERS THEN RESET ROLE; PERFORM ts.crashed('Chat roles', SQLERRM); END $$;
+
+DO $$ DECLARE cal uuid; other uuid; n int; c uuid; BEGIN
+  RAISE NOTICE 'Booking pages see busy times only';
+  INSERT INTO contacts(workspace_id, first_name, email) VALUES (ts.ws2(), 'Ada', 'ada@second.example.com') RETURNING id INTO c;
+  PERFORM set_config('ts.contact', c::text, false);
+  INSERT INTO calendars(workspace_id, name, slug, owner_id, status) VALUES (ts.ws2(), 'Consults', 'consults-sec', ts.o2(), 'active') RETURNING id INTO cal;
+  INSERT INTO calendars(workspace_id, name, slug, owner_id, status) VALUES (ts.ws(), 'Theirs', 'theirs-sec', ts.owner(), 'active') RETURNING id INTO other;
+  INSERT INTO appointments(contact_id, workspace_id, calendar_id, title, status, start_time, end_time, notes)
+    VALUES (c, ts.ws2(), cal, 'Private: Ada Lovelace', 'confirmed', now() + interval '1 day', now() + interval '1 day 30 minutes', 'secret notes');
+  SET LOCAL ROLE anon;
+  SELECT count(*) INTO n FROM appointments;
+  PERFORM ts.check(n = 0, 'not signed in: whole bookings can''t be read');
+  SELECT count(*) INTO n FROM appointment_busy WHERE calendar_id = cal;
+  PERFORM ts.check(n = 1, 'not signed in: busy times can');
+  INSERT INTO appointments(contact_id, id, workspace_id, calendar_id, title, status, start_time, end_time)
+    VALUES (current_setting('ts.contact')::uuid, gen_random_uuid(), ts.ws2(), cal, 'Visitor', 'confirmed', now() + interval '2 days', now() + interval '2 days 30 minutes');
+  PERFORM ts.check(true, 'a visitor can still book');
+  BEGIN
+    INSERT INTO appointments(contact_id, workspace_id, calendar_id, title, status, start_time, end_time)
+      VALUES (current_setting('ts.contact')::uuid, ts.ws2(), other, 'Planted', 'confirmed', now() + interval '3 days', now() + interval '3 days 30 minutes');
+    PERFORM ts.check(false, 'a booking can''t be put into another account');
+  EXCEPTION WHEN OTHERS THEN PERFORM ts.check(SQLSTATE = '42501', 'a booking can''t be put into another account');
+  END;
+  BEGIN
+    INSERT INTO appointments(contact_id, workspace_id, calendar_id, title, status, start_time, end_time)
+      VALUES (current_setting('ts.contact')::uuid, ts.ws2(), cal, 'Done', 'completed', now() - interval '3 days', now() - interval '3 days');
+    PERFORM ts.check(false, 'a visitor can only make confirmed or pending bookings');
+  EXCEPTION WHEN OTHERS THEN PERFORM ts.check(SQLSTATE = '42501', 'a visitor can only make confirmed or pending bookings');
+  END;
+  RESET ROLE;
+  PERFORM ts.check(NOT has_table_privilege('anon', 'appointment_busy', 'UPDATE') AND NOT has_table_privilege('authenticated', 'appointment_busy', 'DELETE'), 'busy times are read-only');
+  PERFORM ts.as_user(ts.owner());
+  SET LOCAL ROLE authenticated;
+  SELECT count(*) INTO n FROM appointments WHERE workspace_id = ts.ws2();
+  RESET ROLE;
+  PERFORM ts.check(n = 0, 'signed in to another account: its bookings can''t be read either');
+  PERFORM ts.as_user(NULL);
+EXCEPTION WHEN OTHERS THEN RESET ROLE; PERFORM ts.crashed('Booking pages', SQLERRM); END $$;
+
+DO $$ DECLARE cal uuid; n int; BEGIN
+  RAISE NOTICE 'Calendar hosts and recordings';
+  SELECT id INTO cal FROM calendars WHERE slug = 'consults-sec';
+  PERFORM ts.as_user(ts.m2());
+  SET LOCAL ROLE authenticated;
+  BEGIN
+    INSERT INTO calendar_hosts(calendar_id, user_id) VALUES (cal, ts.m2());
+    PERFORM ts.check(false, 'a User can''t add themselves to someone else''s calendar');
+  EXCEPTION WHEN OTHERS THEN PERFORM ts.check(SQLSTATE = '42501', 'a User can''t add themselves to someone else''s calendar');
+  END;
+  RESET ROLE;
+  PERFORM ts.as_user(ts.o2());
+  SET LOCAL ROLE authenticated;
+  INSERT INTO calendar_hosts(calendar_id, user_id) VALUES (cal, ts.m2());
+  RESET ROLE;
+  PERFORM ts.check(EXISTS (SELECT 1 FROM calendar_hosts WHERE calendar_id = cal AND user_id = ts.m2()), 'the calendar''s owner can add them');
+
+  INSERT INTO storage.objects(bucket_id, name) VALUES ('meeting-recordings', ts.ws2()::text || '/board-meeting.webm');
+  PERFORM ts.as_user(ts.m2());
+  SET LOCAL ROLE authenticated;
+  SELECT count(*) INTO n FROM storage.objects WHERE bucket_id = 'meeting-recordings';
+  RESET ROLE;
+  PERFORM ts.check(n = 0, 'a User without Recordings can''t open recording files');
+  PERFORM ts.as_user(ts.a2());
+  SET LOCAL ROLE authenticated;
+  SELECT count(*) INTO n FROM storage.objects WHERE bucket_id = 'meeting-recordings';
+  RESET ROLE;
+  PERFORM ts.check(n = 1, 'an Admin can');
+  PERFORM ts.as_user(NULL);
+EXCEPTION WHEN OTHERS THEN RESET ROLE; PERFORM ts.crashed('Hosts and recordings', SQLERRM); END $$;
+
 DO $$ DECLARE f int; p int; r record; BEGIN
   SELECT count(*) INTO f FROM ts.failures; SELECT count(*) INTO p FROM ts.passes;
   IF f > 0 THEN
