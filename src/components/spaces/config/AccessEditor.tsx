@@ -6,7 +6,9 @@ import { cn } from '@/lib/utils';
 
 const MODES: { mode: AccessMode; title: string; text: string; icon: typeof Users }[] = [
   { mode: 'members', title: 'Members of this account', text: 'Everyone on your SYNAPSE team can enter.', icon: Users },
-  { mode: 'invite_only', title: 'Invite only', text: 'Only people you invite to this workspace.', icon: Mail },
+  // Invite only has no invite list yet, so it isn't offered (spaces already set to it work like
+  // "Members of this account" and still show the choice, so it can be changed).
+  { mode: 'invite_only', title: 'Invite only', text: 'Coming soon. For now, everyone on your team can enter.', icon: Mail },
   { mode: 'guest_link', title: 'Anyone with a guest link', text: 'People outside your team can join with a link.', icon: Link2 },
 ];
 
@@ -29,7 +31,7 @@ export function AccessEditor({ mode, token, permissions, onMode, onNewToken, onP
   return (
     <div className="space-y-5">
       <div role="radiogroup" aria-label="Who can enter" className="grid gap-2.5 md:grid-cols-3">
-        {MODES.map((m) => {
+        {MODES.filter((m) => m.mode !== 'invite_only' || mode === 'invite_only').map((m) => {
           const selected = mode === m.mode;
           return (
             <button
