@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, CalendarDays, Check, ChevronDown, Clock, Download, Globe, Hourglass, MapPin, ShieldCheck, Ticket, UserRound } from 'lucide-react';
 import { useRouter } from '@/lib/router';
 import {
-  DEFAULT_COVER, eventDateLine, fetchRegistrationPage, placeLine, registerThroughForm, ticketUrl,
+  DEFAULT_COVER, defaultPrivacyNotice, eventDateLine, fetchRegistrationPage, placeLine, registerThroughForm, ticketUrl,
   type PublicEvent, type RegistrationPage, type TypeRegisterResult,
 } from '@/lib/events';
 import { deserializeDefinition } from '@/lib/form-definition';
@@ -101,7 +101,7 @@ export function EventRegisterPage({ slug, type }: { slug: string; type: string }
               </p>
             )}
             {right}
-            {page.privacy_notice && <PrivacyNotice text={page.privacy_notice} organiser={event.organiser_name} />}
+            <PrivacyNotice text={page.privacy_notice?.trim() || defaultPrivacyNotice(event.organiser_name)} organiser={event.organiser_name} />
           </div>
         </div>
       </div>

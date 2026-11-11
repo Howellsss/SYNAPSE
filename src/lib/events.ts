@@ -85,6 +85,8 @@ export interface HostEvent {
   email_account_id: string | null;
   /** A line at the foot of emails and tickets (e.g. a scripture). */
   footer_line: string;
+  /** Email everyone with a ticket about 24 hours before (dated events only). */
+  reminders_enabled: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -462,7 +464,7 @@ export async function resendTicket(slug: string, email: string): Promise<{ error
   return { error: error ? 'Something went wrong. Please try again.' : null };
 }
 
-export type EmailKind = 'confirmed' | 'applied' | 'selected' | 'declined';
+export type EmailKind = 'confirmed' | 'applied' | 'selected' | 'declined' | 'reminder';
 /** The emails people get, and the wording each starts with (kept in step with event_email_default). */
 export const EMAIL_KINDS: { kind: EmailKind; label: string; when: string; subject: string; message: string }[] = [
   { kind: 'confirmed', label: 'Registered', when: 'when someone registers (with their ticket)', subject: "You're in: {{event}}",
@@ -473,6 +475,8 @@ export const EMAIL_KINDS: { kind: EmailKind; label: string; when: string; subjec
     message: "Hi {{first_name}},\n\nGreat news: you've been selected for {{event}}! Your ticket is below. Show the QR code at the door, or give your ticket code {{code}}.\n\nWe can't wait to see you." },
   { kind: 'declined', label: 'Not selected', when: 'when you decline an applicant', subject: 'About your application: {{event}}',
     message: "Hi {{first_name}},\n\nThank you so much for applying to {{event}}. We had more applications than places this time, so we can't offer you a spot, but we'd love to see you there, and we hope you'll apply again." },
+  { kind: 'reminder', label: 'Reminder', when: 'about 24 hours before the event to everyone with a ticket (once the date is set)', subject: 'Tomorrow: {{event}}',
+    message: "Hi {{first_name}},\n\nA reminder that {{event}} is on {{date}} at {{venue}}. Your ticket is below: show the QR code at the door, or give your ticket code {{code}}.\n\nSee you there!" },
 ];
 
 /** The account's connected email accounts (the ones emails can go from). */
@@ -498,7 +502,7 @@ export async function fetchTicket(token: string): Promise<{ data: PublicTicket |
 
 // ---------------------------------------------------------------- hosts
 
-const EVENT_COLS = 'id, workspace_id, created_by, slug, title, summary, description, category, cover_url, starts_at, ends_at, timezone, mode, venue_name, address, city, online_url, organiser_name, status, visibility, questions, tagline, programme, organiser_logo_url, brand, privacy_notice, email_templates, email_account_id, footer_line, created_at, updated_at';
+const EVENT_COLS = 'id, workspace_id, created_by, slug, title, summary, description, category, cover_url, starts_at, ends_at, timezone, mode, venue_name, address, city, online_url, organiser_name, status, visibility, questions, tagline, programme, organiser_logo_url, brand, privacy_notice, email_templates, email_account_id, footer_line, reminders_enabled, created_at, updated_at';
 const TICKET_COLS = 'id, name, description, price_minor, currency, capacity, sort, slug, form_id, requires_approval, opens_at, closes_at, status';
 
 export interface EventSummary extends HostEvent { registered: number; checked_in: number; capacity: number | null; tickets: EventTicket[] }
@@ -721,3 +725,17 @@ export const REVIEW_COLUMNS: { status: RegistrationStatus; label: string; hint: 
 export const STATUS_LABEL: Record<RegistrationStatus, string> = {
   confirmed: 'Confirmed', applied: 'Applied', shortlisted: 'Shortlisted', selected: 'Selected', declined: 'Declined', cancelled: 'Cancelled',
 };
+
+
+/** Delete a registration and the personal data that came with it (on the person's request). */
+export async function eraseRegistration(id: string, alsoContact: boolean): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc('event_erase_registration', { p_reg: id, p_also_contact: alsoContact });
+  if (!error) return { error: null };
+  return { error: /not_allowed/.test(error.message) ? 'You need access to Events to do this.' : /not_found/.test(error.message) ? 'It was already deleted.' : 'Something went wrong. Please try again.' };
+}
+
+/** What's shown when the organiser hasn't written their own privacy notice. */
+export function defaultPrivacyNotice(organiser: string): string {
+  const who = organiser.trim() || 'The organiser';
+  return `${who} collects your name, email, phone number and your answers to manage your registration, send your ticket and tell you about this event. Only ${who}’s team can see them. They’re kept until the event is over and its follow-up is done, and you can ask ${who} to delete them at any time.`;
+}
