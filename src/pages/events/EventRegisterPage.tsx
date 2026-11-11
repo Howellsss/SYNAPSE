@@ -7,7 +7,7 @@ import {
 } from '@/lib/events';
 import { deserializeDefinition } from '@/lib/form-definition';
 import { useViewport } from '@/lib/useViewport';
-import { EventsShell, QrImage } from '@/components/events/EventKit';
+import { EventsShell, QrImage, CoverImage } from '@/components/events/EventKit';
 import { ResendTicket } from '@/components/events/ResendTicket';
 import { useQrDataUrl } from '@/components/events/hooks';
 import { downloadTicketImage } from '@/lib/ticketImage';
@@ -118,7 +118,7 @@ function EventPanel({ event, onOpen }: { event: PublicEvent; onOpen: () => void 
   return (
     <aside className="sticky top-24 max-h-[calc(100dvh-7rem)] overflow-y-auto pb-4 [scrollbar-width:thin]">
       <div className="overflow-hidden rounded-[28px] bg-navy-50 shadow-[0_24px_60px_-28px_rgba(13,28,59,0.45)]">
-        <img src={event.cover_url || DEFAULT_COVER} alt="" className="aspect-[4/3] w-full object-cover" />
+        <CoverImage src={event.cover_url || DEFAULT_COVER} className="aspect-[4/5] max-h-[60vh]" />
       </div>
       <Organiser event={event} className="mt-6" />
       <h1 className="mt-3 font-event-display text-[40px] font-semibold leading-[1.05] tracking-tight text-navy-900">{event.title}</h1>
