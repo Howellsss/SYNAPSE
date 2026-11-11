@@ -122,6 +122,7 @@ export function SpaceSettingsDrawer({ space, onClose, onSaved }: { space: Space;
           onMode={setAccessMode}
           onNewToken={() => setToken(generateGuestToken())}
           onPermissions={setPermissions}
+          space={{ id: space.id, workspaceId: space.workspace_id }}
         />
       )}
       {tab === 'availability' && (

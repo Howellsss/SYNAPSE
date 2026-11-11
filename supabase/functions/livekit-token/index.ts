@@ -117,6 +117,37 @@ Deno.serve(async (req: Request) => {
         return row ? (row.status ?? "active") : null;
       },
 
+      async canUseWorkspaces(workspaceId, userId) {
+        // Same rule as member_can() in the database: owners and Admins always; Users by their list.
+        const { data, error } = await admin()
+          .from("workspace_members")
+          .select("role, access")
+          .eq("workspace_id", workspaceId)
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (error) return missingTable(error) ? true : fail(error);
+        const row = data as { role: string; access: string[] | null } | null;
+        if (!row) return false;
+        if (row.role === "owner" || row.role === "admin") return true;
+        return (row.access ?? ["conversations", "workspaces", "meetings", "calendars"]).includes("workspaces");
+      },
+
+      async canEnterSpace(spaceId, userId) {
+        // Same rule as can_enter_space() in the database.
+        const { data: space, error } = await admin().from("spaces").select("workspace_id, access_mode, created_by").eq("id", spaceId).maybeSingle();
+        if (error) return missingTable(error) ? true : fail(error);
+        const s = space as { workspace_id: string; access_mode?: string | null; created_by: string | null } | null;
+        if (!s) return false;
+        if (s.access_mode !== "invite_only" || s.created_by === userId) return true;
+        const { data: ws } = await admin().from("workspaces").select("owner_id").eq("id", s.workspace_id).maybeSingle();
+        if ((ws as { owner_id: string } | null)?.owner_id === userId) return true;
+        const { data: m } = await admin().from("workspace_members").select("role").eq("workspace_id", s.workspace_id).eq("user_id", userId).maybeSingle();
+        if (["owner", "admin"].includes((m as { role: string } | null)?.role ?? "")) return true;
+        const { data: inv, error: invError } = await admin().from("space_invitees").select("user_id").eq("space_id", spaceId).eq("user_id", userId).maybeSingle();
+        if (invError) return missingTable(invError) ? true : fail(invError);
+        return !!inv;
+      },
+
       async getProfileName(userId) {
         const { data } = await admin().from("profiles").select("first_name, last_name").eq("user_id", userId).maybeSingle();
         return (data as { first_name: string | null; last_name: string | null } | null) ?? null;

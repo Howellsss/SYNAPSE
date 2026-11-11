@@ -80,7 +80,7 @@ export interface HostEvent {
   brand: EventBrand;
   privacy_notice: string;
   /** Per-email wording ({ confirmed: { subject, message }, … }); empty keeps the defaults. */
-  email_templates: Partial<Record<EmailKind, { subject?: string; message?: string }>>;
+  email_templates: Partial<Record<EmailKind, EmailTemplate>>;
   /** The connected account the emails go from (else the account's first). */
   email_account_id: string | null;
   /** A line at the foot of emails and tickets (e.g. a scripture). */
@@ -462,7 +462,9 @@ export async function resendTicket(slug: string, email: string): Promise<{ error
   return { error: error ? 'Something went wrong. Please try again.' : null };
 }
 
-export type EmailKind = 'confirmed' | 'applied' | 'selected' | 'declined';
+export type EmailKind = 'confirmed' | 'applied' | 'selected' | 'declined' | 'reminder';
+/** An email's own wording; the reminder can also be turned off for an event. */
+export type EmailTemplate = { subject?: string; message?: string; off?: boolean };
 /** The emails people get, and the wording each starts with (kept in step with event_email_default). */
 export const EMAIL_KINDS: { kind: EmailKind; label: string; when: string; subject: string; message: string }[] = [
   { kind: 'confirmed', label: 'Registered', when: 'when someone registers (with their ticket)', subject: "You're in: {{event}}",
@@ -473,6 +475,8 @@ export const EMAIL_KINDS: { kind: EmailKind; label: string; when: string; subjec
     message: "Hi {{first_name}},\n\nGreat news: you've been selected for {{event}}! Your ticket is below. Show the QR code at the door, or give your ticket code {{code}}.\n\nWe can't wait to see you." },
   { kind: 'declined', label: 'Not selected', when: 'when you decline an applicant', subject: 'About your application: {{event}}',
     message: "Hi {{first_name}},\n\nThank you so much for applying to {{event}}. We had more applications than places this time, so we can't offer you a spot, but we'd love to see you there, and we hope you'll apply again." },
+  { kind: 'reminder', label: 'Reminder', when: 'about 24 hours before the event starts, to everyone with a place (with their ticket)', subject: 'Tomorrow: {{event}}',
+    message: "Hi {{first_name}},\n\nA quick reminder: {{event}} is on {{date}}. Your ticket is below: show the QR code at the door, or give your ticket code {{code}}.\n\nSee you there!" },
 ];
 
 /** The account's connected email accounts (the ones emails can go from). */

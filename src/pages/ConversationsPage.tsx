@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import {
   ArrowLeft, AtSign, Bell, Bold, Check, ChevronDown, ChevronRight, LogOut, UserRound, Settings, Moon, MoreVertical, PanelRight, Send, Code, Copy, ExternalLink, FileText, Hash, House, Italic, Link2, List, ListOrdered, Lock, Mail,
   MessageCircle, MessageSquare, CornerUpLeft, Pencil, Plus, Plug, Quote, Search, Smile, SquareCode, SquarePen, Star, Strikethrough,
-  Trash2, UserPlus, X, Zap,
+  Trash2, UserPlus, Video, X, Zap,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { HowellsLogo } from '@/components/layout/Sidebar';
@@ -16,7 +16,7 @@ import { EmptyState, ErrorState, LoadingSpinner } from '@/components/ui/States';
 import { cn } from '@/lib/utils';
 import { loadDepartments, loadDirectory, memberName, type Department, type DirectoryMember } from '@/lib/team';
 import {
-  addMembers, createChannel, createWebhook, deleteMessage, dmPeople, editMessage, formatRuns, joinChannel, leaveChannel, linksIn, listChannels,
+  addMembers, claimContact, createChannel, createWebhook, deleteMessage, dmPeople, editMessage, formatRuns, joinChannel, leaveChannel, linksIn, listChannels,
   listEmailReplies, listMessages, listRecent, listThread, listWebhooks, markRead, mentions, myMessagesAmong, openDm, revokeWebhook, sendMessage,
   startsGroup, subscribeMessages, unreadCounts, webhookUrl, type Channel, type ChatMessage, type EmailReply, type Webhook,
 } from '@/lib/chat';
@@ -1157,6 +1157,47 @@ function SenderAvatar({ m, byId }: { m: ChatMessage; byId: Map<string, Directory
   return <Avatar firstName={p?.first_name ?? null} lastName={p?.last_name ?? null} src={p?.avatar_url ?? null} size="sm" className="!h-[38px] !w-[38px] !rounded-[11px]" />;
 }
 
+/** Buttons on a workflow's post: join the meeting it made, open or claim the contact it's about. */
+function AutomationCard({ message: m, me }: { message: ChatMessage; me: string }) {
+  const { toast } = useToast();
+  const [, navigate] = useRouter();
+  const [meta, setMeta] = useState(m.meta ?? {});
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setMeta(m.meta ?? {}); }, [m.meta]);
+  const str = (k: string) => (typeof meta[k] === 'string' ? (meta[k] as string) : '');
+  const link = /^https:\/\//.test(str('meeting_link')) ? str('meeting_link') : '';
+  const contact = str('contact_id');
+  const claimedBy = str('claimed_by');
+  if (!link && !contact) return null;
+  const claim = async () => {
+    setBusy(true);
+    const { meta: next, error } = await claimContact(m.id);
+    setBusy(false);
+    if (error) { toast(error, 'error'); return; }
+    if (next) setMeta(next);
+    toast(`${str('contact_name') || 'The contact'} is yours`);
+  };
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+      {link && (
+        <a href={link} className="inline-flex h-8 items-center gap-1.5 rounded-[9px] bg-navy-800 px-3 text-xs font-bold text-white hover:bg-navy-900">
+          <Video className="h-3.5 w-3.5" /> Join meeting{str('meeting_code') ? ` · ${str('meeting_code')}` : ''}
+        </a>
+      )}
+      {contact && (
+        <button type="button" onClick={() => navigate(`/contacts/${contact}`)} className="inline-flex h-8 items-center gap-1.5 rounded-[9px] px-3 text-xs font-semibold text-navy-800 shadow-[inset_0_0_0_1px_#E1E5EC] hover:bg-[#F5F7FA]">
+          <UserRound className="h-3.5 w-3.5" /> {str('contact_name') || 'Open contact'}
+        </button>
+      )}
+      {contact && (claimedBy
+        ? <span className="inline-flex h-8 items-center gap-1.5 rounded-[9px] bg-green-50 px-3 text-xs font-semibold text-green-800"><Check className="h-3.5 w-3.5" /> {claimedBy === me ? 'Claimed by you' : `Claimed by ${str('claimed_name') || 'a teammate'}`}</span>
+        : <button type="button" onClick={() => { void claim(); }} disabled={busy} className="inline-flex h-8 items-center gap-1.5 rounded-[9px] bg-gold-400 px-3 text-xs font-bold text-navy-900 hover:bg-gold-500 disabled:opacity-60">
+            {busy ? 'Claiming…' : 'Claim'}
+          </button>)}
+    </div>
+  );
+}
+
 function MessageItem({ message: m, first, me, byId, canModerate, onThread, inThread, picked, focused }: {
   message: ChatMessage; first: boolean; me: string; byId: Map<string, DirectoryMember>; canModerate: boolean; onThread?: () => void; inThread?: boolean;
   /** The message whose replies are open beside the channel. */
@@ -1213,6 +1254,7 @@ function MessageItem({ message: m, first, me, byId, canModerate, onThread, inThr
           <>
             <Body text={m.body} />
             {m.edited_at && <span className="text-[11px] text-[#8A93A5]">(edited)</span>}
+            {m.source === 'system' && <AutomationCard message={m} me={me} />}
           </>
         )}
         {picked && <p className="mt-1 text-xs font-bold text-gold-800">Replying to this message →</p>}

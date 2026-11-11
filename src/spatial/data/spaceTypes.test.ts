@@ -55,7 +55,7 @@ describe('space type data', () => {
 
   it('uses the sensible defaults per type', () => {
     expect(typeChoiceInfo('event_hall').defaults).toMatchObject({ access_mode: 'guest_link', persistence: 'scheduled' });
-    expect(typeChoiceInfo('classroom').defaults.access_mode).toBe('invite_only');
+    expect(typeChoiceInfo('classroom').defaults.access_mode).toBe('members');
     expect(typeChoiceInfo('classroom').defaults.permissions.broadcast).not.toContain('member');
     expect(typeChoiceInfo('office').defaults).toMatchObject({ access_mode: 'members', persistence: 'always_on' });
   });

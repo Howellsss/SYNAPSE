@@ -53,7 +53,7 @@ rows = sorted(((mig,) + k for k, mig in state.items()), key=lambda r: r[0])
 
 # Raw file links for pasting, and the updates that can't simply be run a second time (tested by
 # running every migration twice on a test database).
-RAW = 'https://raw.githubusercontent.com/Howellsss/SYNAPSE/claude/upbeat-thompson-4qxy0n/supabase/migrations/'
+RAW = 'https://raw.githubusercontent.com/Howellsss/SYNAPSE/main/supabase/migrations/'
 NOT_RERUNNABLE = {'20260902225000_add_workspace_settings_table.sql',
                   '20260904032958_add_public_messages_and_contacts_select_policies.sql.sql',
                   '20260906223635_add_forms_module_inactive_status_and_usage_tracking.sql'}

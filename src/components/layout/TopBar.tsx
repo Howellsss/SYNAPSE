@@ -54,6 +54,19 @@ export function TopBar({ onQuickCreate, searchQuery, onSearchChange, searchResul
       .then(({ data, error }) => { if (alive) setNotes(error ? [] : ((data ?? []) as TeamNote[])); });
     return () => { alive = false; };
   }, [notifOpen, workspace, user]);
+  // New alerts appear as they arrive, without opening the bell.
+  useEffect(() => {
+    if (!workspace || !user) return;
+    const ch = supabase
+      .channel(`bell:${user.id}:${Math.random().toString(36).slice(2)}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'team_notifications', filter: `user_id=eq.${user.id}` }, (p) => {
+        const n = p.new as TeamNote & { workspace_id?: string };
+        if (n.workspace_id && n.workspace_id !== workspace.id) return;
+        setNotes((all) => (all.some((x) => x.id === n.id) ? all : [n, ...all].slice(0, 10)));
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(ch); };
+  }, [workspace, user]);
   const unread = notes.filter((n) => !n.read_at);
   const openNote = (n: TeamNote) => {
     if (!n.read_at) {

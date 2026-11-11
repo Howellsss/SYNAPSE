@@ -309,6 +309,133 @@ DO $$ DECLARE r jsonb; ev uuid; att uuid; perf uuid; reg event_registrations; ou
   PERFORM set_config('request.jwt.claim.sub', '', true);
 EXCEPTION WHEN OTHERS THEN PERFORM set_config('request.jwt.claim.sub', '', true); PERFORM tev.crashed('Dashboard', SQLERRM); END $$;
 
+DO $$ DECLARE ada event_registrations; n int; ev uuid; BEGIN
+  RAISE NOTICE 'The 24-hour reminder';
+  PERFORM tev.reset();
+  DELETE FROM email_accounts WHERE workspace_id = tev.ws();
+  INSERT INTO email_accounts(workspace_id, user_id, email, display_name) VALUES (tev.ws(), tev.owner(), 'hello@derasperks.example', 'Dera Speaks');
+  PERFORM event_register('unscathed', 'register', tev.answers('Ada Obi', 'ada@example.com'));
+  PERFORM event_register('unscathed', 'apply', tev.answers('Bo Eze', 'bo@example.com', '+234 803 222 3333'));
+  -- They registered a few days ago.
+  UPDATE event_registrations SET created_at = now() - interval '3 days';
+  DELETE FROM messages WHERE workspace_id = tev.ws();
+  SELECT id INTO ev FROM events WHERE slug = 'unscathed';
+
+  PERFORM tev.check(event_send_reminders() = 0, 'date to be announced: no reminder');
+  UPDATE events SET starts_at = now() + interval '3 days', ends_at = now() + interval '3 days 4 hours' WHERE id = ev;
+  PERFORM tev.check(event_send_reminders() = 0, 'three days away: not yet');
+  UPDATE events SET starts_at = now() + interval '20 hours', ends_at = now() + interval '24 hours' WHERE id = ev;
+  n := event_send_reminders();
+  SELECT * INTO ada FROM event_registrations WHERE email = 'ada@example.com';
+  PERFORM tev.check(n = 1 AND EXISTS (SELECT 1 FROM messages WHERE to_address = 'ada@example.com' AND subject = 'Tomorrow: UNSCATHED'
+      AND body LIKE '%' || ada.ticket_code || '%' AND body_html LIKE '%/api/qr/' || ada.qr_token || '.png?v=%' AND status = 'queued'),
+    'the day before: one reminder, with the ticket and its QR');
+  PERFORM tev.check(NOT EXISTS (SELECT 1 FROM messages WHERE to_address = 'bo@example.com'), 'an applicant who isn''t selected gets no reminder');
+  PERFORM tev.check(event_send_reminders() = 0 AND (SELECT count(*) FROM messages WHERE to_address = 'ada@example.com') = 1, 'only once');
+  UPDATE events SET starts_at = now() + interval '22 hours', ends_at = now() + interval '26 hours' WHERE id = ev;
+  PERFORM tev.check(event_send_reminders() = 1, 'the event moved: reminded of the new time');
+
+  PERFORM event_register('unscathed', 'register', tev.answers('Cy Late', 'cy@example.com', '+234 803 444 4444'));
+  PERFORM event_register('unscathed', 'register', tev.answers('Di Door', 'di@example.com', '+234 803 555 5555'));
+  UPDATE event_registrations SET created_at = now() - interval '3 days', checked_in_at = now() WHERE email = 'di@example.com';
+  UPDATE events SET starts_at = now() + interval '23 hours' WHERE id = ev;
+  DELETE FROM messages WHERE workspace_id = tev.ws();
+  n := event_send_reminders();
+  PERFORM tev.check(n = 1 AND EXISTS (SELECT 1 FROM messages WHERE to_address = 'ada@example.com')
+      AND NOT EXISTS (SELECT 1 FROM messages WHERE to_address IN ('cy@example.com', 'di@example.com')),
+    'not for someone who registered in the last day, nor someone already checked in');
+
+  UPDATE events SET starts_at = now() + interval '21 hours', email_templates = '{"reminder": {"off": true}}' WHERE id = ev;
+  PERFORM tev.check(event_send_reminders() = 0, 'the organiser turned the reminder off: nothing');
+  UPDATE events SET email_templates = '{"reminder": {"subject": "See you tomorrow, {{first_name}}"}}' WHERE id = ev;
+  DELETE FROM messages WHERE workspace_id = tev.ws();
+  PERFORM event_send_reminders();
+  PERFORM tev.check(EXISTS (SELECT 1 FROM messages WHERE to_address = 'ada@example.com' AND subject = 'See you tomorrow, Ada'), 'in the organiser''s words');
+  DELETE FROM email_accounts WHERE workspace_id = tev.ws();
+  UPDATE events SET starts_at = now() + interval '19 hours' WHERE id = ev;
+  PERFORM tev.check(event_send_reminders() = 0 AND (SELECT reminder_for FROM event_registrations WHERE email = 'ada@example.com') <> now() + interval '19 hours',
+    'no email account: nothing sent, and it isn''t marked as sent');
+  PERFORM tev.check(NOT has_function_privilege('anon', 'event_send_reminders()', 'EXECUTE') AND NOT has_function_privilege('authenticated', 'event_send_reminders()', 'EXECUTE'),
+    'only the scheduler runs it');
+EXCEPTION WHEN OTHERS THEN PERFORM tev.crashed('Reminder', SQLERRM); END $$;
+
+DO $$ DECLARE member uuid := 'f0000000-0000-4000-8000-0000000000c1'; n_member int; n_owner int; n_upd int; ev uuid; BEGIN
+  RAISE NOTICE 'Registrations follow the Events section';
+  PERFORM tev.reset();
+  PERFORM event_register('unscathed', 'register', tev.answers('Ada Obi', 'ada@example.com'));
+  SELECT id INTO ev FROM events WHERE slug = 'unscathed';
+  INSERT INTO auth.users(id, email) VALUES (member, 'no-events@example.com') ON CONFLICT DO NOTHING;
+  INSERT INTO workspace_members(workspace_id, user_id, role) VALUES (tev.ws(), member, 'member') ON CONFLICT DO NOTHING;
+  UPDATE workspace_members SET access = ARRAY['conversations'] WHERE workspace_id = tev.ws() AND user_id = member;
+
+  PERFORM set_config('request.jwt.claim.sub', member::text, true);
+  SET LOCAL ROLE authenticated;
+  SELECT count(*) INTO n_member FROM event_registrations;
+  UPDATE event_registrations SET first_name = 'Changed' WHERE event_id = ev;
+  GET DIAGNOSTICS n_upd = ROW_COUNT;
+  RESET ROLE;
+  PERFORM tev.check(n_member = 0 AND n_upd = 0 AND NOT EXISTS (SELECT 1 FROM event_registrations WHERE first_name = 'Changed'),
+    'a member without Events can''t see or change who registered');
+  PERFORM set_config('request.jwt.claim.sub', member::text, true);
+  SET LOCAL ROLE authenticated;
+  SELECT count(*) INTO n_member FROM event_tickets;
+  RESET ROLE;
+  PERFORM tev.check(n_member = 0, 'nor the registration types');
+
+  PERFORM set_config('request.jwt.claim.sub', tev.owner()::text, true);
+  SET LOCAL ROLE authenticated;
+  SELECT count(*) INTO n_owner FROM event_registrations;
+  RESET ROLE;
+  PERFORM tev.check(n_owner = 1, 'the organiser still sees them');
+  UPDATE workspace_members SET access = ARRAY['conversations', 'events'] WHERE workspace_id = tev.ws() AND user_id = member;
+  PERFORM set_config('request.jwt.claim.sub', member::text, true);
+  SET LOCAL ROLE authenticated;
+  SELECT count(*) INTO n_member FROM event_registrations;
+  RESET ROLE;
+  PERFORM tev.check(n_member = 1, 'and so does a member once Events is switched on for them');
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+EXCEPTION WHEN OTHERS THEN RESET ROLE; PERFORM set_config('request.jwt.claim.sub', '', true); PERFORM tev.crashed('Registration privacy', SQLERRM); END $$;
+
+DO $$ DECLARE i int; r jsonb; n int; ev uuid; att uuid; BEGIN
+  RAISE NOTICE 'Limits per visitor';
+  PERFORM tev.reset();
+  DELETE FROM ev_private.hits;
+  INSERT INTO email_accounts(workspace_id, user_id, email, display_name) SELECT tev.ws(), tev.owner(), 'hello@derasperks.example', 'Dera Speaks'
+    WHERE NOT EXISTS (SELECT 1 FROM email_accounts WHERE workspace_id = tev.ws());
+  PERFORM set_config('request.headers', '{"x-forwarded-for": "203.0.113.9, 10.0.0.1"}', true);
+  FOR i IN 1..20 LOOP
+    PERFORM event_register('unscathed', 'register', tev.answers('Guest ' || i, 'guest' || i || '@example.com', '+234 803 100 ' || lpad(i::text, 4, '0')));
+  END LOOP;
+  PERFORM tev.check((SELECT count(*) FROM event_registrations WHERE email LIKE 'guest%') = 20, 'one address can register 20 times in ten minutes');
+  PERFORM tev.check(tev.raises($q$SELECT event_register('unscathed', 'register', tev.answers('Guest 21', 'guest21@example.com', '+234 803 100 0021'))$q$) = 'busy',
+    'the 21st is asked to wait');
+  PERFORM set_config('request.headers', '{"x-forwarded-for": "198.51.100.7"}', true);
+  r := event_register('unscathed', 'register', tev.answers('Guest 21', 'guest21@example.com', '+234 803 100 0021'));
+  PERFORM tev.check(r->>'status' = 'confirmed', 'someone at another address isn''t held up');
+
+  PERFORM set_config('request.headers', '{"x-forwarded-for": "203.0.113.9"}', true);
+  PERFORM set_config('request.jwt.claim.sub', tev.owner()::text, true);
+  SELECT id INTO ev FROM events WHERE slug = 'unscathed';
+  SELECT id INTO att FROM event_tickets WHERE event_id = ev AND slug = 'register';
+  r := event_add_registration(ev, att, 'Walk', 'In', 'walkin@example.com', NULL, false);
+  PERFORM tev.check(r->>'status' = 'confirmed', 'the organiser adding people isn''t limited');
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+
+  UPDATE event_registrations SET last_email_at = NULL;
+  DELETE FROM messages WHERE workspace_id = tev.ws();
+  PERFORM set_config('request.headers', '{"x-forwarded-for": "192.0.2.50"}', true);
+  FOR i IN 1..10 LOOP PERFORM event_resend_ticket('unscathed', 'nobody' || i || '@example.com'); END LOOP;
+  r := event_resend_ticket('unscathed', 'guest1@example.com');
+  n := (SELECT count(*) FROM messages WHERE to_address = 'guest1@example.com');
+  PERFORM tev.check(r = '{"ok": true}'::jsonb AND n = 0, 'after 10 asks from one address: the same answer, but nothing is sent');
+  PERFORM set_config('request.headers', '{"x-forwarded-for": "192.0.2.51"}', true);
+  r := event_resend_ticket('unscathed', 'guest1@example.com');
+  PERFORM tev.check((SELECT count(*) FROM messages WHERE to_address = 'guest1@example.com') = 1, 'from another address the ticket is sent');
+  PERFORM set_config('request.headers', '', true);
+  PERFORM tev.check(NOT has_table_privilege('anon', 'ev_private.hits', 'SELECT') AND NOT has_function_privilege('anon', 'event_visitor_allowed(text, int, interval)', 'EXECUTE'),
+    'the counts are private');
+EXCEPTION WHEN OTHERS THEN PERFORM set_config('request.headers', '', true); PERFORM set_config('request.jwt.claim.sub', '', true); PERFORM tev.crashed('Limits', SQLERRM); END $$;
+
 DO $$ DECLARE f int; p int; r record; BEGIN
   SELECT count(*) INTO f FROM tev.failures; SELECT count(*) INTO p FROM tev.passes;
   IF f > 0 THEN

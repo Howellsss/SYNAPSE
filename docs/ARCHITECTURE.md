@@ -210,13 +210,35 @@ viewers get watch-only tokens (`canPublish: false`) from `livekit-token` with `{
 and only while `status = 'live'` (425 before). The public watch page `/live/CODE?watch=<token>` reads
 `stream_by_watch`; chat and reactions go over the data channel (`STREAM_TOPICS`).
 
+## Events (`src/lib/events.ts`, `src/pages/events/*`, `src/lib/checkin.ts`)
+
+Migrations `20261110…` to `20261114…` (paste files `supabase/paste/database-updates-9…12.sql`).
+- **Registration types** (`event_tickets`): each has its own form, opening/closing times, capacity and
+  optional approval; public pages `/e/<slug>/<type>` register or apply through `event_register`.
+- **Tickets**: a short code like `UNS-7K4Q` and a QR holding a signed link (`ticket_sig`, HMAC with a
+  secret in `ev_private.settings`); the ticket page and a PNG of it come from `public_ticket` and the
+  `api` function.
+- **Emails** (`event_email`): registered, application received, selected, not selected, and the
+  **24-hour reminder** (`event_send_reminders`, pg_cron every 15 minutes: dated events only, once per
+  start time, not for people who registered in the last day or are checked in; organisers reword it
+  or turn it off in `events.email_templates.reminder`). Sent from a connected Gmail by the mailer.
+- **Door check-in**: staff-only functions (`event_check_in`, search, undo, log); the check-in team is
+  `event_staff`.
+- **Dashboard**: registrations, the performer review board (`event_set_registration_status`), adding
+  people (`event_add_registration`), sending a ticket again.
+- **Privacy and limits**: registrations, registration types and the check-in log follow the Events
+  section (restrictive RLS through `event_member_can`); each event has a privacy notice; per type at
+  most 60 registrations a minute, per visitor address 20 registrations and 10 "resend my ticket" asks
+  in 10 minutes (`event_visitor_allowed`, counts in `ev_private.hits`).
+- Tests: `supabase/tests/events.test.sql`.
+
 ## Tables by module
 
 | Module | Tables |
 | --- | --- |
 | Workspace & team | `workspaces`, `workspace_members` (+ `title`), `profiles`, `team_invitations` (+ `title`, `department_id`), `departments`, `department_members` (`is_lead`), `workspace_settings` (per-category JSON settings), `audit_logs` |
 | Contacts (CRM) | `contacts`, `tags`, `contact_tags`, `smart_lists`, `notes` |
-| Calendars & booking | `calendars`, `calendar_hosts`, `calendar_groups`, `calendar_group_members`, `calendar_group_analytics`, `availability_rules`, `availability_overrides`, `host_availability_rules`, `external_busy_periods`, `booking_links`, `booking_locks`, `appointments`, `appointment_participants`, `notification_rules` |
+| Calendars & booking | `calendars`, `calendar_hosts`, `calendar_groups`, `calendar_group_members`, `calendar_group_analytics`, `availability_rules`, `availability_overrides`, `host_availability_rules`, `external_busy_periods`, `booking_links`, `booking_locks`, `appointments` (public booking pages read only the `appointment_busy` view: busy times, no names or notes), `appointment_participants`, `notification_rules` |
 | Forms | `forms`, `form_fields`, `form_field_conditions`, `form_submissions`, `form_notification_logs`, `form_activity_timeline` |
 | Workflows | `workflows`, `workflow_nodes`, `workflow_edges`, `workflow_versions`, `workflow_enrollments`, `workflow_executions`, `workflow_execution_logs`, `workflow_goals`, `workflow_templates` |
 | Meetings | `meetings` (owned by a workspace; join code like FOCU-358, optional nickname, instant/later/scheduled, ended_at) |
@@ -241,7 +263,7 @@ Child tables (`form_fields`, `workflow_nodes`, `calendar_hosts`, `availability_r
 | Workspaces | `/workspace` | Real: spaces grid and create wizard (`/workspace/new`, full screen); `/workspace/:slug` is the in-space screen (people, status, controls) with the walkable 3D floor; rooms and furniture wait for the art kit |
 | Contacts | `/contacts` | Real: list, add, detail page with composer (email via Gmail) |
 | Conversations | `/conversations` | Real: channels, direct messages, threads, activity, email replies, app posts |
-| Events | `/events` | **Placeholder** (`ComingSoonPage`) |
+| Events | `/events` | Built: events, registration types, tickets, check-in, dashboard (see Events) |
 | Webinars | `/webinars` | **Placeholder** (`ComingSoonPage`) |
 | Calendars | `/calendars` | Real: calendars, groups, appointments, public booking pages |
 | Submissions | `/forms` | Real: forms and surveys, builder, submissions |

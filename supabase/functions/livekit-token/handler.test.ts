@@ -29,6 +29,11 @@ describe('livekit-token handler', () => {
     expect((await handle(post({ spaceId: 'x' }), deps())).status).toBe(400);
     expect((await handle(post({ spaceId: SPACE }), deps({ getMembershipStatus: async () => 'suspended' }))).status).toBe(403);
     expect((await handle(post({ spaceId: SPACE }), deps({ getMembershipStatus: async () => null }))).status).toBe(403);
+    // A User whose Admin switched Workspaces off.
+    expect((await handle(post({ spaceId: SPACE }), deps({ canUseWorkspaces: async () => false }))).status).toBe(403);
+    expect((await handle(post({ spaceId: SPACE }), deps({ canUseWorkspaces: async () => true }))).status).toBe(200);
+    // An invite-only office they're not invited to.
+    expect((await handle(post({ spaceId: SPACE }), deps({ canEnterSpace: async () => false }))).status).toBe(403);
   });
 
   it('meetings: members of the meeting\'s account join meeting_<id>', async () => {

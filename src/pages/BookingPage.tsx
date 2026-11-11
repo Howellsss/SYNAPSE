@@ -732,7 +732,10 @@ function StandardBookingPage({ slug, isGroup }: { slug: string; isGroup: boolean
       };
       if (calendar.workspace_id) apptInsert.workspace_id = calendar.workspace_id;
       else if (calendar.owner_id) apptInsert.owner_id = calendar.owner_id;
-      const { data: appt, error: apptError } = await supabase.from('appointments').insert(apptInsert).select().single();
+      // Visitors can't read bookings back, so the id is made here and nothing is returned.
+      apptInsert.id = crypto.randomUUID();
+      const { error: apptError } = await supabase.from('appointments').insert(apptInsert);
+      const appt = apptError ? null : { ...apptInsert, meeting_link: null } as unknown as Appointment;
 
       if (apptError || !appt) {
         setError('Could not create appointment. The time may have been booked by someone else.');

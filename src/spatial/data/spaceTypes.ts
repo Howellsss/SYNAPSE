@@ -107,7 +107,7 @@ export const SPACE_TYPE_CHOICES: SpaceTypeInfo[] = [
       'Quiet reading corner',
     ],
     flow: 'template',
-    defaults: { access_mode: 'invite_only', persistence: 'always_on', permissions: BASE_PERMISSIONS },
+    defaults: { access_mode: 'members', persistence: 'always_on', permissions: BASE_PERMISSIONS },
   },
   {
     key: 'event_hall',
@@ -145,7 +145,7 @@ export const SPACE_TYPE_CHOICES: SpaceTypeInfo[] = [
       'Link sessions to your SYNAPSE calendar',
     ],
     flow: 'template',
-    defaults: { access_mode: 'invite_only', persistence: 'always_on', permissions: BASE_PERMISSIONS },
+    defaults: { access_mode: 'members', persistence: 'always_on', permissions: BASE_PERMISSIONS },
   },
   {
     key: 'town_square',

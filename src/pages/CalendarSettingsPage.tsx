@@ -28,8 +28,6 @@ import {
   Globe,
   Bell,
   Mail,
-  CreditCard,
-  Zap,
   Settings as SettingsIcon,
   CalendarDays,
   Lock,
@@ -78,7 +76,7 @@ interface GroupCalendarWithMembers {
   calendar_group_members: { calendar_id: string; sort_order: number; calendars: CalendarType | null }[];
 }
 
-type DetailTab = 'general' | 'availability' | 'booking_page' | 'forms' | 'notifications' | 'reminders' | 'limits' | 'hosts' | 'integrations' | 'payments' | 'appearance' | 'advanced';
+type DetailTab = 'general' | 'availability' | 'booking_page' | 'forms' | 'notifications' | 'reminders' | 'limits' | 'hosts' | 'appearance' | 'advanced';
 
 const CALENDAR_TYPES: { value: CalType; label: string; icon: typeof User; desc: string; isGroup?: boolean }[] = [
   { value: 'one_on_one', label: 'Personal', icon: User, desc: 'One host with one participant' },
@@ -103,8 +101,6 @@ const DETAIL_TABS: { id: DetailTab; label: string; icon: typeof SettingsIcon }[]
   { id: 'reminders', label: 'Reminders', icon: Clock },
   { id: 'limits', label: 'Limits', icon: Lock },
   { id: 'hosts', label: 'Hosts', icon: Users },
-  { id: 'integrations', label: 'Integrations', icon: Zap },
-  { id: 'payments', label: 'Payments', icon: CreditCard },
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'advanced', label: 'Advanced', icon: Sparkles },
 ];
@@ -263,8 +259,9 @@ export function CalendarSettingsPage() {
       cancellation_policy: cal.cancellation_policy,
       booking_flow: cal.booking_flow,
     };
+    // The creator owns it (a User can only create calendars they own).
+    insertData.owner_id = user.id;
     if (workspace) insertData.workspace_id = workspace.id;
-    else insertData.owner_id = user.id;
     const { data: newCal, error } = await supabase.from('calendars').insert(insertData).select().single();
     if (error) { toast('Something went wrong. Please try again.', 'error'); return; }
     // Copy availability rules
@@ -898,12 +895,6 @@ function CalendarDetailView({
           {activeTab === 'hosts' && (
             <HostsTab calendarId={calendar.id} />
           )}
-          {activeTab === 'integrations' && (
-            <IntegrationsTab calendarId={calendar.id} />
-          )}
-          {activeTab === 'payments' && (
-            <PaymentsTab />
-          )}
           {activeTab === 'appearance' && (
             <AppearanceTab form={form} setForm={setForm} saving={saving} onSave={saveGeneral} />
           )}
@@ -1442,55 +1433,6 @@ function HostsTab({ calendarId }: { calendarId: string }) {
         </SettingsSection>
       )}
     </div>
-  );
-}
-
-// ============================================================
-// INTEGRATIONS TAB
-// ============================================================
-function IntegrationsTab(_props: { calendarId: string }) {
-  const integrations = [
-    { provider: 'Google Calendar', icon: Calendar, connected: true, desc: 'Sync bookings with Google Calendar' },
-    { provider: 'Outlook', icon: Mail, connected: false, desc: 'Sync bookings with Outlook' },
-    { provider: 'Stripe', icon: CreditCard, connected: false, desc: 'Accept payments for paid bookings' },
-  ];
-  return (
-    <SettingsSection title="Integrations" description="Connect external services to this calendar.">
-      <div className="space-y-2">
-        {integrations.map(i => (
-          <div key={i.provider} className="flex items-center justify-between rounded-xl border border-navy-100 p-3">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-ivory-50 flex items-center justify-center"><i.icon className="w-4 h-4 text-navy-600" /></div>
-              <div>
-                <p className="text-sm font-medium text-navy-700">{i.provider}</p>
-                <p className="text-xs text-ivory-600">{i.desc}</p>
-              </div>
-            </div>
-            {i.connected ? (
-              <span className="status-pill bg-green-50 text-green-700"><CheckCircle2 className="w-3 h-3" /> Connected</span>
-            ) : (
-              <button className="btn-secondary btn-sm">Connect</button>
-            )}
-          </div>
-        ))}
-      </div>
-    </SettingsSection>
-  );
-}
-
-// ============================================================
-// PAYMENTS TAB
-// ============================================================
-function PaymentsTab() {
-  return (
-    <SettingsSection title="Payment Settings" description="Charge for bookings on this calendar.">
-      <div className="rounded-xl border border-navy-100 bg-ivory-50 p-4 text-center">
-        <CreditCard className="w-8 h-8 text-ivory-400 mx-auto mb-2" />
-        <p className="text-sm font-medium text-navy-700">No payment configured</p>
-        <p className="text-xs text-ivory-600 mt-1">Connect Stripe to start charging for appointments.</p>
-        <button className="btn-primary btn-sm mt-3"><CreditCard className="w-4 h-4" /> Connect Stripe</button>
-      </div>
-    </SettingsSection>
   );
 }
 

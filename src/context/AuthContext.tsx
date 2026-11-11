@@ -37,21 +37,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [accessEnded, setAccessEnded] = useState<'suspended' | 'removed' | null>(null);
 
-  async function acceptPendingInvitations(userId: string, email: string) {
+  async function acceptPendingInvitations(email: string) {
     const { data: invites } = await supabase
       .from('team_invitations')
-      .select('id, workspace_id, role')
+      .select('token')
       .eq('email', email.toLowerCase())
       .eq('status', 'pending');
     if (!invites || invites.length === 0) return;
+    // Joining is done server-side, with the invited role, title and department.
     for (const inv of invites) {
-      await supabase.from('workspace_members').upsert(
-        { workspace_id: inv.workspace_id, user_id: userId, role: inv.role, status: 'active' },
-        { onConflict: 'workspace_id,user_id' }
-      );
-      await supabase.from('team_invitations')
-        .update({ status: 'accepted', accepted_at: new Date().toISOString() })
-        .eq('id', inv.id);
+      if (inv.token) await supabase.rpc('accept_invitation', { p_token: inv.token });
     }
   }
 
@@ -77,7 +72,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         { onConflict: 'user_id' },
       );
 
-      if (authUser.email) await acceptPendingInvitations(authUser.id, authUser.email);
+      if (authUser.email) await acceptPendingInvitations(authUser.email);
+      // Joined a company by invitation: that's their account, no workspace of their own.
+      const { count: joined } = await supabase.from('workspace_members')
+        .select('workspace_id', { count: 'exact', head: true }).eq('user_id', authUser.id);
+      if ((joined ?? 0) > 0) return true;
 
       const workspaceSlug = slugifyWorkspace(`${firstName}-${lastName}-workspace`);
       const { data: ws } = await supabase
@@ -98,10 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: 'owner',
       });
 
-      await supabase.rpc('seed_workspace_demo_data', {
-        p_workspace_id: ws.id,
-        p_owner_id: authUser.id,
-      });
+      // New accounts start empty: no sample contacts, calendars or bookings mixed in with real ones.
       return true;
     })();
 
@@ -253,7 +249,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: error.message };
     }
     if (data.user) {
-      await acceptPendingInvitations(data.user.id, email);
+      await acceptPendingInvitations(email);
       await loadUserData(data.user);
     }
     return { error: null };
