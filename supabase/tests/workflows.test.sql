@@ -266,12 +266,13 @@ DO $$ DECLARE w uuid; ws uuid; c uuid; other uuid; k uuid; tz text; today date; 
   -- Task reminder: the day before a task is due.
   INSERT INTO tasks(workspace_id, contact_id, title, due_at) VALUES (t.ws(), other, 'Send contract', ((today + 1) + time '15:00') AT TIME ZONE tz) RETURNING id INTO k;
   INSERT INTO tasks(workspace_id, contact_id, title, due_at) VALUES (t.ws(), c, 'Later task', ((today + 5) + time '15:00') AT TIME ZONE tz);
+  INSERT INTO tasks(workspace_id, contact_id, title, due_at, completed_at) VALUES (t.ws(), c, 'Done already', ((today + 1) + time '15:00') AT TIME ZONE tz, now());
   PERFORM t.tick();
   ws := t.flow('Due tomorrow', '[{"id": "tr1", "type": "task_reminder", "filters": {"offset": "before", "days": 1}}]', '{"s1": {"type": "add_tag", "config": {"tags": ["task-due"]}}}');
   PERFORM t.tick();
   PERFORM t.check(t.has_tag(other, 'task-due') AND (SELECT context->>'title' FROM wf_runs WHERE workflow_id = ws AND contact_id = other) = 'Send contract',
     'task reminder: runs the day before the task is due, with the task');
-  PERFORM t.check(t.runs(ws, c) = 0, 'task reminder: not for a task due another day');
+  PERFORM t.check(t.runs(ws, c) = 0, 'task reminder: not for a task due another day, nor one already completed');
   UPDATE workspaces SET timezone = 'UTC' WHERE id = t.ws();
 EXCEPTION WHEN OTHERS THEN PERFORM t.crashed('Triggers: custom date reminder and task reminder', SQLERRM); END $$;
 
@@ -347,6 +348,23 @@ DO $$ DECLARE w uuid; c uuid; r uuid; BEGIN
   UPDATE wf_runs SET resume_at = now() - interval '1 second' WHERE id = r; PERFORM t.tick();
   PERFORM t.check(t.has_tag(c, 'after-wait') AND (SELECT status FROM wf_runs WHERE id = r) = 'completed', 'when the wait is over it carries on and finishes');
 EXCEPTION WHEN OTHERS THEN PERFORM t.crashed('Action: wait, then carry on', SQLERRM); END $$;
+
+DO $$ DECLARE w uuid; c uuid; r uuid; BEGIN
+  PERFORM t.case('Action: wait with a decimal, and a paused workflow holds its runs'); PERFORM t.reset();
+  w := t.flow('Half wait', '[{"id": "tr1", "type": "contact_tag", "filters": {"tags": ["half"]}}]', jsonb_build_object(
+    's1', '{"type": "wait", "next": "s2", "config": {"amount": "1.5", "unit": "hours"}}'::jsonb,
+    's2', '{"type": "add_tag", "config": {"tags": ["after-half"]}}'::jsonb));
+  c := t.contact('Hal'); PERFORM t.tick();
+  PERFORM t.tag(c, 'half'); PERFORM t.tick();
+  SELECT id INTO r FROM wf_runs WHERE workflow_id = w AND contact_id = c;
+  PERFORM t.check((SELECT status = 'waiting' AND resume_at BETWEEN now() + interval '89 minutes' AND now() + interval '91 minutes' FROM wf_runs WHERE id = r),
+    'a 1.5-hour wait waits 90 minutes (it used to skip)');
+  UPDATE workflows SET status = 'paused' WHERE id = w;
+  UPDATE wf_runs SET resume_at = now() - interval '1 second' WHERE id = r; PERFORM t.tick();
+  PERFORM t.check(NOT t.has_tag(c, 'after-half') AND (SELECT status FROM wf_runs WHERE id = r) = 'waiting', 'while the workflow is paused, the run holds');
+  UPDATE workflows SET status = 'active' WHERE id = w; PERFORM t.tick();
+  PERFORM t.check(t.has_tag(c, 'after-half') AND (SELECT status FROM wf_runs WHERE id = r) = 'completed', 'published again, it carries on');
+EXCEPTION WHEN OTHERS THEN PERFORM t.crashed('Action: wait with a decimal', SQLERRM); END $$;
 
 DO $$ DECLARE w uuid; vip uuid; plain uuid; BEGIN
   PERFORM t.case('Action: if / else'); PERFORM t.reset();
