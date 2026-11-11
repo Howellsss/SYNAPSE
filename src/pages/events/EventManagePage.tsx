@@ -6,6 +6,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useRouter } from '@/lib/router';
+import { DoorPasses } from '@/components/events/DoorPasses';
 import {
   DEFAULT_COVER, deleteEvent, downloadFile, eventDateLine, eventUrl, fetchRegistrationForms, formatPrice, getEvent, holdsPlace,
   listRegistrations, placeLine, registrationsCsv, REVIEW_COLUMNS, sendTicket, setEventStatus, setRegistrationStatus, updateRegistration,
@@ -438,6 +439,8 @@ function CheckInTab({ eventId, checkedIn, total }: { eventId: string; checkedIn:
             )}
           {organisers.length > 0 && <p className="mt-3 text-sm text-ivory-700">Organisers (always allowed): {organisers.map((m) => m.name).join(', ')}</p>}
         </section>
+
+        <DoorPasses eventId={eventId} />
       </div>
 
       <section className="card p-5 sm:p-6">

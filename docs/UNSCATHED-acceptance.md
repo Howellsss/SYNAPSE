@@ -13,7 +13,7 @@ read (e.g. a personal Gmail with `+guest1`, `+performer1`).
 
 - [ ] **0.1** Supabase → SQL Editor: run `supabase/check-missing-updates.sql`.
   **Expect:** nothing missing. If something is listed, run the paste files it names, in number
-  order (`database-updates-12.sql` to `-15.sql` are the newest).
+  order (`database-updates-12.sql` to `-17.sql` are the newest).
 - [ ] **0.2** Supabase → Edge Functions: `send-email`, `form-submit` and `livekit-token` are deployed
   (redeploy `livekit-token` and `send-email` after `-15`).
 - [ ] **0.3** Supabase → Database → Extensions: `pg_cron` and `pg_net` are on.
@@ -99,6 +99,11 @@ read (e.g. a personal Gmail with `+guest1`, `+performer1`).
   browser (Safari or Chrome) as the team member. Then point the camera at a ticket's QR and tap the link.
   **Expect:** the screen turns green with the guest's name: they're checked in. Not signed in, or not
   on the team, the same link just shows the ticket.
+- [ ] **6.3c** Door pass (a volunteer without an account): manage page → **Door scanners** → add a
+  name and an email you can read → **Send pass**. On a phone, open the pass email's link in Safari
+  (iPhone) or Chrome (Android). **Expect:** a green "This phone is a scanner" page. Then scan a
+  ticket's QR with that phone's camera and tap the link: green, checked in. Remove the pass on the
+  manage page and scan again: the ticket just shows (that phone can't check anyone in any more).
 - [ ] **6.4** Scan the same QR again.
   **Expect:** "Already checked in", with the time (not a second check-in).
 - [ ] **6.5** **Can't scan? Find them**: search for the selected performer by name. **Check in**.

@@ -360,17 +360,19 @@ async function sendQueued(key: string): Promise<Response> {
 
     // Workflow emails, and form notifications (linked to their submission). Before the forms
     // database update (no form_submission_id column) only workflow emails are picked up.
-    // Invitations (team_invitation_id) too, once that update is in.
-    const pick = (level: 0 | 1 | 2) => {
+    // Invitations (team_invitation_id) and door passes (event_door_pass_id) too, once those updates are in.
+    const pick = (level: 0 | 1 | 2 | 3) => {
       const q = db.from("messages").select("id, subject, body, body_html, to_address, from_name, email_account_id").eq("status", "queued");
-      const filtered = level === 0 ? q.or("wf_run_id.not.is.null,form_submission_id.not.is.null,team_invitation_id.not.is.null")
-        : level === 1 ? q.or("wf_run_id.not.is.null,form_submission_id.not.is.null")
+      const filtered = level === 0 ? q.or("wf_run_id.not.is.null,form_submission_id.not.is.null,team_invitation_id.not.is.null,event_door_pass_id.not.is.null")
+        : level === 1 ? q.or("wf_run_id.not.is.null,form_submission_id.not.is.null,team_invitation_id.not.is.null")
+        : level === 2 ? q.or("wf_run_id.not.is.null,form_submission_id.not.is.null")
         : q.not("wf_run_id", "is", null);
       return filtered.order("created_at").limit(QUEUE_BATCH);
     };
     let { data: queued, error } = await pick(0);
-    if (error && /team_invitation_id/.test(error.message)) ({ data: queued, error } = await pick(1));
-    if (error && /form_submission_id/.test(error.message)) ({ data: queued, error } = await pick(2));
+    if (error && /event_door_pass_id/.test(error.message)) ({ data: queued, error } = await pick(1));
+    if (error && /team_invitation_id/.test(error.message)) ({ data: queued, error } = await pick(2));
+    if (error && /form_submission_id/.test(error.message)) ({ data: queued, error } = await pick(3));
     if (error) throw new Error(error.message);
 
     let sent = 0;

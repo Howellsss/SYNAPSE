@@ -41,7 +41,7 @@ export function DoorCheckScreen({ door, onShowTicket }: { door: ReturnType<typeo
           <button type="button" onClick={() => { void door.undo(); }} className="inline-flex h-12 items-center gap-2 rounded-full bg-white/20 px-5 font-semibold ring-1 ring-white/60"><Undo2 className="h-5 w-5" /> Undo</button>
         )}
         <button type="button" onClick={onShowTicket} className="inline-flex h-12 items-center gap-2 rounded-full bg-white/20 px-5 font-semibold ring-1 ring-white/60"><Ticket className="h-5 w-5" /> Show ticket</button>
-        {door.eventId && (
+        {door.eventId && !door.byPass && (
           <button type="button" onClick={() => navigate(checkInPath(door.eventId!))} className="inline-flex h-12 items-center gap-2 rounded-full bg-white px-5 font-bold text-navy-900"><ScanLine className="h-5 w-5" /> Open the scanner</button>
         )}
       </div>
