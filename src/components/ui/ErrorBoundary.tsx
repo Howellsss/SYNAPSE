@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { AlertTriangle, ArrowLeft, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { isStaleBuildError, reloadForUpdate } from '@/lib/staleBuild';
 
 interface Props {
   children: ReactNode;
@@ -29,6 +30,8 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
+    // A page from before the latest update: reload once to get the new version.
+    if (isStaleBuildError(error) && reloadForUpdate()) return;
     console.error(`[SYNAPSE] ${this.props.what} crashed:`, error, info.componentStack);
   }
 
