@@ -491,6 +491,38 @@ DO $$ DECLARE r jsonb; ada event_registrations; bo event_registrations; pass jso
   PERFORM tev.check((event_door_pass_info((regexp_match(pass->>'link', '/door/([0-9a-f-]{36})$'))[1]::uuid)->>'valid')::boolean = false, 'a pass stops 12 hours after the event ends');
 EXCEPTION WHEN OTHERS THEN PERFORM set_config('request.jwt.claim.sub', '', true); PERFORM tev.crashed('Door passes', SQLERRM); END $$;
 
+DO $$ DECLARE r jsonb; ada event_registrations; plat uuid; other_ws uuid := 'f0000000-0000-4000-8000-0000000000c1'; other_owner uuid := 'f0000000-0000-4000-8000-0000000000c2'; n int; BEGIN
+  RAISE NOTICE 'Who sends: the organiser''s Gmail, else the SYNAPSE-wide sender';
+  PERFORM tev.reset();
+  DELETE FROM email_accounts WHERE workspace_id = tev.ws();
+  DELETE FROM wf_private.settings WHERE key = 'platform_email_account';
+  PERFORM event_register('unscathed', 'register', tev.answers('Ada Obi', 'ada@example.com'));
+  PERFORM tev.check(NOT EXISTS (SELECT 1 FROM messages WHERE to_address = 'ada@example.com'), 'no Gmail anywhere: no email (as before)');
+  PERFORM tev.check(EXISTS (SELECT 1 FROM email_setup_check() c WHERE c.step = 5 AND NOT c.ok AND c.detail LIKE '%Dera Speaks%'), 'the check names the account that can''t send');
+  -- The platform's own account connects its Gmail and is made the SYNAPSE-wide sender.
+  INSERT INTO auth.users(id, email) VALUES (other_owner, 'platform@example.com') ON CONFLICT DO NOTHING;
+  INSERT INTO workspaces(id, name, slug, owner_id) VALUES (other_ws, 'SYNAPSE', 'synapse-hq', other_owner) ON CONFLICT DO NOTHING;
+  INSERT INTO email_accounts(workspace_id, user_id, email, display_name) VALUES (other_ws, other_owner, 'hello@synapse.example', 'SYNAPSE') RETURNING id INTO plat;
+  PERFORM tev.check(tev.raises('SELECT platform_sender_set(''nobody@example.com'')') LIKE '%isn''t connected yet%', 'an address that isn''t connected is refused, with what to do');
+  PERFORM tev.check(platform_sender_set('Hello@Synapse.example') LIKE '%hello@synapse.example%', 'the SYNAPSE-wide sender is set');
+  PERFORM tev.check(NOT has_function_privilege('authenticated', 'platform_sender_set(text)', 'EXECUTE') AND NOT has_function_privilege('anon', 'email_setup_check()', 'EXECUTE'),
+    'only the SQL Editor can set it or run the check');
+  PERFORM event_register('unscathed', 'register', tev.answers('Bo Eze', 'bo@example.com', '+234 803 222 3333'));
+  PERFORM tev.check(EXISTS (SELECT 1 FROM messages WHERE to_address = 'bo@example.com' AND email_account_id = plat AND from_name = 'Dera Speaks' AND status = 'queued'),
+    'a new registration''s ticket goes out from the SYNAPSE Gmail, in the organiser''s name');
+  SELECT * INTO ada FROM event_registrations WHERE email = 'ada@example.com';
+  PERFORM event_resend_ticket('unscathed', 'ada@example.com');
+  PERFORM tev.check(EXISTS (SELECT 1 FROM messages WHERE to_address = 'ada@example.com' AND email_account_id = plat), 'someone who got nothing can ask for their ticket again and receives it');
+  -- The organiser connects their own Gmail: that wins.
+  INSERT INTO email_accounts(workspace_id, user_id, email, display_name) VALUES (tev.ws(), tev.owner(), 'hello@derasperks.example', 'Dera') ON CONFLICT DO NOTHING;
+  PERFORM event_register('unscathed', 'register', tev.answers('Cy Dan', 'cy@example.com', '+234 803 444 5555'));
+  PERFORM tev.check((SELECT a.email FROM messages m JOIN email_accounts a ON a.id = m.email_account_id WHERE m.to_address = 'cy@example.com') = 'hello@derasperks.example',
+    'with their own Gmail connected, the organiser''s is used');
+  SELECT count(*) INTO n FROM email_setup_check() c WHERE c.step IN (4, 5) AND c.ok;
+  PERFORM tev.check(n = 2, 'the check then shows the sender set and every account able to send');
+  DELETE FROM wf_private.settings WHERE key = 'platform_email_account';
+EXCEPTION WHEN OTHERS THEN DELETE FROM wf_private.settings WHERE key = 'platform_email_account'; PERFORM tev.crashed('Who sends', SQLERRM); END $$;
+
 DO $$ DECLARE f int; p int; r record; BEGIN
   SELECT count(*) INTO f FROM tev.failures; SELECT count(*) INTO p FROM tev.passes;
   IF f > 0 THEN

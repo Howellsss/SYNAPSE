@@ -111,7 +111,14 @@ export function EventCard({ event, onOpen }: { event: Pick<PublicEvent, 'slug' |
   );
 }
 
-/** The event's cover, whole and at its own shape: a portrait poster shows in full, never cropped. */
-export function CoverImage({ src, className }: { src: string; className?: string }) {
-  return <img src={src} alt="" className={`block h-auto w-full ${className ?? ''}`} />;
+/**
+ * The event's cover, whole and at its own shape, never cropped, and never taller than the screen
+ * allows: a tall poster is shown at a height that fits, centred, so nobody scrolls to see it.
+ */
+export function CoverImage({ src, maxHeight = '70vh' }: { src: string; maxHeight?: string }) {
+  return (
+    <div className="flex w-full justify-center bg-navy-50">
+      <img src={src} alt="" style={{ maxHeight }} className="block h-auto w-auto max-w-full" />
+    </div>
+  );
 }
