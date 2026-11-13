@@ -2,6 +2,10 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import '@fontsource-variable/inter';
 import './index.css';
+import { reloadForUpdate } from './lib/staleBuild';
+
+// A new version went live while this tab was open: its old page files are gone, so reload once.
+window.addEventListener('vite:preloadError', (event) => { if (reloadForUpdate()) event.preventDefault(); });
 
 const root = createRoot(document.getElementById('root')!);
 
