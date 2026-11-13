@@ -680,8 +680,6 @@ with expected(migration, kind, sch, a, b) as (values
   ('20261113090000_event_dashboard.sql','function','public','event_send_ticket','53d61a6dc05890a58a40dd0390ae79bd'),
   ('20261114090000_event_reminders_privacy_limits.sql','column','public','event_registrations','reminder_for'),
   ('20261114090000_event_reminders_privacy_limits.sql','function','public','event_email_default','098cdd6d4ec03a60bca4db7cfddd6303'),
-  ('20261114090000_event_reminders_privacy_limits.sql','function','public','event_email','90ee3c2e2d45d63049a35ad9b16e39c0'),
-  ('20261114090000_event_reminders_privacy_limits.sql','function','public','event_send_reminders','68bba0219e14b26ba8a6d26221170962'),
   ('20261114090000_event_reminders_privacy_limits.sql','function','public','event_member_can','0361ef855a4dd1a8e51e800e702f42fd'),
   ('20261114090000_event_reminders_privacy_limits.sql','function','public','event_visitor_ip','ce24139299aa03b52bd7a1f70cd70289'),
   ('20261114090000_event_reminders_privacy_limits.sql','function','public','event_visitor_allowed','25f9dd743b9e81748149b3795f35a72d'),
@@ -705,7 +703,6 @@ with expected(migration, kind, sch, a, b) as (values
   ('20261115090000_security_fixes.sql','policy','storage','objects','meeting_recordings_delete'),
   ('20261116090000_section_access_people_tools.sql','function','public','space_workspace','293a75d145c3f5c467ae1d714ae2248b'),
   ('20261117080000_team_invite_emails.sql','column','public','messages','team_invitation_id'),
-  ('20261117080000_team_invite_emails.sql','function','public','team_invitation_email','179a792ece5af65b6f688ef79c16dde0'),
   ('20261117080000_team_invite_emails.sql','trigger',null,'team_invitation_email',null),
   ('20261117090000_workflow_fixes.sql','function','public','wf_run','c306f967918687540d2180c0824a24cd'),
   ('20261117090000_workflow_fixes.sql','function','public','wf_exec_step','3a6160fa2970143904f2594556f77b3d'),
@@ -723,7 +720,6 @@ with expected(migration, kind, sch, a, b) as (values
   ('20261119090000_event_door_passes.sql','function','public','event_door_pass_live','6fc3119fc08162d7fc1bee55c69b305a'),
   ('20261119090000_event_door_passes.sql','function','public','event_door_pass_json','cec01f9b3d6d0b5e3c200a7af1d06929'),
   ('20261119090000_event_door_passes.sql','function','public','event_door_pass_list','b67c9ab51c2acaf66805a1bcb20ccaaa'),
-  ('20261119090000_event_door_passes.sql','function','public','event_door_pass_add','e722e78215d217d48ce5717d837a2a33'),
   ('20261119090000_event_door_passes.sql','function','public','event_door_pass_revoke','efc799839462403d519955431800de98'),
   ('20261119090000_event_door_passes.sql','function','public','event_door_pass_info','91fd91c9429bfc3141250b0900d940cf'),
   ('20261119090000_event_door_passes.sql','function','public','event_door_check_in','8368ac551dda18273c6d897956074dc9'),
@@ -731,7 +727,14 @@ with expected(migration, kind, sch, a, b) as (values
   ('20261119090000_event_door_passes.sql','function','public','wf_tick','5b6bbd6db63309fd674db67c3a8fe82c'),
   ('20261119090000_event_door_passes.sql','function','public','event_checkin_log','4dddf817a46475ffb2cb9cdc96be8fb0'),
   ('20261119090000_event_door_passes.sql','function','public','event_registration_checkin_by','24af0b997e6340d7291e17a79a0fddaf'),
-  ('20261119090000_event_door_passes.sql','trigger',null,'event_registration_checkin_by',null)
+  ('20261119090000_event_door_passes.sql','trigger',null,'event_registration_checkin_by',null),
+  ('20261120090000_email_sender_fallback.sql','function','public','email_sender_for','c36bb82adcf8049c1439f91e3a58f2b7'),
+  ('20261120090000_email_sender_fallback.sql','function','public','platform_sender_set','551f7bbaaac03cecce4d5c2520f3e0d8'),
+  ('20261120090000_email_sender_fallback.sql','function','public','email_setup_check','7869db929c4a53375dab1c6b472381f4'),
+  ('20261120090000_email_sender_fallback.sql','function','public','event_email','fa59d1149815829b157792aefee4fa4d'),
+  ('20261120090000_email_sender_fallback.sql','function','public','event_send_reminders','f6938075a8d97d6e741e3f32cf665631'),
+  ('20261120090000_email_sender_fallback.sql','function','public','team_invitation_email','5e5e7701fb3995852d18c39eb770ad47'),
+  ('20261120090000_email_sender_fallback.sql','function','public','event_door_pass_add','108ad38de92f6124f6f3bd5723689d62')
 ), missing as (
   select e.*, case e.kind
       when 'function' then case when exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = e.a)

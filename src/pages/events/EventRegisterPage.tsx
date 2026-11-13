@@ -118,7 +118,7 @@ function EventPanel({ event, onOpen }: { event: PublicEvent; onOpen: () => void 
   return (
     <aside className="sticky top-24 max-h-[calc(100dvh-7rem)] overflow-y-auto pb-4 [scrollbar-width:thin]">
       <div className="overflow-hidden rounded-[28px] bg-navy-50 shadow-[0_24px_60px_-28px_rgba(13,28,59,0.45)]">
-        <CoverImage src={event.cover_url || DEFAULT_COVER} />
+        <CoverImage src={event.cover_url || DEFAULT_COVER} maxHeight="min(46vh, 460px)" />
       </div>
       <Organiser event={event} className="mt-6" />
       <h1 className="mt-3 font-event-display text-[40px] font-semibold leading-[1.05] tracking-tight text-navy-900">{event.title}</h1>

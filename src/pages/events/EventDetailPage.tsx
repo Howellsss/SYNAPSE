@@ -76,7 +76,7 @@ export function EventDetailPage({ slug }: { slug: string }) {
         <div className="mt-5 grid gap-10 lg:grid-cols-[1fr_400px]">
           <article className="min-w-0">
             <div className="overflow-hidden rounded-[32px] bg-navy-50">
-              <CoverImage src={event.cover_url || DEFAULT_COVER} />
+              <CoverImage src={event.cover_url || DEFAULT_COVER} maxHeight="min(72vh, 680px)" />
             </div>
             <div className="mt-7 flex flex-wrap items-center gap-2">
               <span className="rounded-full bg-gold-50 px-3 py-1 text-xs font-semibold text-gold-800">{categoryLabel(event.category)}</span>

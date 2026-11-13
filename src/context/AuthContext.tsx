@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseKey } from '@/lib/supabase';
 import type { Profile, Workspace, WorkspaceMember, UserRole } from '@/types';
 
 interface AuthContextValue {
@@ -107,6 +107,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function loadUserData(authUser: User, allowSetup = true) {
     const userId = authUser.id;
+    // The scheduler needs the app's public key to call the mailer (tickets, reminders, invitations).
+    // It's saved once, by the first signed-in person; the database ignores later calls.
+    if (supabaseKey) void supabase.rpc('wf_set_client_key', { p_key: supabaseKey }).then(() => {}, () => {});
     const { data: prof } = await supabase
       .from('profiles')
       .select('*')
