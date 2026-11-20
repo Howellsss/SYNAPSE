@@ -75,9 +75,7 @@ export function EventDetailPage({ slug }: { slug: string }) {
 
         <div className="mt-5 grid gap-10 lg:grid-cols-[1fr_400px]">
           <article className="min-w-0">
-            <div className="overflow-hidden rounded-[32px] bg-navy-50">
-              <CoverImage src={event.cover_url || DEFAULT_COVER} maxHeight="min(72vh, 680px)" />
-            </div>
+            <CoverImage src={event.cover_url || DEFAULT_COVER} maxHeight="min(62vh, 580px)" />
             <div className="mt-7 flex flex-wrap items-center gap-2">
               <span className="rounded-full bg-gold-50 px-3 py-1 text-xs font-semibold text-gold-800">{categoryLabel(event.category)}</span>
               {event.mode !== 'in_person' && <span className="rounded-full bg-navy-50 px-3 py-1 text-xs font-semibold text-navy-700">{event.mode === 'online' ? 'Online' : 'In person + online'}</span>}
