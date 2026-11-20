@@ -523,6 +523,26 @@ DO $$ DECLARE r jsonb; ada event_registrations; plat uuid; other_ws uuid := 'f00
   DELETE FROM wf_private.settings WHERE key = 'platform_email_account';
 EXCEPTION WHEN OTHERS THEN DELETE FROM wf_private.settings WHERE key = 'platform_email_account'; PERFORM tev.crashed('Who sends', SQLERRM); END $$;
 
+DO $$ DECLARE r text; ev uuid; acc email_accounts; BEGIN
+  RAISE NOTICE 'Sending from your own domain (Resend)';
+  PERFORM tev.reset();
+  DELETE FROM email_accounts WHERE workspace_id = tev.ws();
+  SELECT id INTO ev FROM events WHERE slug = 'unscathed';
+  r := email_domain_sender_set('unscathed', 'Tickets@DeraSpeaks.com', 'Deraspeaks · Ample Room', 'hello@deraspeaks.com');
+  SELECT * INTO acc FROM email_accounts WHERE workspace_id = tev.ws() AND provider = 'resend';
+  PERFORM tev.check(acc.email = 'tickets@deraspeaks.com' AND acc.reply_to = 'hello@deraspeaks.com' AND acc.status = 'active' AND acc.user_id = tev.owner()
+    AND (SELECT email_account_id FROM events WHERE id = ev) = acc.id AND r LIKE 'UNSCATHED now sends from tickets@deraspeaks.com%', 'the domain address is added and chosen for the event');
+  PERFORM email_domain_sender_set('unscathed', 'tickets@deraspeaks.com', 'Deraspeaks', NULL);
+  PERFORM tev.check((SELECT count(*) FROM email_accounts WHERE workspace_id = tev.ws() AND provider = 'resend') = 1
+    AND (SELECT reply_to IS NULL AND display_name = 'Deraspeaks' FROM email_accounts WHERE id = acc.id), 'running it again updates it, no duplicate');
+  PERFORM event_register('unscathed', 'register', tev.answers('Ada Obi', 'ada@example.com'));
+  PERFORM tev.check(EXISTS (SELECT 1 FROM messages WHERE to_address = 'ada@example.com' AND email_account_id = acc.id AND from_email = 'tickets@deraspeaks.com' AND status = 'queued'),
+    'a registration''s ticket email is queued from the domain address');
+  PERFORM tev.check(tev.raises($q$SELECT email_domain_sender_set('nope', 'a@b.com', 'X')$q$) LIKE 'No event%'
+    AND tev.raises($q$SELECT email_domain_sender_set('unscathed', 'not-an-email', 'X')$q$) LIKE '%is not an email address%', 'a wrong event or address is refused with the reason');
+  PERFORM tev.check(NOT has_function_privilege('authenticated', 'email_domain_sender_set(text, text, text, text)', 'EXECUTE'), 'only the SQL Editor can set it');
+EXCEPTION WHEN OTHERS THEN PERFORM tev.crashed('Domain sender', SQLERRM); END $$;
+
 DO $$ DECLARE f int; p int; r record; BEGIN
   SELECT count(*) INTO f FROM tev.failures; SELECT count(*) INTO p FROM tev.passes;
   IF f > 0 THEN
