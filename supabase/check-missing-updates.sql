@@ -734,7 +734,9 @@ with expected(migration, kind, sch, a, b) as (values
   ('20261120090000_email_sender_fallback.sql','function','public','event_email','fa59d1149815829b157792aefee4fa4d'),
   ('20261120090000_email_sender_fallback.sql','function','public','event_send_reminders','f6938075a8d97d6e741e3f32cf665631'),
   ('20261120090000_email_sender_fallback.sql','function','public','team_invitation_email','5e5e7701fb3995852d18c39eb770ad47'),
-  ('20261120090000_email_sender_fallback.sql','function','public','event_door_pass_add','108ad38de92f6124f6f3bd5723689d62')
+  ('20261120090000_email_sender_fallback.sql','function','public','event_door_pass_add','108ad38de92f6124f6f3bd5723689d62'),
+  ('20261121090000_domain_sender_resend.sql','column','public','email_accounts','reply_to'),
+  ('20261121090000_domain_sender_resend.sql','function','public','email_domain_sender_set','3aab279e8734bb5b0859db3cb4fee9d4')
 ), missing as (
   select e.*, case e.kind
       when 'function' then case when exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = e.a)

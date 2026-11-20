@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  User, Building2, Users, Mail, MessageSquare, Bell, Palette, Shield, Code, Webhook, BarChart3, Upload, Network, History,
+  User, Building2, Users, Mail, MessageSquare, Bell, Palette, Shield, Code, Webhook, BarChart3, Upload, Network, History, Globe,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -580,11 +580,12 @@ function ConnectedEmailAccounts() {
             <ul className="divide-y divide-sand rounded-xl border border-navy-100">
               {accounts.map((a) => (
                 <li key={a.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ivory-50 ring-1 ring-navy-100"><GoogleMark className="h-4 w-4" /></span>
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ivory-50 ring-1 ring-navy-100">{a.provider === 'resend' ? <Globe className="h-4 w-4 text-navy-700" /> : <GoogleMark className="h-4 w-4" />}</span>
                   <div className="min-w-[11rem] flex-1">
                     <p className="truncate text-sm font-semibold text-navy-800">{a.email}</p>
                     <p className="truncate text-xs text-ivory-600">
-                      {a.status === 'active' ? `Gmail · connected ${new Date(a.created_at).toLocaleDateString()}` : a.last_error || 'Needs reconnecting'}
+                      {a.provider === 'resend' ? 'Your own domain · sent through Resend'
+                        : a.status === 'active' ? `Gmail · connected ${new Date(a.created_at).toLocaleDateString()}` : a.last_error || 'Needs reconnecting'}
                     </p>
                   </div>
                   <span className={cn(
@@ -593,10 +594,10 @@ function ConnectedEmailAccounts() {
                   )}>
                     {a.status === 'active' ? 'Active' : 'Reconnect'}
                   </span>
-                  {a.status !== 'active' && (
+                  {a.provider !== 'resend' && a.status !== 'active' && (
                     <button onClick={connect} className="text-sm font-medium text-gold-700 hover:underline">Reconnect</button>
                   )}
-                  <button onClick={() => setRemoving(a)} className="text-sm font-medium text-ivory-600 hover:text-burgundy-600">Disconnect</button>
+                  {a.provider !== 'resend' && <button onClick={() => setRemoving(a)} className="text-sm font-medium text-ivory-600 hover:text-burgundy-600">Disconnect</button>}
                 </li>
               ))}
             </ul>

@@ -8,9 +8,11 @@
 //   -> sends queued workflow emails; the key lives in the database (wf_private.settings)
 //   -> then brings back replies to sent emails (see replies.ts)
 //
-// Secrets: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, TOKEN_ENCRYPTION_KEY
+// Secrets: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, TOKEN_ENCRYPTION_KEY, and RESEND_API_KEY for
+// accounts that send from your own domain (email_accounts.provider = 'resend').
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.45.0";
 import { LOOKBACK_DAYS, READ_SCOPE, THREADS_PER_RUN, newReplies, replyRow, type GmailMessage } from "./replies.ts";
+import { resendSend } from "./resend.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -89,6 +91,11 @@ function formatAddress(email: string, name?: string | null): string {
   const display = /^[\x20-\x7e]*$/.test(n) ? `"${n.replace(/["\\]/g, "\\$&")}"` : encodeWord(n);
   return `${display} <${email}>`;
 }
+/** Send through Resend (accounts on your own domain); the key is the RESEND_API_KEY secret. */
+function sendViaResend(p: Parameters<typeof resendSend>[1]) {
+  return resendSend(Deno.env.get("RESEND_API_KEY"), p);
+}
+
 function wrap76(s: string): string {
   return s.replace(/.{1,76}/g, "$&\r\n").trimEnd();
 }
@@ -241,7 +248,7 @@ Deno.serve(async (req: Request) => {
     // Only the person who connected the mailbox can send from it.
     const { data: account } = await db
       .from("email_accounts")
-      .select("id, workspace_id, user_id, email, display_name, status")
+      .select("id, workspace_id, user_id, provider, email, display_name, status, reply_to")
       .eq("id", String(body.account_id ?? ""))
       .maybeSingle();
     if (!account || account.user_id !== user.id) return json({ error: "That Gmail account is not connected." }, 404);
@@ -284,21 +291,25 @@ Deno.serve(async (req: Request) => {
     let threadId: string | null = null;
     let errorText: string | null = null;
     try {
-      const accessToken = await accessTokenFor(db, account.id);
-      const mime = buildMime({ from: account.email, fromName, to, cc, bcc, subject, text, html });
-      const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ raw: b64url(utf8(mime)) }),
-      });
-      const out = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const msg = out?.error?.message ?? `Gmail returned ${res.status}`;
-        if (res.status === 401) throw new ReconnectNeeded(msg);
-        throw new Error(msg);
+      if (account.provider === "resend") {
+        providerId = await sendViaResend({ from: account.email, fromName, to, cc, bcc, subject, text, html, replyTo: account.reply_to });
+      } else {
+        const accessToken = await accessTokenFor(db, account.id);
+        const mime = buildMime({ from: account.email, fromName, to, cc, bcc, subject, text, html });
+        const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ raw: b64url(utf8(mime)) }),
+        });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const msg = out?.error?.message ?? `Gmail returned ${res.status}`;
+          if (res.status === 401) throw new ReconnectNeeded(msg);
+          throw new Error(msg);
+        }
+        providerId = out.id ?? null;
+        threadId = out.threadId ?? null;
       }
-      providerId = out.id ?? null;
-      threadId = out.threadId ?? null;
       if (account.status !== "active") {
         await db.from("email_accounts").update({ status: "active", last_error: null }).eq("id", account.id);
       }
@@ -386,27 +397,34 @@ async function sendQueued(key: string): Promise<Response> {
       let threadId: string | null = null;
       let errorText: string | null = null;
       try {
-        const { data: account } = await db.from("email_accounts").select("id, email, display_name, status").eq("id", m.email_account_id).maybeSingle();
+        const { data: account } = await db.from("email_accounts").select("id, provider, email, display_name, status, reply_to").eq("id", m.email_account_id).maybeSingle();
         if (!account) throw new Error("The sending Gmail account was disconnected.");
         if (!m.to_address || !EMAIL_RE.test(m.to_address)) throw new Error("The recipient's email address isn't valid.");
-        const accessToken = await accessTokenFor(db, account.id);
-        const mime = buildMime({
-          from: account.email, fromName: m.from_name ?? account.display_name, to: [m.to_address], cc: [], bcc: [],
-          subject: m.subject ?? "", text: m.body ?? "", html: m.body_html,
-        });
-        const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ raw: b64url(utf8(mime)) }),
-        });
-        const out = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          const msg = out?.error?.message ?? `Gmail returned ${res.status}`;
-          if (res.status === 401) throw new ReconnectNeeded(msg);
-          throw new Error(msg);
+        if (account.provider === "resend") {
+          providerId = await sendViaResend({
+            from: account.email, fromName: m.from_name ?? account.display_name, to: [m.to_address], cc: [], bcc: [],
+            subject: m.subject ?? "", text: m.body ?? "", html: m.body_html, replyTo: account.reply_to,
+          });
+        } else {
+          const accessToken = await accessTokenFor(db, account.id);
+          const mime = buildMime({
+            from: account.email, fromName: m.from_name ?? account.display_name, to: [m.to_address], cc: [], bcc: [],
+            subject: m.subject ?? "", text: m.body ?? "", html: m.body_html,
+          });
+          const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ raw: b64url(utf8(mime)) }),
+          });
+          const out = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            const msg = out?.error?.message ?? `Gmail returned ${res.status}`;
+            if (res.status === 401) throw new ReconnectNeeded(msg);
+            throw new Error(msg);
+          }
+          providerId = out.id ?? null;
+          threadId = out.threadId ?? null;
         }
-        providerId = out.id ?? null;
-        threadId = out.threadId ?? null;
       } catch (e) {
         status = "failed";
         errorText = (e as Error).message;

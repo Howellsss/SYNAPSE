@@ -7,7 +7,8 @@ export interface EmailAccount {
   id: string;
   workspace_id: string;
   user_id: string;
-  provider: 'google';
+  /** 'google': a connected Gmail. 'resend': an address on your own domain, sent through Resend. */
+  provider: 'google' | 'resend';
   email: string;
   display_name: string | null;
   status: 'active' | 'revoked' | 'error';
