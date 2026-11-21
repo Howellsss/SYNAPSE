@@ -682,7 +682,6 @@ with expected(migration, kind, sch, a, b) as (values
   ('20261114090000_event_reminders_privacy_limits.sql','function','public','event_member_can','0361ef855a4dd1a8e51e800e702f42fd'),
   ('20261114090000_event_reminders_privacy_limits.sql','function','public','event_visitor_ip','ce24139299aa03b52bd7a1f70cd70289'),
   ('20261114090000_event_reminders_privacy_limits.sql','function','public','event_visitor_allowed','25f9dd743b9e81748149b3795f35a72d'),
-  ('20261114090000_event_reminders_privacy_limits.sql','function','public','event_registration_limit','0684d3236704a70496184c77f3c214ad'),
   ('20261114090000_event_reminders_privacy_limits.sql','trigger',null,'event_registration_limit',null),
   ('20261114090000_event_reminders_privacy_limits.sql','function','public','event_resend_ticket','9dd3384e6285d2b3826303d776a3fb42'),
   ('20261115090000_security_fixes.sql','function','public','workspace_members_guard','77757900fa3e5fcc312db7754fc48ad4'),
@@ -736,7 +735,8 @@ with expected(migration, kind, sch, a, b) as (values
   ('20261120090000_email_sender_fallback.sql','function','public','event_door_pass_add','108ad38de92f6124f6f3bd5723689d62'),
   ('20261121090000_domain_sender_resend.sql','column','public','email_accounts','reply_to'),
   ('20261121090000_domain_sender_resend.sql','function','public','email_domain_sender_set','3aab279e8734bb5b0859db3cb4fee9d4'),
-  ('20261122090000_domain_synapseconnector.sql','function','public','wf_app_url','08cc95c80b1c24a2d6b438447619c07e')
+  ('20261122090000_domain_synapseconnector.sql','function','public','wf_app_url','08cc95c80b1c24a2d6b438447619c07e'),
+  ('20261123090000_registration_limit_shared_networks.sql','function','public','event_registration_limit','f59b7392db07883c200d70ebc10ab81e')
 ), missing as (
   select e.*, case e.kind
       when 'function' then case when exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = e.a)
