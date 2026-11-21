@@ -62,18 +62,18 @@ export function EventsHomePage() {
     <EventsShell>
       {/* Hero */}
       <section className="relative overflow-hidden">
-        <div className="mx-auto grid max-w-7xl items-center gap-10 px-4 pb-14 pt-10 sm:px-8 lg:grid-cols-[1.05fr_1fr] lg:gap-14 lg:pb-20 lg:pt-16">
+        <div className="mx-auto grid max-w-7xl items-center gap-8 px-5 pb-10 pt-7 sm:gap-10 sm:px-8 sm:pb-14 sm:pt-10 lg:grid-cols-[1.05fr_1fr] lg:gap-14 lg:pb-20 lg:pt-16">
           <div>
             <span className="inline-flex items-center gap-2 rounded-full bg-gold-50 px-3 py-1 text-xs font-semibold text-gold-800"><Sparkles className="h-3.5 w-3.5" /> Events on SYNAPSE</span>
-            <h1 className="mt-5 font-event-display text-[40px] font-semibold leading-[1.05] tracking-tight text-navy-900 sm:text-[56px] lg:text-[64px]">
+            <h1 className="mt-4 font-event-display text-[34px] font-semibold leading-[1.05] sm:mt-5 tracking-tight text-navy-900 sm:text-[56px] lg:text-[64px]">
               Find your people.<br /><span className="text-gold-500">Show up.</span>
             </h1>
-            <p className="mt-5 max-w-xl text-lg leading-relaxed text-ivory-800">
+            <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-ivory-800 sm:mt-5 sm:text-lg">
               Concerts, conferences, church gatherings, food fairs and meetups. Register in a minute, get your QR ticket instantly, and walk straight in.
             </p>
 
             <form
-              className="mt-8 flex flex-col gap-2 rounded-[28px] border border-navy-100 bg-white p-2 shadow-[0_18px_50px_rgba(13,28,59,0.10)] sm:flex-row sm:items-center sm:rounded-full"
+              className="mt-6 flex flex-col gap-1 rounded-[24px] sm:mt-8 sm:gap-2 sm:rounded-[28px] border border-navy-100 bg-white p-2 shadow-[0_18px_50px_rgba(13,28,59,0.10)] sm:flex-row sm:items-center sm:rounded-full"
               onSubmit={(e) => { e.preventDefault(); document.getElementById('explore')?.scrollIntoView({ behavior: 'smooth' }); }}
               role="search"
             >
@@ -91,7 +91,7 @@ export function EventsHomePage() {
             </form>
 
             {stats && stats.upcoming > 0 && (
-              <dl className="mt-8 flex flex-wrap gap-x-10 gap-y-4">
+              <dl className="mt-6 flex flex-wrap gap-x-8 gap-y-3 sm:mt-8 sm:gap-x-10 sm:gap-y-4">
                 <Stat value={stats.upcoming} label={stats.upcoming === 1 ? 'upcoming event' : 'upcoming events'} />
                 {stats.registrations > 0 && <Stat value={stats.registrations} label={stats.registrations === 1 ? 'person registered' : 'people registered'} />}
                 {stats.cities > 0 && <Stat value={stats.cities} label={stats.cities === 1 ? 'city' : 'cities'} />}
@@ -100,7 +100,7 @@ export function EventsHomePage() {
           </div>
 
           <div className="relative">
-            <div className="relative aspect-[4/5] overflow-hidden rounded-[36px] sm:aspect-[5/5] lg:aspect-[4/5]">
+            <div className="relative aspect-[4/5] overflow-hidden rounded-[28px] sm:rounded-[36px] sm:aspect-[5/5] lg:aspect-[4/5]">
               <img src="/events/hero.webp" alt="Three women in bright headwraps, seen from behind" className="h-full w-full object-cover" />
               <div className="absolute inset-0 bg-gradient-to-t from-navy-950/50 via-transparent to-transparent" />
             </div>
@@ -125,10 +125,10 @@ export function EventsHomePage() {
 
       {/* Explore */}
       <section id="explore" className="scroll-mt-20 border-t border-navy-100/70">
-        <div className="mx-auto max-w-7xl px-4 py-12 sm:px-8 lg:py-16">
+        <div className="mx-auto max-w-7xl px-5 py-9 sm:px-8 sm:py-12 lg:py-16">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
-              <h2 className="font-event-display text-3xl font-semibold tracking-tight text-navy-900 sm:text-4xl">Upcoming events</h2>
+              <h2 className="font-event-display text-[26px] font-semibold tracking-tight text-navy-900 sm:text-4xl">Upcoming events</h2>
               <p className="mt-2 text-ivory-700">{events === null ? 'Loading…' : `${filtered.length} ${filtered.length === 1 ? 'event' : 'events'}${filtering ? ' match' : ''}`}</p>
             </div>
             {filtering && <button type="button" onClick={clear} className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold text-navy-700 ring-1 ring-inset ring-navy-100 hover:bg-navy-50"><X className="h-4 w-4" /> Clear filters</button>}
@@ -175,8 +175,8 @@ export function EventsHomePage() {
 
       {/* How it works */}
       <section id="how" className="scroll-mt-20 bg-white">
-        <div className="mx-auto max-w-7xl px-4 py-14 sm:px-8 lg:py-20">
-          <h2 className="max-w-2xl font-event-display text-3xl font-semibold tracking-tight text-navy-900 sm:text-4xl">From “I’m going” to the front door in three steps.</h2>
+        <div className="mx-auto max-w-7xl px-5 py-10 sm:px-8 sm:py-14 lg:py-20">
+          <h2 className="max-w-2xl font-event-display text-[26px] font-semibold tracking-tight text-navy-900 sm:text-4xl">From “I’m going” to the front door in three steps.</h2>
           <div className="mt-10 grid gap-5 md:grid-cols-3">
             <Step n="01" icon={<Search className="h-5 w-5" />} title="Find it" text="Browse by city, date or what you love. Every page has the time, the place, the price and who's hosting." />
             <Step n="02" icon={<Ticket className="h-5 w-5" />} title="Register in a minute" text="Pick a ticket, add your details and you're in. Add it to your calendar with one tap." />
@@ -186,11 +186,11 @@ export function EventsHomePage() {
       </section>
 
       {/* Organisers */}
-      <section id="organisers" className="scroll-mt-20 px-4 pb-16 sm:px-8">
+      <section id="organisers" className="scroll-mt-20 px-5 pb-12 sm:px-8 sm:pb-16">
         <div className="mx-auto grid max-w-7xl gap-10 overflow-hidden rounded-[36px] bg-navy-900 p-8 text-white sm:p-12 lg:grid-cols-[1.1fr_1fr] lg:p-16">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-gold-400">For organisers</p>
-            <h2 className="mt-3 font-event-display text-3xl font-semibold leading-tight tracking-tight sm:text-[44px]">Host events people remember.</h2>
+            <h2 className="mt-3 font-event-display text-[26px] font-semibold leading-tight tracking-tight sm:text-[44px]">Host events people remember.</h2>
             <p className="mt-4 max-w-lg text-lg leading-relaxed text-ivory-300">Create a beautiful event page, take registrations, check people in at the door, and keep every attendee in your SYNAPSE contacts.</p>
             <button type="button" onClick={host} className="mt-8 inline-flex items-center gap-2 rounded-full bg-gold-400 px-6 py-3 text-[15px] font-semibold text-navy-900 hover:bg-gold-300">
               Create your event <ArrowRight className="h-4 w-4" />
@@ -214,7 +214,7 @@ function Stat({ value, label }: { value: number; label: string }) {
   return (
     <div>
       <dt className="sr-only">{label}</dt>
-      <dd className="font-event-display text-3xl font-semibold text-navy-900">{value.toLocaleString()}</dd>
+      <dd className="font-event-display text-[24px] font-semibold text-navy-900 sm:text-3xl">{value.toLocaleString()}</dd>
       <dd className="text-sm text-ivory-700">{label}</dd>
     </div>
   );

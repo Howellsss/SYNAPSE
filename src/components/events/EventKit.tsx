@@ -21,7 +21,8 @@ export function EventsShell({ children }: { children: ReactNode }) {
   const [, navigate] = useRouter();
   const host = () => navigate(user ? '/events' : '/signup');
   return (
-    <div className="min-h-[100dvh] bg-white font-event text-navy-800">
+    // Phones: everything a touch smaller (text, spacing, buttons, cards), for a sleeker read; the layout stays the same.
+    <div className="min-h-[100dvh] bg-white font-event text-navy-800 max-sm:[zoom:0.9]">
       <header className="sticky top-0 z-40 border-b border-navy-100/70 bg-white/85 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-3 px-5 sm:h-16 sm:px-8">
           <a href="/e" onClick={(e) => { e.preventDefault(); navigate('/e'); }} className="flex items-center gap-2.5">
