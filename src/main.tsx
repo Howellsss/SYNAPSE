@@ -25,11 +25,13 @@ if (!import.meta.env.VITE_SUPABASE_URL || !(import.meta.env.VITE_SUPABASE_PUBLIS
     </div>
   );
 } else {
-  import('./App.tsx').then(({ default: App }) => {
-    root.render(
-      <StrictMode>
-        <App />
-      </StrictMode>
-    );
-  });
+  // Event links (/e/…) start in a small shell that loads only the events pages; everything else loads the full app.
+  // Two separate imports (not one with a choice inside), so each only fetches its own files.
+  const start = window.location.hash.slice(1) || window.location.pathname;
+  const render = (App: () => JSX.Element) => root.render(<StrictMode><App /></StrictMode>);
+  if (start === '/e' || start.startsWith('/e/') || start.startsWith('/e?')) {
+    void import('./PublicEvents.tsx').then((m) => render(m.default));
+  } else {
+    void import('./App.tsx').then((m) => render(m.default));
+  }
 }
