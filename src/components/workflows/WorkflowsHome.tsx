@@ -119,7 +119,7 @@ export function WorkflowsHome() {
         </div>
         <Popover
           label="New workflow"
-          panelClassName="right-0 top-full mt-2 w-80 p-1.5"
+          panelClassName="left-0 top-full mt-2 w-[min(20rem,calc(100vw-2rem))] p-1.5 sm:left-auto sm:right-0"
           trigger={({ open, toggle }) => (
             <button type="button" onClick={toggle} aria-haspopup="menu" aria-expanded={open} className="inline-flex h-11 items-center gap-2.5 rounded-xl bg-gold-400 pl-2 pr-3 text-[15px] font-semibold text-navy-900 shadow-[0_6px_16px_-8px_rgba(228,169,60,0.9)] hover:bg-gold-300">
               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-navy-800 text-gold-300"><Plus className="h-4 w-4" strokeWidth={2.5} /></span> New workflow <ChevronDown className={cn('h-4 w-4 transition', open && 'rotate-180')} />

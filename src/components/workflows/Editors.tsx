@@ -4,6 +4,8 @@ import { APPOINTMENT_STATUSES, CONTACT_FIELDS, DND_CHANNELS, MONTHS, WEEKDAYS } 
 import type { Options } from '@/workflows/data';
 import { Field, MergeFields, MultiPick, Segmented, Select, Switch, TagInput, TextArea, TextInput, inputCls } from './ui';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/context/AuthContext';
 
 const arr = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
 const s = (v: unknown) => (v === undefined || v === null ? '' : String(v));
@@ -172,6 +174,13 @@ function opsFor(field: string) {
 }
 
 export function StepEditor({ step, onChange, o, selfId }: { step: Step; onChange: (s: Step) => void; o: Options; selfId: string | null }) {
+  const { workspace } = useAuth();
+  // "Create tag" saves the tag to the workspace now, so it's in every tag list straight away.
+  const createTag = (name: string) => {
+    if (!workspace || o.tags.some((t) => t.toLowerCase() === name.toLowerCase())) return;
+    o.tags.push(name);
+    void supabase.from('tags').insert({ workspace_id: workspace.id, name, color: '#E4A93C' }).then(() => undefined);
+  };
   const c = step.config;
   const set = (p: Config) => onChange({ ...step, config: { ...c, ...p } });
   const append = (key: string) => (f: string) => set({ [key]: `${s(c[key])}${s(c[key]) && !/\s$/.test(s(c[key])) ? ' ' : ''}${f}` });
@@ -179,7 +188,7 @@ export function StepEditor({ step, onChange, o, selfId }: { step: Step; onChange
   switch (step.type) {
     case 'add_tag':
     case 'remove_tag':
-      body = <TagInput label="Tags" value={arr(c.tags)} onChange={(v) => set({ tags: v })} options={o.tags} hint={step.type === 'add_tag' ? 'New tags are created for you.' : undefined} />;
+      body = <TagInput label="Tags" value={arr(c.tags)} onChange={(v) => set({ tags: v })} options={o.tags} create={step.type === 'add_tag' ? createTag : undefined} hint={step.type === 'add_tag' ? 'Pick a tag, or type a new one and tap “Create tag”.' : undefined} />;
       break;
     case 'update_field': {
       const date = CONTACT_FIELDS.find((x) => x.value === c.field)?.date;
