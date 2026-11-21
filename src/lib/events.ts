@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { takePrefetched } from './eventPrefetch';
 import { UPLOAD_CACHE } from '@/lib/cache/config';
 import { publicOrigin } from '@/lib/publicUrl';
 import { fieldElements } from '@/lib/form-engine';
@@ -182,7 +183,8 @@ export const CATEGORIES: { id: string; label: string }[] = [
   { id: 'business', label: 'Business' },
   { id: 'tech', label: 'Tech' },
   { id: 'faith', label: 'Faith' },
-  { id: 'arts', label: 'Arts & Culture' },
+  { id: 'faith_arts', label: 'Faith & Arts' },
+  { id: 'arts', label: 'Arts & Entertainment' },
   { id: 'food', label: 'Food & Drink' },
   { id: 'sports', label: 'Sports & Fitness' },
   { id: 'education', label: 'Education' },
@@ -428,6 +430,8 @@ export async function fetchPublicEvents(): Promise<{ data: PublicEvent[]; error:
 }
 
 export async function fetchPublicEvent(slug: string): Promise<{ data: PublicEvent | null; error: string | null }> {
+  const early = await takePrefetched<PublicEvent>('public_event', slug);
+  if (early) return { data: early, error: null };
   const { data, error } = await supabase.rpc('public_event', { p_slug: slug });
   if (error) return { data: null, error: missingTable(error.message) ? NOT_SET_UP : error.message };
   return { data: (data ?? null) as PublicEvent | null, error: null };
@@ -458,6 +462,8 @@ export interface RegistrationPage {
 }
 
 export async function fetchRegistrationPage(slug: string, type: string): Promise<{ data: RegistrationPage | null; error: string | null }> {
+  const early = await takePrefetched<RegistrationPage>('public_event_registration', slug, type);
+  if (early) return { data: early, error: null };
   const { data, error } = await supabase.rpc('public_event_registration', { p_slug: slug, p_type: type });
   if (error) return { data: null, error: missingTable(error.message) || /public_event_registration/.test(error.message) ? NOT_SET_UP : error.message };
   return { data: (data ?? null) as RegistrationPage | null, error: null };

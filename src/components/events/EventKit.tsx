@@ -119,7 +119,7 @@ export function CoverImage({ src, maxHeight = '70vh' }: { src: string; maxHeight
   // The poster as a card at its own shape: whole, centred, never wider than the page or taller than maxHeight.
   return (
     <div className="flex w-full justify-center">
-      <img src={src} alt="" decoding="async" style={{ maxHeight }}
+      <img src={src} alt="" decoding="async" {...{ fetchpriority: "high" }} style={{ maxHeight }}
         className="block h-auto w-auto max-w-[88%] sm:max-w-full rounded-[24px] shadow-[0_24px_60px_-28px_rgba(13,28,59,0.45)] ring-1 ring-navy-900/5" />
     </div>
   );
