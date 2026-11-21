@@ -7,6 +7,11 @@
     border-color: theme('colors.navy.100');
   }
 
+  /* Nothing may push the page wider than the screen, so phones never slide sideways. */
+  html, body {
+    overflow-x: clip;
+  }
+
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
