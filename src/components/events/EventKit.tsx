@@ -120,7 +120,7 @@ export function CoverImage({ src, maxHeight = '70vh' }: { src: string; maxHeight
   return (
     <div className="flex w-full justify-center">
       <img src={src} alt="" decoding="async" {...{ fetchpriority: "high" }} style={{ maxHeight }}
-        className="block h-auto w-auto max-w-[88%] sm:max-w-full rounded-[24px] shadow-[0_24px_60px_-28px_rgba(13,28,59,0.45)] ring-1 ring-navy-900/5" />
+        className="block h-auto w-auto max-w-full rounded-[26px] shadow-[0_16px_40px_-24px_rgba(13,28,59,0.35)] ring-1 ring-navy-900/5 sm:rounded-[24px] sm:shadow-[0_24px_60px_-28px_rgba(13,28,59,0.45)]" />
     </div>
   );
 }
