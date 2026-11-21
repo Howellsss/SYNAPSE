@@ -5,7 +5,7 @@ import {
 import { useRouter } from '@/lib/router';
 import { useToast } from '@/context/ToastContext';
 import {
-  DEFAULT_COVER, calendarLinks, categoryLabel, countdown, downloadFile, eventDateLine, eventUrl, fetchPublicEvent, fetchPublicEvents,
+  DEFAULT_COVER, calendarLinks, categoryLabel, countdown, downloadFile, whenLine, eventUrl, fetchPublicEvent, fetchPublicEvents,
   formatPrice, placeLine, registerForEvent, ticketUrl, type EventTicket, type PublicEvent,
 } from '@/lib/events';
 import { EventCard, EventsShell, QrImage, CoverImage } from '@/components/events/EventKit';
@@ -90,7 +90,7 @@ export function EventDetailPage({ slug }: { slug: string }) {
             )}
 
             <ul className="mt-7 space-y-4">
-              <InfoRow icon={<CalendarDays className="h-5 w-5" />} title={eventDateLine(event.starts_at, event.ends_at, event.timezone)} sub={event.starts_at ? event.timezone.replace(/_/g, ' ') : 'Register now and you’ll hear as soon as it’s set.'} />
+              <InfoRow icon={<CalendarDays className="h-5 w-5" />} title={whenLine(event)} sub={event.starts_at ? event.timezone.replace(/_/g, ' ') : 'Register now and you’ll hear as soon as it’s set.'} />
               <InfoRow
                 icon={event.mode === 'online' ? <Globe className="h-5 w-5" /> : <MapPin className="h-5 w-5" />}
                 title={placeLine(event)}
@@ -317,7 +317,7 @@ function ShareButton({ event }: { event: PublicEvent }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const url = eventUrl(event.slug);
-  const text = `${event.title} · ${eventDateLine(event.starts_at, event.ends_at, event.timezone)}`;
+  const text = `${event.title} · ${whenLine(event)}`;
   const share = async () => {
     if (navigator.share) {
       try { await navigator.share({ title: event.title, text, url }); return; } catch { /* closed or unsupported: show the menu */ }

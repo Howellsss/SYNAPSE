@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, ExternalLink, MapPin, Plus, Ticket, Users } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from '@/lib/router';
-import { DEFAULT_COVER, NOT_SET_UP, eventDateLine, listEvents, placeLine, type EventSummary } from '@/lib/events';
+import { DEFAULT_COVER, NOT_SET_UP, whenLine, listEvents, placeLine, type EventSummary } from '@/lib/events';
 import { EmptyState, ErrorState } from '@/components/ui/States';
 import { cn } from '@/lib/utils';
 
@@ -141,7 +141,7 @@ function EventRow({ e, onOpen }: { e: EventSummary; onOpen: () => void }) {
             <h3 className="truncate text-[17px] font-semibold text-navy-800">{e.title}</h3>
             <StatusBadge e={e} />
           </div>
-          <p className="mt-1 flex items-center gap-1.5 truncate text-sm text-ivory-700"><CalendarDays className="h-3.5 w-3.5 shrink-0" />{eventDateLine(e.starts_at, e.ends_at, e.timezone)}</p>
+          <p className="mt-1 flex items-center gap-1.5 truncate text-sm text-ivory-700"><CalendarDays className="h-3.5 w-3.5 shrink-0" />{whenLine(e)}</p>
           <p className="mt-0.5 flex items-center gap-1.5 truncate text-sm text-ivory-700"><MapPin className="h-3.5 w-3.5 shrink-0" />{placeLine(e)}</p>
         </div>
         <div className="hidden w-48 shrink-0 md:block">

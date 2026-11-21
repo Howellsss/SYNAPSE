@@ -92,6 +92,10 @@ export interface HostEvent {
 /** An event as the public sees it (from public_event / public_events). */
 export interface PublicEvent {
   id: string;
+  /** Shown after the date instead of a time range, e.g. "Doors open 3:30 pm · Main event 4:00 pm". */
+  time_note?: string | null;
+  /** false hides the finish time on the event's pages and tickets. */
+  show_end_time?: boolean;
   organiser_id: string;
   slug: string;
   title: string;
@@ -230,6 +234,19 @@ export function eventDateLine(startsAt: string | null, endsAt: string | null, ti
   const day = (d: Date) => d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', ...tz });
   const time = (d: Date) => d.toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true, ...tz });
   return sameDay ? `${day(s)} · ${time(s)} – ${time(e)}` : `${day(s)}, ${time(s)} – ${day(e)}, ${time(e)}`;
+}
+
+/** When an event is, as its pages show it: the time range, or the date and the organiser's
+ * time note ("Doors open 3:30 pm · Main event 4:00 pm") when they've chosen to hide the finish time. */
+export function whenLine(e: { starts_at: string | null; ends_at: string | null; timezone?: string; time_note?: string | null; show_end_time?: boolean | null }): string {
+  if (!e.starts_at || !e.ends_at) return DATE_TBA;
+  const note = (e.time_note ?? '').trim();
+  if (e.show_end_time !== false && !note) return eventDateLine(e.starts_at, e.ends_at, e.timezone);
+  const tz = e.timezone ? { timeZone: e.timezone } : {};
+  const s = new Date(e.starts_at);
+  const day = s.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', ...tz });
+  if (note) return `${day} · ${note}`;
+  return `${day} · ${s.toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true, ...tz })}`;
 }
 
 export function placeLine(e: Pick<PublicEvent, 'mode' | 'venue_name' | 'city'>): string {

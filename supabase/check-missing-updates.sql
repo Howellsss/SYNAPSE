@@ -646,7 +646,6 @@ with expected(migration, kind, sch, a, b) as (values
   ('20261110090000_event_registration_types.sql','function','public','form_definition_json','ffa23c227bb9c2a26fef04d4d04b3ba5'),
   ('20261110090000_event_registration_types.sql','function','public','event_type_state','388015598a57da8dbb2ee7f1d30901e4'),
   ('20261110090000_event_registration_types.sql','function','public','event_ticket_list','11bdc2481977780ce2d55a403f0ff8b1'),
-  ('20261110090000_event_registration_types.sql','function','public','event_public_json','1c5ae345c152928628bf0434b3257ec2'),
   ('20261110090000_event_registration_types.sql','function','public','public_events','71d5b3bed88f292fadd12aeb4d4bde03'),
   ('20261110090000_event_registration_types.sql','function','public','public_event_stats','8bfd70a410132e42bc6dc5ee95dc649b'),
   ('20261110090000_event_registration_types.sql','function','public','public_event_registration','682c065fe7b846501d8120486f8b08ca'),
@@ -736,7 +735,10 @@ with expected(migration, kind, sch, a, b) as (values
   ('20261121090000_domain_sender_resend.sql','column','public','email_accounts','reply_to'),
   ('20261121090000_domain_sender_resend.sql','function','public','email_domain_sender_set','3aab279e8734bb5b0859db3cb4fee9d4'),
   ('20261122090000_domain_synapseconnector.sql','function','public','wf_app_url','08cc95c80b1c24a2d6b438447619c07e'),
-  ('20261123090000_registration_limit_shared_networks.sql','function','public','event_registration_limit','f59b7392db07883c200d70ebc10ab81e')
+  ('20261123090000_registration_limit_shared_networks.sql','function','public','event_registration_limit','f59b7392db07883c200d70ebc10ab81e'),
+  ('20261124090000_event_time_note.sql','column','public','events','time_note'),
+  ('20261124090000_event_time_note.sql','column','public','events','show_end_time'),
+  ('20261124090000_event_time_note.sql','function','public','event_public_json','2501a00e916f89391f4b40b0f41be045')
 ), missing as (
   select e.*, case e.kind
       when 'function' then case when exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = e.a)

@@ -8,7 +8,7 @@ import { useToast } from '@/context/ToastContext';
 import { useRouter } from '@/lib/router';
 import { DoorPasses } from '@/components/events/DoorPasses';
 import {
-  DEFAULT_COVER, deleteEvent, downloadFile, eventDateLine, eventUrl, fetchRegistrationForms, formatPrice, getEvent, holdsPlace,
+  DEFAULT_COVER, deleteEvent, downloadFile, whenLine, eventUrl, fetchRegistrationForms, formatPrice, getEvent, holdsPlace,
   listRegistrations, placeLine, registrationsCsv, REVIEW_COLUMNS, sendTicket, setEventStatus, setRegistrationStatus, updateRegistration,
   type AnswerField, type EventTicket, type HostEvent, type Registration, type RegistrationStatus, type TypeForm,
 } from '@/lib/events';
@@ -148,7 +148,7 @@ export function EventManagePage({ eventId }: { eventId: string }) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2"><StatusBadge e={event} /></div>
           <h1 className="mt-2 font-display text-[24px] font-bold leading-tight tracking-[-0.03em] text-navy-800 sm:text-[24px]">{event.title}</h1>
-          <p className="mt-1 flex items-center gap-1.5 text-[15px] text-ivory-700"><CalendarDays className="h-4 w-4 shrink-0" />{eventDateLine(event.starts_at, event.ends_at, event.timezone)}</p>
+          <p className="mt-1 flex items-center gap-1.5 text-[15px] text-ivory-700"><CalendarDays className="h-4 w-4 shrink-0" />{whenLine(event)}</p>
           <p className="mt-0.5 flex items-center gap-1.5 text-[15px] text-ivory-700"><MapPin className="h-4 w-4 shrink-0" />{placeLine(event)}</p>
         </div>
         <div className="flex flex-wrap gap-2">
