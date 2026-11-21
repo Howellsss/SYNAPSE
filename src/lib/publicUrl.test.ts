@@ -7,7 +7,8 @@ describe('publicOrigin', () => {
     expect(publicOrigin('https://synapse-dj3a-git-main-howellsss-projects.vercel.app', '')).toBe(PRODUCTION_URL);
   });
   it('keeps the production address, custom domains and local development', () => {
-    expect(publicOrigin('https://synapse-dj3a.vercel.app', '')).toBe('https://synapse-dj3a.vercel.app');
+    expect(publicOrigin('https://synapse-dj3a.vercel.app', '')).toBe('https://synapseconnector.com');
+    expect(publicOrigin('https://synapseconnector.com', '')).toBe('https://synapseconnector.com');
     expect(publicOrigin('https://app.example.com', '')).toBe('https://app.example.com');
     expect(publicOrigin('http://localhost:5173', '')).toBe('http://localhost:5173');
   });
