@@ -403,12 +403,15 @@ DO $$ DECLARE i int; r jsonb; n int; ev uuid; att uuid; BEGIN
   INSERT INTO email_accounts(workspace_id, user_id, email, display_name) SELECT tev.ws(), tev.owner(), 'hello@derasperks.example', 'Dera Speaks'
     WHERE NOT EXISTS (SELECT 1 FROM email_accounts WHERE workspace_id = tev.ws());
   PERFORM set_config('request.headers', '{"x-forwarded-for": "203.0.113.9, 10.0.0.1"}', true);
-  FOR i IN 1..20 LOOP
+  -- Many people share one address on mobile networks and venue Wi-Fi: 200 in ten minutes is fine.
+  -- (Earlier hits stand in for most of them, so the test stays quick.)
+  INSERT INTO ev_private.hits(kind, ip, at) SELECT 'register', '203.0.113.9', now() FROM generate_series(1, 190);
+  FOR i IN 1..10 LOOP
     PERFORM event_register('unscathed', 'register', tev.answers('Guest ' || i, 'guest' || i || '@example.com', '+234 803 100 ' || lpad(i::text, 4, '0')));
   END LOOP;
-  PERFORM tev.check((SELECT count(*) FROM event_registrations WHERE email LIKE 'guest%') = 20, 'one address can register 20 times in ten minutes');
+  PERFORM tev.check((SELECT count(*) FROM event_registrations WHERE email LIKE 'guest%') = 10, 'one shared address can register 200 times in ten minutes');
   PERFORM tev.check(tev.raises($q$SELECT event_register('unscathed', 'register', tev.answers('Guest 21', 'guest21@example.com', '+234 803 100 0021'))$q$) = 'busy',
-    'the 21st is asked to wait');
+    'the 201st is asked to wait a moment');
   PERFORM set_config('request.headers', '{"x-forwarded-for": "198.51.100.7"}', true);
   r := event_register('unscathed', 'register', tev.answers('Guest 21', 'guest21@example.com', '+234 803 100 0021'));
   PERFORM tev.check(r->>'status' = 'confirmed', 'someone at another address isn''t held up');
