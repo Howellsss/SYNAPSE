@@ -91,7 +91,7 @@ export function EventCard({ event, onOpen }: { event: Pick<PublicEvent, 'slug' |
     <a
       href={`/e/${event.slug}`}
       onClick={(e) => { e.preventDefault(); onOpen(); }}
-      className="group flex flex-col overflow-hidden rounded-[24px] border border-navy-100 bg-white transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_40px_rgba(13,28,59,0.12)] focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400"
+      className="group flex flex-col overflow-hidden rounded-[20px] sm:rounded-[24px] border border-navy-100 bg-white transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_40px_rgba(13,28,59,0.12)] focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400"
     >
       <div className="relative aspect-[4/3] overflow-hidden">
         <img src={event.cover_url || DEFAULT_COVER} alt="" loading="lazy" className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]" />
@@ -99,11 +99,11 @@ export function EventCard({ event, onOpen }: { event: Pick<PublicEvent, 'slug' |
         <span className="absolute right-3 top-3 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-navy-800 backdrop-blur">{categoryLabel(event.category)}</span>
         {soldOut && <span className="absolute bottom-3 left-3 rounded-full bg-navy-900/85 px-3 py-1 text-xs font-semibold text-white">Sold out</span>}
       </div>
-      <div className="flex flex-1 flex-col gap-2 p-4">
-        <p className="text-xs font-semibold uppercase tracking-wider text-gold-700">{time}</p>
-        <h3 className="line-clamp-2 font-event-display text-[17px] font-semibold leading-snug text-navy-900">{event.title}</h3>
-        <p className="flex items-center gap-1.5 truncate text-sm text-ivory-700"><MapPin className="h-3.5 w-3.5 shrink-0" />{placeLine(event)}</p>
-        <div className="mt-auto flex items-center justify-between pt-2 text-sm">
+      <div className="flex flex-1 flex-col gap-1.5 p-3.5 sm:gap-2 sm:p-4">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-gold-700 sm:text-xs">{time}</p>
+        <h3 className="line-clamp-2 font-event-display text-[16px] font-semibold leading-snug text-navy-900 sm:text-[17px]">{event.title}</h3>
+        <p className="flex items-center gap-1.5 truncate text-[13px] text-ivory-700 sm:text-sm"><MapPin className="h-3.5 w-3.5 shrink-0" />{placeLine(event)}</p>
+        <div className="mt-auto flex items-center justify-between pt-1.5 text-[13px] sm:pt-2 sm:text-sm">
           <span className="inline-flex items-center gap-1.5 font-semibold text-navy-800"><Ticket className="h-4 w-4 text-gold-600" />{priceFrom(event.tickets)}</span>
           {event.registered > 0 && <span className="inline-flex items-center gap-1 text-xs text-ivory-700"><Users className="h-3.5 w-3.5" />{event.registered} going</span>}
         </div>
@@ -121,7 +121,7 @@ export function CoverImage({ src, maxHeight = '70vh' }: { src: string; maxHeight
   return (
     <div className="flex w-full justify-center">
       <img src={src} alt="" decoding="async" {...{ fetchpriority: "high" }} style={{ maxHeight }}
-        className="block h-auto w-auto max-w-full rounded-[26px] shadow-[0_16px_40px_-24px_rgba(13,28,59,0.35)] ring-1 ring-navy-900/5 sm:rounded-[24px] sm:shadow-[0_24px_60px_-28px_rgba(13,28,59,0.45)]" />
+        className="block h-auto w-auto max-w-[88%] sm:max-w-full rounded-[24px] shadow-[0_24px_60px_-28px_rgba(13,28,59,0.45)] ring-1 ring-navy-900/5" />
     </div>
   );
 }
