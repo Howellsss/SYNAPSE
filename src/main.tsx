@@ -4,6 +4,7 @@ import '@fontsource-variable/inter';
 import './index.css';
 import { reloadForUpdate } from './lib/staleBuild';
 import { movedAddress } from './lib/publicUrl';
+import { prefetchEventFor } from './lib/eventPrefetch';
 
 // SYNAPSE moved to synapseconnector.com: the old address opens the same page there.
 const moved = movedAddress(window.location.href);
@@ -30,6 +31,7 @@ if (!import.meta.env.VITE_SUPABASE_URL || !(import.meta.env.VITE_SUPABASE_PUBLIS
   const start = window.location.hash.slice(1) || window.location.pathname;
   const render = (App: () => JSX.Element) => root.render(<StrictMode><App /></StrictMode>);
   if (start === '/e' || start.startsWith('/e/') || start.startsWith('/e?')) {
+    prefetchEventFor(start, import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY);
     void import('./PublicEvents.tsx').then((m) => render(m.default));
   } else {
     void import('./App.tsx').then((m) => render(m.default));
