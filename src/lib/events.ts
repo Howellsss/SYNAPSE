@@ -183,7 +183,7 @@ export const CATEGORIES: { id: string; label: string }[] = [
   { id: 'business', label: 'Business' },
   { id: 'tech', label: 'Tech' },
   { id: 'faith', label: 'Faith' },
-  { id: 'faith_arts', label: 'Faith & Arts' },
+  { id: 'faith_arts', label: 'Faith, Arts & Entertainment' },
   { id: 'arts', label: 'Arts & Entertainment' },
   { id: 'food', label: 'Food & Drink' },
   { id: 'sports', label: 'Sports & Fitness' },
