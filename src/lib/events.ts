@@ -54,6 +54,8 @@ export interface EventBrand { primary?: string; accent?: string; ink?: string; p
 export interface HostEvent {
   id: string;
   workspace_id: string;
+  time_note?: string | null;
+  show_end_time?: boolean;
   created_by: string | null;
   slug: string;
   title: string;
@@ -519,7 +521,7 @@ export async function fetchTicket(token: string): Promise<{ data: PublicTicket |
 
 // ---------------------------------------------------------------- hosts
 
-const EVENT_COLS = 'id, workspace_id, created_by, slug, title, summary, description, category, cover_url, starts_at, ends_at, timezone, mode, venue_name, address, city, online_url, organiser_name, status, visibility, questions, tagline, programme, organiser_logo_url, brand, privacy_notice, email_templates, email_account_id, footer_line, created_at, updated_at';
+const EVENT_COLS = 'id, workspace_id, created_by, slug, title, summary, description, category, cover_url, starts_at, ends_at, timezone, mode, venue_name, address, city, online_url, organiser_name, status, visibility, questions, tagline, programme, organiser_logo_url, brand, privacy_notice, email_templates, email_account_id, footer_line, time_note, show_end_time, created_at, updated_at';
 const TICKET_COLS = 'id, name, description, price_minor, currency, capacity, sort, slug, form_id, requires_approval, opens_at, closes_at, status';
 
 export interface EventSummary extends HostEvent { registered: number; checked_in: number; capacity: number | null; tickets: EventTicket[] }

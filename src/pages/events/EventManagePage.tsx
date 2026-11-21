@@ -144,7 +144,7 @@ export function EventManagePage({ eventId }: { eventId: string }) {
       <button type="button" onClick={() => navigate('/events')} className="mb-4 inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold text-navy-700 hover:bg-navy-50"><ArrowLeft className="h-4 w-4" /> Events</button>
 
       <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
-        <img src={event.cover_url || DEFAULT_COVER} alt="" className="h-28 w-full shrink-0 rounded-xl object-cover sm:h-28 sm:w-40" />
+        <img src={event.cover_url || DEFAULT_COVER} alt="" className="aspect-[4/5] w-32 shrink-0 rounded-xl object-cover object-top shadow-sm ring-1 ring-navy-900/5 sm:aspect-auto sm:h-28 sm:w-40 sm:object-[center_30%]" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2"><StatusBadge e={event} /></div>
           <h1 className="mt-2 font-display text-[24px] font-bold leading-tight tracking-[-0.03em] text-navy-800 sm:text-[24px]">{event.title}</h1>

@@ -5,6 +5,13 @@
     <meta name="theme-color" content="#F5F5F7" />
     <link rel="icon" type="image/svg+xml" href="/howells.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      /* iPhone/iPad zoom into a form field whose text is under 16px and stay zoomed, so the page
+         slides sideways. maximum-scale stops that zoom; iOS still lets people pinch to zoom. */
+      if (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
+        document.querySelector('meta[name=viewport]').setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1');
+      }
+    </script>
     <title>SYNAPSE — Your whole business. One calm place.</title>
     <meta name="description" content="Contacts, calendar, meetings and a living office, designed to work as one." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
