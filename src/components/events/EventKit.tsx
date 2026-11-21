@@ -94,7 +94,7 @@ export function EventCard({ event, onOpen }: { event: Pick<PublicEvent, 'slug' |
       className="group flex flex-col overflow-hidden rounded-[20px] sm:rounded-[24px] border border-navy-100 bg-white transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_40px_rgba(13,28,59,0.12)] focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400"
     >
       <div className="relative aspect-[4/3] overflow-hidden">
-        <img src={event.cover_url || DEFAULT_COVER} alt="" loading="lazy" className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]" />
+        <img src={event.cover_url || DEFAULT_COVER} alt="" loading="lazy" className="h-full w-full object-cover object-top transition duration-500 group-hover:scale-[1.04]" />
         <DateTile iso={event.starts_at} timeZone={event.timezone} className="absolute left-3 top-3" />
         <span className="absolute right-3 top-3 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-navy-800 backdrop-blur">{categoryLabel(event.category)}</span>
         {soldOut && <span className="absolute bottom-3 left-3 rounded-full bg-navy-900/85 px-3 py-1 text-xs font-semibold text-white">Sold out</span>}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowRight, BarChart3, CalendarDays, ClipboardList, Contact, Download, MapPin, QrCode, Search, Sparkles, Ticket, X,
+  ArrowRight, BarChart3, CalendarDays, ChevronDown, ClipboardList, Contact, Download, MapPin, QrCode, Search, Sparkles, Ticket, X,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from '@/lib/router';
@@ -110,7 +110,7 @@ export function EventsHomePage() {
                 onClick={() => navigate(`/e/${next.slug}`)}
                 className="absolute bottom-3 left-3 right-3 flex items-center gap-3 rounded-2xl bg-white/95 p-2.5 sm:bottom-5 sm:left-5 sm:right-5 sm:rounded-3xl sm:p-3 text-left shadow-[0_18px_40px_rgba(13,28,59,0.25)] backdrop-blur transition hover:bg-white sm:left-auto sm:w-[340px]"
               >
-                <img src={next.cover_url || DEFAULT_COVER} alt="" className="h-11 w-11 shrink-0 rounded-xl object-cover sm:h-14 sm:w-14 sm:rounded-2xl" />
+                <img src={next.cover_url || DEFAULT_COVER} alt="" className="h-11 w-11 shrink-0 rounded-xl object-cover object-top sm:h-14 sm:w-14 sm:rounded-2xl" />
                 <span className="min-w-0 flex-1">
                   <span className="block text-[11px] font-bold uppercase tracking-wider text-gold-700">Next up</span>
                   <span className="block truncate font-event-display text-sm font-semibold text-navy-900">{next.title}</span>
@@ -134,13 +134,33 @@ export function EventsHomePage() {
             {filtering && <button type="button" onClick={clear} className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold text-navy-700 ring-1 ring-inset ring-navy-100 hover:bg-navy-50"><X className="h-4 w-4" /> Clear filters</button>}
           </div>
 
-          <div className="-mx-5 mt-4 overflow-x-auto px-5 pb-1 [scrollbar-width:none] sm:-mx-4 sm:mt-6 sm:px-4">
+          {/* Phones: two tidy dropdowns and a Free switch, so every choice is reachable without a row running off the screen. */}
+          <div className="mt-4 grid grid-cols-[1fr_1fr_auto] gap-2 sm:hidden">
+            <label className="relative">
+              <span className="sr-only">Category</span>
+              <select value={category} onChange={(e) => setCategory(e.target.value)} className="h-10 w-full appearance-none rounded-full bg-white pl-3.5 pr-8 text-[13px] font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 focus:outline-none focus:ring-2 focus:ring-gold-400">
+                <option value="all">All categories</option>
+                {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ivory-600" />
+            </label>
+            <label className="relative">
+              <span className="sr-only">When</span>
+              <select value={when} onChange={(e) => setWhen(e.target.value as DateFilter)} className="h-10 w-full appearance-none rounded-full bg-white pl-3.5 pr-8 text-[13px] font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 focus:outline-none focus:ring-2 focus:ring-gold-400">
+                {DATES.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ivory-600" />
+            </label>
+            <button type="button" aria-pressed={freeOnly} onClick={() => setFreeOnly((v) => !v)}
+              className={cn('h-10 rounded-full px-4 text-[13px] font-semibold transition', freeOnly ? 'bg-navy-800 text-white' : 'bg-white text-navy-700 ring-1 ring-inset ring-navy-100')}>Free</button>
+          </div>
+          <div className="-mx-4 mt-6 hidden overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:block">
             <div className="flex w-max gap-2" role="group" aria-label="Category">
               <Chip on={category === 'all'} onClick={() => setCategory('all')}>All</Chip>
               {CATEGORIES.map((c) => <Chip key={c.id} on={category === c.id} onClick={() => setCategory(c.id)}>{c.label}</Chip>)}
             </div>
           </div>
-          <div className="-mx-5 mt-2 flex items-center gap-1.5 overflow-x-auto px-5 pb-1 [scrollbar-width:none] sm:mx-0 sm:mt-3 sm:flex-wrap sm:gap-2 sm:overflow-visible sm:px-0" role="group" aria-label="When">
+          <div className="mt-3 hidden flex-wrap items-center gap-2 sm:flex" role="group" aria-label="When">
             {DATES.map((d) => <Chip key={d.id} small on={when === d.id} onClick={() => setWhen(d.id)}>{d.label}</Chip>)}
             <span className="mx-1 hidden h-5 w-px bg-navy-100 sm:block" aria-hidden="true" />
             <Chip small on={freeOnly} onClick={() => setFreeOnly((v) => !v)}>Free</Chip>
