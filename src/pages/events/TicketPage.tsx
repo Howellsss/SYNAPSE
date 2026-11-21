@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { CalendarDays, CalendarPlus, CheckCircle2, Download, ExternalLink, Globe, MapPin, Ticket } from 'lucide-react';
 import { useRouter } from '@/lib/router';
-import { calendarLinks, downloadFile, eventDateLine, fetchTicket, formatPrice, holdsPlace, placeLine, ticketUrl, type PublicTicket } from '@/lib/events';
+import { calendarLinks, downloadFile, whenLine, fetchTicket, formatPrice, holdsPlace, placeLine, ticketUrl, type PublicTicket } from '@/lib/events';
 import { EventsShell, QrImage } from '@/components/events/EventKit';
 import { useQrDataUrl } from '@/components/events/hooks';
 import { LoadingSpinner } from '@/components/ui/States';
@@ -59,7 +59,7 @@ export function TicketPage({ token }: { token: string }) {
           <div className="bg-navy-900 px-6 pb-6 pt-7 text-white">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-gold-400">{t.ticket_name ?? 'Ticket'}</p>
             <h1 className="mt-2 font-event-display text-2xl font-semibold leading-tight">{e.title}</h1>
-            <p className="mt-3 flex items-start gap-2 text-sm text-ivory-300"><CalendarDays className="mt-0.5 h-4 w-4 shrink-0" />{eventDateLine(e.starts_at, e.ends_at, e.timezone)}</p>
+            <p className="mt-3 flex items-start gap-2 text-sm text-ivory-300"><CalendarDays className="mt-0.5 h-4 w-4 shrink-0" />{whenLine(e)}</p>
             <p className="mt-1.5 flex items-start gap-2 text-sm text-ivory-300">{e.mode === 'online' ? <Globe className="mt-0.5 h-4 w-4 shrink-0" /> : <MapPin className="mt-0.5 h-4 w-4 shrink-0" />}{placeLine(e)}</p>
           </div>
           <div className="relative">
@@ -104,7 +104,7 @@ export function TicketPage({ token }: { token: string }) {
             if (!qr) return;
             setSaving(true);
             void downloadTicketImage({
-              eventTitle: e.title, tagline: e.tagline, dateLine: eventDateLine(e.starts_at, e.ends_at, e.timezone), place: placeLine(e),
+              eventTitle: e.title, tagline: e.tagline, dateLine: whenLine(e), place: placeLine(e),
               typeName: t.ticket_name ?? 'Ticket', name: `${t.first_name} ${t.last_name}`.trim(), code: t.ticket_code ?? null, qrDataUrl: qr,
               colour: e.brand?.primary, footer: t.footer_line || undefined,
             }, `${e.slug}-ticket.png`).finally(() => setSaving(false));

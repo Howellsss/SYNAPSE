@@ -5,7 +5,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from '@/lib/router';
 import {
-  CATEGORIES, DEFAULT_COVER, eventDateLine, fetchEventStats, fetchPublicEvents, inDateWindow,
+  CATEGORIES, DEFAULT_COVER, whenLine, fetchEventStats, fetchPublicEvents, inDateWindow,
   type DateFilter, type EventStats, type PublicEvent,
 } from '@/lib/events';
 import { EventCard, EventsShell } from '@/components/events/EventKit';
@@ -114,7 +114,7 @@ export function EventsHomePage() {
                 <span className="min-w-0 flex-1">
                   <span className="block text-[11px] font-bold uppercase tracking-wider text-gold-700">Next up</span>
                   <span className="block truncate font-event-display text-sm font-semibold text-navy-900">{next.title}</span>
-                  <span className="block truncate text-xs text-ivory-700">{eventDateLine(next.starts_at, next.ends_at, next.timezone)}</span>
+                  <span className="block truncate text-xs text-ivory-700">{whenLine(next)}</span>
                 </span>
                 <ArrowRight className="h-5 w-5 shrink-0 text-navy-700" />
               </button>

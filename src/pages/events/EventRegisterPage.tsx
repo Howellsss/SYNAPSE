@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, CalendarDays, Check, ChevronDown, Clock, Download, Globe, Hourglass, MapPin, ShieldCheck, Ticket, UserRound } from 'lucide-react';
 import { useRouter } from '@/lib/router';
 import {
-  DEFAULT_COVER, eventDateLine, fetchRegistrationPage, placeLine, registerThroughForm, ticketUrl,
+  DEFAULT_COVER, whenLine, fetchRegistrationPage, placeLine, registerThroughForm, ticketUrl,
   type PublicEvent, type RegistrationPage, type TypeRegisterResult,
 } from '@/lib/events';
 import { deserializeDefinition } from '@/lib/form-definition';
@@ -122,7 +122,7 @@ function EventPanel({ event, onOpen }: { event: PublicEvent; onOpen: () => void 
       <h1 className="mt-3 font-event-display text-[40px] font-semibold leading-[1.05] tracking-tight text-navy-900">{event.title}</h1>
       {event.tagline && <p className="mt-2 text-sm font-bold uppercase tracking-[0.2em]" style={{ color: accent }}>{event.tagline}</p>}
       <ul className="mt-6 space-y-3 text-[15px] text-navy-800">
-        <li className="flex items-start gap-3"><CalendarDays className="mt-0.5 h-5 w-5 shrink-0" style={{ color: accent }} /><span>{eventDateLine(event.starts_at, event.ends_at, event.timezone)}</span></li>
+        <li className="flex items-start gap-3"><CalendarDays className="mt-0.5 h-5 w-5 shrink-0" style={{ color: accent }} /><span>{whenLine(event)}</span></li>
         <li className="flex items-start gap-3">{event.mode === 'online' ? <Globe className="mt-0.5 h-5 w-5 shrink-0" style={{ color: accent }} /> : <MapPin className="mt-0.5 h-5 w-5 shrink-0" style={{ color: accent }} />}<span>{placeLine(event)}</span></li>
       </ul>
       {!!event.programme?.length && (
@@ -149,7 +149,7 @@ function EventHeader({ event, onOpen }: { event: PublicEvent; onOpen: () => void
       <div className="min-w-0">
         <Organiser event={event} small />
         <button type="button" onClick={onOpen} className="block truncate text-left font-event-display text-lg font-semibold leading-tight text-navy-900 hover:underline sm:text-xl">{event.title}</button>
-        <p className="mt-0.5 truncate text-[13px] text-ivory-700">{eventDateLine(event.starts_at, event.ends_at, event.timezone)} · {placeLine(event)}</p>
+        <p className="mt-0.5 truncate text-[13px] text-ivory-700">{whenLine(event)} · {placeLine(event)}</p>
       </div>
     </header>
   );
@@ -233,7 +233,7 @@ function Done({ result, event, email }: { result: TypeRegisterResult; event: Pub
           if (!qr) return;
           setSaving(true);
           void downloadTicketImage({
-            eventTitle: event.title, tagline: event.tagline, dateLine: eventDateLine(event.starts_at, event.ends_at, event.timezone), place: placeLine(event),
+            eventTitle: event.title, tagline: event.tagline, dateLine: whenLine(event), place: placeLine(event),
             typeName: result.type_name, name: result.first_name, code: result.ticket_code, qrDataUrl: qr, colour: event.brand?.primary,
           }, `${event.slug}-ticket.png`).finally(() => setSaving(false));
         }} className="flex h-12 items-center justify-center gap-2 rounded-full bg-navy-800 text-sm font-semibold text-white hover:bg-navy-700 disabled:opacity-50"><Download className="h-4 w-4" /> {saving ? 'Saving…' : 'Save ticket'}</button>

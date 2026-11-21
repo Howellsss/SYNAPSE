@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 import {
-  calendarLinks, countdown, eventDateLine, formatPrice, inDateWindow, placeLine, priceFrom, registerErrorText,
+  calendarLinks, countdown, eventDateLine, whenLine, formatPrice, inDateWindow, placeLine, priceFrom, registerErrorText,
   registrationsCsv, slugify, tokenFromScan, zonedToIso, isoToZoned, type Registration,
 } from './events';
 
@@ -140,5 +140,22 @@ describe('ticket image', () => {
     const measure = (s: string) => s.length * 10;
     expect(wrapLines(measure, 'One two three four', 100)).toEqual(['One two', 'three four']);
     expect(wrapLines(measure, 'aaaa bbbb cccc dddd eeee ffff', 90, 2)).toEqual(['aaaa bbbb', 'cccc…']);
+  });
+});
+
+describe('whenLine', () => {
+  const base = { starts_at: '2026-12-20T14:30:00Z', ends_at: '2026-12-20T22:59:00Z', timezone: 'Africa/Lagos' };
+  it('shows the time range by default, as before', () => {
+    expect(whenLine(base)).toBe(eventDateLine(base.starts_at, base.ends_at, base.timezone));
+  });
+  it('shows the note in place of the times', () => {
+    expect(whenLine({ ...base, show_end_time: false, time_note: 'Doors open 3:30 pm · Main event 4:00 pm' }))
+      .toBe('Sun, 20 Dec 2026 · Doors open 3:30 pm · Main event 4:00 pm');
+  });
+  it('shows only the start when the finish time is hidden', () => {
+    expect(whenLine({ ...base, show_end_time: false })).toBe('Sun, 20 Dec 2026 · 3:30 pm');
+  });
+  it('still says the date is to be announced', () => {
+    expect(whenLine({ starts_at: null, ends_at: null, show_end_time: false, time_note: 'x' })).toBe('Date to be announced');
   });
 });
