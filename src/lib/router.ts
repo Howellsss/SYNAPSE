@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { publicEventsPath } from './eventPaths';
 
 function getCurrentPath(): string {
   const hash = window.location.hash.slice(1);
@@ -24,6 +25,12 @@ export function useRouter(): [string, (to: string) => void] {
   const navigate = useCallback((to: string) => {
     if (to.startsWith('/book/') || to.startsWith('/group/') || to.startsWith('/invite/') || to.startsWith('/join/')) {
       window.location.href = to;
+      return;
+    }
+    // Event pages get a clean address (synapseconnector.com/unscathed), not a #… one.
+    if (publicEventsPath(to)) {
+      window.history.pushState(null, '', to);
+      window.dispatchEvent(new PopStateEvent('popstate'));
       return;
     }
     window.location.hash = to;

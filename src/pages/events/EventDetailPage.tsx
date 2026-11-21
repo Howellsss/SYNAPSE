@@ -132,7 +132,7 @@ export function EventDetailPage({ slug }: { slug: string }) {
                 <>
                   <h2 id="take-part" className="mt-5 font-event-display text-lg font-semibold text-navy-900">{formTypes.length > 1 ? 'Ways to take part' : 'Registration'}</h2>
                   <div className="mt-3 space-y-2">
-                    {formTypes.map((t) => <TypeOption key={t.id} t={t} eventOpen={open} onGo={() => navigate(`/e/${event.slug}/${t.slug}`)} />)}
+                    {formTypes.map((t) => <TypeOption key={t.id} t={t} eventOpen={open} onGo={() => navigate(`/${event.slug}/${t.slug}`)} />)}
                   </div>
                 </>
               )}
@@ -169,7 +169,7 @@ export function EventDetailPage({ slug }: { slug: string }) {
           <section className="mt-16 border-t border-navy-100 pt-10">
             <h2 className="font-event-display text-2xl font-semibold text-navy-900">{fromOrganiser.length ? `More from ${event.organiser_name}` : 'You might also like'}</h2>
             <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-              {others.map((e) => <EventCard key={e.id} event={e} onOpen={() => { navigate(`/e/${e.slug}`); window.scrollTo({ top: 0 }); }} />)}
+              {others.map((e) => <EventCard key={e.id} event={e} onOpen={() => { navigate(`/${e.slug}`); window.scrollTo({ top: 0 }); }} />)}
             </div>
           </section>
         )}
@@ -200,7 +200,7 @@ export function EventDetailPage({ slug }: { slug: string }) {
                 <p className="truncate font-event-display text-[15px] font-semibold text-navy-900">{only ? (only.requires_approval ? 'Apply to take part' : formatPrice(only.price_minor, only.currency)) : event.title}</p>
               </div>
               <button type="button"
-                onClick={() => (only ? navigate(`/e/${event.slug}/${only.slug}`) : document.getElementById('take-part')?.scrollIntoView({ behavior: 'smooth', block: 'center' }))}
+                onClick={() => (only ? navigate(`/${event.slug}/${only.slug}`) : document.getElementById('take-part')?.scrollIntoView({ behavior: 'smooth', block: 'center' }))}
                 className="h-11 shrink-0 rounded-full bg-gold-400 px-7 text-[15px] font-semibold text-navy-900 hover:bg-gold-300">
                 {only?.requires_approval ? 'Apply' : 'Register'}
               </button>

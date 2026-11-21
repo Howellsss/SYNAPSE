@@ -88,7 +88,7 @@ describe('calendarLinks', () => {
     }, 'https://x.app')!;
     expect(google).toContain('dates=20261010T180000Z/20261010T210000Z');
     expect(ics).toContain('SUMMARY:Jazz\\, Wine\\; Night');
-    expect(ics).toContain('URL:https://x.app/e/jazz');
+    expect(ics).toContain('URL:https://x.app/jazz');
     expect(ics).toContain('LOCATION:Hall\\, 1 Road\\, Lagos');
   });
   it('has nothing to add while the date is to be announced', () => {

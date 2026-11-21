@@ -89,7 +89,7 @@ export function EventCard({ event, onOpen }: { event: Pick<PublicEvent, 'slug' |
     : DATE_TBA;
   return (
     <a
-      href={`/e/${event.slug}`}
+      href={`/${event.slug}`}
       onClick={(e) => { e.preventDefault(); onOpen(); }}
       className="group flex flex-col overflow-hidden rounded-[20px] sm:rounded-[24px] border border-navy-100 bg-white transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_40px_rgba(13,28,59,0.12)] focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400"
     >

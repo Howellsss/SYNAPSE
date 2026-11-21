@@ -111,7 +111,7 @@ export function TicketPage({ token }: { token: string }) {
           }} className="flex h-12 items-center justify-center gap-2 rounded-full bg-navy-800 text-sm font-semibold text-white hover:bg-navy-700 disabled:opacity-50"><Download className="h-4 w-4" /> {saving ? 'Saving…' : 'Save ticket'}</button>
           <button type="button" disabled={!cal} title={cal ? undefined : 'The date is to be announced'} onClick={() => cal && downloadFile(`${e.slug}.ics`, cal.ics, 'text/calendar')} className="flex h-12 items-center justify-center gap-2 rounded-full text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50 disabled:opacity-50"><CalendarPlus className="h-4 w-4" /> Add to calendar</button>
         </div>
-        <button type="button" onClick={() => navigate(`/e/${e.slug}`)} className="mt-3 w-full rounded-full py-3 text-sm font-semibold text-navy-700 hover:bg-navy-50">View event page</button>
+        <button type="button" onClick={() => navigate(`/${e.slug}`)} className="mt-3 w-full rounded-full py-3 text-sm font-semibold text-navy-700 hover:bg-navy-50">View event page</button>
         {t.footer_line && <p className="mt-4 text-center text-sm italic text-ivory-700">{t.footer_line}</p>}
       </div>
     </EventsShell>

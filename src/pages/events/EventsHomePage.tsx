@@ -107,7 +107,7 @@ export function EventsHomePage() {
             {next && (
               <button
                 type="button"
-                onClick={() => navigate(`/e/${next.slug}`)}
+                onClick={() => navigate(`/${next.slug}`)}
                 className="absolute bottom-3 left-3 right-3 flex items-center gap-3 rounded-2xl bg-white/95 p-2.5 sm:bottom-5 sm:left-5 sm:right-5 sm:rounded-3xl sm:p-3 text-left shadow-[0_18px_40px_rgba(13,28,59,0.25)] backdrop-blur transition hover:bg-white sm:left-auto sm:w-[340px]"
               >
                 <img src={next.cover_url || DEFAULT_COVER} alt="" className="h-11 w-11 shrink-0 rounded-xl object-cover object-top sm:h-14 sm:w-14 sm:rounded-2xl" />
@@ -173,7 +173,7 @@ export function EventsHomePage() {
               </div>
             ) : filtered.length ? (
               <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {filtered.map((e) => <EventCard key={e.id} event={e} onOpen={() => navigate(`/e/${e.slug}`)} />)}
+                {filtered.map((e) => <EventCard key={e.id} event={e} onOpen={() => navigate(`/${e.slug}`)} />)}
               </div>
             ) : (
               <div className="rounded-[28px] border border-dashed border-navy-200 px-6 py-16 text-center">

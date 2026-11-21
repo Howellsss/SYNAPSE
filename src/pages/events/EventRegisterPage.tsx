@@ -92,7 +92,7 @@ export function EventRegisterPage({ slug, type }: { slug: string; type: string }
     <EventsShell>
       <div className={cn('mx-auto w-full', desktop ? 'max-w-[1200px] px-12 py-12' : 'max-w-[720px] sm:px-6 sm:py-8')}>
         <div className={cn(desktop && 'grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start gap-10')}>
-          {desktop ? <EventPanel event={event} onOpen={() => navigate(`/e/${event.slug}`)} /> : <EventHeader event={event} onOpen={() => navigate(`/e/${event.slug}`)} />}
+          {desktop ? <EventPanel event={event} onOpen={() => navigate(`/${event.slug}`)} /> : <EventHeader event={event} onOpen={() => navigate(`/${event.slug}`)} />}
           <div className="ev-sleek-form min-w-0">
             {t && !done && (
               <p className={cn('mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-ivory-700 sm:mb-3 sm:text-xs', !desktop && 'px-5 pt-4 sm:px-0 sm:pt-0')}>
@@ -209,7 +209,7 @@ function Done({ result, event, email }: { result: TypeRegisterResult; event: Pub
           Thank you, {result.first_name}. {event.organiser_name || 'The organiser'} reviews every application. If you’re selected, you’ll get your ticket then.
           {emailed && ' We’ve emailed you to confirm we received it.'}
         </p>
-        <button type="button" onClick={() => navigate(`/e/${event.slug}`)} className="mt-6 h-12 rounded-full px-6 text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50">Back to the event</button>
+        <button type="button" onClick={() => navigate(`/${event.slug}`)} className="mt-6 h-12 rounded-full px-6 text-sm font-semibold text-navy-800 ring-1 ring-inset ring-navy-100 hover:bg-navy-50">Back to the event</button>
       </div>
     );
   }

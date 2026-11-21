@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { isReservedSlug } from '@/lib/eventPaths';
 import { ArrowLeft, ChevronDown, ExternalLink, ImagePlus, Plus, Trash2, Upload } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -140,6 +141,7 @@ export function EventBuilder({ eventId }: { eventId?: string }) {
   const validate = (): string | null => {
     if (!title.trim()) return 'Give your event a title.';
     if (!/^[a-z0-9][a-z0-9-]{1,78}[a-z0-9]$/.test(slug)) return 'The web address can use lowercase letters, numbers and dashes (3–80 characters).';
+    if (isReservedSlug(slug)) return `“${slug}” is used by SYNAPSE itself. Pick another web address for your event.`;
     if (!dateTba) {
       const s = zonedToIso(start, tz); const e = zonedToIso(end, tz);
       if (!s || !e) return 'Choose when the event starts and ends, or mark the date as to be announced.';
@@ -222,9 +224,9 @@ export function EventBuilder({ eventId }: { eventId?: string }) {
         <div className="space-y-6">
           <Section title="Basics">
             <Field label="Title" required><input value={title} onChange={(e) => onTitle(e.target.value)} maxLength={140} placeholder="e.g. Lagos Jazz & Wine Night" className="input-field" /></Field>
-            <Field label="Web address" hint={`${publicOrigin()}/e/${slug || 'your-event'}`}>
+            <Field label="Web address" hint={`${publicOrigin()}/${slug || 'your-event'}`}>
               <div className="flex items-center overflow-hidden rounded-xl border border-navy-100 focus-within:border-gold-400 focus-within:ring-4 focus-within:ring-gold-400/20">
-                <span className="shrink-0 border-r border-navy-100 bg-white px-3 py-2.5 text-sm text-ivory-700">/e/</span>
+                <span className="shrink-0 border-r border-navy-100 bg-white px-3 py-2.5 text-sm text-ivory-700">/</span>
                 <input value={slug} onChange={(e) => { setSlugTouched(true); setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 80)); }} aria-label="Web address" className="min-w-0 flex-1 px-3 py-2.5 text-sm text-navy-700 outline-none" />
               </div>
             </Field>
@@ -388,7 +390,7 @@ function TypeSettings({ t, eventSlug, forms, onChange }: { t: TicketRow; eventSl
   return (
     <div className="mt-3 rounded-xl bg-navy-50/60 px-3 py-2.5">
       <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="flex w-full items-center gap-2 text-left text-sm font-semibold text-navy-800">
-        Registration page {t.formId ? <span className="font-normal text-ivory-700">· /e/{eventSlug || 'event'}/{t.slug || '…'}{t.approval ? ' · by application' : ''}</span> : <span className="font-normal text-ivory-700">· off</span>}
+        Registration page {t.formId ? <span className="font-normal text-ivory-700">· /{eventSlug || 'event'}/{t.slug || '…'}{t.approval ? ' · by application' : ''}</span> : <span className="font-normal text-ivory-700">· off</span>}
         <ChevronDown className={cn('ml-auto h-4 w-4 transition-transform', open && 'rotate-180')} />
       </button>
       {open && (
@@ -400,7 +402,7 @@ function TypeSettings({ t, eventSlug, forms, onChange }: { t: TicketRow; eventSl
                 {forms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
               </select>
             </Field>
-            <Field label="Web address" hint={`/e/${eventSlug || 'event'}/${t.slug || 'register'}`}>
+            <Field label="Web address" hint={`/${eventSlug || 'event'}/${t.slug || 'register'}`}>
               <input value={t.slug} onChange={(e) => onChange({ slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 40) })} placeholder="register" className="input-field" />
             </Field>
           </div>

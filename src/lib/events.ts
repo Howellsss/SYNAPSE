@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { takePrefetched } from './eventPrefetch';
+import { isReservedSlug } from './eventPaths';
 import { UPLOAD_CACHE } from '@/lib/cache/config';
 import { publicOrigin } from '@/lib/publicUrl';
 import { fieldElements } from '@/lib/form-engine';
@@ -201,6 +202,7 @@ export function slugify(title: string): string {
     .normalize('NFKD').replace(/[̀-ͯ]/g, '')
     .toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
     .slice(0, 60).replace(/-+$/g, '');
+  if (s.length >= 3 && isReservedSlug(s)) return `${s}-event`;
   return s.length >= 3 ? s : `event-${s || 'new'}`.slice(0, 60);
 }
 
@@ -323,7 +325,7 @@ export function countdown(startsAt: string, now = Date.now()) {
 }
 
 export function eventUrl(slug: string, origin = publicOrigin()) {
-  return `${origin}/e/${slug}`;
+  return `${origin}/${slug}`;
 }
 
 export function ticketUrl(token: string, origin = publicOrigin()) {

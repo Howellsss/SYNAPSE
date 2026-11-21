@@ -1,6 +1,6 @@
 // Link previews for event pages (WhatsApp, Instagram, Facebook, X, Telegram, iMessage, LinkedIn…).
 // Those apps read the page's meta tags without running the app, so they'd only ever see the SYNAPSE
-// homepage card. vercel.json sends their requests for /e/<slug> here; people's browsers never come here.
+// homepage card. vercel.json sends their requests for /<slug> (and older /e/<slug>) here; people's browsers never come here.
 // Returns the normal page with the event's own title, date, place and poster. Any problem: the
 // normal page, unchanged.
 
@@ -67,7 +67,7 @@ export default async function handler(req, res) {
       signal: AbortSignal.timeout(4000),
     });
     const e = r.ok ? await r.json() : null;
-    if (e && e.title) html = withEventTags(html, e, origin + '/e/' + slug);
+    if (e && e.title) html = withEventTags(html, e, origin + '/' + slug);
   } catch { /* the normal page */ }
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=300, stale-while-revalidate=600');
