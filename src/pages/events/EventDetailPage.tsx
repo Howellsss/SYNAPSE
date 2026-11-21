@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft, CalendarDays, CalendarPlus, Check, Copy, Download, ExternalLink, Globe, Mail, MapPin, Share2, Ticket, User, Users, X,
+  ArrowLeft, CalendarDays, CalendarPlus, Check, Clock, Copy, Download, ExternalLink, Globe, Mail, MapPin, Share2, Ticket, User, Users, X,
 } from 'lucide-react';
 import { useRouter } from '@/lib/router';
 import { useToast } from '@/context/ToastContext';
@@ -76,30 +76,42 @@ export function EventDetailPage({ slug }: { slug: string }) {
         <div className="mt-3 grid gap-8 sm:mt-5 lg:grid-cols-[1fr_400px] lg:gap-10">
           <article className="min-w-0">
             <CoverImage src={event.cover_url || DEFAULT_COVER} maxHeight="min(62vh, 580px)" />
+            {/* Phones: one clean card under the poster: title, price, the essentials, then the actions. */}
+            <MobileSummary
+              event={event} open={open} formTypes={formTypes} plain={plain} ticketId={ticketId}
+              onRegister={() => {
+                const openTypes = formTypes.filter((t) => (t.state ?? 'open') === 'open');
+                if (openTypes.length === 1) navigate(`/e/${event.slug}/${openTypes[0].slug}`);
+                else if (!openTypes.length && ticketId) setRegistering(true);
+                else document.getElementById('take-part')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }}
+            />
+            <div className="hidden lg:block">
             <div className="mt-6 flex flex-wrap items-center gap-2 sm:mt-7">
-              <span className="rounded-full bg-gold-50 px-3 py-1 text-xs font-semibold text-gold-800">{categoryLabel(event.category)}</span>
-              {event.mode !== 'in_person' && <span className="rounded-full bg-navy-50 px-3 py-1 text-xs font-semibold text-navy-700">{event.mode === 'online' ? 'Online' : 'In person + online'}</span>}
-            </div>
-            <h1 className="mt-3 font-event-display text-[30px] font-semibold leading-[1.08] tracking-tight text-navy-900 sm:mt-4 sm:text-[48px]">{event.title}</h1>
-            {event.tagline && <p className="mt-2 text-[12px] font-semibold uppercase tracking-[0.2em] text-gold-700 sm:mt-3 sm:text-sm">{event.tagline}</p>}
-            {event.summary && <p className="mt-3 text-[15px] leading-[1.6] text-ivory-800 sm:mt-4 sm:text-lg sm:leading-relaxed">{event.summary}</p>}
-            {!!event.programme?.length && (
-              <ul className="mt-4 flex flex-wrap gap-1.5 sm:mt-5 sm:gap-2" aria-label="Programme">
-                {event.programme.map((p) => <li key={p} className="rounded-full bg-navy-50 px-2.5 py-1 text-[11.5px] font-semibold text-navy-700 sm:px-3 sm:text-xs">{p}</li>)}
-              </ul>
-            )}
+                <span className="rounded-full bg-gold-50 px-3 py-1 text-xs font-semibold text-gold-800">{categoryLabel(event.category)}</span>
+                {event.mode !== 'in_person' && <span className="rounded-full bg-navy-50 px-3 py-1 text-xs font-semibold text-navy-700">{event.mode === 'online' ? 'Online' : 'In person + online'}</span>}
+              </div>
+              <h1 className="mt-3 font-event-display text-[30px] font-semibold leading-[1.08] tracking-tight text-navy-900 sm:mt-4 sm:text-[48px]">{event.title}</h1>
+              {event.tagline && <p className="mt-2 text-[12px] font-semibold uppercase tracking-[0.2em] text-gold-700 sm:mt-3 sm:text-sm">{event.tagline}</p>}
+              {event.summary && <p className="mt-3 text-[15px] leading-[1.6] text-ivory-800 sm:mt-4 sm:text-lg sm:leading-relaxed">{event.summary}</p>}
+              {!!event.programme?.length && (
+                <ul className="mt-4 flex flex-wrap gap-1.5 sm:mt-5 sm:gap-2" aria-label="Programme">
+                  {event.programme.map((p) => <li key={p} className="rounded-full bg-navy-50 px-2.5 py-1 text-[11.5px] font-semibold text-navy-700 sm:px-3 sm:text-xs">{p}</li>)}
+                </ul>
+              )}
 
-            <ul className="mt-6 divide-y divide-navy-100/70 rounded-2xl border border-navy-100 sm:mt-7 sm:divide-y-0 sm:space-y-4 sm:rounded-none sm:border-0">
-              <InfoRow icon={<CalendarDays className="h-5 w-5" />} title={whenLine(event)} sub={event.starts_at ? zoneName(event.timezone) : 'Register now and you’ll hear as soon as it’s set.'} />
-              <InfoRow
-                icon={event.mode === 'online' ? <Globe className="h-5 w-5" /> : <MapPin className="h-5 w-5" />}
-                title={placeLine(event)}
-                sub={event.mode === 'online' ? 'The link is on your ticket after you register.' : event.address}
-                action={mapQuery && event.mode !== 'online' ? <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm font-semibold text-gold-700 hover:text-gold-800">Directions <ExternalLink className="h-3.5 w-3.5" /></a> : undefined}
-              />
-              {event.organiser_name && <InfoRow icon={<User className="h-5 w-5" />} title={`Hosted by ${event.organiser_name}`} />}
-              {event.registered > 0 && <InfoRow icon={<Users className="h-5 w-5" />} title={`${event.registered.toLocaleString()} ${event.registered === 1 ? 'person' : 'people'} going`} />}
-            </ul>
+              <ul className="mt-6 divide-y divide-navy-100/70 rounded-2xl border border-navy-100 sm:mt-7 sm:divide-y-0 sm:space-y-4 sm:rounded-none sm:border-0">
+                <InfoRow icon={<CalendarDays className="h-5 w-5" />} title={whenLine(event)} sub={event.starts_at ? zoneName(event.timezone) : 'Register now and you’ll hear as soon as it’s set.'} />
+                <InfoRow
+                  icon={event.mode === 'online' ? <Globe className="h-5 w-5" /> : <MapPin className="h-5 w-5" />}
+                  title={placeLine(event)}
+                  sub={event.mode === 'online' ? 'The link is on your ticket after you register.' : event.address}
+                  action={mapQuery && event.mode !== 'online' ? <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm font-semibold text-gold-700 hover:text-gold-800">Directions <ExternalLink className="h-3.5 w-3.5" /></a> : undefined}
+                />
+                {event.organiser_name && <InfoRow icon={<User className="h-5 w-5" />} title={`Hosted by ${event.organiser_name}`} />}
+                {event.registered > 0 && <InfoRow icon={<Users className="h-5 w-5" />} title={`${event.registered.toLocaleString()} ${event.registered === 1 ? 'person' : 'people'} going`} />}
+              </ul>
+            </div>
 
             {event.description && (
               <section className="mt-8 border-t border-navy-100 pt-6 sm:mt-10 sm:pt-8">
@@ -156,7 +168,7 @@ export function EventDetailPage({ slug }: { slug: string }) {
                   </button>
                 </>
               )}
-              <div className="mt-5 grid grid-cols-2 gap-2 border-t border-navy-100 pt-5">
+              <div className="mt-5 hidden grid-cols-2 gap-2 border-t border-navy-100 pt-5 lg:grid">
                 <AddToCalendar event={event} />
                 <ShareButton event={event} />
               </div>
@@ -213,6 +225,74 @@ export function EventDetailPage({ slug }: { slug: string }) {
         <RegisterSheet event={event} ticketId={ticketId} onTicket={setTicketId} onClose={() => { setRegistering(false); void load(); }} />
       )}
     </EventsShell>
+  );
+}
+
+/** Phones: the event's essentials in one card, labelled rows, and the actions in full width. */
+function MobileSummary({ event, open, formTypes, plain, ticketId, onRegister }: {
+  event: PublicEvent; open: boolean; formTypes: EventTicket[]; plain: EventTicket[]; ticketId: string | null; onRegister: () => void;
+}) {
+  const tz = event.timezone ? { timeZone: event.timezone } : {};
+  const s = event.starts_at ? new Date(event.starts_at) : null;
+  const day = s ? s.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', ...tz }) : 'To be announced';
+  const time = !s ? null : (event.time_note ?? '').trim() || (() => {
+    const t = (d: Date) => d.toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true, ...tz });
+    return event.show_end_time !== false && event.ends_at ? `${t(s)} – ${t(new Date(event.ends_at))}` : t(s);
+  })();
+  const openTypes = formTypes.filter((t) => (t.state ?? 'open') === 'open');
+  const one = openTypes.length === 1 ? openTypes[0] : null;
+  const price = one ? (one.requires_approval ? 'Apply' : formatPrice(one.price_minor, one.currency))
+    : (() => { const all = [...formTypes, ...plain]; return all.length && all.every((t) => !t.price_minor) ? 'Free' : null; })();
+  const canRegister = open && (openTypes.length > 0 || (!!ticketId && plain.length > 0));
+  const rows: { icon: React.ReactNode; label: string; value: string; sub?: string; action?: React.ReactNode }[] = [
+    { icon: <CalendarDays />, label: 'Date', value: day },
+    ...(time ? [{ icon: <Clock />, label: 'Time', value: time, sub: zoneName(event.timezone) }] : []),
+    {
+      icon: event.mode === 'online' ? <Globe /> : <MapPin />, label: event.mode === 'online' ? 'Online' : 'Location',
+      value: event.mode === 'online' ? 'The link is on your ticket after you register' : [event.venue_name, event.address, event.city].filter(Boolean).join(', ') || 'To be announced',
+      action: event.mode !== 'online' && (event.venue_name || event.address)
+        ? <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([event.venue_name, event.address, event.city].filter(Boolean).join(', '))}`} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-[13px] font-semibold text-gold-700">Directions <ExternalLink className="h-3 w-3" /></a>
+        : undefined,
+    },
+    ...(event.organiser_name ? [{ icon: <User />, label: 'Hosted by', value: event.organiser_name }] : []),
+  ];
+  return (
+    <section className="mt-5 rounded-[26px] border border-navy-100 bg-white p-5 shadow-[0_10px_30px_-18px_rgba(13,28,59,0.25)] lg:hidden">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gold-700">{categoryLabel(event.category)}</p>
+          <h1 className="mt-1.5 font-event-display text-[26px] font-semibold leading-[1.1] tracking-tight text-navy-900">{event.title}</h1>
+          {event.tagline && <p className="mt-1 text-[13px] font-medium text-ivory-700">{event.tagline}</p>}
+        </div>
+        {price && <span className="mt-5 shrink-0 rounded-full bg-gold-50 px-3 py-1 text-[13px] font-semibold text-gold-800">{price}</span>}
+      </div>
+      {event.summary && <p className="mt-3 line-clamp-3 text-[14.5px] leading-[1.6] text-ivory-800">{event.summary}</p>}
+
+      <dl className="mt-5 space-y-4">
+        {rows.map((r) => (
+          <div key={r.label} className="flex items-start gap-3.5">
+            <span className="mt-0.5 text-ivory-600 [&>svg]:h-[18px] [&>svg]:w-[18px] [&>svg]:stroke-[1.75]">{r.icon}</span>
+            <div className="min-w-0 flex-1">
+              <dt className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-ivory-600">{r.label}</dt>
+              <dd className="mt-0.5 text-[15px] leading-snug text-navy-900">{r.value}</dd>
+              {r.sub && <dd className="text-[12.5px] text-ivory-600">{r.sub}</dd>}
+              {r.action && <dd>{r.action}</dd>}
+            </div>
+          </div>
+        ))}
+      </dl>
+
+      <div className="mt-6 space-y-2.5">
+        <button type="button" disabled={!canRegister} onClick={onRegister}
+          className="h-[52px] w-full rounded-full bg-gold-400 text-[15px] font-semibold text-navy-900 transition hover:bg-gold-300 disabled:cursor-not-allowed disabled:opacity-50">
+          {!open ? (event.status === 'cancelled' ? 'Cancelled' : 'Event ended') : one?.requires_approval ? 'Apply' : 'Register'}
+        </button>
+        <div className="grid grid-cols-2 gap-2.5">
+          <AddToCalendar event={event} />
+          <ShareButton event={event} />
+        </div>
+      </div>
+    </section>
   );
 }
 
