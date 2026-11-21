@@ -22,3 +22,17 @@ export function publicOrigin(
   if (host.endsWith('.vercel.app')) return PRODUCTION_URL;
   return current || PRODUCTION_URL;
 }
+
+/** The address SYNAPSE used before synapseconnector.com. */
+export const OLD_PRODUCTION_HOST = 'synapse-dj3a.vercel.app';
+
+/**
+ * Opened on the old address? The same page on the domain (path, ?v= signatures and #/route kept),
+ * so tickets, door passes and links sent before the move keep working. Otherwise null.
+ */
+export function movedAddress(href: string): string | null {
+  let u: URL;
+  try { u = new URL(href); } catch { return null; }
+  if (u.hostname !== OLD_PRODUCTION_HOST) return null;
+  return PRODUCTION_URL + u.pathname + u.search + u.hash;
+}
