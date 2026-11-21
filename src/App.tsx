@@ -18,6 +18,7 @@ import { MonitorPlay, FolderOpen } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/States';
 import { SpaceDockContext, type SpaceDock } from '@/context/SpaceDockContext';
 import { cn } from '@/lib/utils';
+import { publicEventsPath } from '@/lib/eventPaths';
 
 // Each page is its own download, fetched when it's first opened (the sign-in and home pages come
 // with the app), so opening SYNAPSE doesn't wait for every feature's code.
@@ -122,7 +123,8 @@ function AppContent() {
   // A form or survey to fill in: /f/<id> (older shared links: /forms/<id>). Open to everyone.
   const publicFormId = (path.match(/^\/f\/([0-9a-f-]{36})(?:[/?]|$)/i) ?? path.match(/^\/forms\/([0-9a-f-]{36})(?:\?|$)/i))?.[1] ?? null;
   // Public events pages: /e, /e/<slug>, /e/ticket/<token>. Open to everyone, signed in or not.
-  const isPublicEvents = path === '/e' || path.startsWith('/e/') || path.startsWith('/e?');
+  const eventsPath = publicEventsPath(path);
+  const isPublicEvents = !!eventsPath;
   // A meeting invite link (/meetings/CODE?invite=…) opens for everyone, signed in or not.
   const meetingMatch = path.match(/^\/meetings\/([A-Za-z]{4}-?\d{3})(?:[/?]|$)/);
   const meetingCode = meetingMatch ? meetingMatch[1].toUpperCase().replace(/^([A-Z]{4})(\d{3})$/, '$1-$2') : null;
@@ -165,7 +167,7 @@ function AppContent() {
   }
 
   if (isPublicEvents) {
-    const [, , a, b] = path.split('?')[0].split('/');
+    const [, , a, b] = (eventsPath ?? path).split('?')[0].split('/');
     if (a === 'ticket' && b) return <TicketPage key={b} token={b} />;
     // /e/door/<token>: a volunteer's door pass, which makes their phone a scanner for one event.
     if (a === 'door' && b) return <DoorPassPage key={b} token={b} />;

@@ -4,6 +4,7 @@ import { ToastProvider } from '@/context/ToastContext';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { LoadingSpinner } from '@/components/ui/States';
 import { useRouter } from '@/lib/router';
+import { publicEventsPath } from '@/lib/eventPaths';
 
 /*
   The public events pages (/e, /e/<event>, /e/<event>/<type>, /e/ticket/…, /e/door/…) are what
@@ -19,10 +20,6 @@ const TicketPage = lazy(() => import('@/pages/events/TicketPage').then((m) => ({
 const DoorPassPage = lazy(() => import('@/pages/events/DoorPassPage').then((m) => ({ default: m.DoorPassPage })));
 const EventRegisterPage = lazy(() => import('@/pages/events/EventRegisterPage').then((m) => ({ default: m.EventRegisterPage })));
 
-function isPublicEventsPath(path: string): boolean {
-  return path === '/e' || path.startsWith('/e/') || path.startsWith('/e?');
-}
-
 const spinner = <div className="min-h-screen bg-white flex items-center justify-center"><LoadingSpinner className="w-10 h-10" /></div>;
 
 function EventsRoute({ path }: { path: string }) {
@@ -35,8 +32,9 @@ function EventsRoute({ path }: { path: string }) {
 }
 
 export default function PublicEvents() {
-  const [path] = useRouter();
-  if (!isPublicEventsPath(path)) return <Suspense fallback={spinner}><App /></Suspense>;
+  const [raw] = useRouter();
+  const path = publicEventsPath(raw);
+  if (!path) return <Suspense fallback={spinner}><App /></Suspense>;
   return (
     <AuthProvider>
       <ToastProvider>

@@ -12,6 +12,28 @@
       "destination": "/api/event-preview?slug=:slug*"
     },
     {
+      "source": "/:slug((?!(?:e|api|assets|events|landing|dashboard|signin|signup|reset-password|contacts|calendars|forms|f|workflows|recordings|characters|ai-hub|settings|rooms|streams|meetings|webinars|conversations|media-library|workspace|workspaces|book|group|invite|join|live|check-in)$)[a-z0-9-]+)",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(WhatsApp|facebookexternalhit|Facebot|meta-externalagent|Instagram|Twitterbot|TelegramBot|Slackbot|LinkedInBot|Discordbot|SkypeUriPreview|Pinterest|redditbot|Embedly|Googlebot|bingbot|Applebot|Snapchat|vkShare|Viber|Line|Iframely|Google-InspectionTool).*"
+        }
+      ],
+      "destination": "/api/event-preview?slug=:slug"
+    },
+    {
+      "source": "/:slug((?!(?:e|api|assets|events|landing|dashboard|signin|signup|reset-password|contacts|calendars|forms|f|workflows|recordings|characters|ai-hub|settings|rooms|streams|meetings|webinars|conversations|media-library|workspace|workspaces|book|group|invite|join|live|check-in)$)[a-z0-9-]+)/:type([a-z0-9-]+)",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(WhatsApp|facebookexternalhit|Facebot|meta-externalagent|Instagram|Twitterbot|TelegramBot|Slackbot|LinkedInBot|Discordbot|SkypeUriPreview|Pinterest|redditbot|Embedly|Googlebot|bingbot|Applebot|Snapchat|vkShare|Viber|Line|Iframely|Google-InspectionTool).*"
+        }
+      ],
+      "destination": "/api/event-preview?slug=:slug"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
