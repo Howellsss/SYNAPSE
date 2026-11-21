@@ -23,7 +23,7 @@ export function EventsShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-[100dvh] bg-white font-event text-navy-800">
       <header className="sticky top-0 z-40 border-b border-navy-100/70 bg-white/85 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-8">
+        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-3 px-5 sm:h-16 sm:px-8">
           <a href="/e" onClick={(e) => { e.preventDefault(); navigate('/e'); }} className="flex items-center gap-2.5">
             <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-navy-800"><HowellsLogo className="h-[18px] w-[18px]" /></span>
             <span className="whitespace-nowrap font-event-display text-[14px] font-semibold tracking-tight sm:text-[15px]">SYNAPSE <span className="text-gold-600">Events</span></span>
@@ -35,13 +35,13 @@ export function EventsShell({ children }: { children: ReactNode }) {
           </nav>
           <div className="flex items-center gap-2">
             {!user && <button type="button" onClick={() => navigate('/signin')} className="hidden rounded-full px-4 py-2 text-sm font-semibold text-navy-700 hover:bg-navy-50 sm:block">Sign in</button>}
-            <button type="button" onClick={host} className="whitespace-nowrap rounded-full bg-gold-400 px-4 py-2 text-sm font-semibold text-navy-900 hover:bg-gold-300">{user ? 'My events' : 'Host an event'}</button>
+            <button type="button" onClick={host} className="whitespace-nowrap rounded-full px-3.5 py-1.5 text-[13px] font-semibold text-navy-800 ring-1 ring-inset ring-navy-200 hover:bg-navy-50 sm:bg-gold-400 sm:px-4 sm:py-2 sm:text-sm sm:text-navy-900 sm:ring-0 sm:hover:bg-gold-300">{user ? 'My events' : 'Host an event'}</button>
           </div>
         </div>
       </header>
       {children}
       <footer className="border-t border-navy-100 bg-white">
-        <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+        <div className="mx-auto flex max-w-7xl flex-col gap-5 px-5 py-8 sm:flex-row sm:items-center sm:justify-between sm:px-8">
           <div className="flex items-center gap-2.5">
             <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-navy-800"><HowellsLogo className="h-[18px] w-[18px]" /></span>
             <div>

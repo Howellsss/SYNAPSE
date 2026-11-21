@@ -67,30 +67,30 @@ export function EventDetailPage({ slug }: { slug: string }) {
 
   return (
     <EventsShell>
-      <div className="mx-auto max-w-7xl px-4 pb-28 pt-6 sm:px-8 lg:pb-16">
+      <div className="mx-auto max-w-7xl px-5 pb-28 pt-3 sm:px-8 sm:pt-6 lg:pb-16">
         <button type="button" onClick={() => navigate('/e')} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-navy-700 hover:bg-navy-50"><ArrowLeft className="h-4 w-4" /> All events</button>
 
         {cancelled && <p role="status" className="mt-4 rounded-2xl bg-burgundy-50 px-4 py-3 text-sm font-semibold text-burgundy-700">This event has been cancelled by the organiser.</p>}
         {ended && !cancelled && <p role="status" className="mt-4 rounded-2xl bg-navy-50 px-4 py-3 text-sm font-semibold text-navy-700">This event has ended.</p>}
 
-        <div className="mt-5 grid gap-10 lg:grid-cols-[1fr_400px]">
+        <div className="mt-3 grid gap-8 sm:mt-5 lg:grid-cols-[1fr_400px] lg:gap-10">
           <article className="min-w-0">
             <CoverImage src={event.cover_url || DEFAULT_COVER} maxHeight="min(62vh, 580px)" />
-            <div className="mt-7 flex flex-wrap items-center gap-2">
+            <div className="mt-6 flex flex-wrap items-center gap-2 sm:mt-7">
               <span className="rounded-full bg-gold-50 px-3 py-1 text-xs font-semibold text-gold-800">{categoryLabel(event.category)}</span>
               {event.mode !== 'in_person' && <span className="rounded-full bg-navy-50 px-3 py-1 text-xs font-semibold text-navy-700">{event.mode === 'online' ? 'Online' : 'In person + online'}</span>}
             </div>
-            <h1 className="mt-4 font-event-display text-[34px] font-semibold leading-[1.1] tracking-tight text-navy-900 sm:text-[48px]">{event.title}</h1>
-            {event.tagline && <p className="mt-3 text-sm font-semibold uppercase tracking-[0.18em] text-gold-700">{event.tagline}</p>}
-            {event.summary && <p className="mt-4 text-lg leading-relaxed text-ivory-800">{event.summary}</p>}
+            <h1 className="mt-3 font-event-display text-[30px] font-semibold leading-[1.08] tracking-tight text-navy-900 sm:mt-4 sm:text-[48px]">{event.title}</h1>
+            {event.tagline && <p className="mt-2 text-[12px] font-semibold uppercase tracking-[0.2em] text-gold-700 sm:mt-3 sm:text-sm">{event.tagline}</p>}
+            {event.summary && <p className="mt-3 text-[15px] leading-[1.6] text-ivory-800 sm:mt-4 sm:text-lg sm:leading-relaxed">{event.summary}</p>}
             {!!event.programme?.length && (
-              <ul className="mt-5 flex flex-wrap gap-2" aria-label="Programme">
-                {event.programme.map((p) => <li key={p} className="rounded-full bg-navy-50 px-3 py-1 text-xs font-semibold text-navy-700">{p}</li>)}
+              <ul className="mt-4 flex flex-wrap gap-1.5 sm:mt-5 sm:gap-2" aria-label="Programme">
+                {event.programme.map((p) => <li key={p} className="rounded-full bg-navy-50 px-2.5 py-1 text-[11.5px] font-semibold text-navy-700 sm:px-3 sm:text-xs">{p}</li>)}
               </ul>
             )}
 
-            <ul className="mt-7 space-y-4">
-              <InfoRow icon={<CalendarDays className="h-5 w-5" />} title={whenLine(event)} sub={event.starts_at ? event.timezone.replace(/_/g, ' ') : 'Register now and you’ll hear as soon as it’s set.'} />
+            <ul className="mt-6 divide-y divide-navy-100/70 rounded-2xl border border-navy-100 sm:mt-7 sm:divide-y-0 sm:space-y-4 sm:rounded-none sm:border-0">
+              <InfoRow icon={<CalendarDays className="h-5 w-5" />} title={whenLine(event)} sub={event.starts_at ? zoneName(event.timezone) : 'Register now and you’ll hear as soon as it’s set.'} />
               <InfoRow
                 icon={event.mode === 'online' ? <Globe className="h-5 w-5" /> : <MapPin className="h-5 w-5" />}
                 title={placeLine(event)}
@@ -102,21 +102,22 @@ export function EventDetailPage({ slug }: { slug: string }) {
             </ul>
 
             {event.description && (
-              <section className="mt-10 border-t border-navy-100 pt-8">
-                <h2 className="font-event-display text-2xl font-semibold text-navy-900">About this event</h2>
-                <div className="mt-4 whitespace-pre-wrap break-words text-[16px] leading-[1.75] text-navy-700">{event.description}</div>
+              <section className="mt-8 border-t border-navy-100 pt-6 sm:mt-10 sm:pt-8">
+                <h2 className="font-event-display text-xl font-semibold text-navy-900 sm:text-2xl">About this event</h2>
+                <div className="mt-3 whitespace-pre-wrap break-words text-[15px] leading-[1.7] text-navy-700 sm:mt-4 sm:text-[16px] sm:leading-[1.75]">{event.description}</div>
               </section>
             )}
 
             {mapQuery && event.mode !== 'online' && (
-              <section className="mt-10 border-t border-navy-100 pt-8">
-                <h2 className="font-event-display text-2xl font-semibold text-navy-900">Location</h2>
-                <p className="mt-3 font-semibold text-navy-800">{event.venue_name}</p>
-                <p className="text-ivory-700">{[event.address, event.city].filter(Boolean).join(', ')}</p>
+              <section className="mt-8 border-t border-navy-100 pt-6 sm:mt-10 sm:pt-8">
+                <h2 className="font-event-display text-xl font-semibold text-navy-900 sm:text-2xl">Location</h2>
+                {/* Phones already show the address just above; the map is enough here. */}
+                <p className="mt-3 hidden font-semibold text-navy-800 sm:block">{event.venue_name}</p>
+                <p className="hidden text-ivory-700 sm:block">{[event.address, event.city].filter(Boolean).join(', ')}</p>
                 <iframe
                   title="Map"
                   loading="lazy"
-                  className="mt-4 h-72 w-full rounded-[24px] border border-navy-100"
+                  className="mt-3 h-56 w-full rounded-2xl border border-navy-100 sm:mt-4 sm:h-72 sm:rounded-[24px]"
                   src={`https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&output=embed`}
                 />
               </section>
@@ -129,7 +130,7 @@ export function EventDetailPage({ slug }: { slug: string }) {
               {open && !event.starts_at && <p className="rounded-2xl bg-navy-900 px-4 py-3 text-center text-sm font-semibold text-white">Date to be announced</p>}
               {formTypes.length > 0 && (
                 <>
-                  <h2 className="mt-5 font-event-display text-lg font-semibold text-navy-900">{formTypes.length > 1 ? 'Ways to take part' : 'Registration'}</h2>
+                  <h2 id="take-part" className="mt-5 font-event-display text-lg font-semibold text-navy-900">{formTypes.length > 1 ? 'Ways to take part' : 'Registration'}</h2>
                   <div className="mt-3 space-y-2">
                     {formTypes.map((t) => <TypeOption key={t.id} t={t} eventOpen={open} onGo={() => navigate(`/e/${event.slug}/${t.slug}`)} />)}
                   </div>
@@ -187,6 +188,27 @@ export function EventDetailPage({ slug }: { slug: string }) {
         </div>
       )}
 
+      {/* Phones, types with their own form: one Register bar in reach (several types: jump to the choice). */}
+      {open && !ticketId && formTypes.some((t) => (t.state ?? 'open') === 'open') && (() => {
+        const openTypes = formTypes.filter((t) => (t.state ?? 'open') === 'open');
+        const only = openTypes.length === 1 ? openTypes[0] : null;
+        return (
+          <div className="fixed inset-x-0 bottom-0 z-30 border-t border-navy-100 bg-white/95 px-5 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl lg:hidden">
+            <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[12px] text-ivory-700">{only ? only.name : `${openTypes.length} ways to take part`}</p>
+                <p className="truncate font-event-display text-[15px] font-semibold text-navy-900">{only ? (only.requires_approval ? 'Apply to take part' : formatPrice(only.price_minor, only.currency)) : event.title}</p>
+              </div>
+              <button type="button"
+                onClick={() => (only ? navigate(`/e/${event.slug}/${only.slug}`) : document.getElementById('take-part')?.scrollIntoView({ behavior: 'smooth', block: 'center' }))}
+                className="h-11 shrink-0 rounded-full bg-gold-400 px-7 text-[15px] font-semibold text-navy-900 hover:bg-gold-300">
+                {only?.requires_approval ? 'Apply' : 'Register'}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
       {registering && ticketId && (
         <RegisterSheet event={event} ticketId={ticketId} onTicket={setTicketId} onClose={() => { setRegistering(false); void load(); }} />
       )}
@@ -196,15 +218,23 @@ export function EventDetailPage({ slug }: { slug: string }) {
 
 function InfoRow({ icon, title, sub, action }: { icon: React.ReactNode; title: string; sub?: string; action?: React.ReactNode }) {
   return (
-    <li className="flex items-start gap-4">
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-navy-50 text-navy-700">{icon}</span>
-      <div className="min-w-0 flex-1 pt-0.5">
-        <p className="font-semibold text-navy-900">{title}</p>
-        {sub && <p className="text-sm text-ivory-700">{sub}</p>}
+    <li className="flex items-start gap-3 px-4 py-3.5 sm:gap-4 sm:p-0">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-navy-50 text-navy-700 sm:h-11 sm:w-11 sm:rounded-2xl [&>svg]:h-[18px] [&>svg]:w-[18px] sm:[&>svg]:h-5 sm:[&>svg]:w-5">{icon}</span>
+      <div className="min-w-0 flex-1 sm:pt-0.5">
+        <p className="text-[14.5px] font-semibold leading-snug text-navy-900 sm:text-base">{title}</p>
+        {sub && <p className="mt-0.5 text-[13px] leading-snug text-ivory-700 sm:text-sm">{sub}</p>}
+        {action && <div className="mt-1.5">{action}</div>}
       </div>
-      {action && <div className="pt-2">{action}</div>}
     </li>
   );
+}
+
+/** "West Africa Standard Time" for Africa/Lagos; the raw name if the browser can't say. */
+function zoneName(tz: string): string {
+  try {
+    const part = new Intl.DateTimeFormat('en-GB', { timeZone: tz, timeZoneName: 'long' }).formatToParts(new Date()).find((x) => x.type === 'timeZoneName');
+    return part?.value ?? tz.replace(/_/g, ' ');
+  } catch { return tz.replace(/_/g, ' '); }
 }
 
 function Countdown({ startsAt }: { startsAt: string }) {
