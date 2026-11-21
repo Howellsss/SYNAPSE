@@ -93,9 +93,9 @@ export function EventRegisterPage({ slug, type }: { slug: string; type: string }
       <div className={cn('mx-auto w-full', desktop ? 'max-w-[1200px] px-12 py-12' : 'max-w-[720px] sm:px-6 sm:py-8')}>
         <div className={cn(desktop && 'grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start gap-10')}>
           {desktop ? <EventPanel event={event} onOpen={() => navigate(`/e/${event.slug}`)} /> : <EventHeader event={event} onOpen={() => navigate(`/e/${event.slug}`)} />}
-          <div className="min-w-0">
+          <div className="ev-sleek-form min-w-0">
             {t && !done && (
-              <p className={cn('mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-ivory-700', !desktop && 'px-5 pt-5 sm:px-0 sm:pt-0')}>
+              <p className={cn('mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-ivory-700 sm:mb-3 sm:text-xs', !desktop && 'px-5 pt-4 sm:px-0 sm:pt-0')}>
                 {t.requires_approval ? <Hourglass className="h-3.5 w-3.5" /> : <Ticket className="h-3.5 w-3.5" />}
                 {t.name}{t.requires_approval ? ' · reviewed by the organiser' : ''}
               </p>
@@ -144,12 +144,12 @@ function EventPanel({ event, onOpen }: { event: PublicEvent; onOpen: () => void 
 /** The event, folded into a header above the form on tablets and phones. */
 function EventHeader({ event, onOpen }: { event: PublicEvent; onOpen: () => void }) {
   return (
-    <header className="flex items-center gap-4 border-b border-navy-100 px-5 py-4 sm:mb-6 sm:rounded-[24px] sm:border sm:px-4">
-      <img src={event.cover_url || DEFAULT_COVER} alt="" className="h-16 w-16 shrink-0 rounded-2xl object-cover sm:h-20 sm:w-20" />
+    <header className="flex items-center gap-3 border-b border-navy-100 px-5 py-3 sm:mb-6 sm:gap-4 sm:rounded-[24px] sm:border sm:px-4 sm:py-4">
+      <img src={event.cover_url || DEFAULT_COVER} alt="" className="h-12 w-12 shrink-0 rounded-xl object-cover object-top sm:h-20 sm:w-20 sm:rounded-2xl" />
       <div className="min-w-0">
         <Organiser event={event} small />
-        <button type="button" onClick={onOpen} className="block truncate text-left font-event-display text-lg font-semibold leading-tight text-navy-900 hover:underline sm:text-xl">{event.title}</button>
-        <p className="mt-0.5 truncate text-[13px] text-ivory-700">{whenLine(event)} · {placeLine(event)}</p>
+        <button type="button" onClick={onOpen} className="block truncate text-left font-event-display text-[16px] font-semibold leading-tight text-navy-900 hover:underline sm:text-xl">{event.title}</button>
+        <p className="mt-0.5 truncate text-[12px] text-ivory-700 sm:text-[13px]">{whenLine(event)} · {placeLine(event)}</p>
       </div>
     </header>
   );

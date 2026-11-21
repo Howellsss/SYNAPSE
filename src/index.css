@@ -279,3 +279,13 @@
 @media (prefers-reduced-motion: reduce) {
   [class*='animate-[float-up'] { animation-duration: 0.01ms !important; }
 }
+
+/* The registration form on an event page, on phones: smaller, tidier type and controls (other forms unchanged). */
+@media (max-width: 639px) {
+  .ev-sleek-form h1 { font-size: 22px !important; line-height: 1.2 !important; letter-spacing: -0.01em; }
+  .ev-sleek-form h1 + p { font-size: 13.5px !important; }
+  .ev-sleek-form .sf-label { font-size: 13px !important; }
+  .ev-sleek-form .sf-hint { font-size: 12px !important; }
+  .ev-sleek-form .sf-tile { min-height: 44px !important; }
+  .ev-sleek-form .sf-consent { font-size: 13px !important; }
+}
