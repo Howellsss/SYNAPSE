@@ -81,7 +81,7 @@ export function Switch({ label, description, checked, onChange }: { label: strin
 }
 
 /** Tags: pick from the account's tags or type a new one. */
-export function TagInput({ label, value, onChange, options, hint }: { label: string; value: string[]; onChange: (v: string[]) => void; options: string[]; hint?: ReactNode }) {
+export function TagInput({ label, value, onChange, options, hint, create }: { label: string; value: string[]; onChange: (v: string[]) => void; options: string[]; hint?: ReactNode; create?: (name: string) => void }) {
   const [draft, setDraft] = useState('');
   const id = useId();
   const add = (t: string) => {
@@ -90,6 +90,9 @@ export function TagInput({ label, value, onChange, options, hint }: { label: str
     setDraft('');
   };
   const suggestions = options.filter((o) => !value.some((v) => v.toLowerCase() === o.toLowerCase()) && (!draft || o.toLowerCase().includes(draft.toLowerCase()))).slice(0, 8);
+  // What's typed isn't a tag yet: offer it right here, so nobody has to press Enter (or go elsewhere).
+  const typed = draft.trim();
+  const isNew = !!typed && ![...options, ...value].some((o) => o.toLowerCase() === typed.toLowerCase());
   return (
     <Field label={label} hint={hint} htmlFor={id}>
       <div className="rounded-[10px] bg-white p-1.5 ring-1 ring-inset ring-navy-100 focus-within:ring-2 focus-within:ring-gold-400">
@@ -105,8 +108,13 @@ export function TagInput({ label, value, onChange, options, hint }: { label: str
             placeholder={value.length ? 'Add another' : 'Type a tag and press Enter'} className="min-w-[140px] flex-1 bg-transparent px-1.5 py-1 text-sm focus:outline-none" />
         </div>
       </div>
-      {suggestions.length > 0 && (
+      {(suggestions.length > 0 || isNew) && (
         <div className="mt-2 flex flex-wrap gap-1.5">
+          {isNew && (
+            <button type="button" onClick={() => { create?.(typed); add(typed); }} className="inline-flex max-w-full items-center gap-1 rounded-full bg-gold-400 px-2.5 py-1 text-xs font-semibold text-navy-900 hover:bg-gold-300">
+              <Plus className="h-3 w-3 shrink-0" /><span className="truncate">{create ? 'Create tag' : 'Add'} “{typed}”</span>
+            </button>
+          )}
           {suggestions.map((s) => (
             <button key={s} type="button" onClick={() => add(s)} className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-navy-700 ring-1 ring-inset ring-navy-100 hover:bg-navy-50"><Plus className="h-3 w-3" />{s}</button>
           ))}
