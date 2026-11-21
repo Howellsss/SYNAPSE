@@ -422,7 +422,7 @@ DO $$ DECLARE w uuid; c uuid; ch uuid; m record; BEGIN
   c := t.contact('Xia'); PERFORM t.tick();
   PERFORM t.tag(c, 'post'); PERFORM t.tick();
   SELECT * INTO m FROM chat_messages WHERE channel_id = ch ORDER BY created_at DESC LIMIT 1;
-  PERFORM t.check(m.body = 'New lead: Xia https://synapse-dj3a.vercel.app/contacts/' || c, 'posts the message, with the name and a link to the contact');
+  PERFORM t.check(m.body = 'New lead: Xia https://synapseconnector.com/contacts/' || c, 'posts the message, with the name and a link to the contact');
   PERFORM t.check(m.source = 'system' AND m.sender_name = 'Workflow: Post' AND m.user_id IS NULL, 'it comes from the workflow, not a person');
   PERFORM t.check(m.meta->>'contact_id' = c::text AND m.meta->>'contact_name' = 'Xia', 'it carries the contact, for the Claim button');
   PERFORM t.check((t.log(w, 's2')).status = 'failed' AND (t.log(w, 's2')).detail LIKE '%Choose a channel%', 'no channel chosen: fails with a reason');
@@ -446,7 +446,7 @@ DO $$ DECLARE w uuid; c uuid; ch uuid; mt record; ctx jsonb; BEGIN
   SELECT * INTO mt FROM meetings WHERE id = (ctx->>'meeting_id')::uuid;
   PERFORM t.check(mt.title = 'Video call with Yara' AND mt.duration_min = 45 AND mt.host_id = t.owner() AND mt.code ~ '^[A-Z]{4}-[0-9]{3}$',
     'a real meeting is made, hosted by the contact''s owner');
-  PERFORM t.check(ctx->>'meeting_link' = 'https://synapse-dj3a.vercel.app/meetings/' || mt.code || '?invite=' || mt.invite_token, 'its link lets anyone join (invite link)');
+  PERFORM t.check(ctx->>'meeting_link' = 'https://synapseconnector.com/meetings/' || mt.code || '?invite=' || mt.invite_token, 'its link lets anyone join (invite link)');
   PERFORM t.check(EXISTS (SELECT 1 FROM chat_messages WHERE channel_id = ch AND body = 'Yara wants a video call: ' || (ctx->>'meeting_link')), 'a later channel post uses {{meeting.link}}');
   PERFORM t.check(EXISTS (SELECT 1 FROM messages WHERE contact_id = c AND body = 'Join here: ' || (ctx->>'meeting_link')), 'a later email uses {{meeting.link}}');
 EXCEPTION WHEN OTHERS THEN PERFORM t.crashed('Action: create a meeting link', SQLERRM); END $$;

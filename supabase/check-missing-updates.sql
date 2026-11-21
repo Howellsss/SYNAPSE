@@ -573,7 +573,6 @@ with expected(migration, kind, sch, a, b) as (values
   ('20261029150000_department_channels.sql','trigger',null,'department_member_channel_sync',null),
   ('20261029150000_department_channels.sql','function','public','member_department_channels_sync','44e47e06f1c88cd6a305cc97fa847e37'),
   ('20261029150000_department_channels.sql','trigger',null,'member_department_channels_sync',null),
-  ('20261030090000_workflow_new_actions.sql','function','public','wf_app_url','b7c5cdb6e4b839fd4092972cc8cde0d0'),
   ('20261030090000_workflow_new_actions.sql','function','public','wf_form_answers','7b0e6fa84e098f552f79a0dba4250c1b'),
   ('20261030090000_workflow_new_actions.sql','function','public','wf_new_meeting','600e57905dae06852f1af3a6ea6af0a3'),
   ('20261030090000_workflow_new_actions.sql','function','public','wf_merge','3c16ba59339d51cb8ad276d7faf1d0b7'),
@@ -736,7 +735,8 @@ with expected(migration, kind, sch, a, b) as (values
   ('20261120090000_email_sender_fallback.sql','function','public','team_invitation_email','5e5e7701fb3995852d18c39eb770ad47'),
   ('20261120090000_email_sender_fallback.sql','function','public','event_door_pass_add','108ad38de92f6124f6f3bd5723689d62'),
   ('20261121090000_domain_sender_resend.sql','column','public','email_accounts','reply_to'),
-  ('20261121090000_domain_sender_resend.sql','function','public','email_domain_sender_set','3aab279e8734bb5b0859db3cb4fee9d4')
+  ('20261121090000_domain_sender_resend.sql','function','public','email_domain_sender_set','3aab279e8734bb5b0859db3cb4fee9d4'),
+  ('20261122090000_domain_synapseconnector.sql','function','public','wf_app_url','08cc95c80b1c24a2d6b438447619c07e')
 ), missing as (
   select e.*, case e.kind
       when 'function' then case when exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = e.a)

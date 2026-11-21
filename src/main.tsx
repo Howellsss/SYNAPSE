@@ -3,6 +3,11 @@ import { createRoot } from 'react-dom/client';
 import '@fontsource-variable/inter';
 import './index.css';
 import { reloadForUpdate } from './lib/staleBuild';
+import { movedAddress } from './lib/publicUrl';
+
+// SYNAPSE moved to synapseconnector.com: the old address opens the same page there.
+const moved = movedAddress(window.location.href);
+if (moved) window.location.replace(moved);
 
 // A new version went live while this tab was open: its old page files are gone, so reload once.
 window.addEventListener('vite:preloadError', (event) => { if (reloadForUpdate()) event.preventDefault(); });
